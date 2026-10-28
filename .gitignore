@@ -218,3 +218,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project-specific
+.env.*
+!.env.example
+artifacts/
+web/out/
+.next/
+.wrangler/
+*.parquet
