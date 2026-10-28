@@ -1,0 +1,72 @@
+#!/bin/sh
+# Pre-commit guard: blocks staged secrets and stray env files.
+# Enable per clone:  git config core.hooksPath scripts/git-hooks
+# This is a safety net for accidental staging, not a substitute for review.
+
+set -eu
+
+fail=0
+
+# 1. Staged file names that must never be committed.
+staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
+
+for f in $staged_files; do
+  case "$f" in
+    .env|*/.env)
+      echo "pre-commit: refusing to commit '$f' — secrets live in the workspace .env only." >&2
+      fail=1
+      ;;
+    .env.*|*/.env.*)
+      case "$f" in
+        *.env.example|.env.example|*/.env.example) ;;
+        *)
+          echo "pre-commit: refusing to commit '$f' — only .env.example may be tracked." >&2
+          fail=1
+          ;;
+      esac
+      ;;
+    *.pem|*.key|*.p12|*.pfx|id_rsa|id_ed25519)
+      echo "pre-commit: refusing to commit key material '$f'." >&2
+      fail=1
+      ;;
+    .DS_Store|*/.DS_Store)
+      echo "pre-commit: refusing to commit '$f' — macOS metadata." >&2
+      fail=1
+      ;;
+  esac
+done
+
+# 2. Secret-shaped strings in staged content.
+# Matches well-known credential prefixes and assignment of long literal values.
+scan=$(git diff --cached -U0 -- . \
+  | grep -E '^\+' \
+  | grep -v -E '^\+\+\+' \
+  | grep -E -i 'sk-or-v1-[A-Za-z0-9]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|(api[_-]?key|secret|token|password)[[:space:]]*[=:][[:space:]]*["'"'"']?[A-Za-z0-9/+_-]{24,}' \
+  || true)
+
+if [ -n "$scan" ]; then
+  echo "pre-commit: staged content looks like it contains a credential:" >&2
+  echo "$scan" | sed -E 's/^(.{0,12}).*/\1… [redacted]/' >&2
+  echo "Remove it, rotate the credential if it was real, then re-stage." >&2
+  fail=1
+fi
+
+# 3. Guard against accidentally committing multi-megabyte files.
+while read -r f; do
+  [ -n "$f" ] || continue
+  [ -f "$f" ] || continue
+  size=$(wc -c <"$f" | tr -d ' ')
+  if [ "$size" -gt 5242880 ]; then
+    echo "pre-commit: '$f' is $size bytes (>5 MiB) — large binaries belong in R2, not git." >&2
+    fail=1
+  fi
+done <<EOF
+$staged_files
+EOF
+
+if [ "$fail" -ne 0 ]; then
+  echo "pre-commit: blocked. Fix the items above (do not use --no-verify)." >&2
+  exit 1
+fi
+
+exit 0
