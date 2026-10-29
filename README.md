@@ -51,8 +51,9 @@ git-ignored) so nothing is written to a user-level cache.
 | `pnpm dev` | Next dev server on :3000. | yes |
 | `pnpm build` | Static export of the site to `web/out`. | yes |
 | `pnpm typecheck` | `tsc --noEmit` across the workspace. | yes |
-| `pnpm lint` | ESLint (flat config, `eslint-config-next`). | yes |
-| `pnpm verify` | Typecheck + lint + build. The pre-push gate. | yes |
+| `pnpm lint` | ESLint (flat config, `eslint-config-next`) + `prettier --check`. No writes. | yes |
+| `pnpm format` | `prettier --write` over `web/` (the only writing command). | yes |
+| `pnpm verify` | `typecheck` → `lint` → `build`. The pre-push gate. | yes |
 | `python -m pipeline.build` | Build a data release into `artifacts/`. | not yet |
 | `pnpm data:validate` | Validate artifacts against the schema before publishing. | not yet |
 | `pnpm deploy:prod` | Build and deploy to Cloudflare Workers. | not yet |
