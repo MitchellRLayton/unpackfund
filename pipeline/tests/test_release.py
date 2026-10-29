@@ -247,3 +247,26 @@ def test_missing_field_is_reported(tmp_path, document, field):
         del doc[field]
 
     assert validate.validate(corrupt_release(tmp_path, document, mutate)) == 1
+
+
+def test_budget_accepts_the_largest_fund_and_reports_the_large_ones(tmp_path, capsys):
+    """The cap is 2 MB since 2026-10-30, and the count above 500 kB is reported.
+
+    The 200,000-byte cap excluded 211 funds — VTI, VT, VXUS, DFAX — which are the
+    funds most investors hold, so the operator raised it. The gate still exists:
+    a document over the cap is a failure, and the validator names how many pages
+    are large enough to matter for load time.
+    """
+    funds = tmp_path / "funds"
+    funds.mkdir()
+    (funds / "BIG.json").write_bytes(b"x" * (artifact.MAX_FUND_BYTES - 1))
+    report = validate.Report()
+    validate._check_budget(tmp_path, report)
+    assert report.failures == 0
+    out = capsys.readouterr().out
+    assert "1 over 500,000 B" in out
+
+    (funds / "HUGE.json").write_bytes(b"x" * (artifact.MAX_FUND_BYTES + 1))
+    report = validate.Report()
+    validate._check_budget(tmp_path, report)
+    assert report.failures == 1

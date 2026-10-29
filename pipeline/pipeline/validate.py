@@ -14,6 +14,7 @@ Exit status is the gate. ``FAIL`` means the release must not be published;
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import re
@@ -24,7 +25,7 @@ from typing import Any
 from .identifiers import LICENSED_ID_RE, is_licensed
 
 from . import paths
-from .artifact import SCHEMA_VERSION
+from .artifact import LARGE_FUND_BYTES, MAX_FUND_BYTES, SCHEMA_VERSION
 
 REPO_ROOT = paths.REPO_ROOT
 
@@ -341,11 +342,18 @@ def _check_cusip(release_dir: Path, manifest: dict, report: Report) -> None:
 def _check_budget(release_dir: Path, report: Report) -> None:
     funds = list((release_dir / "funds").glob("*.json"))
     total = sum(path.stat().st_size for path in release_dir.rglob("*") if path.is_file())
-    largest = max((path.stat().st_size for path in funds), default=0)
-    if largest > 200_000:
+    sizes = [(path.stat().st_size, path) for path in funds]
+    largest, largest_path = max(sizes, default=(0, None))
+    if largest > MAX_FUND_BYTES:
         report.fail("budget.per_fund", f"largest fund is {largest:,} bytes")
-    else:
-        report.ok("budget", f"{len(funds)} funds, largest {largest:,} B, release {total:,} B")
+        return
+    large = sum(1 for size, _ in sizes if size > LARGE_FUND_BYTES)
+    gzipped = len(gzip.compress(largest_path.read_bytes())) if largest_path else 0
+    report.ok(
+        "budget",
+        f"{len(funds)} funds, largest {largest:,} B ({gzipped:,} B gzipped), "
+        f"{large} over {LARGE_FUND_BYTES:,} B, release {total:,} B",
+    )
 
 
 # -- the objects a browser reads -------------------------------------------

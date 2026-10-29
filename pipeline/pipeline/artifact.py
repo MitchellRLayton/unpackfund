@@ -20,6 +20,18 @@ from typing import Any
 SCHEMA_VERSION = 1
 SOURCE_NPORT = "SEC N-PORT"
 
+#: The hard ceiling on one fund document. It was 200,000 B until 2026-10-30, when the
+#: operator ruled that the 211 funds it excluded — VTI, VT, VXUS, DFAX among them — are
+#: the ones most investors actually hold, so a wide release without them defeats the
+#: point. 2 MB covers the largest observed document (DFAX, 1,594,655 B) with headroom.
+#: The page cost is one gzipped fetch (~120 kB for VTI), not a per-scroll cost: a fund
+#: page renders exactly one document.
+MAX_FUND_BYTES = 2_000_000
+
+#: Where a document stops being cheap. Not a gate — the validator reports the count so
+#: a release cannot quietly become 8,000 large pages.
+LARGE_FUND_BYTES = 500_000
+
 
 def canonical_bytes(document: dict[str, Any]) -> bytes:
     """Stable serialisation: fixed key order, 2-space indent, trailing newline."""

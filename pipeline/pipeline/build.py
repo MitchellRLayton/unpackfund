@@ -50,7 +50,8 @@ from .companies import CompanyIndex
 from .nport import NportParseError
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-MAX_FUND_BYTES = 200_000
+#: One owner for the number: the module that produces the bytes (artifact.py).
+MAX_FUND_BYTES = artifact.MAX_FUND_BYTES
 MIN_TOTAL_BP = 9_000
 MAX_TOTAL_BP = 10_500
 NAV_RESIDUAL_LIMIT = 0.05
