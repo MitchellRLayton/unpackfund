@@ -3,12 +3,13 @@
 Fund portfolio X-ray: look through an ETF to the companies you actually own, with
 every number traceable to a public filing.
 
-**Status: infrastructure + app shell + pipeline spine.** The domain, edge hosting,
-object storage, and data host are live. `web/` is a scaffolded Next.js static
-export that deploys as a Worker and still serves a placeholder page. `pipeline/`
-now takes a ticker to a real N-PORT filing and emits a per-fund artifact plus a
-release manifest, validated and byte-reproducible — one fund is end-to-end. R2
-upload, the `/x` ledger, and every product surface are still unwritten.
+**Status: infrastructure + app shell + pipeline + published release path.**
+The domain, edge hosting, object storage, and data host are live. `pipeline/`
+takes a ticker to a real N-PORT filing, emits a per-fund artifact plus a release
+manifest, validates it, and uploads it to R2 with a hash-verified read-back.
+`web/` is a scaffolded Next.js static export that deploys as a Worker and still
+serves a placeholder page — the `/x` ledger and every product surface are
+unwritten, and the live pointer is deliberately unmoved.
 
 ## Architecture
 
@@ -31,11 +32,18 @@ upload, the `/x` ledger, and every product surface are still unwritten.
 ## Data layout (R2, `data.unpackfund.com`)
 
 ```
-manifest.json                  mutable pointer, Cache-Control: no-cache
-releases/{as_of}/funds/*.json  immutable, Cache-Control: public, max-age=31536000, immutable
+latest/manifest.json           the only mutable object, Cache-Control: no-cache
+releases/{as_of}/manifest.json immutable, Cache-Control: public, max-age=31536000, immutable
+releases/{as_of}/funds/*.json  immutable, same
 releases/{as_of}/indices/*.json
+staging/latest/manifest.json   pointer rehearsal target; non-live, never read by the app
 raw/                           private working data, never published
 ```
+
+`{as_of}` is the release stamp (`2026-10-29.1`) and is also the release manifest's
+`as_of` — the pointer names a release by that field, so the directory and the field
+cannot disagree. `latest/manifest.json` is a byte-identical copy of one release's
+manifest, which makes a rollback a copy rather than an edit.
 
 Artifact requests are cached at the edge by a Cache Rule on the `data.` host, so
 repeat reads do not consume R2 Class B operations.
@@ -60,7 +68,29 @@ git-ignored) so nothing is written to a user-level cache.
 | `pnpm data:validate --release <id \| dir>` | Schema, weight sums, duplicates, hashes, CUSIP rejection, size budget. Offline; a bare release id resolves against `artifacts/releases/`. | yes |
 | `pnpm data:validate --fixtures` | The same checks against the committed fixture, no network. CI form. | yes |
 | `pnpm check:determinism` | Build a release twice and compare every published byte. | yes |
+| `pnpm release:upload --release <id>` | Upload a release to R2, verify every object by public GET (sha256, cache headers, CORS), then write the pointer. Non-live pointer by default; `--allow-live` required for `latest/`. | yes |
+| `pnpm release:verify --release <id>` | Re-read a published prefix and check it against the manifest hashes. | yes |
+| `pnpm verify:live` | EDGAR reachable with our User-Agent; data host answering with CORS and the contracted cache headers. Never a gate. | yes |
 | `pnpm deploy:prod` | Build and deploy to Cloudflare Workers. | not yet |
+
+### Publishing a release
+
+```bash
+pnpm pipeline:build --tickers VOO,AVUV,SPY,QQQ,ARKK --release-id 2026-10-29.1
+pnpm data:validate --release 2026-10-29.1
+pnpm release:upload --release 2026-10-29.1            # objects + staging/latest pointer
+pnpm release:upload --release 2026-10-29.1 --pointer-prefix latest --allow-live   # production promotion
+```
+
+The upload verifies what a browser would receive, not what S3 acknowledged: every
+object is re-fetched from `data.unpackfund.com` and compared to its manifest hash,
+with `Origin: http://localhost:3000` attached so a missing CORS header fails the
+run. The pointer is written last, after the objects verify, because a pointer that
+moves first is a live 404 for every fund in the release.
+
+Credentials come from the workspace `.env` (`R2_ENDPOINT`, `R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY`, optional `R2_BUCKET`), or from the environment in CI. The
+command prints the names it loaded and never a value.
 
 The pipeline needs its own interpreter and a workspace-local venv (never a system
 Python):
