@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -142,6 +143,15 @@ def test_two_builds_of_the_same_filing_are_identical(filing, index):
 
 def test_validator_cli_returns_failure_for_missing_release(tmp_path, capsys):
     assert validate.main(["--release", str(tmp_path / "nope")]) == 1
+
+
+def test_validator_resolves_a_bare_release_id(tmp_path, capsys):
+    """`pnpm data:validate --release 2026-10-28.1` must not depend on the cwd."""
+    assert validate._resolve_release(Path("2026-10-28.1")) == (
+        validate.REPO_ROOT / "artifacts" / "releases" / "2026-10-28.1"
+    )
+    assert validate._resolve_release(Path("artifacts/releases/x")) is None
+    assert validate._resolve_release(tmp_path) == tmp_path
 
 
 @pytest.mark.parametrize("field", ["ticker", "holdings", "metrics", "warnings"])

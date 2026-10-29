@@ -57,7 +57,7 @@ git-ignored) so nothing is written to a user-level cache.
 | `pnpm verify` | `typecheck` → `lint` → `pipeline:test` → `data:validate --fixtures` → `build`. The pre-push gate. | yes |
 | `pnpm pipeline:build` | Fetch the newest N-PORT filing for a ticker and write a release into `artifacts/`. Needs network on first run. | yes |
 | `pnpm pipeline:test` | The pipeline's pytest suite (68 tests, offline). | yes |
-| `pnpm data:validate --release <dir>` | Schema, weight sums, duplicates, hashes, CUSIP rejection, size budget. Offline. | yes |
+| `pnpm data:validate --release <id \| dir>` | Schema, weight sums, duplicates, hashes, CUSIP rejection, size budget. Offline; a bare release id resolves against `artifacts/releases/`. | yes |
 | `pnpm data:validate --fixtures` | The same checks against the committed fixture, no network. CI form. | yes |
 | `pnpm check:determinism` | Build a release twice and compare every published byte. | yes |
 | `pnpm deploy:prod` | Build and deploy to Cloudflare Workers. | not yet |

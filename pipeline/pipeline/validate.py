@@ -23,6 +23,8 @@ from typing import Any
 
 from .artifact import SCHEMA_VERSION
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 REQUIRED_FIELDS = (
     "schema_version",
     "ticker",
@@ -313,10 +315,26 @@ def main(argv: list[str] | None = None) -> int:
             Path(__file__).resolve().parents[2] / "artifacts" / "fixtures"
         )
         return validate(release_dir)
-    if not args.release.exists():
+    release_dir = _resolve_release(args.release)
+    if release_dir is None or not release_dir.exists():
         print(f"FAIL: {args.release} does not exist")
         return 1
-    return validate(args.release)
+    return validate(release_dir)
+
+
+def _resolve_release(target: Path) -> Path | None:
+    """Accept a path or a bare release id.
+
+    ``pnpm data:validate`` runs with ``packages/pipeline`` as its working
+    directory, so a repo-relative path a human typed at the root would silently
+    point at the wrong place. A bare id (``2026-10-28.1``) is resolved against
+    ``artifacts/releases/``, and an explicit path is taken as given.
+    """
+    if target.exists():
+        return target
+    if target.is_absolute() or len(target.parts) > 1:
+        return None
+    return REPO_ROOT / "artifacts" / "releases" / target.name
 
 
 if __name__ == "__main__":
