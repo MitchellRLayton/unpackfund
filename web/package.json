@@ -7,7 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint ."
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write ."
   },
   "dependencies": {
     "next": "16.4.3",
@@ -21,6 +22,8 @@
     "@types/react-dom": "19.3.0",
     "eslint": "9.39.5",
     "eslint-config-next": "16.4.3",
+    "prettier": "3.9.10",
+    "prettier-plugin-tailwindcss": "0.8.1",
     "tailwindcss": "4.3.3",
     "typescript": "5.9.3"
   }

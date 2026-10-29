@@ -3,8 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "UnpackFund",
-  description:
-    "See the companies you actually own through your ETFs and mutual funds.",
+  description: "See the companies you actually own through your ETFs and mutual funds.",
   // The placeholder must not be indexed while it carries no data.
   robots: { index: false, follow: false },
 };

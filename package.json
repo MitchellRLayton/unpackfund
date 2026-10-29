@@ -13,7 +13,7 @@
     "build": "pnpm --filter @unpackfund/web build",
     "typecheck": "pnpm --filter @unpackfund/web typecheck",
     "lint": "pnpm --filter @unpackfund/web lint",
-    "verify": "pnpm typecheck && pnpm build",
-    "verify:ci": "pnpm verify"
+    "format": "pnpm --filter @unpackfund/web format",
+    "verify": "pnpm typecheck && pnpm lint && pnpm build"
   }
 }
