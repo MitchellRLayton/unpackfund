@@ -39,8 +39,38 @@ Push with a timeout so a network stall fails loudly instead of hanging:
 GIT_TERMINAL_PROMPT=0 perl -e 'alarm 90; exec @ARGV' git push origin main
 ```
 
-`GIT_TERMINAL_PROMPT=0` is mandatory. Credentials resolve through the macOS
-keychain; never paste a token into a command, a remote URL, or chat.
+`GIT_TERMINAL_PROMPT=0` is mandatory. Never paste a token into a command, a
+remote URL, or chat.
+
+### Credentials: run the setup step once per clone
+
+`git push` here can appear to hang. Traced on 2026-10-28: the push itself is
+fine, but `git-credential-osxkeychain get` intermittently blocks for 30 s or
+more (one trace showed **35.6 s** stopped inside it). Under a plain `git push`
+that looks exactly like a network hang, which is how a "push is broken" belief
+started.
+
+Route git auth through the `gh` CLI instead, which answers in ~0.2 s and reads
+the same token:
+
+```bash
+scripts/git-setup.sh          # or do it by hand:
+git config --local credential.helper ""                  # clear inherited osxkeychain
+git config --local --add credential.helper '!gh auth git-credential'
+```
+
+This is **repo-local** (`.git/config`), so it is not cloned — run
+`scripts/git-setup.sh` once after every fresh clone. If a push ever stalls,
+re-run the trace before assuming the network:
+
+```bash
+GIT_TERMINAL_PROMPT=0 GIT_TRACE=1 GIT_TRACE_PERFORMANCE=1 \
+  perl -e 'alarm 30; exec @ARGV' git push origin main 2>&1 | grep -E 'credential|main ->'
+```
+
+A multi-second `git credential-… get` line confirms the helper, not the network.
+Do not "fix" a stalled push by switching to the GitHub Git Data API; if the
+helper is the problem, fix the helper.
 
 ## Commit messages
 
