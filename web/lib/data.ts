@@ -2,32 +2,49 @@
  * Loading a release: pointer → `releases/{as_of}/…`, in that order, always.
  *
  * The app never constructs a release path from a date it decided itself; it
- * reads `manifest.as_of` and follows it (`data-contract-and-release` §4). That is
- * what makes a pointer move atomic: the release is fully published and verified
+ * reads the pointer's `as_of` and follows it (`data-contract-and-release` §4). That
+ * is what makes a pointer move atomic: the release is fully published and verified
  * before anything reads it, and a rollback is a copy rather than an edit.
  *
- * Every fund is hash-checked against the manifest before it is used. The cost is
- * a few milliseconds for a 128 KB document and the benefit is that a truncated
- * or half-written object fails loudly here instead of becoming a plausible wrong
+ * What the pointer publishes changed on day 5. It used to be the inventory — one
+ * entry per fund with its hash — which meant every visitor downloaded 8,533 entries
+ * (1.29 MB raw, 0.42 MB gzipped) before verifying a single fund. It is now a
+ * descriptor of about 1.5 KB, and the objects it names are fetched as needed:
+ *
+ *     tickers.json          the builder's ticker list          (~25 KB gzipped)
+ *     index/{L}.json        bytes + sha256 for funds starting L (per portfolio)
+ *     catalogue.json        names, for search                  (lazy, /c/ only)
+ *     companies/{id}.json   who holds one company              (lazy, per company)
+ *
+ * Every fund is still hash-checked before it is used, against the shard that names
+ * it. The cost is one small request; the benefit is that a truncated or
+ * half-written object fails loudly here instead of becoming a plausible wrong
  * number on screen.
  */
 
 import {
+  RELEASE_SCHEMA_VERSION,
   SCHEMA_VERSION,
+  type Catalogue,
+  type CatalogueRow,
+  type CompanyIndex,
+  type CompanyShard,
   type FundDocument,
-  type ManifestFile,
-  type ReleaseManifest,
+  type FundIndexShard,
+  type ReleaseDescriptor,
+  type TickerList,
 } from "./types";
 
 /**
  * Where the pointer lives.
  *
- * `latest/` since 2026-10-29: day 3 read the non-live rehearsal prefix on purpose,
- * so no build could promote a release. Production is now promoted deliberately by
- * the pipeline (`release upload --allow-live`), so the app reads the live pointer
- * and a preview build overrides it:
+ * `latest/release.json` since 2026-10-30: the pointer's name carries its schema, so
+ * day 4's `latest/manifest.json` (a 1.29 MB inventory) and this descriptor are never
+ * confused for one another. Production is promoted deliberately by the pipeline
+ * (`release upload --allow-live`), so the app reads the live pointer and a preview
+ * build overrides it:
  *
- *     NEXT_PUBLIC_POINTER_PATH=staging/latest/manifest.json pnpm build
+ *     NEXT_PUBLIC_POINTER_PATH=staging/latest/release.json pnpm build
  *
  * A default of `staging/` in a production build is worse than wrong data: it makes
  * the live site render a rehearsal pointer that a later staging upload can move.
@@ -35,8 +52,7 @@ import {
 export const DATA_BASE = (
   process.env.NEXT_PUBLIC_DATA_BASE ?? "https://data.unpackfund.com"
 ).replace(/\/$/, "");
-export const POINTER_PATH =
-  process.env.NEXT_PUBLIC_POINTER_PATH ?? "latest/manifest.json";
+export const POINTER_PATH = process.env.NEXT_PUBLIC_POINTER_PATH ?? "latest/release.json";
 
 export const POINTER_URL = `${DATA_BASE}/${POINTER_PATH}`;
 
@@ -93,22 +109,28 @@ async function getJson(url: string, fetchImpl: FetchImpl): Promise<unknown> {
   }
 }
 
-function assertManifest(value: unknown): ReleaseManifest {
-  const manifest = value as ReleaseManifest;
+function assertRelease(value: unknown): ReleaseDescriptor {
+  const release = value as ReleaseDescriptor;
+  const objects = release?.objects;
   if (
-    !manifest ||
-    typeof manifest !== "object" ||
-    manifest.schema_version !== SCHEMA_VERSION ||
-    typeof manifest.as_of !== "string" ||
-    !Array.isArray(manifest.files)
+    !release ||
+    typeof release !== "object" ||
+    release.schema_version !== RELEASE_SCHEMA_VERSION ||
+    release.kind !== "release" ||
+    typeof release.as_of !== "string" ||
+    !objects ||
+    typeof objects.tickers?.path !== "string" ||
+    typeof objects.catalogue?.path !== "string" ||
+    typeof objects.fund_index?.prefix !== "string" ||
+    !Array.isArray(objects.fund_index.shards)
   ) {
     throw new DataError(
       "schema",
       "The pointer does not describe a release this app understands.",
-      `Expected schema_version ${SCHEMA_VERSION} with an as_of and files[].`,
+      `Expected a schema_version ${RELEASE_SCHEMA_VERSION} release descriptor with as_of and objects{}.`,
     );
   }
-  return manifest;
+  return release;
 }
 
 function assertFund(value: unknown, ticker: string): FundDocument {
@@ -137,46 +159,28 @@ export async function sha256Hex(bytes: ArrayBuffer | Uint8Array): Promise<string
     .join("");
 }
 
-export async function loadManifest(
+export async function loadRelease(
   fetchImpl: FetchImpl = fetch,
-): Promise<ReleaseManifest> {
-  return assertManifest(await getJson(POINTER_URL, fetchImpl));
+): Promise<ReleaseDescriptor> {
+  return assertRelease(await getJson(POINTER_URL, fetchImpl));
 }
 
-/** `funds/VOO.json` → `VOO`. The manifest is the catalog; nothing is assumed. */
-export function tickersFromManifest(manifest: ReleaseManifest): string[] {
-  return manifest.files
-    .map((file) => /^funds\/([A-Z0-9.\-]+)\.json$/.exec(file.path)?.[1])
-    .filter((ticker): ticker is string => Boolean(ticker))
-    .sort();
+/** `releases/{as_of}/…`, the only way a release path is ever built. */
+export function releaseUrl(release: ReleaseDescriptor, path: string): string {
+  return `${DATA_BASE}/releases/${encodeURIComponent(release.as_of)}/${path}`;
 }
 
-export function fundFile(manifest: ReleaseManifest, ticker: string): ManifestFile {
-  const file = manifest.files.find(
-    (candidate) => candidate.path === `funds/${ticker}.json`,
-  );
-  if (!file) {
-    throw new DataError(
-      "missing-fund",
-      `${ticker} is not in this release.`,
-      `Release ${manifest.as_of} lists ${tickersFromManifest(manifest).join(", ")}.`,
-    );
-  }
-  return file;
+/** The shard a ticker is verified against: its first character, or `_`. */
+export function shardFor(ticker: string): string {
+  const first = ticker.slice(0, 1).toUpperCase();
+  return first >= "A" && first <= "Z" ? first : "_";
 }
 
-export function releaseUrl(manifest: ReleaseManifest, path: string): string {
-  return `${DATA_BASE}/releases/${encodeURIComponent(manifest.as_of)}/${path}`;
-}
-
-export async function loadFund(
-  manifest: ReleaseManifest,
-  ticker: string,
-  fetchImpl: FetchImpl = fetch,
-): Promise<FundDocument> {
-  const file = fundFile(manifest, ticker);
-  const url = releaseUrl(manifest, file.path);
-
+async function fetchBytes(
+  url: string,
+  what: string,
+  fetchImpl: FetchImpl,
+): Promise<Uint8Array> {
   let response: Response;
   try {
     response = await fetchImpl(url, { cache: "no-cache" });
@@ -184,41 +188,238 @@ export async function loadFund(
     throw new DataError(
       "network",
       "Could not reach the data host.",
-      `${url}: ${describe(error)} — this is either offline or a blocked request, not a missing fund.`,
+      `${url}: ${describe(error)} — this is either offline or a blocked request, not a missing ${what}.`,
     );
   }
   if (!response.ok) {
     throw new DataError(
       "status",
-      `${ticker} could not be loaded.`,
+      response.status === 404
+        ? `That ${what} is not published yet.`
+        : "The data host returned an error.",
       `${url} answered ${response.status}.`,
     );
   }
+  return new Uint8Array(await response.arrayBuffer());
+}
 
-  const bytes = new Uint8Array(await response.arrayBuffer());
+function parseJson(bytes: Uint8Array, what: string): unknown {
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch (error) {
+    throw new DataError("schema", `The ${what} is not valid JSON.`, describe(error));
+  }
+}
+
+/** Fetch one object and check it against the hash the descriptor publishes. */
+async function loadDescribed<T>(
+  release: ReleaseDescriptor,
+  descriptor: { path: string; bytes: number; sha256: string },
+  what: string,
+  fetchImpl: FetchImpl,
+): Promise<T> {
+  const url = releaseUrl(release, descriptor.path);
+  const bytes = await fetchBytes(url, what, fetchImpl);
   const digest = await sha256Hex(bytes);
-  if (digest !== file.sha256) {
+  if (digest !== descriptor.sha256) {
     throw new DataError(
       "hash",
-      `${ticker} did not match its manifest hash, so it was not used.`,
-      `expected ${file.sha256.slice(0, 12)}…, received ${digest.slice(0, 12)}… (${bytes.byteLength} B, manifest says ${file.bytes} B).`,
+      `The ${what} did not match the hash the release publishes, so it was not used.`,
+      `expected ${descriptor.sha256.slice(0, 12)}…, received ${digest.slice(0, 12)}… (${bytes.byteLength} B, release says ${descriptor.bytes} B).`,
+    );
+  }
+  return parseJson(bytes, what) as T;
+}
+
+export async function loadTickers(
+  release: ReleaseDescriptor,
+  fetchImpl: FetchImpl = fetch,
+): Promise<string[]> {
+  const document = await loadDescribed<TickerList>(
+    release,
+    release.objects.tickers,
+    "ticker list",
+    fetchImpl,
+  );
+  if (!document || document.as_of !== release.as_of || !Array.isArray(document.tickers)) {
+    throw new DataError(
+      "schema",
+      "The ticker list does not belong to this release.",
+      `as_of ${document?.as_of ?? "missing"}, release ${release.as_of}.`,
+    );
+  }
+  return document.tickers;
+}
+
+/**
+ * Shards are cached per release: a five-fund portfolio touches one or two, and
+ * adding a sixth fund with a familiar first letter must not re-fetch.
+ */
+const shardCache = new Map<string, Promise<FundIndexShard>>();
+
+async function loadShard(
+  release: ReleaseDescriptor,
+  letter: string,
+  fetchImpl: FetchImpl,
+): Promise<FundIndexShard> {
+  const key = `${release.as_of}:${letter}`;
+  const cached = shardCache.get(key);
+  if (cached) return cached;
+
+  const path = `${release.objects.fund_index.prefix}${letter}.json`;
+  const pending = (async () => {
+    const bytes = await fetchBytes(releaseUrl(release, path), "fund index", fetchImpl);
+    const document = parseJson(bytes, "fund index") as FundIndexShard;
+    if (
+      !document ||
+      document.as_of !== release.as_of ||
+      typeof document.funds !== "object"
+    ) {
+      throw new DataError(
+        "schema",
+        "The fund index does not belong to this release.",
+        `${path}: as_of ${document?.as_of ?? "missing"}, release ${release.as_of}.`,
+      );
+    }
+    return document;
+  })();
+  shardCache.set(key, pending);
+  try {
+    return await pending;
+  } catch (error) {
+    // A failed shard must not be remembered: the next attempt gets a fresh fetch.
+    shardCache.delete(key);
+    throw error;
+  }
+}
+
+/** Drop cached shards; tests use it, and a release change invalidates them anyway. */
+export function clearShardCache(): void {
+  shardCache.clear();
+}
+
+export async function loadFund(
+  release: ReleaseDescriptor,
+  ticker: string,
+  fetchImpl: FetchImpl = fetch,
+): Promise<FundDocument> {
+  const shard = await loadShard(release, shardFor(ticker), fetchImpl);
+  const entry = shard.funds[ticker];
+  if (!entry) {
+    throw new DataError(
+      "missing-fund",
+      `${ticker} is not in this release.`,
+      `Release ${release.as_of} publishes ${release.fund_count} funds; ${ticker} is not one of them.`,
     );
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(new TextDecoder().decode(bytes));
-  } catch (error) {
-    throw new DataError("schema", `${ticker} is not valid JSON.`, describe(error));
+  const url = releaseUrl(release, `funds/${ticker}.json`);
+  const bytes = await fetchBytes(url, ticker, fetchImpl);
+  const digest = await sha256Hex(bytes);
+  if (digest !== entry.sha256) {
+    throw new DataError(
+      "hash",
+      `${ticker} did not match its published hash, so it was not used.`,
+      `expected ${entry.sha256.slice(0, 12)}…, received ${digest.slice(0, 12)}… (${bytes.byteLength} B, release says ${entry.bytes} B).`,
+    );
   }
-  return assertFund(parsed, ticker);
+  return assertFund(parseJson(bytes, `${ticker} artifact`), ticker);
 }
 
 /** Load several funds, keeping the portfolio's order. */
 export async function loadFunds(
-  manifest: ReleaseManifest,
+  release: ReleaseDescriptor,
   tickers: string[],
   fetchImpl: FetchImpl = fetch,
 ): Promise<FundDocument[]> {
-  return Promise.all(tickers.map((ticker) => loadFund(manifest, ticker, fetchImpl)));
+  return Promise.all(tickers.map((ticker) => loadFund(release, ticker, fetchImpl)));
+}
+
+/** `catalogue.json`: a label for every fund in the release. Lazy — search only. */
+export async function loadCatalogue(
+  release: ReleaseDescriptor,
+  fetchImpl: FetchImpl = fetch,
+): Promise<Catalogue> {
+  const document = await loadDescribed<Catalogue>(
+    release,
+    release.objects.catalogue,
+    "catalogue",
+    fetchImpl,
+  );
+  if (
+    !document ||
+    document.as_of !== release.as_of ||
+    typeof document.funds !== "object"
+  ) {
+    throw new DataError(
+      "schema",
+      "The catalogue does not belong to this release.",
+      `as_of ${document?.as_of ?? "missing"}, release ${release.as_of}.`,
+    );
+  }
+  return document;
+}
+
+/** `companies/index.json`: every company in the release, for search. */
+export async function loadCompanyIndex(
+  release: ReleaseDescriptor,
+  fetchImpl: FetchImpl = fetch,
+): Promise<CompanyIndex> {
+  const document = await loadDescribed<CompanyIndex>(
+    release,
+    release.objects.companies.index,
+    "company index",
+    fetchImpl,
+  );
+  if (
+    !document ||
+    document.as_of !== release.as_of ||
+    !Array.isArray(document.companies)
+  ) {
+    throw new DataError(
+      "schema",
+      "The company index does not belong to this release.",
+      `as_of ${document?.as_of ?? "missing"}, release ${release.as_of}.`,
+    );
+  }
+  return document;
+}
+
+/**
+ * `companies/{company_id}.json`: which funds hold one company, and how much.
+ *
+ * No hash to check here — the descriptor does not enumerate 5,179 shards — so the
+ * `as_of` and the identity fields are checked instead, and a mismatch is refused
+ * rather than rendered: a shard from another release would be a plausible wrong
+ * answer, which is worse than an error.
+ */
+export async function loadCompany(
+  release: ReleaseDescriptor,
+  companyId: string,
+  fetchImpl: FetchImpl = fetch,
+): Promise<CompanyShard> {
+  const path = `${release.objects.companies.prefix}${encodeURIComponent(companyId)}.json`;
+  const bytes = await fetchBytes(releaseUrl(release, path), "company", fetchImpl);
+  const document = parseJson(bytes, "company") as CompanyShard;
+  if (
+    !document ||
+    document.as_of !== release.as_of ||
+    document.company_id !== companyId ||
+    !Array.isArray(document.funds)
+  ) {
+    throw new DataError(
+      "schema",
+      "That company record does not belong to this release.",
+      `${path}: as_of ${document?.as_of ?? "missing"}, release ${release.as_of}.`,
+    );
+  }
+  return document;
+}
+
+/** The catalogue row for a ticker, or `null` when the release does not list it. */
+export function catalogueRow(
+  catalogue: Catalogue | null,
+  ticker: string,
+): CatalogueRow | null {
+  return catalogue?.funds[ticker] ?? null;
 }

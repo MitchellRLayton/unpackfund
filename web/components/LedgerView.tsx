@@ -11,8 +11,9 @@
  */
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
+import { CompanyDrawer } from "@/components/CompanyDrawer";
 import { FreshnessStrip, MetricsList } from "@/components/FreshnessStrip";
 import { LedgerTable } from "@/components/LedgerTable";
 import { Notice } from "@/components/Notice";
@@ -21,16 +22,18 @@ import { FULL_ALLOCATION_BP } from "@/lib/types";
 import { useLedger } from "@/lib/use-ledger";
 import { usePortfolio } from "@/lib/use-portfolio";
 import { useFunds, useRelease } from "@/lib/use-release";
+import type { LedgerRow } from "@/lib/types";
 
 export function LedgerView() {
   const portfolio = usePortfolio();
+  const [selected, setSelected] = useState<LedgerRow | null>(null);
   const release = useRelease();
   const tickers = useMemo(
     () => portfolio.entries.map((entry) => entry.ticker),
     [portfolio.entries],
   );
   const { funds, pending, error } = useFunds(
-    release.status === "ready" ? release.data.manifest : null,
+    release.status === "ready" ? release.data : null,
     tickers,
   );
   const weightsBp = useMemo(
@@ -158,7 +161,7 @@ export function LedgerView() {
       </p>
 
       {release.status === "ready" ? (
-        <FreshnessStrip manifest={release.data.manifest} ledger={ledger} />
+        <FreshnessStrip release={release.data} ledger={ledger} />
       ) : null}
 
       {suppressed.length > 0 ? (
@@ -198,7 +201,13 @@ export function LedgerView() {
         {durationMs === null ? "" : ` in ${Math.round(durationMs)} milliseconds`}.
       </p>
 
-      <LedgerTable rows={ledger.rows} />
+      <LedgerTable rows={ledger.rows} onSelect={setSelected} />
+
+      <CompanyDrawer
+        release={release.status === "ready" ? release.data : null}
+        row={selected}
+        onClose={() => setSelected(null)}
+      />
 
       <details style={{ marginTop: "1.5rem" }}>
         <summary>Where each number comes from</summary>

@@ -7,19 +7,31 @@
  * than filling the gap.
  */
 
+/** Fund documents: unchanged since day 1. */
 export const SCHEMA_VERSION = 1;
 
-/** One entry of `manifest.files[]`. */
-export interface ManifestFile {
+/**
+ * The release descriptor, which is what the pointer publishes.
+ *
+ * Day 4's pointer was the full inventory: 8,533 file entries, 1.29 MB raw, and the
+ * app downloaded it before it could verify one fund. It now carries the header plus
+ * a description of the objects beside it, and the inventory (`manifest.json`) stays
+ * in the release for audits. Version 2 is that change and nothing else.
+ */
+export const RELEASE_SCHEMA_VERSION = 2;
+
+/** One published object, as the descriptor names it. */
+export interface ObjectDescriptor {
   path: string;
   bytes: number;
   sha256: string;
 }
 
-/** `releases/{as_of}/manifest.json`, and byte-identically the pointer object. */
-export interface ReleaseManifest {
+/** `latest/manifest.json`, and byte-identically `releases/{as_of}/release.json`. */
+export interface ReleaseDescriptor {
   schema_version: number;
-  /** Release stamp, e.g. `2026-10-28.3`. Also the directory name. */
+  kind: "release";
+  /** Release stamp, e.g. `2026-10-30.1`. Also the directory name. */
   as_of: string;
   generated_at: string;
   pipeline_git_sha: string;
@@ -31,7 +43,61 @@ export interface ReleaseManifest {
   coverage_histogram: Record<string, number>;
   mapping_rungs: Record<string, number>;
   asset_cat_counts: Record<string, number>;
-  files: ManifestFile[];
+  objects: {
+    /** The full inventory; nothing in the app reads it. */
+    manifest: ObjectDescriptor;
+    tickers: ObjectDescriptor;
+    catalogue: ObjectDescriptor;
+    fund_index: { prefix: string; shards: string[]; funds: number };
+    companies: { index: ObjectDescriptor; prefix: string; count: number };
+  };
+}
+
+/** `releases/{as_of}/tickers.json` — the builder's whole catalogue need. */
+export interface TickerList {
+  as_of: string;
+  tickers: string[];
+}
+
+/** `releases/{as_of}/index/{L}.json` — what a fund is verified against. */
+export interface FundIndexShard {
+  as_of: string;
+  funds: Record<string, { bytes: number; sha256: string }>;
+}
+
+/**
+ * `releases/{as_of}/catalogue.json`, positional on purpose: 8,531 of them is
+ * 470 KB as arrays and 940 KB as objects. Order is `[name, issuer, etf, coverage]`.
+ */
+export type CatalogueRow = [
+  name: string,
+  issuer: string,
+  etf: number,
+  coveragePct: number,
+];
+
+export interface Catalogue {
+  as_of: string;
+  funds: Record<string, CatalogueRow>;
+}
+
+/** One row of the company index: `[company_id, name, ticker, holder_count]`. */
+export type CompanyIndexRow = [string, string, string | null, number];
+
+/** `releases/{as_of}/companies/index.json` — every company, for search. */
+export interface CompanyIndex {
+  as_of: string;
+  companies: CompanyIndexRow[];
+}
+
+/** `releases/{as_of}/companies/{company_id}.json` — the reverse X-Ray payload. */
+export interface CompanyShard {
+  as_of: string;
+  company_id: string;
+  name: string;
+  ticker: string | null;
+  /** `[ticker, weight_bp]`, the fund's own weight for this company. */
+  funds: Array<[string, number]>;
 }
 
 export type AssetCategory = "equity" | "debt" | "cash" | "derivative" | "fund" | "other";

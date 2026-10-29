@@ -9,11 +9,18 @@
  *
  * The payload is `[[ticker, weight_bp], …]`, sorted by ticker before encoding so
  * one portfolio has exactly one URL.
+ *
+ * Version 2 (`{"a":[…],"b":[…]}`) carries two portfolios for the comparison view.
+ * It exists as a new version rather than a flag on v1 for the reason above: a v1
+ * decoder must not half-read a v2 link and show one side of a comparison as if it
+ * were the whole answer. A v2 link opened on `/x` shows side A, which is the
+ * portfolio the ledger can honestly render.
  */
 
 import { FULL_ALLOCATION_BP, type Portfolio, type PortfolioEntry } from "./types";
 
 export const FRAGMENT_VERSION = "v1";
+export const COMPARE_VERSION = "v2";
 export const MAX_FRAGMENT_CHARS = 2000;
 
 export type DecodeFailure =
@@ -75,38 +82,102 @@ function isEntry(value: unknown): value is [string, number] {
   );
 }
 
-/** Accepts a raw hash (`#v1.…`) or a bare fragment (`v1.…`). */
-export function decodePortfolio(hash: string): DecodeResult {
+export interface Comparison {
+  a: PortfolioEntry[];
+  b: PortfolioEntry[];
+}
+
+export type CompareDecodeResult =
+  | {
+      ok: true;
+      a: PortfolioEntry[];
+      b: PortfolioEntry[];
+      balancedA: boolean;
+      balancedB: boolean;
+    }
+  | { ok: false; reason: DecodeFailure };
+
+/** Read the version and payload of a hash, without interpreting the payload. */
+function split(hash: string): { version: string; payload: string } | DecodeFailure {
   const raw = hash.startsWith("#") ? hash.slice(1) : hash;
-  if (raw.length === 0) return { ok: false, reason: "empty" };
-  if (raw.length > MAX_FRAGMENT_CHARS) return { ok: false, reason: "too-long" };
-
+  if (raw.length === 0) return "empty";
+  if (raw.length > MAX_FRAGMENT_CHARS) return "too-long";
   const dot = raw.indexOf(".");
-  if (dot < 0) return { ok: false, reason: "malformed" };
-  const version = raw.slice(0, dot);
-  if (version !== FRAGMENT_VERSION) return { ok: false, reason: "unknown-version" };
+  if (dot < 0) return "malformed";
+  return { version: raw.slice(0, dot), payload: raw.slice(dot + 1) };
+}
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(fromBase64Url(raw.slice(dot + 1)));
-  } catch {
-    return { ok: false, reason: "malformed" };
-  }
-
-  if (!Array.isArray(parsed)) return { ok: false, reason: "malformed" };
+function parseEntries(values: unknown): PortfolioEntry[] | null {
+  if (!Array.isArray(values)) return null;
   const seen = new Set<string>();
   const entries: PortfolioEntry[] = [];
-  for (const value of parsed) {
-    if (!isEntry(value)) return { ok: false, reason: "invalid-entry" };
+  for (const value of values) {
+    if (!isEntry(value)) return null;
     const [ticker, weightBp] = value;
-    if (seen.has(ticker)) return { ok: false, reason: "invalid-entry" };
+    if (seen.has(ticker)) return null;
     seen.add(ticker);
     entries.push({ ticker, weight_bp: weightBp });
   }
-  if (entries.length === 0) return { ok: false, reason: "empty" };
+  return sortEntries(entries);
+}
 
-  const portfolio = { entries: sortEntries(entries) };
-  return { ok: true, portfolio, balanced: isBalanced(portfolio.entries) };
+function decodePayload(payload: string): unknown {
+  try {
+    return JSON.parse(fromBase64Url(payload));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Accepts a raw hash (`#v1.…`, `#v2.…`) or a bare fragment, and returns both
+ * sides. A v1 link is a comparison with an empty second side.
+ */
+export function decodeComparison(hash: string): CompareDecodeResult {
+  const head = split(hash);
+  if (typeof head === "string") return { ok: false, reason: head };
+
+  if (head.version === FRAGMENT_VERSION) {
+    const payload = decodePayload(head.payload);
+    if (payload === undefined) return { ok: false, reason: "malformed" };
+    const a = parseEntries(payload);
+    if (!a) return { ok: false, reason: "invalid-entry" };
+    if (a.length === 0) return { ok: false, reason: "empty" };
+    return { ok: true, a, b: [], balancedA: isBalanced(a), balancedB: false };
+  }
+
+  if (head.version !== COMPARE_VERSION) return { ok: false, reason: "unknown-version" };
+
+  const parsed = decodePayload(head.payload) as Comparison | undefined;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, reason: "malformed" };
+  }
+  const a = parseEntries(parsed.a ?? []);
+  const b = parseEntries(parsed.b ?? []);
+  if (!a || !b) return { ok: false, reason: "invalid-entry" };
+  if (a.length === 0) return { ok: false, reason: "empty" };
+  return { ok: true, a, b, balancedA: isBalanced(a), balancedB: isBalanced(b) };
+}
+
+/** The single-portfolio view of a hash: side A, whichever version it came from. */
+export function decodePortfolio(hash: string): DecodeResult {
+  const result = decodeComparison(hash);
+  if (!result.ok) return { ok: false, reason: result.reason };
+  return {
+    ok: true,
+    portfolio: { entries: result.a },
+    balanced: result.balancedA,
+  };
+}
+
+/** The comparison hash. A v2 link with no second side is just a portfolio. */
+export function encodeComparison(a: PortfolioEntry[], b: PortfolioEntry[]): string {
+  const sideA = sortEntries(a).map((entry) => [entry.ticker, entry.weight_bp]);
+  const sideB = sortEntries(b).map((entry) => [entry.ticker, entry.weight_bp]);
+  if (sideB.length === 0) {
+    return `${FRAGMENT_VERSION}.${toBase64Url(JSON.stringify(sideA))}`;
+  }
+  return `${COMPARE_VERSION}.${toBase64Url(JSON.stringify({ a: sideA, b: sideB }))}`;
 }
 
 /** The URL to share: origin, path, and the fragment. No query, no shortener. */

@@ -11,8 +11,22 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { DataError, loadFund, loadManifest, tickersFromManifest } from "./data";
-import type { FundDocument, ReleaseManifest } from "./types";
+import {
+  DataError,
+  loadCatalogue,
+  loadCompany,
+  loadCompanyIndex,
+  loadFund,
+  loadRelease,
+  loadTickers,
+} from "./data";
+import type {
+  Catalogue,
+  CompanyIndex,
+  CompanyShard,
+  FundDocument,
+  ReleaseDescriptor,
+} from "./types";
 
 export type LoadState<T> =
   | { status: "loading"; data: null; error: null }
@@ -34,13 +48,15 @@ function toError(error: unknown): { message: string; detail: string; kind: strin
   };
 }
 
-export function useRelease(): LoadState<{
-  manifest: ReleaseManifest;
-  tickers: string[];
-}> {
-  const [state, setState] = useState<
-    LoadState<{ manifest: ReleaseManifest; tickers: string[] }>
-  >({
+/**
+ * The pointer, and nothing else: 810 bytes gzipped for the whole universe.
+ *
+ * Day 4 loaded the manifest here — 417 KB gzipped, 8,533 file entries — because the
+ * ticker list lived in it. The ticker list is now its own object (`useTickers`), so
+ * the ledger's critical path is the pointer, one hash shard, and the funds it shows.
+ */
+export function useRelease(): LoadState<ReleaseDescriptor> {
+  const [state, setState] = useState<LoadState<ReleaseDescriptor>>({
     status: "loading",
     data: null,
     error: null,
@@ -48,14 +64,10 @@ export function useRelease(): LoadState<{
 
   useEffect(() => {
     let cancelled = false;
-    loadManifest()
-      .then((manifest) => {
+    loadRelease()
+      .then((release) => {
         if (cancelled) return;
-        setState({
-          status: "ready",
-          data: { manifest, tickers: tickersFromManifest(manifest) },
-          error: null,
-        });
+        setState({ status: "ready", data: release, error: null });
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -65,6 +77,39 @@ export function useRelease(): LoadState<{
       cancelled = true;
     };
   }, []);
+
+  return state;
+}
+
+/**
+ * Every published ticker, for the builder to validate against.
+ *
+ * 22.9 KB gzipped for 8,531 funds, and only the builder needs it: a ledger for a
+ * portfolio the visitor already has does not care what else the release publishes.
+ */
+export function useTickers(release: ReleaseDescriptor | null): LoadState<string[]> {
+  const [state, setState] = useState<LoadState<string[]>>({
+    status: "loading",
+    data: null,
+    error: null,
+  });
+
+  useEffect(() => {
+    if (!release) return;
+    let cancelled = false;
+    loadTickers(release)
+      .then((tickers) => {
+        if (cancelled) return;
+        setState({ status: "ready", data: tickers, error: null });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setState({ status: "error", data: null, error: toError(error) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [release]);
 
   return state;
 }
@@ -88,7 +133,7 @@ const RETRY_DELAY_MS = 400;
  * would just delay the truth.
  */
 async function loadWithRetry(
-  release: ReleaseManifest,
+  release: ReleaseDescriptor,
   ticker: string,
 ): Promise<FundDocument> {
   try {
@@ -118,7 +163,7 @@ async function loadWithRetry(
  *   open, which is the case that produced the duplicate.
  */
 export function useFunds(
-  manifest: ReleaseManifest | null,
+  manifest: ReleaseDescriptor | null,
   tickers: string[],
 ): FundsState {
   const [loaded, setLoaded] = useState<Record<string, FundDocument>>({});
@@ -175,4 +220,112 @@ export function useFunds(
         ? { message: failure.message, detail: failure.detail }
         : null,
   };
+}
+
+/**
+ * The catalogue, loaded on demand.
+ *
+ * 8,531 names are 470 KB raw; a visitor reading their ledger does not need them,
+ * so only the search surfaces ask for this and nothing waits on it.
+ */
+export function useCatalogue(release: ReleaseDescriptor | null): LoadState<Catalogue> {
+  const [state, setState] = useState<LoadState<Catalogue>>({
+    status: "loading",
+    data: null,
+    error: null,
+  });
+
+  useEffect(() => {
+    if (!release) return;
+    let cancelled = false;
+    loadCatalogue(release)
+      .then((catalogue) => {
+        if (cancelled) return;
+        setState({ status: "ready", data: catalogue, error: null });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setState({ status: "error", data: null, error: toError(error) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [release]);
+
+  return state;
+}
+
+/** The company search index: every company in the release, by name and ticker. */
+export function useCompanyIndex(
+  release: ReleaseDescriptor | null,
+): LoadState<CompanyIndex> {
+  const [state, setState] = useState<LoadState<CompanyIndex>>({
+    status: "loading",
+    data: null,
+    error: null,
+  });
+
+  useEffect(() => {
+    if (!release) return;
+    let cancelled = false;
+    loadCompanyIndex(release)
+      .then((index) => {
+        if (cancelled) return;
+        setState({ status: "ready", data: index, error: null });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setState({ status: "error", data: null, error: toError(error) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [release]);
+
+  return state;
+}
+
+/**
+ * One company's holders, fetched when a drawer opens.
+ *
+ * Keyed by `company_id` and kept once loaded: opening the same drawer twice should
+ * not re-fetch, and a slow answer for a previous company must not paint the current
+ * one — which is why the response is dropped unless its id is still the wanted one.
+ */
+export function useCompany(
+  release: ReleaseDescriptor | null,
+  companyId: string | null,
+): LoadState<CompanyShard> {
+  const [state, setState] = useState<LoadState<CompanyShard>>({
+    status: "loading",
+    data: null,
+    error: null,
+  });
+  const cache = useRef(new Map<string, CompanyShard>());
+
+  useEffect(() => {
+    if (!release || !companyId) return;
+    const cached = cache.current.get(companyId);
+    if (cached) {
+      setState({ status: "ready", data: cached, error: null });
+      return;
+    }
+    let cancelled = false;
+    setState({ status: "loading", data: null, error: null });
+    loadCompany(release, companyId)
+      .then((shard) => {
+        cache.current.set(companyId, shard);
+        if (cancelled) return;
+        setState({ status: "ready", data: shard, error: null });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setState({ status: "error", data: null, error: toError(error) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [release, companyId]);
+
+  return state;
 }

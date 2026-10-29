@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   MAX_FRAGMENT_CHARS,
+  decodeComparison,
   decodePortfolio,
   encodePortfolio,
   equalWeights,
@@ -62,8 +63,16 @@ describe("encode/decode", () => {
 
 describe("refusals", () => {
   it("refuses an unknown version instead of guessing", () => {
-    const encoded = encodePortfolio({ entries: fiveFunds }).replace(/^v1/, "v2");
+    const encoded = encodePortfolio({ entries: fiveFunds }).replace(/^v1/, "v9");
     expect(decodePortfolio(encoded)).toEqual({ ok: false, reason: "unknown-version" });
+  });
+
+  it("refuses a v2 link whose payload is not a comparison", () => {
+    // The failure this prevents: reading one side of a comparison and showing it as
+    // if it were the whole answer. A v1-shaped payload behind a v2 prefix is refused.
+    const encoded = encodePortfolio({ entries: fiveFunds }).replace(/^v1/, "v2");
+    expect(decodePortfolio(encoded)).toEqual({ ok: false, reason: "malformed" });
+    expect(decodeComparison(encoded)).toEqual({ ok: false, reason: "malformed" });
   });
 
   it("refuses junk, empty and over-long fragments", () => {

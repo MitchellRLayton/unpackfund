@@ -32,7 +32,7 @@ export interface PortfolioState {
 
 export function usePortfolio(): PortfolioState {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  const entries = snapshot.entries;
+  const entries = snapshot.a;
 
   const add = useCallback(
     (ticker: string) => {

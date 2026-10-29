@@ -15,7 +15,8 @@ import { Notice } from "@/components/Notice";
 import { encodePortfolio } from "@/lib/fragment";
 import { usePortfolio } from "@/lib/use-portfolio";
 import { formatFundList } from "@/lib/format";
-import { useRelease } from "@/lib/use-release";
+import { useRelease, useTickers } from "@/lib/use-release";
+import { WeightInput } from "@/components/WeightInput";
 import { FULL_ALLOCATION_BP } from "@/lib/types";
 
 function formatPercent(weightBp: number): string {
@@ -29,40 +30,9 @@ function formatPercent(weightBp: number): string {
  * `12.` collapse to `12` and moves the caret; the draft is the source of truth
  * while focused and is committed only when it parses.
  */
-function WeightInput({
-  ticker,
-  weightBp,
-  onChange,
-}: {
-  ticker: string;
-  weightBp: number;
-  onChange: (weightBp: number) => void;
-}) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const value = draft ?? formatPercent(weightBp);
-
-  return (
-    <span className="weight-input">
-      <input
-        type="text"
-        inputMode="decimal"
-        aria-label={`Portfolio weight for ${ticker}, in percent`}
-        value={value}
-        onChange={(event) => {
-          const next = event.target.value;
-          setDraft(next);
-          const parsed = Number.parseFloat(next.replace(/[^0-9.]/g, ""));
-          if (Number.isFinite(parsed)) onChange(Math.round(parsed * 100));
-        }}
-        onBlur={() => setDraft(null)}
-      />
-      <span aria-hidden="true">%</span>
-    </span>
-  );
-}
-
 export function PortfolioBuilder() {
   const release = useRelease();
+  const tickers = useTickers(release.status === "ready" ? release.data : null);
   const portfolio = usePortfolio();
   const [input, setInput] = useState("");
   const [message, setMessage] = useState<{
@@ -71,7 +41,7 @@ export function PortfolioBuilder() {
     body?: string;
   } | null>(null);
 
-  const catalog = release.status === "ready" ? release.data.tickers : [];
+  const catalog = tickers.status === "ready" ? tickers.data : [];
   const unallocated = FULL_ALLOCATION_BP - portfolio.totalBp;
 
   const shareHref = useMemo(() => {
@@ -107,7 +77,7 @@ export function PortfolioBuilder() {
     if (!catalog.includes(ticker)) {
       setMessage({
         tone: "warn",
-        title: `${ticker} is not in release ${release.data.manifest.as_of}`,
+        title: `${ticker} is not in release ${release.data.as_of}`,
         body:
           catalog.length > 0
             ? `This release publishes ${formatFundList(catalog)}.`
@@ -166,8 +136,12 @@ export function PortfolioBuilder() {
         style={{ fontSize: "0.85rem", marginTop: "0.5rem" }}
       >
         {release.status === "ready"
-          ? `Release ${release.data.manifest.as_of} publishes ${catalog.length} ${catalog.length === 1 ? "fund" : "funds"}: ${formatFundList(catalog)}.`
-          : release.status === "loading"
+          ? catalog.length > 40
+            ? // 8,531 tickers do not belong in a hint line; the count is the useful
+              // fact, and typing a ticker is the interaction the field is for.
+              `Release ${release.data.as_of} publishes ${catalog.length.toLocaleString("en-US")} funds. Type any of their tickers.`
+            : `Release ${release.data.as_of} publishes ${catalog.length} ${catalog.length === 1 ? "fund" : "funds"}: ${formatFundList(catalog)}.`
+          : release.status === "loading" || tickers.status === "loading"
             ? "Reading the release pointer…"
             : "The release pointer could not be read."}
       </p>

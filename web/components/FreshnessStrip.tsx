@@ -6,7 +6,7 @@ import {
   formatRatio,
   formatShare,
 } from "@/lib/format";
-import type { Ledger, ReleaseManifest } from "@/lib/types";
+import type { Ledger, ReleaseDescriptor } from "@/lib/types";
 
 /**
  * The scorecard: what the numbers are, where they came from, and how old they
@@ -17,10 +17,10 @@ import type { Ledger, ReleaseManifest } from "@/lib/types";
  * into "updated" would be the one misleading thing this product cannot afford.
  */
 export function FreshnessStrip({
-  manifest,
+  release,
   ledger,
 }: {
-  manifest: ReleaseManifest;
+  release: ReleaseDescriptor;
   ledger: Ledger;
 }) {
   const funds = ledger.funds;
@@ -42,10 +42,10 @@ export function FreshnessStrip({
       <div className="strip">
         <div className="strip__cell">
           <span className="strip__label">Release</span>
-          <span className="strip__value">{manifest.as_of}</span>
+          <span className="strip__value">{release.as_of}</span>
           <span className="strip__note">
-            built {manifest.generated_at.slice(0, 10)} UTC ·{" "}
-            {manifest.pipeline_git_sha.slice(0, 7)}
+            built {release.generated_at.slice(0, 10)} UTC ·{" "}
+            {release.pipeline_git_sha.slice(0, 7)}
           </span>
         </div>
         <div className="strip__cell">

@@ -4,14 +4,15 @@ import { afterEach, describe, expect, it } from "vitest";
 import { FreshnessStrip, MetricsList } from "@/components/FreshnessStrip";
 import { LedgerTable } from "@/components/LedgerTable";
 import { Notice } from "@/components/Notice";
-import type { Ledger, LedgerRow, ReleaseManifest } from "@/lib/types";
+import type { Ledger, LedgerRow, ReleaseDescriptor } from "@/lib/types";
 
 afterEach(cleanup);
 
-const manifest: ReleaseManifest = {
-  schema_version: 1,
-  as_of: "2026-10-28.3",
-  generated_at: "2026-10-28T22:59:00Z",
+const release: ReleaseDescriptor = {
+  schema_version: 2,
+  kind: "release",
+  as_of: "2026-10-30.1",
+  generated_at: "2026-10-30T00:00:00Z",
   pipeline_git_sha: "abc1234",
   fund_count: 1,
   etf_count: null,
@@ -20,7 +21,17 @@ const manifest: ReleaseManifest = {
   coverage_histogram: {},
   mapping_rungs: {},
   asset_cat_counts: {},
-  files: [],
+  objects: {
+    manifest: { path: "manifest.json", bytes: 10, sha256: "a".repeat(64) },
+    tickers: { path: "tickers.json", bytes: 10, sha256: "b".repeat(64) },
+    catalogue: { path: "catalogue.json", bytes: 10, sha256: "c".repeat(64) },
+    fund_index: { prefix: "index/", shards: ["V"], funds: 1 },
+    companies: {
+      index: { path: "companies/index.json", bytes: 10, sha256: "d".repeat(64) },
+      prefix: "companies/",
+      count: 1,
+    },
+  },
 };
 
 function row(
@@ -67,8 +78,8 @@ const ledger: Ledger = {
 
 describe("FreshnessStrip", () => {
   it("prints the filing period, the lag, and the coverage in words", () => {
-    render(<FreshnessStrip manifest={manifest} ledger={ledger} />);
-    expect(screen.getByText("2026-10-28.3")).toBeTruthy();
+    render(<FreshnessStrip release={release} ledger={ledger} />);
+    expect(screen.getByText(release.as_of)).toBeTruthy();
     expect(screen.getByText("2026-06-30")).toBeTruthy();
     expect(screen.getByText("59 days")).toBeTruthy();
     expect(screen.getByText("90.3%")).toBeTruthy();
@@ -84,7 +95,7 @@ describe("FreshnessStrip", () => {
       oldest_as_of: null,
       max_lag_days: null,
     };
-    render(<FreshnessStrip manifest={manifest} ledger={empty} />);
+    render(<FreshnessStrip release={release} ledger={empty} />);
     expect(screen.getAllByText("—")).toHaveLength(2);
   });
 });

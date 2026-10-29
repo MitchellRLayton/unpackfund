@@ -529,3 +529,90 @@ th[aria-sort="ascending"] .sort-button::after {
 .metrics strong {
   font-size: 1.05rem;
 }
+
+/* --- Compare: two columns that stay two columns until there is no room ------- */
+
+.compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 1.5rem;
+  margin: 1.5rem 0;
+  align-items: start;
+}
+
+.compare__side {
+  border: 1px solid var(--rule);
+  padding: 1rem;
+}
+
+.compare__side h2 {
+  margin-top: 0;
+}
+
+/* --- A name that opens something: still a button, but reads as text --------- */
+
+.row-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-button:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+/* --- Company drawer: a native dialog, styled to sit over the ledger --------- */
+
+.drawer {
+  border: 1px solid var(--rule-strong);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 0;
+  max-width: min(44rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 4rem);
+  width: 100%;
+}
+
+.drawer::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+
+.drawer__body {
+  padding: 1rem 1.25rem 1.25rem;
+  overflow-y: auto;
+  max-height: calc(100vh - 4rem);
+}
+
+.drawer__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.drawer__head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.drawer__ticker {
+  display: inline-block;
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.drawer__close {
+  flex: none;
+}
+
+.drawer__note {
+  font-size: 0.85rem;
+  margin-bottom: 0;
+}

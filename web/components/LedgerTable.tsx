@@ -37,7 +37,14 @@ const DEFAULTS: Record<SortKey, Direction> = {
   fund_count: "descending",
 };
 
-export function LedgerTable({ rows }: { rows: LedgerRow[] }) {
+export function LedgerTable({
+  rows,
+  onSelect,
+}: {
+  rows: LedgerRow[];
+  /** Opens the company drawer. Without it the name is plain text. */
+  onSelect?: (row: LedgerRow) => void;
+}) {
   const [sort, setSort] = useState<{ key: SortKey; direction: Direction }>({
     key: "weight",
     direction: "descending",
@@ -106,7 +113,17 @@ export function LedgerTable({ rows }: { rows: LedgerRow[] }) {
           {sorted.map((row) => (
             <tr key={row.company_id}>
               <th scope="row">
-                {row.name}
+                {onSelect ? (
+                  <button
+                    type="button"
+                    className="row-button"
+                    onClick={() => onSelect(row)}
+                  >
+                    {row.name}
+                  </button>
+                ) : (
+                  row.name
+                )}
                 <span className="row-note">
                   {row.ticker ? `${row.ticker} · ` : ""}
                   {row.sources

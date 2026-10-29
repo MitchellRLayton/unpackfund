@@ -13,17 +13,20 @@
  * fresh object each time would loop.
  */
 
-import { decodePortfolio, encodePortfolio, sortEntries } from "./fragment";
+import { decodeComparison, encodeComparison, sortEntries } from "./fragment";
 import type { PortfolioEntry } from "./types";
 
 export interface FragmentSnapshot {
-  entries: PortfolioEntry[];
+  /** The portfolio the ledger shows. */
+  a: PortfolioEntry[];
+  /** The second portfolio, only ever non-empty on `/compare`. */
+  b: PortfolioEntry[];
   problem: string | null;
   /** `false` until the fragment has actually been read, on the client only. */
   ready: boolean;
 }
 
-const UNREAD: FragmentSnapshot = { entries: [], problem: null, ready: false };
+const UNREAD: FragmentSnapshot = { a: [], b: [], problem: null, ready: false };
 
 const PROBLEMS: Record<string, string> = {
   "unknown-version":
@@ -40,11 +43,12 @@ let cached: FragmentSnapshot | null = null;
 
 function read(): FragmentSnapshot {
   if (typeof window === "undefined") return UNREAD;
-  const result = decodePortfolio(window.location.hash);
-  if (result.ok) return { entries: result.portfolio.entries, problem: null, ready: true };
-  if (result.reason === "empty") return { entries: [], problem: null, ready: true };
+  const result = decodeComparison(window.location.hash);
+  if (result.ok) return { a: result.a, b: result.b, problem: null, ready: true };
+  if (result.reason === "empty") return { a: [], b: [], problem: null, ready: true };
   return {
-    entries: [],
+    a: [],
+    b: [],
     problem: PROBLEMS[result.reason] ?? "That link could not be opened.",
     ready: true,
   };
@@ -85,14 +89,27 @@ export function write(
   entries: PortfolioEntry[],
   options: { replace?: boolean } = {},
 ): void {
-  const sorted = sortEntries(entries);
-  const hash = sorted.length === 0 ? "" : `#${encodePortfolio({ entries: sorted })}`;
+  writeComparison(entries, [], options);
+}
+
+/**
+ * Write both sides. A second side with no funds collapses to a v1 fragment, so a
+ * comparison that only has one side is just a portfolio — one view, one URL shape.
+ */
+export function writeComparison(
+  a: PortfolioEntry[],
+  b: PortfolioEntry[],
+  options: { replace?: boolean } = {},
+): void {
+  const sideA = sortEntries(a);
+  const sideB = sortEntries(b);
+  const hash = sideA.length === 0 ? "" : `#${encodeComparison(sideA, sideB)}`;
   const url = `${window.location.pathname}${window.location.search}${hash}`;
   if (options.replace === false) {
     window.history.pushState(null, "", url);
   } else {
     window.history.replaceState(null, "", url);
   }
-  cached = { entries: sorted, problem: null, ready: true };
+  cached = { a: sideA, b: sideB, problem: null, ready: true };
   window.dispatchEvent(new Event(EVENT));
 }
