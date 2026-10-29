@@ -36,6 +36,9 @@ export function PortfolioBuilder() {
   const tickers = useTickers(release.status === "ready" ? release.data : null);
   const portfolio = usePortfolio();
   const [input, setInput] = useState("");
+  // A submit that has to wait for the alias map must not let a second Enter press
+  // add the same fund twice; the button is disabled while it is in flight.
+  const [adding, setAdding] = useState(false);
   const [message, setMessage] = useState<{
     tone: "warn" | "info";
     title: string;
@@ -53,7 +56,7 @@ export function PortfolioBuilder() {
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     const ticker = input.trim().toUpperCase();
-    if (ticker.length === 0) return;
+    if (ticker.length === 0 || adding) return;
 
     if (release.status === "loading") {
       setMessage({
@@ -79,7 +82,9 @@ export function PortfolioBuilder() {
       // A fund is one portfolio with many share classes; the release publishes one
       // page per portfolio. Resolving the class here is the difference between
       // "VFIAX is not in this release" and opening the fund the visitor owns.
+      setAdding(true);
       const published = await resolveAlias(release.data, ticker).catch(() => null);
+      setAdding(false);
       if (published && catalog.includes(published)) {
         if (portfolio.entries.some((entry) => entry.ticker === published)) {
           setMessage({
@@ -150,7 +155,7 @@ export function PortfolioBuilder() {
             setMessage(null);
           }}
         />
-        <button type="submit" className="primary">
+        <button type="submit" className="primary" disabled={adding}>
           Add
         </button>
       </form>
