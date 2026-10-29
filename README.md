@@ -3,11 +3,12 @@
 Fund portfolio X-ray: look through an ETF to the companies you actually own, with
 every number traceable to a public filing.
 
-**Status: infrastructure + app shell.** The domain, edge hosting, object storage,
-and data host are live. `web/` is a scaffolded Next.js static export that builds to
-static files and deploys as a Worker; it serves a placeholder page with no fund
-data. The pipeline, the artifact schemas, and every product surface are still
-unwritten.
+**Status: infrastructure + app shell + pipeline spine.** The domain, edge hosting,
+object storage, and data host are live. `web/` is a scaffolded Next.js static
+export that deploys as a Worker and still serves a placeholder page. `pipeline/`
+now takes a ticker to a real N-PORT filing and emits a per-fund artifact plus a
+release manifest, validated and byte-reproducible — one fund is end-to-end. R2
+upload, the `/x` ledger, and every product surface are still unwritten.
 
 ## Architecture
 
@@ -53,10 +54,26 @@ git-ignored) so nothing is written to a user-level cache.
 | `pnpm typecheck` | `tsc --noEmit` across the workspace. | yes |
 | `pnpm lint` | ESLint (flat config, `eslint-config-next`) + `prettier --check`. No writes. | yes |
 | `pnpm format` | `prettier --write` over `web/` (the only writing command). | yes |
-| `pnpm verify` | `typecheck` → `lint` → `build`. The pre-push gate. | yes |
-| `python -m pipeline.build` | Build a data release into `artifacts/`. | not yet |
-| `pnpm data:validate` | Validate artifacts against the schema before publishing. | not yet |
+| `pnpm verify` | `typecheck` → `lint` → `pipeline:test` → `data:validate --fixtures` → `build`. The pre-push gate. | yes |
+| `pnpm pipeline:build` | Fetch the newest N-PORT filing for a ticker and write a release into `artifacts/`. Needs network on first run. | yes |
+| `pnpm pipeline:test` | The pipeline's pytest suite (68 tests, offline). | yes |
+| `pnpm data:validate --release <dir>` | Schema, weight sums, duplicates, hashes, CUSIP rejection, size budget. Offline. | yes |
+| `pnpm data:validate --fixtures` | The same checks against the committed fixture, no network. CI form. | yes |
+| `pnpm check:determinism` | Build a release twice and compare every published byte. | yes |
 | `pnpm deploy:prod` | Build and deploy to Cloudflare Workers. | not yet |
+
+The pipeline needs its own interpreter and a workspace-local venv (never a system
+Python):
+
+```bash
+python3.13 -m venv .venv/pipeline
+.venv/pipeline/bin/python -m pip install pytest
+pnpm pipeline:build --tickers VOO     # args pass through to pipeline.build
+```
+
+SEC requires a declared User-Agent with a contact address, at most 10 requests a
+second. The client sends `UnpackFund research data@unpackfund.com` and throttles
+to 8/s; override the first with `SEC_USER_AGENT`.
 
 Deploying is `pnpm build && npx wrangler deploy` against `wrangler.jsonc`
 (`assets.directory: web/out`), not a separate command yet.
@@ -64,8 +81,10 @@ Deploying is `pnpm build && npx wrangler deploy` against `wrangler.jsonc`
 ## Layout
 
 ```
-web/            Next.js app, static export to web/out (committed)
-pipeline/       Python data pipeline, SEC EDGAR -> artifacts/ (not yet)
+web/            Next.js app, static export to web/out
+pipeline/       Python data pipeline, SEC EDGAR -> artifacts/ (see pipeline/README.md)
+pipeline/overrides/  reviewed ticker -> registrant rows for symbols EDGAR's fund
+                ticker file does not carry (unit investment trusts)
 schemas/        JSON Schemas for published artifacts (not yet)
 wrangler.jsonc  Worker + Static Assets config for the deploy
 ```
