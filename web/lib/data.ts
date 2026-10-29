@@ -27,6 +27,7 @@ import {
   SCHEMA_VERSION,
   type Catalogue,
   type CatalogueRow,
+  type FundAliases,
   type CompanyIndex,
   type CompanyShard,
   type FundDocument,
@@ -414,6 +415,69 @@ export async function loadCompany(
     );
   }
   return document;
+}
+
+/**
+ * `aliases.json`: share-class ticker → published ticker. Lazy, and only on a miss.
+ *
+ * The happy path must not pay for this object: a visitor who types a published
+ * ticker never fetches it, and one who types the class they actually hold pays
+ * roughly 60 KB to be told which page their fund is on.
+ */
+export async function loadAliases(
+  release: ReleaseDescriptor,
+  fetchImpl: FetchImpl = fetch,
+): Promise<FundAliases> {
+  if (!release.objects.aliases) {
+    throw new DataError(
+      "schema",
+      "This release does not publish share-class tickers.",
+      "A release built before the alias map existed cannot resolve a class ticker.",
+    );
+  }
+  const document = await loadDescribed<FundAliases>(
+    release,
+    release.objects.aliases.object,
+    "aliases",
+    fetchImpl,
+  );
+  if (
+    !document ||
+    document.as_of !== release.as_of ||
+    typeof document.targets !== "object"
+  ) {
+    throw new DataError(
+      "schema",
+      "The alias map does not belong to this release.",
+      `as_of ${document?.as_of ?? "missing"}, release ${release.as_of}.`,
+    );
+  }
+  return document;
+}
+
+const aliasCache = new Map<string, Promise<FundAliases | null>>();
+
+/**
+ * The published ticker a share-class ticker belongs to, or `null`.
+ *
+ * Cached per release and never rejected: a missing or unreadable alias map means
+ * "cannot resolve", which the caller reports as an unknown ticker — the same
+ * answer it gave before this object existed. In-flight promises are shared so two
+ * submits in quick succession cost one fetch.
+ */
+export async function resolveAlias(
+  release: ReleaseDescriptor,
+  ticker: string,
+  fetchImpl: FetchImpl = fetch,
+): Promise<string | null> {
+  const key = `${release.as_of}:${release.objects.aliases?.object?.path ?? ""}`;
+  let pending = aliasCache.get(key);
+  if (!pending) {
+    pending = loadAliases(release, fetchImpl).catch(() => null);
+    aliasCache.set(key, pending);
+  }
+  const aliases = await pending;
+  return aliases?.targets[ticker] ?? null;
 }
 
 /** The catalogue row for a ticker, or `null` when the release does not list it. */

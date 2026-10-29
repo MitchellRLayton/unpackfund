@@ -1,15 +1,17 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   DataError,
   POINTER_PATH,
   POINTER_URL,
   clearShardCache,
+  loadAliases,
   loadCompany,
   loadFund,
   loadRelease,
   loadTickers,
+  resolveAlias,
   releaseUrl,
   shardFor,
   sha256Hex,
@@ -328,5 +330,81 @@ describe("loadCompany", () => {
         }),
       ),
     ).rejects.toMatchObject({ kind: "schema" });
+  });
+});
+
+const ALIASES = {
+  as_of: "2026-10-30.1",
+  targets: { VFIAX: "VOO", VFINX: "VOO" },
+};
+
+/** The descriptor and body the app hashes against; a stub must match both. */
+async function aliasRelease(asOf = "2026-10-30.1", targets = ALIASES.targets) {
+  const body = JSON.stringify({ as_of: asOf, targets });
+  const bytes = new TextEncoder().encode(body);
+  return {
+    descriptor: {
+      ...RELEASE,
+      as_of: asOf,
+      objects: {
+        ...RELEASE.objects,
+        aliases: {
+          object: {
+            path: "aliases.json",
+            bytes: bytes.length,
+            sha256: await sha256Hex(bytes),
+          },
+          count: Object.keys(targets).length,
+        },
+      },
+    } as ReleaseDescriptor,
+    fetchImpl: vi.fn(async () => new Response(body, { status: 200 })),
+  };
+}
+
+describe("share-class aliases", () => {
+  it("resolves a class ticker to the published one", async () => {
+    const { descriptor, fetchImpl } = await aliasRelease();
+    expect(await resolveAlias(descriptor, "VFIAX", fetchImpl)).toBe("VOO");
+    // The map is fetched once per release, however many lookups happen.
+    expect(await resolveAlias(descriptor, "VFINX", fetchImpl)).toBe("VOO");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("answers null for a ticker that is not a class of anything", async () => {
+    const { descriptor, fetchImpl } = await aliasRelease("2026-10-31.1");
+    expect(await resolveAlias(descriptor, "ZZZZ", fetchImpl)).toBeNull();
+  });
+
+  it("degrades to null when the release predates the alias map", async () => {
+    const fetchImpl = vi.fn();
+    expect(await resolveAlias(RELEASE, "VFIAX", fetchImpl)).toBeNull();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects a map that belongs to another release", async () => {
+    const body = JSON.stringify({ as_of: "2026-01-01.1", targets: {} });
+    const bytes = new TextEncoder().encode(body);
+    const { descriptor } = await aliasRelease();
+    const stale: ReleaseDescriptor = {
+      ...descriptor,
+      objects: {
+        ...descriptor.objects,
+        aliases: {
+          object: {
+            path: "aliases.json",
+            bytes: bytes.length,
+            sha256: await sha256Hex(bytes),
+          },
+          count: 0,
+        },
+      },
+    };
+    await expect(
+      loadAliases(
+        stale,
+        vi.fn(async () => new Response(body, { status: 200 })),
+      ),
+    ).rejects.toBeInstanceOf(DataError);
   });
 });

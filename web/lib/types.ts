@@ -50,6 +50,12 @@ export interface ReleaseDescriptor {
     catalogue: ObjectDescriptor;
     fund_index: { prefix: string; shards: string[]; funds: number };
     companies: { index: ObjectDescriptor; prefix: string; count: number };
+    /**
+     * Share-class tickers, optional because a release built before the alias map
+     * existed is still a valid release: the app degrades to "unknown ticker"
+     * rather than refusing to open.
+     */
+    aliases?: { object: ObjectDescriptor; count: number };
   };
 }
 
@@ -78,7 +84,21 @@ export type CatalogueRow = [
 
 export interface Catalogue {
   as_of: string;
+  /** The name of the test behind every `etf` flag, so the label is not a mystery. */
+  etf_classifier?: string;
   funds: Record<string, CatalogueRow>;
+}
+
+/**
+ * `releases/{as_of}/aliases.json` — a share-class ticker to the published ticker
+ * of the same portfolio. A fund is one portfolio with many classes (VOO, VFIAX,
+ * VFINX), and the release publishes one file per portfolio, so this is the map
+ * that turns "the ticker I actually own" into a page that exists.
+ */
+export interface FundAliases {
+  as_of: string;
+  /** alias ticker → published ticker */
+  targets: Record<string, string>;
 }
 
 /** One row of the company index: `[company_id, name, ticker, holder_count]`. */

@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { Notice } from "@/components/Notice";
+import { resolveAlias } from "@/lib/data";
 import { encodePortfolio } from "@/lib/fragment";
 import { usePortfolio } from "@/lib/use-portfolio";
 import { formatFundList } from "@/lib/format";
@@ -49,7 +50,7 @@ export function PortfolioBuilder() {
     return `/x/#${encodePortfolio({ entries: portfolio.entries })}`;
   }, [portfolio.entries]);
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault();
     const ticker = input.trim().toUpperCase();
     if (ticker.length === 0) return;
@@ -75,6 +76,29 @@ export function PortfolioBuilder() {
       return;
     }
     if (!catalog.includes(ticker)) {
+      // A fund is one portfolio with many share classes; the release publishes one
+      // page per portfolio. Resolving the class here is the difference between
+      // "VFIAX is not in this release" and opening the fund the visitor owns.
+      const published = await resolveAlias(release.data, ticker).catch(() => null);
+      if (published && catalog.includes(published)) {
+        if (portfolio.entries.some((entry) => entry.ticker === published)) {
+          setMessage({
+            tone: "info",
+            title: `${published} is already in your portfolio`,
+            body: `${ticker} is a share class of ${published}.`,
+          });
+          setInput("");
+          return;
+        }
+        portfolio.add(published);
+        setInput("");
+        setMessage({
+          tone: "info",
+          title: `Added ${published}`,
+          body: `${ticker} is a share class of ${published}, so the holdings are the same.`,
+        });
+        return;
+      }
       setMessage({
         tone: "warn",
         title: `${ticker} is not in release ${release.data.as_of}`,
