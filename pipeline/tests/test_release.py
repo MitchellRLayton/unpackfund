@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from pipeline import artifact, validate
+from pipeline import artifact, paths, validate
 
 from .conftest import corrupt_release, fund_document, write_release
 
@@ -147,11 +147,9 @@ def test_validator_cli_returns_failure_for_missing_release(tmp_path, capsys):
 
 def test_validator_resolves_a_bare_release_id(tmp_path, capsys):
     """`pnpm data:validate --release 2026-10-28.1` must not depend on the cwd."""
-    assert validate._resolve_release(Path("2026-10-28.1")) == (
-        validate.REPO_ROOT / "artifacts" / "releases" / "2026-10-28.1"
-    )
-    assert validate._resolve_release(Path("artifacts/releases/x")) is None
-    assert validate._resolve_release(tmp_path) == tmp_path
+    assert paths.release_dir("2026-10-28.1") == paths.RELEASES / "2026-10-28.1"
+    assert paths.release_dir(Path("artifacts/releases/x")) is None
+    assert paths.release_dir(tmp_path) == tmp_path
 
 
 @pytest.mark.parametrize("field", ["ticker", "holdings", "metrics", "warnings"])

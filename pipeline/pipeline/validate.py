@@ -21,9 +21,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from . import paths
 from .artifact import SCHEMA_VERSION
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = paths.REPO_ROOT
 
 REQUIRED_FIELDS = (
     "schema_version",
@@ -115,11 +116,18 @@ def _load_release(release_dir: Path, report: Report) -> tuple[dict, list[dict]] 
     return manifest, funds
 
 
-def _check_manifest(manifest: dict, funds: list[dict], report: Report) -> None:
+def _check_manifest(manifest: dict, funds: list[dict], report: Report, release_dir: Path) -> None:
     if manifest.get("schema_version") != SCHEMA_VERSION:
         report.fail("manifest.schema_version", str(manifest.get("schema_version")))
     if not RELEASE_RE.match(str(manifest.get("as_of", ""))):
         report.fail("manifest.as_of", f"{manifest.get('as_of')!r} is not a release id")
+    elif manifest.get("as_of") != release_dir.name:
+        # The published path is releases/{as_of}/, so a mismatch would publish a
+        # release whose directory a pointer cannot name.
+        report.fail(
+            "manifest.as_of",
+            f"{manifest.get('as_of')!r} does not match the release directory {release_dir.name!r}",
+        )
     if manifest.get("fund_count") != len(funds):
         report.fail(
             "manifest.fund_count", f"{manifest.get('fund_count')} != {len(funds)} files"
@@ -282,7 +290,7 @@ def validate(release_dir: Path) -> int:
         print(f"\n{report.failures} failure(s)")
         return 1
     manifest, funds = loaded
-    _check_manifest(manifest, funds, report)
+    _check_manifest(manifest, funds, report, release_dir)
     for document in funds:
         _check_fund(document, report)
     _check_cusip(release_dir, report)
@@ -315,26 +323,11 @@ def main(argv: list[str] | None = None) -> int:
             Path(__file__).resolve().parents[2] / "artifacts" / "fixtures"
         )
         return validate(release_dir)
-    release_dir = _resolve_release(args.release)
+    release_dir = paths.release_dir(args.release)
     if release_dir is None or not release_dir.exists():
         print(f"FAIL: {args.release} does not exist")
         return 1
     return validate(release_dir)
-
-
-def _resolve_release(target: Path) -> Path | None:
-    """Accept a path or a bare release id.
-
-    ``pnpm data:validate`` runs with ``packages/pipeline`` as its working
-    directory, so a repo-relative path a human typed at the root would silently
-    point at the wrong place. A bare id (``2026-10-28.1``) is resolved against
-    ``artifacts/releases/``, and an explicit path is taken as given.
-    """
-    if target.exists():
-        return target
-    if target.is_absolute() or len(target.parts) > 1:
-        return None
-    return REPO_ROOT / "artifacts" / "releases" / target.name
 
 
 if __name__ == "__main__":
