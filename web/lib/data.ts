@@ -22,15 +22,21 @@ import {
 /**
  * Where the pointer lives.
  *
- * Day 3 reads the **non-live** rehearsal prefix, so nothing here can promote a
- * release; promoting means pointing at `latest/manifest.json`, which is a
- * separate, deliberate production step.
+ * `latest/` since 2026-10-29: day 3 read the non-live rehearsal prefix on purpose,
+ * so no build could promote a release. Production is now promoted deliberately by
+ * the pipeline (`release upload --allow-live`), so the app reads the live pointer
+ * and a preview build overrides it:
+ *
+ *     NEXT_PUBLIC_POINTER_PATH=staging/latest/manifest.json pnpm build
+ *
+ * A default of `staging/` in a production build is worse than wrong data: it makes
+ * the live site render a rehearsal pointer that a later staging upload can move.
  */
 export const DATA_BASE = (
   process.env.NEXT_PUBLIC_DATA_BASE ?? "https://data.unpackfund.com"
 ).replace(/\/$/, "");
 export const POINTER_PATH =
-  process.env.NEXT_PUBLIC_POINTER_PATH ?? "staging/latest/manifest.json";
+  process.env.NEXT_PUBLIC_POINTER_PATH ?? "latest/manifest.json";
 
 export const POINTER_URL = `${DATA_BASE}/${POINTER_PATH}`;
 

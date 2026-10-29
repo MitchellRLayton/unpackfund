@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   DataError,
+  POINTER_PATH,
+  POINTER_URL,
   fundFile,
   loadFund,
   loadManifest,
@@ -56,6 +58,15 @@ function jsonResponse(body: unknown, status = 200): Response {
     headers: { "content-type": "application/json" },
   });
 }
+
+describe("the pointer a production build reads", () => {
+  it("is the live one, not the rehearsal prefix", () => {
+    // A production bundle that reads staging/ looks healthy — the rehearsal prefix
+    // held a byte-identical copy — and then moves when someone uploads a rehearsal.
+    expect(POINTER_PATH).toBe("latest/manifest.json");
+    expect(POINTER_URL).toBe("https://data.unpackfund.com/latest/manifest.json");
+  });
+});
 
 describe("the catalog comes from the manifest, not from a guess", () => {
   it("reads funded tickers out of files[] and ignores everything else", () => {
