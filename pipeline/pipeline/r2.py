@@ -221,6 +221,13 @@ class PublicReader:
             return PublicResponse(url, error.code, lower_headers(error.headers or {}), error.read())
         except urllib.error.URLError as error:
             raise R2Error("GET", 0, f"transport error: {error.reason}", key) from error
+        except (TimeoutError, OSError) as error:
+            # A socket timeout surfaces as a bare `TimeoutError` from the read, not as a
+            # `URLError`, and `socket.timeout` *is* `TimeoutError` on 3.10+. Unwrapped, it
+            # escapes every handler that knows what a transport failure is: on 2026-10-30
+            # one 30 s read timeout aborted a 13,482-object upload after every object had
+            # already landed.
+            raise R2Error("GET", 0, f"transport error: {error!r}", key) from error
 
     def fetch_json(self, key: str, *, origin: str | None = None) -> dict:
         response = self.fetch(key, origin=origin)

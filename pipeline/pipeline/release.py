@@ -21,6 +21,7 @@ import json
 import time
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,11 +30,17 @@ from . import paths
 from .r2 import IMMUTABLE, NO_CACHE, Credentials, PublicReader, R2Client, R2Error
 from .sigv4 import EMPTY_PAYLOAD_SHA256  # noqa: F401  (re-exported for tests that stub signing)
 
-LIVE_POINTER = "latest/manifest.json"
+LIVE_POINTER = "latest/release.json"
 DEFAULT_POINTER_PREFIX = "staging/latest"
+#: The pointer object name. It changed with the schema: see `upload_release`.
+DEFAULT_POINTER_NAME = "release.json"
 DEFAULT_PUBLIC_BASE = "https://data.unpackfund.com"
 DEFAULT_ORIGIN = "http://localhost:3000"
 DEFAULT_BUCKET = "unpackfund-artifacts"
+
+#: Objects in flight during an upload. R2 tolerates far more; 8 keeps a failure
+#: attributable and the public read-back honest.
+DEFAULT_CONCURRENCY = 8
 
 
 class ReleaseError(RuntimeError):
@@ -62,6 +69,9 @@ class UploadReport:
     pointer: UploadedObject | None = None
     live_pointer_status: int | None = None
     live_pointer_release: str | None = None
+    #: Set when the plain pointer URL and a cache-busted one disagree, which is the
+    #: edge's negative cache talking, not the release.
+    live_pointer_edge: str | None = None
     dry_run: bool = False
     started_at: str = ""
     finished_at: str = ""
@@ -128,8 +138,23 @@ def sha256_hex(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
 
 
-def read_release(release: Path) -> tuple[dict, list[tuple[str, bytes, str]]]:
-    """Load the manifest and the exact bytes it describes, refusing any disagreement."""
+#: Written by the build for humans and for the next build, never published.
+NOT_PUBLISHED = {"build-summary.json", "upload-report.json"}
+
+
+def read_release(
+    release: Path,
+) -> tuple[dict, list[tuple[str, bytes, str]], dict]:
+    """Load the manifest and every byte the release publishes, refusing disagreement.
+
+    Day 4 published exactly the files ``manifest.files`` listed. A release now also
+    carries the catalogue objects (``catalogue.py``) and the reverse X-Ray shards,
+    which are too numerous to enumerate in the manifest — enumerating 5,179 company
+    shards would put the inventory back on the wire. So the directory is the
+    inventory and the manifest is the cross-check: every fund file it names must
+    hash to what it says, and nothing in the directory may be a directory, a
+    symlink, or a file the build did not write.
+    """
     manifest_path = release / "manifest.json"
     if not manifest_path.is_file():
         raise ReleaseError(f"{release} has no manifest.json")
@@ -141,12 +166,28 @@ def read_release(release: Path) -> tuple[dict, list[tuple[str, bytes, str]]]:
             f"manifest as_of is {manifest.get('as_of')!r} but the directory is {release.name!r}; "
             "the published path is derived from as_of, so they must agree"
         )
+    release_path = release / "release.json"
+    if not release_path.is_file():
+        raise ReleaseError(f"{release} has no release.json; rebuild the release")
+    release_document = json.loads(release_path.read_bytes())
+    if release_document.get("kind") != "release":
+        raise ReleaseError(f"release.json kind is {release_document.get('kind')!r}, expected 'release'")
 
-    objects: list[tuple[str, bytes, str]] = [("manifest.json", manifest_bytes, sha256_hex(manifest_bytes))]
+    digests: dict[str, tuple[bytes, str]] = {}
+    for path in sorted(release.rglob("*")):
+        if not path.is_file() or path.is_symlink():
+            continue
+        relative = path.relative_to(release).as_posix()
+        if relative in NOT_PUBLISHED:
+            continue
+        body = path.read_bytes()
+        digests[relative] = (body, sha256_hex(body))
+
     for entry in manifest.get("files") or []:
         relative = entry.get("path") or ""
-        body = (release / relative).read_bytes()
-        digest = sha256_hex(body)
+        if relative not in digests:
+            raise ReleaseError(f"{relative}: named by the manifest but absent from {release}")
+        body, digest = digests[relative]
         if digest != entry.get("sha256"):
             raise ReleaseError(
                 f"{relative}: local sha256 {digest[:12]}… does not match the manifest "
@@ -154,8 +195,31 @@ def read_release(release: Path) -> tuple[dict, list[tuple[str, bytes, str]]]:
             )
         if len(body) != entry.get("bytes"):
             raise ReleaseError(f"{relative}: {len(body)} bytes on disk, manifest says {entry.get('bytes')}")
-        objects.append((relative, body, digest))
-    return manifest, objects
+
+    # The release descriptor must describe the bytes next to it, or the pointer
+    # would publish a claim the release does not support.
+    for name, descriptor in (release_document.get("objects") or {}).items():
+        if not isinstance(descriptor, dict) or "path" not in descriptor:
+            continue
+        relative = descriptor["path"]
+        if relative not in digests:
+            raise ReleaseError(f"release.json objects.{name} names {relative}, which is not in the release")
+        body, digest = digests[relative]
+        if digest != descriptor.get("sha256") or len(body) != descriptor.get("bytes"):
+            raise ReleaseError(
+                f"release.json objects.{name}: {relative} does not match its descriptor; rebuild the release"
+            )
+
+    order = ["release.json", "manifest.json"]
+    objects: list[tuple[str, bytes, str]] = [
+        (relative, *digests[relative]) for relative in order if relative in digests
+    ]
+    objects.extend(
+        (relative, body, digest)
+        for relative, (body, digest) in digests.items()
+        if relative not in order
+    )
+    return manifest, objects, release_document
 
 
 def guard_prefixes(prefix: str, pointer_prefix: str, allow_live: bool) -> None:
@@ -183,12 +247,20 @@ def upload_release(
     verify: bool = True,
     allow_live: bool = False,
     report_dir: Path | None = None,
+    concurrency: int = DEFAULT_CONCURRENCY,
+    progress_every: int = 500,
+    pointer_name: str = DEFAULT_POINTER_NAME,
 ) -> UploadReport:
-    manifest, objects = read_release(release)
+    manifest, objects, release_descriptor = read_release(release)
     guard_prefixes(prefix, pointer_prefix, allow_live)
 
     prefix = prefix.strip("/")
-    pointer_key = f"{pointer_prefix.strip('/')}/manifest.json"
+    # The pointer's *name* carries its schema. Day 4's pointer was
+    # `latest/manifest.json` and held the 1.29 MB inventory; this one is
+    # `latest/release.json` and holds the descriptor. Publishing under a new name
+    # means the old bundle and the old pointer stay a working pair until the new
+    # bundle is deployed, so the swap has no window where either is wrong.
+    pointer_key = f"{pointer_prefix.strip('/')}/{pointer_name}"
     report = UploadReport(
         release=str(manifest["as_of"]),
         prefix=prefix,
@@ -199,19 +271,40 @@ def upload_release(
     )
 
     # Objects first: every immutable artifact, then its manifest.
+    #
+    # Day 4 uploaded these one at a time and re-read each one from the public URL
+    # before moving on: 8,533 objects took about an hour, which made publishing the
+    # wide release an overnight job. Each object is independent, so they go through
+    # a small pool; the pointer still waits for *every* object to verify.
     for relative, body, digest in objects:
-        key = f"{prefix}/{relative}"
-        item = UploadedObject(key=key, size=len(body), sha256=digest, etag="", cache_control=IMMUTABLE)
-        report.objects.append(item)
-        if dry_run:
-            continue
-        item.etag = client.put(key, body, cache_control=IMMUTABLE)
-        if verify:
-            _verify_public(item, public, origin, expected_cache=IMMUTABLE)
+        report.objects.append(
+            UploadedObject(
+                key=f"{prefix}/{relative}",
+                size=len(body),
+                sha256=digest,
+                etag="",
+                cache_control=IMMUTABLE,
+            )
+        )
+
+    if not dry_run:
+        _upload_objects(
+            objects,
+            report=report,
+            client=client,
+            public=public,
+            prefix=prefix,
+            origin=origin,
+            verify=verify,
+            concurrency=concurrency,
+            progress_every=progress_every,
+        )
 
     # Only now may the pointer move. A pointer written before the objects exist
-    # would be a live 404 for every fund in the release.
-    manifest_body = next(body for relative, body, _ in objects if relative == "manifest.json")
+    # would be a live 404 for every fund in the release. The pointer publishes
+    # release.json — the small document that says where everything is — not the
+    # 1.29 MB inventory the day-4 pointer carried.
+    manifest_body = next(body for relative, body, _ in objects if relative == "release.json")
     pointer = UploadedObject(
         key=pointer_key,
         size=len(manifest_body),
@@ -221,10 +314,15 @@ def upload_release(
     )
     report.pointer = pointer
     if not dry_run and not report.failures:
-        pointer.etag = client.put(pointer_key, manifest_body, cache_control=NO_CACHE)
+        pointer.etag = _retrying(lambda: client.put(pointer_key, manifest_body, cache_control=NO_CACHE), label=pointer_key)
         if verify:
-            _verify_public(pointer, public, origin, expected_cache=NO_CACHE)
-            _verify_pointer_content(pointer, public, manifest, origin)
+            _retrying(
+                lambda: _verify_public(pointer, public, origin, expected_cache=NO_CACHE), label=f"verify {pointer_key}"
+            )
+            _retrying(
+                lambda: _verify_pointer_content(pointer, public, manifest, origin, release_descriptor),
+                label=f"content {pointer_key}",
+            )
     elif not dry_run:
         pointer.problem = "not written: the release objects did not verify"
 
@@ -235,6 +333,111 @@ def upload_release(
     if report_dir is not None and not dry_run:
         write_report(report, report_dir)
     return report
+
+
+
+#: Statuses worth a second attempt: a DNS or connection failure (0), throttling, and
+#: the two gateway errors R2 returns while an object is still settling. A 403 or a 404
+#: is never retried — those are answers, and repeating them only slows the failure down.
+TRANSIENT_STATUSES = frozenset({0, 429, 500, 502, 503, 504})
+
+
+def _retry_sleep(seconds: float) -> None:
+    """Indirection so a test can assert the backoff without waiting for it."""
+    time.sleep(seconds)
+
+
+def _retrying(action, *, attempts: int = 4, label: str = "request", sleep=None):
+    """Run ``action``, retrying transient transport failures with exponential backoff.
+
+    A 13,482-object upload at 32 in flight makes about 27,000 public reads, so a resolver
+    that misses once in ten thousand requests would otherwise abort the whole publish —
+    which is exactly what happened on 2026-10-30 at object 9,600 (`nodename nor servname
+    provided`). One transient failure is not evidence about the release, so it gets a
+    retry; a persistent one still raises after `attempts`.
+    """
+    # Resolved here, not as a default argument: a default binds the function object at
+    # import time, so a test could not observe or replace the backoff.
+    sleep = sleep or _retry_sleep
+    delay = 0.5
+    for attempt in range(1, attempts + 1):
+        try:
+            return action()
+        except (R2Error, TimeoutError, OSError) as error:
+            status = getattr(error, "status", 0)
+            if status not in TRANSIENT_STATUSES or attempt == attempts:
+                raise
+            print(f"  … retry {attempt}/{attempts - 1} {label}: {error}", flush=True)
+            sleep(delay)
+            delay *= 2
+    raise AssertionError("unreachable")
+
+
+def _upload_objects(
+    objects: list[tuple[str, bytes, str]],
+    *,
+    report: UploadReport,
+    client: R2Client,
+    public: PublicReader,
+    prefix: str,
+    origin: str | None,
+    verify: bool,
+    concurrency: int,
+    progress_every: int,
+) -> None:
+    """PUT and public read-back, ``concurrency`` objects at a time.
+
+    Order is not a dependency here: an object is only reachable through the pointer
+    and the pointer is written afterwards. What *is* a dependency is the report, so
+    each worker writes into its own pre-built ``UploadedObject`` and the report keeps
+    the release's order regardless of completion order.
+    """
+    workers = max(1, min(concurrency, 32))
+    started = time.monotonic()
+    done = 0
+
+    def work(pair: tuple[tuple[str, bytes, str], UploadedObject]) -> None:
+        (relative, body, _digest), item = pair
+        item.etag = _retrying(lambda: client.put(item.key, body, cache_control=IMMUTABLE), label=item.key)
+        if verify:
+            _retrying(
+                lambda: _verify_public(item, public, origin, expected_cache=IMMUTABLE),
+                label=f"verify {item.key}",
+            )
+
+    pairs = list(zip(objects, report.objects))
+    if workers == 1:
+        for pair in pairs:
+            work(pair)
+            done += 1
+            if progress_every and done % progress_every == 0:
+                _log_progress(done, len(pairs), started, report)
+        if progress_every and len(pairs) > progress_every:
+            _log_progress(done, len(pairs), started, report)
+        return
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(work, pair) for pair in pairs]
+        for index, future in enumerate(as_completed(futures), start=1):
+            # Re-raised here rather than swallowed by the pool: an upload that
+            # failed for one object must stop the pointer, and a bare `pass` would
+            # leave `item.verified` False with no explanation in the report.
+            future.result()
+            if progress_every and index % progress_every == 0:
+                _log_progress(index, len(pairs), started, report)
+    if progress_every and len(pairs) > progress_every:
+        _log_progress(len(pairs), len(pairs), started, report)
+
+
+def _log_progress(done: int, total: int, started: float, report: UploadReport) -> None:
+    elapsed = time.monotonic() - started
+    rate = done / elapsed if elapsed else 0
+    failures = len(report.failures)
+    print(
+        f"  … {done:,}/{total:,} objects, {rate:.0f}/s, {elapsed:.0f}s elapsed"
+        + (f", {failures} failure(s)" if failures else ""),
+        flush=True,
+    )
 
 
 def _verify_public(item: UploadedObject, public: PublicReader, origin: str | None, *, expected_cache: str) -> None:
@@ -261,7 +464,11 @@ def _verify_public(item: UploadedObject, public: PublicReader, origin: str | Non
 
 
 def _verify_pointer_content(
-    pointer: UploadedObject, public: PublicReader, manifest: dict, origin: str | None
+    pointer: UploadedObject,
+    public: PublicReader,
+    manifest: dict,
+    origin: str | None,
+    release_descriptor: dict | None = None,
 ) -> None:
     """The pointer must resolve to this release, byte for byte."""
     try:
@@ -271,27 +478,44 @@ def _verify_pointer_content(
         return
     if published.get("as_of") != manifest.get("as_of"):
         pointer.problem = f"pointer as_of {published.get('as_of')!r} != release {manifest.get('as_of')!r}"
+        return
+    if published.get("kind") != "release":
+        pointer.problem = f"pointer kind is {published.get('kind')!r}, expected 'release'"
+        return
+    described = (published.get("objects") or {}).get("manifest") or {}
+    expected = ((release_descriptor or {}).get("objects") or {}).get("manifest") or {}
+    if described != expected:
+        pointer.problem = (
+            f"pointer describes manifest {described.get('sha256', '?')[:12]}… "
+            f"but the release publishes {expected.get('sha256', '?')[:12]}…"
+        )
 
 
 def _observe_live_pointer(report: UploadReport, public: PublicReader) -> None:
     """Record what the live pointer says, without touching it.
 
-    A pointer written seconds ago can still be answered with the *previous* 404 by
-    an edge holding the negative lookup, which is exactly what this run did on its
-    first live promotion: the report said "absent (HTTP 404)" while the pointer was
-    already serving the new manifest. Three tries over 1.5 s makes the observation
-    describe the pointer instead of the edge's cache.
+    A pointer written seconds ago can still be answered with a cached 404 by an edge
+    that looked the key up before it existed. Measured 2026-10-30: Cloudflare holds a
+    404 for a data-host key for about **three minutes** per POP, and retrying for a
+    second and a half only samples the same cache entry — the first live promotion
+    reported "absent (HTTP 404)" for a pointer that was already serving.
+
+    So the plain URL is reported as-is (it is what a browser gets), and the pointer is
+    read a second time through a cache-busting query, which is what makes the report
+    describe the pointer rather than the edge. `live_pointer_release` comes from
+    whichever answered.
     """
     response = public.fetch(LIVE_POINTER)
-    for _ in range(2):
-        if response.status == 200 or report.dry_run:
-            break
-        time.sleep(0.5)
-        response = public.fetch(LIVE_POINTER)
     report.live_pointer_status = response.status
-    if response.status == 200:
+    body = response.body if response.status == 200 else None
+    if body is None and not report.dry_run:
+        busted = public.fetch(f"{LIVE_POINTER}?probe={int(time.time())}")
+        if busted.status == 200:
+            report.live_pointer_edge = f"plain URL answered {response.status}; cache-busted URL answered 200"
+            body = busted.body
+    if body is not None:
         try:
-            report.live_pointer_release = json.loads(response.body).get("as_of")
+            report.live_pointer_release = json.loads(body).get("as_of")
         except json.JSONDecodeError:
             report.live_pointer_release = "<unparseable>"
 
@@ -308,18 +532,51 @@ def write_report(report: UploadReport, report_dir: Path) -> Path:
 
 # -- CLI ---------------------------------------------------------------------
 def _print_report(report: UploadReport) -> None:
-    for item in report.objects:
-        state = "dry-run" if report.dry_run else ("ok" if item.verified else f"FAIL {item.problem}")
-        print(f"  {item.key:<52} {item.size:>9,} B  {item.cache_control:<32} {state}")
+    # A 13,750-object release cannot print one line per object and still be read.
+    # Under 40 objects the per-object list is the report; above that it is a summary
+    # plus every failure, because a failure is the only line that needs acting on.
+    if len(report.objects) > 40:
+        groups: dict[str, list[UploadedObject]] = {}
+        for item in report.objects:
+            relative = item.key.split("/", 2)[-1]
+            group = relative.split("/")[0] if "/" in relative else "root"
+            groups.setdefault(group, []).append(item)
+        for group in sorted(groups):
+            items = groups[group]
+            bad = [item for item in items if not item.verified and not report.dry_run]
+            state = "dry-run" if report.dry_run else ("ok" if not bad else f"FAIL {len(bad)}")
+            print(
+                f"  {group + '/':<24} {len(items):>6,} object(s)  "
+                f"{sum(item.size for item in items):>12,} B  {state}"
+            )
+        for item in report.objects:
+            if not item.verified and not report.dry_run:
+                print(f"  FAIL {item.key}  {item.problem}")
+    else:
+        for item in report.objects:
+            state = "dry-run" if report.dry_run else ("ok" if item.verified else f"FAIL {item.problem}")
+            print(f"  {item.key:<52} {item.size:>9,} B  {item.cache_control:<32} {state}")
     if report.pointer:
         item = report.pointer
-        state = "dry-run" if report.dry_run else ("ok" if item.verified and not item.problem else f"FAIL {item.problem}")
+        if report.dry_run:
+            state = "dry-run"
+        elif item.problem:
+            state = f"FAIL {item.problem}"
+        elif not item.verified:
+            # `--skip-verify`: uploaded, never read back. Saying "ok" would claim a
+            # check that did not run, and "FAIL None" claims one that did.
+            state = "uploaded (unverified)"
+        else:
+            state = "ok"
         print(f"  {item.key:<52} {item.size:>9,} B  {item.cache_control:<32} {state}")
     if report.live_pointer_status is not None:
         if report.live_pointer_status == 200:
-            print(f"  live pointer untouched: {LIVE_POINTER} still points at {report.live_pointer_release}")
+            print(f"  live pointer: {LIVE_POINTER} serves {report.live_pointer_release}")
+        elif report.live_pointer_edge:
+            # The pointer was just written; the edge is serving a cached 404 for it.
+            print(f"  live pointer: {LIVE_POINTER} serves {report.live_pointer_release} ({report.live_pointer_edge})")
         else:
-            print(f"  live pointer untouched: {LIVE_POINTER} absent (HTTP {report.live_pointer_status})")
+            print(f"  live pointer: {LIVE_POINTER} absent (HTTP {report.live_pointer_status})")
     print(
         f"\n{report.release}: {len(report.objects)} release object(s) + pointer, "
         f"{report.total_bytes:,} B, {len(report.failures)} failure(s)"
@@ -338,8 +595,19 @@ def main(argv: list[str] | None = None) -> int:
     upload.add_argument("--origin", default=DEFAULT_ORIGIN, help="Origin header for the CORS check; '' to skip")
     upload.add_argument("--env-file", type=Path, default=None)
     upload.add_argument("--allow-live", action="store_true", help="permit writing under latest/ (production)")
+    upload.add_argument(
+        "--pointer-name",
+        default=DEFAULT_POINTER_NAME,
+        help="pointer object name under --pointer-prefix (default release.json)",
+    )
     upload.add_argument("--dry-run", action="store_true")
     upload.add_argument("--skip-verify", action="store_true", help="upload without the public read-back")
+    upload.add_argument(
+        "--concurrency",
+        type=int,
+        default=DEFAULT_CONCURRENCY,
+        help=f"objects in flight (default {DEFAULT_CONCURRENCY})",
+    )
 
     verify = sub.add_parser("verify", help="re-check an already-published prefix")
     verify.add_argument("--release", required=True)
@@ -347,6 +615,7 @@ def main(argv: list[str] | None = None) -> int:
     verify.add_argument("--public-base", default=DEFAULT_PUBLIC_BASE)
     verify.add_argument("--origin", default=DEFAULT_ORIGIN)
     verify.add_argument("--env-file", type=Path, default=None)
+    verify.add_argument("--verbose", action="store_true", help="print every object, not just failures")
 
     args = parser.parse_args(argv)
     try:
@@ -354,20 +623,22 @@ def main(argv: list[str] | None = None) -> int:
         release = paths.release_dir(args.release)
         if release is None or not release.is_dir():
             raise ReleaseError(f"{args.release} does not exist under artifacts/releases/")
-        manifest, _ = read_release(release)
+        manifest, _, _ = read_release(release)
         prefix = args.prefix or f"releases/{manifest['as_of']}"
 
         if args.command == "verify":
             public = PublicReader(args.public_base)
+            _, objects, _ = read_release(release)
             failures = 0
-            for entry in manifest.get("files") or []:
-                key = f"{prefix.strip('/')}/{entry['path']}"
+            for relative, _body, digest in objects:
+                key = f"{prefix.strip('/')}/{relative}"
                 response = public.fetch(key, origin=args.origin or None)
-                digest = sha256_hex(response.body)
-                ok = response.status == 200 and digest == entry.get("sha256")
-                print(f"  {'ok  ' if ok else 'FAIL'} {key}  HTTP {response.status}  {digest[:12]}…")
+                published_digest = sha256_hex(response.body)
+                ok = response.status == 200 and published_digest == digest
+                if not ok or args.verbose:
+                    print(f"  {'ok  ' if ok else 'FAIL'} {key}  HTTP {response.status}  {published_digest[:12]}…")
                 failures += 0 if ok else 1
-            print(f"\n{len(manifest.get('files') or []) - failures}/{len(manifest.get('files') or [])} verified")
+            print(f"\n{len(objects) - failures}/{len(objects)} object(s) verified under {prefix}")
             return 1 if failures else 0
 
         credentials, endpoint, bucket = credentials_from_env()
@@ -384,6 +655,7 @@ def main(argv: list[str] | None = None) -> int:
             verify=not args.skip_verify,
             allow_live=args.allow_live,
             report_dir=release,
+            concurrency=args.concurrency,
         )
         if loaded:
             print(f"  credentials from .env: {', '.join(loaded)}")

@@ -270,6 +270,12 @@ def _published_files(release_dir: Path, manifest: dict) -> list[Path]:
     """
     listed = [release_dir / entry["path"] for entry in manifest.get("files") or []]
     listed.append(release_dir / "manifest.json")
+    # The catalogue objects carry company and fund names too, and they are
+    # published — so they are scanned. ``index/`` is not: it holds tickers and
+    # 64-character hashes, where the CUSIP pattern cannot match.
+    for relative in ("catalogue.json", "tickers.json", "companies/index.json"):
+        listed.append(release_dir / relative)
+    listed.extend(sorted((release_dir / "companies").glob("*.json")))
     found = [path for path in listed if path.is_file()]
     return found or sorted(release_dir.rglob("*.json"))
 
@@ -322,6 +328,218 @@ def _check_budget(release_dir: Path, report: Report) -> None:
         report.ok("budget", f"{len(funds)} funds, largest {largest:,} B, release {total:,} B")
 
 
+# -- the objects a browser reads -------------------------------------------
+#: `release.json` is the document the pointer publishes; its shape is versioned
+#: separately from the fund documents it describes.
+RELEASE_SCHEMA_VERSION = 2
+
+
+def _check_catalogue(release_dir: Path, manifest: dict, funds: list[dict], report: Report) -> None:
+    """The pointer, the catalogue, and the reverse index must describe this release.
+
+    These are the objects a browser fetches, and each one is a place a release can
+    disagree with itself: a ticker list that omits a fund, a hash shard that names a
+    fund the release does not publish, a company shard that credits a holding to the
+    wrong fund. The funds are the source of truth; every other object is checked
+    against them.
+    """
+    tickers = sorted(fund.get("ticker", "") for fund in funds if fund.get("ticker"))
+    by_ticker = {fund["ticker"]: fund for fund in funds if fund.get("ticker")}
+
+    release_path = release_dir / "release.json"
+    if not release_path.is_file():
+        report.fail("release.json", "missing — the pointer publishes this object")
+        return
+    descriptor = json.loads(release_path.read_text())
+    if descriptor.get("schema_version") != RELEASE_SCHEMA_VERSION:
+        report.fail("release.schema_version", str(descriptor.get("schema_version")))
+    if descriptor.get("kind") != "release":
+        report.fail("release.kind", repr(descriptor.get("kind")))
+    if descriptor.get("as_of") != manifest.get("as_of"):
+        report.fail("release.as_of", f"{descriptor.get('as_of')!r} != {manifest.get('as_of')!r}")
+    for field in ("fund_count", "company_count", "etf_count", "coverage_histogram", "mapping_rungs"):
+        if descriptor.get(field) != manifest.get(field):
+            report.fail(f"release.{field}", "disagrees with the manifest")
+
+    objects = descriptor.get("objects") or {}
+    for name, entry in objects.items():
+        if not isinstance(entry, dict) or "path" not in entry:
+            continue
+        path = release_dir / entry["path"]
+        if not path.is_file():
+            report.fail(f"release.objects.{name}", f"{entry['path']} is missing")
+            continue
+        payload = path.read_bytes()
+        if len(payload) != entry.get("bytes"):
+            report.fail(f"release.objects.{name}", f"{entry['path']}: {len(payload)} != {entry.get('bytes')}")
+        digest = hashlib.sha256(payload).hexdigest()
+        if digest != entry.get("sha256"):
+            report.fail(f"release.objects.{name}", f"{entry['path']}: sha256 mismatch")
+
+    # tickers.json: exactly the published set, sorted, from this release.
+    tickers_path = release_dir / "tickers.json"
+    if not tickers_path.is_file():
+        report.fail("tickers", "tickers.json is missing")
+    else:
+        document = json.loads(tickers_path.read_text())
+        if document.get("as_of") != manifest.get("as_of"):
+            report.fail("tickers.as_of", repr(document.get("as_of")))
+        published = document.get("tickers") or []
+        if published != tickers:
+            missing = sorted(set(tickers) - set(published))[:5]
+            extra = sorted(set(published) - set(tickers))[:5]
+            report.fail(
+                "tickers",
+                f"{len(published)} tickers != {len(tickers)} funds (missing {missing}, extra {extra})",
+            )
+        elif published != sorted(published):
+            report.fail("tickers.order", "ticker list is not sorted")
+
+    # catalogue.json: a label for every fund, and no fund it does not publish.
+    catalogue_path = release_dir / "catalogue.json"
+    if not catalogue_path.is_file():
+        report.fail("catalogue", "catalogue.json is missing")
+    else:
+        document = json.loads(catalogue_path.read_text())
+        if document.get("as_of") != manifest.get("as_of"):
+            report.fail("catalogue.as_of", repr(document.get("as_of")))
+        entries = document.get("funds") or {}
+        if set(entries) != set(tickers):
+            report.fail("catalogue.funds", f"{len(entries)} entries != {len(tickers)} funds")
+        for ticker, entry in entries.items():
+            if not isinstance(entry, list) or len(entry) != 4:
+                report.fail("catalogue.entry", f"{ticker}: expected [name, issuer, etf, coverage_pct]")
+                break
+            if entry[0] != by_ticker.get(ticker, {}).get("name"):
+                report.fail("catalogue.name", f"{ticker}: {entry[0]!r} != the fund's own name")
+                break
+
+    # index/{L}.json: one entry per fund, hashing the bytes on disk.
+    index_dir = release_dir / "index"
+    index: dict[str, dict] = {}
+    if not index_dir.is_dir():
+        report.fail("index", "index/ is missing")
+    else:
+        for path in sorted(index_dir.glob("*.json")):
+            document = json.loads(path.read_text())
+            if document.get("as_of") != manifest.get("as_of"):
+                report.fail("index.as_of", f"{path.name}: {document.get('as_of')!r}")
+            for ticker, entry in (document.get("funds") or {}).items():
+                if ticker in index:
+                    report.fail("index.duplicate", f"{ticker} appears in two shards")
+                index[ticker] = entry
+        if set(index) != set(tickers):
+            report.fail("index.funds", f"{len(index)} shard entries != {len(tickers)} funds")
+        mismatched = [
+            ticker
+            for ticker, entry in index.items()
+            if entry.get("bytes") != (release_dir / "funds" / f"{ticker}.json").stat().st_size
+        ]
+        if mismatched:
+            report.fail("index.bytes", f"{len(mismatched)} fund(s) disagree, e.g. {mismatched[:3]}")
+        if not report.failures:
+            report.ok("index", f"{len(index)} funds across {len(list(index_dir.glob('*.json')))} shard(s)")
+
+    _check_reverse_index(release_dir, manifest, by_ticker, report)
+
+
+def _check_reverse_index(
+    release_dir: Path, manifest: dict, by_ticker: dict[str, dict], report: Report
+) -> None:
+    """Every company shard must be exactly the reverse of the fund documents.
+
+    A reverse index is easy to get *almost* right — one holding dropped, one weight
+    taken from the wrong fund — and the result looks plausible. So the check rebuilds
+    it from the funds and compares, rather than spot-checking a few companies.
+    """
+    index_path = release_dir / "companies" / "index.json"
+    if not index_path.is_file():
+        report.fail("companies.index", "companies/index.json is missing")
+        return
+    document = json.loads(index_path.read_text())
+    if document.get("as_of") != manifest.get("as_of"):
+        report.fail("companies.as_of", repr(document.get("as_of")))
+    rows = document.get("companies") or []
+    # `company_count` in the manifest counts every distinct id in the release,
+    # including ids that only ever appear at zero weight; the reverse index covers
+    # the companies a browser can actually ask about, so the two differ by exactly
+    # those. The index is checked against the holdings, not against the manifest.
+    if len(rows) > int(manifest.get("company_count") or 0):
+        report.fail("companies.count", f"{len(rows)} indexed > company_count {manifest.get('company_count')}")
+
+    expected: dict[str, dict[str, int]] = {}
+    # The published name is the one on the largest holding, so it does not depend on
+    # the order funds happen to be read in; the check has to use the same rule.
+    biggest: dict[str, tuple[int, str]] = {}
+    for ticker, fund in by_ticker.items():
+        for holding in fund.get("holdings") or []:
+            company_id = holding.get("company_id")
+            if not company_id or holding.get("weight_bp") == 0:
+                continue
+            expected.setdefault(company_id, {})[ticker] = (
+                expected.setdefault(company_id, {}).get(ticker, 0) + holding["weight_bp"]
+            )
+            weight = holding["weight_bp"]
+            current = biggest.get(company_id)
+            if current is None or weight > current[0]:
+                biggest[company_id] = (weight, holding.get("name", ""))
+    names = {company_id: name for company_id, (_, name) in biggest.items()}
+
+    shard_ids = {row[0] for row in rows if isinstance(row, list) and row}
+    if shard_ids != set(expected):
+        missing = sorted(set(expected) - shard_ids)[:3]
+        extra = sorted(shard_ids - set(expected))[:3]
+        report.fail(
+            "companies.index.ids",
+            f"{len(shard_ids)} indexed != {len(expected)} with non-zero weight "
+            f"(missing {missing}, extra {extra})",
+        )
+    for row in rows:
+        if not isinstance(row, list) or len(row) != 4:
+            report.fail("companies.index.row", "expected [company_id, name, ticker, fund_count]")
+            break
+        company_id, name, _ticker, fund_count = row
+        if company_id in expected and fund_count != len(expected[company_id]):
+            report.fail("companies.index.fund_count", f"{company_id}: {fund_count} != {len(expected[company_id])}")
+            break
+        if company_id in names and name != names[company_id]:
+            report.fail("companies.index.name", f"{company_id}: {name!r} != {names[company_id]!r}")
+            break
+
+    checked = 0
+    for company_id, funds in expected.items():
+        path = release_dir / "companies" / f"{company_id}.json"
+        if not path.is_file():
+            report.fail("companies.shard", f"{company_id} is indexed but has no shard")
+            continue
+        shard = json.loads(path.read_text())
+        if shard.get("company_id") != company_id or shard.get("as_of") != manifest.get("as_of"):
+            report.fail("companies.shard", f"{path.name}: identity or as_of disagrees")
+            continue
+        published = {
+            ticker: weight
+            for ticker, weight in shard.get("funds") or []
+            if isinstance(ticker, str) and isinstance(weight, int)
+        }
+        if published != funds:
+            missing = sorted(set(funds) - set(published))[:3]
+            extra = sorted(set(published) - set(funds))[:3]
+            wrong = sorted(
+                ticker for ticker in set(funds) & set(published) if funds[ticker] != published[ticker]
+            )[:3]
+            report.fail(
+                "companies.shard.weights",
+                f"{company_id}: missing {missing}, extra {extra}, wrong {wrong}",
+            )
+            continue
+        if len(published) != len(shard.get("funds") or []):
+            report.fail("companies.shard", f"{path.name}: duplicate ticker in funds[]")
+            continue
+        checked += 1
+    if not report.failures:
+        report.ok("companies", f"{checked} shard(s) are the exact reverse of the funds")
+
+
 def validate(release_dir: Path) -> int:
     report = Report()
     print(f"validating {release_dir}")
@@ -333,6 +551,7 @@ def validate(release_dir: Path) -> int:
     _check_manifest(manifest, funds, report, release_dir)
     for document in funds:
         _check_fund(document, report)
+    _check_catalogue(release_dir, manifest, funds, report)
     _check_cusip(release_dir, manifest, report)
     _check_budget(release_dir, report)
     print(

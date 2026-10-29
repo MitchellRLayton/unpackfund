@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import artifact, manifest as manifest_mod, weights
+from . import artifact, catalogue, manifest as manifest_mod, weights
 from .companies import CompanyIndex
 from .nport import NportFiling, parse
 
@@ -93,8 +93,17 @@ def write_release(root: Path, documents: list[dict], release_id: str = FIXTURE_R
         etf_count=None,
         generated_at="2026-10-30T00:00:00Z",
     )
-    (release_dir / "manifest.json").write_bytes(
-        artifact.canonical_bytes(manifest_document)
+    manifest_payload = artifact.canonical_bytes(manifest_document)
+    (release_dir / "manifest.json").write_bytes(manifest_payload)
+    # The same writer the build uses, so a fixture release cannot drift from a real
+    # one: if the catalogue objects change shape, every fixture test sees it.
+    catalogue.write_release_objects(
+        release_dir,
+        release=release_id,
+        documents=documents,
+        files=files,
+        header=manifest_document,
+        manifest_payload=manifest_payload,
     )
     return release_dir
 

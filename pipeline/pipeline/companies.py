@@ -53,9 +53,99 @@ _RUNG_NONE = "unmapped"
 
 def normalize_name(name: str) -> str:
     text = name.lower().replace("&", " and ")
+    # An apostrophe is part of a name, not a separator: ``Lowe's`` must normalize to
+    # ``lowes`` or it stops matching EDGAR's ``LOWES COMPANIES INC``.
+    text = re.sub(r"['\u2019]", "", text)
     text = re.sub(r"[^a-z0-9 ]+", " ", text)
     text = _LEGAL_SUFFIXES.sub(" ", text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+#: Words that carry no identity: they are legal form, or the fund wrapper.
+_NAME_NOISE = frozenset(
+    {
+        "the",
+        "and",
+        "of",
+        "for",
+        "new",
+        "fund",
+        "trust",
+        "common",
+        "stock",
+        "class",
+        "series",
+        "shares",
+        "inc",
+        "corp",
+        "co",
+        "ltd",
+        "plc",
+        "sa",
+        "se",
+        "ag",
+        "nv",
+        "lp",
+        "llc",
+        "com",
+        "cl",
+        "cap",
+        "stk",
+        "depositary",
+        "receipt",
+    }
+)
+
+
+def name_tokens(name: str) -> list[str]:
+    """The identity-bearing words of a company name, lowercased."""
+    return [token for token in normalize_name(name).split() if token not in _NAME_NOISE]
+
+
+def names_agree(reported: str, title: str) -> bool:
+    """Whether a filing's name for a holding corroborates the company it mapped to.
+
+    The ticker rung is the one rung that can be confidently wrong. N-PORT filers
+    write a bare symbol with no exchange, and a bare symbol is not unique across
+    markets: on the day-5 release, 71 holdings named ``SCHNEIDER ELECTRIC SE``
+    carried the ticker ``SU`` and mapped to Suncor Energy, ``ALLIANZ SE`` mapped to
+    Autoliv, ``VINCI SA`` to Dollar General, ``LVMH`` to Moelis. Each is a plausible
+    row in a ledger and a wrong answer about what the visitor owns.
+
+    So a ticker match now has to be corroborated by the name. The test is
+    deliberately loose about *form* and strict about *identity*:
+
+    - a shared word is enough (``AAR CORP.`` / ``AAR Corp``);
+    - so is one name being a prefix of the other once concatenated
+      (``Exxon Mobil`` / ``ExxonMobil Holdings Corp``);
+    - so are initials (``IBM`` / ``International Business Machines``, ``TSMC`` /
+      ``Taiwan Semiconductor Manufacturing``);
+    - so is a shared three-character stem (``F.N.B.`` / ``FNB Corp``).
+
+    It is not loose about a name that names a different company. A rejected ticker
+    match falls through to the name rung and, if that fails too, to ``unmapped`` —
+    which is disclosed and counted, where a misattribution is neither.
+    """
+    reported_tokens = name_tokens(reported)
+    if not reported_tokens:
+        # Nothing to contradict the ticker; it is the only signal there is.
+        return True
+    title_tokens = name_tokens(title)
+    if not title_tokens:
+        return True
+    if set(reported_tokens) & set(title_tokens):
+        return True
+
+    reported_key = "".join(reported_tokens)
+    title_key = "".join(title_tokens)
+    if reported_key.startswith(title_key) or title_key.startswith(reported_key):
+        return True
+    initials = "".join(token[0] for token in title_tokens)
+    if len(initials) >= 2 and (
+        reported_key.startswith(initials) or initials.startswith(reported_key)
+    ):
+        return True
+    return reported_key[:3] == title_key[:3]
 
 
 @dataclass
@@ -65,6 +155,8 @@ class CompanyIndex:
     by_name: dict[str, str] = field(default_factory=dict)
     # company_id -> a listed symbol for that CIK, used when the filer omits one
     primary_ticker: dict[str, str] = field(default_factory=dict)
+    # company_id -> EDGAR's own title, used to corroborate a ticker match
+    title_by_id: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def load(cls) -> "CompanyIndex":
@@ -76,6 +168,7 @@ class CompanyIndex:
         """Build the index from an already-fetched ticker document (tests, replays)."""
         by_ticker: dict[str, str] = {}
         primary_ticker: dict[str, str] = {}
+        title_by_id: dict[str, str] = {}
         name_candidates: dict[str, set[str]] = {}
         for row in document.values():
             cik = row.get("cik_str")
@@ -87,6 +180,8 @@ class CompanyIndex:
             if ticker:
                 by_ticker[ticker] = cid
                 primary_ticker.setdefault(cid, ticker)
+            if title:
+                title_by_id.setdefault(cid, title)
             key = normalize_name(title)
             if key:
                 name_candidates.setdefault(key, set()).add(cid)
@@ -94,7 +189,12 @@ class CompanyIndex:
         by_name = {
             key: next(iter(ids)) for key, ids in name_candidates.items() if len(ids) == 1
         }
-        return cls(by_ticker=by_ticker, by_name=by_name, primary_ticker=primary_ticker)
+        return cls(
+            by_ticker=by_ticker,
+            by_name=by_name,
+            primary_ticker=primary_ticker,
+            title_by_id=title_by_id,
+        )
 
     def symbol(self, company_id: str | None) -> str | None:
         """A listed symbol for a resolved company, or None."""
@@ -103,7 +203,9 @@ class CompanyIndex:
     def resolve(self, ticker: str | None, name: str | None) -> tuple[str | None, str]:
         if ticker:
             hit = self.by_ticker.get(ticker.strip().upper())
-            if hit:
+            # A ticker without a name that corroborates it is a coincidence, not an
+            # identity — see ``names_agree``.
+            if hit and names_agree(name or "", self.title_by_id.get(hit, "")):
                 return hit, _RUNG_TICKER
         if name:
             hit = self.by_name.get(normalize_name(name))

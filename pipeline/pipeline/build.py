@@ -37,7 +37,15 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import artifact, classify, filings, manifest as manifest_mod, universe, weights
+from . import (
+    artifact,
+    catalogue,
+    classify,
+    filings,
+    manifest as manifest_mod,
+    universe,
+    weights,
+)
 from .companies import CompanyIndex
 from .nport import NportParseError
 
@@ -319,12 +327,25 @@ def build_release(
     )
     payload = artifact.canonical_bytes(document)
     (release_dir / "manifest.json").write_bytes(payload)
+
+    # What a browser actually reads. The manifest above is the inventory (8,533
+    # entries at day-4 scale, 0.42 MB gzipped, on nobody's critical path); these
+    # are the catalogue, the per-letter hash shards, and the reverse X-Ray shards.
+    browser_objects = catalogue.write_release_objects(
+        release_dir,
+        release=release,
+        documents=documents,
+        files=files,
+        header=document,
+        manifest_payload=payload,
+    )
     elapsed = time.monotonic() - started
     _log(
         f"manifest: {len(documents):,} funds, {document['company_count']:,} companies, "
         f"{len(payload):,}B, etf={document['etf_count']:,}, "
         f"coverage={document['coverage_histogram']}"
     )
+    _log(f"browser objects: {browser_objects['summary']}")
 
     summary = {
         "release": release,
@@ -341,6 +362,9 @@ def build_release(
         "coverage_histogram": document["coverage_histogram"],
         "manifest_bytes": len(payload),
         "manifest_sha256": artifact.sha256_hex(payload),
+        "release_object_bytes": browser_objects["release_bytes"],
+        "release_object_sha256": browser_objects["release_sha256"],
+        "browser_objects": browser_objects["sizes"],
         "elapsed_seconds": round(elapsed, 1),
         "workers": workers,
         "generated_at": document["generated_at"],

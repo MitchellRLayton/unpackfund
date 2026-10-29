@@ -239,6 +239,10 @@ node_modules/
 *.tsbuildinfo
 .npm/
 
+# Sandbox scratch for deploys: `HOME`/`npm_config_cache` are pointed here so wrangler
+# can write its config inside the workspace instead of `~/Library/Preferences`.
+.work/
+
 # Pipeline scratch and raw downloads (rebuilt from source, never committed)
 data/
 *.log
