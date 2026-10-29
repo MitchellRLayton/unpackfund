@@ -6,12 +6,17 @@ browser reads what this writes.
 
 ```
 python -m pipeline.build --tickers VOO     # filing → artifacts/releases/<id>/
-python -m pipeline.validate --release artifacts/releases/<id>/   # the gate
+python -m pipeline.validate --release 2026-10-29.1   # the gate
 python -m pipeline.checks --tickers VOO    # two builds must be byte-identical
+python -m pipeline.release upload --release 2026-10-29.1   # R2, verified by public GET
+python -m pipeline.release verify --release 2026-10-29.1   # re-read a published prefix
+python -m pipeline.live                    # is EDGAR up, is the data host answering
 ```
 
-Wrapped as `pnpm pipeline:build`, `pnpm data:validate --release <dir>`,
-`pnpm data:validate --fixtures` (offline, CI form) and `pnpm check:determinism`.
+Wrapped as `pnpm pipeline:build`, `pnpm data:validate --release <id>`,
+`pnpm data:validate --fixtures` (offline, CI form), `pnpm check:determinism`,
+`pnpm release:upload`, `pnpm release:verify` and `pnpm verify:live`. A bare release
+id resolves against `artifacts/releases/`.
 
 ## Layout
 
@@ -29,6 +34,11 @@ Wrapped as `pnpm pipeline:build`, `pnpm data:validate --release <dir>`,
 | `build.py` | orchestration and the three pre-publication gates |
 | `validate.py` | offline contract checks over a built release |
 | `checks.py` | determinism across two builds |
+| `paths.py` | where a release lives on disk; bare id → `artifacts/releases/<id>` |
+| `sigv4.py` | AWS SigV4 in stdlib, so the upload step installs nothing |
+| `r2.py` | R2 S3 client (put/head/get/list) and the public reader used for verification |
+| `release.py` | the publish sequence: objects, verify every one by public GET, pointer last |
+| `live.py` | reachability checks for EDGAR and the data host — never a gate |
 | `fixtures.py` | the offline sample release used by tests and `--fixtures` |
 
 ## Data decisions this code makes
@@ -75,6 +85,33 @@ by which a low-coverage fund would look average.
 the name was wrong for the largest fund in the sample, so the manifest publishes
 `null` with `etf_classifier: pending_adr_0007_c3` and the validator accepts that
 only when the reason is stated.
+
+## Publishing
+
+The upload is a sequence, not a copy, and the order is the design:
+
+1. every local file is re-hashed and compared with the manifest — a disagreement
+   aborts before the first `PUT`, so a stale manifest cannot be published;
+2. objects go to `releases/{as_of}/` with `public, max-age=31536000, immutable`;
+3. each object is re-fetched from `data.unpackfund.com` with
+   `Origin: http://localhost:3000` and compared to its `sha256`, and its
+   `cache-control` and `access-control-allow-origin` are checked — storage success
+   is not reachability, and reachability is not CORS;
+4. only then the pointer is written, byte-identical to the release manifest, with
+   `no-cache`. The pointer defaults to `staging/latest/manifest.json`; anything
+   under `latest/` needs `--allow-live`, because that is production;
+5. the run reports what the live pointer says (`absent (HTTP 404)` or the release
+   it names) and writes `upload-report.json` next to the release.
+
+A failed verification writes no pointer and reports every failure, so a
+half-published release never becomes visible.
+
+SigV4 is ~120 lines of stdlib (`sigv4.py`) rather than a boto3 dependency for four
+verbs; a wrong signature shows up as a 403 on the first object, which is a loud
+failure. Two transport facts cost an hour to find and are commented where they
+bite: R2 capitalises response header names (`Content-Length`, `ETag`), and the
+data host answers **403** to a bare `Python-urllib` User-Agent while every other
+UA tested gets 200.
 
 ## Adding a ticker
 
