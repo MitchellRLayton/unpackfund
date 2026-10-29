@@ -1,0 +1,19 @@
+{
+  "name": "unpackfund",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Fund portfolio X-ray: look through an ETF to the companies you actually own.",
+  "license": "MIT",
+  "packageManager": "pnpm@11.28.5",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @unpackfund/web dev",
+    "build": "pnpm --filter @unpackfund/web build",
+    "typecheck": "pnpm --filter @unpackfund/web typecheck",
+    "lint": "pnpm --filter @unpackfund/web lint",
+    "verify": "pnpm typecheck && pnpm build",
+    "verify:ci": "pnpm verify"
+  }
+}

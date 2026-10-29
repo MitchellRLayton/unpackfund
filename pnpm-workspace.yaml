@@ -1,0 +1,16 @@
+packages:
+  - web
+
+# Keep the content-addressable store inside the checkout so installs never write
+# to a user-level cache, and keep node_modules hardlinks on one filesystem.
+storeDir: .pnpm-store
+
+# unrs-resolver ships prebuilt platform binaries and is only an optional fast
+# path for eslint-plugin-import-x's resolver, so its postinstall is not needed.
+# Acknowledging it here keeps `pnpm install` exit 0 without running it.
+ignoredBuiltDependencies:
+  - unrs-resolver
+
+# Added by pnpm 11: @types/node publishes ahead of the release-age threshold.
+minimumReleaseAgeExclude:
+  - '@types/node@26.6.6'

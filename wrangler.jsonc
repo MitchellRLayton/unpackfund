@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "unpackfund",
+  "compatibility_date": "2026-10-28",
+  // Static export of the Next.js app (ADR-0005: a Worker with Static Assets,
+  // not a Pages project). `pnpm build` must run before `wrangler deploy`.
+  "assets": {
+    "directory": "./web/out",
+    "not_found_handling": "404-page"
+  },
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true
+  }
+}

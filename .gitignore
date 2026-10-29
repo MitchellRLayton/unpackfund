@@ -227,3 +227,16 @@ web/out/
 .next/
 .wrangler/
 *.parquet
+
+# Node / pnpm toolchain and local sandbox state
+node_modules/
+.pnpm-store/
+.corepack/
+.cache/
+.local/
+*.tsbuildinfo
+.npm/
+
+# Pipeline scratch and raw downloads (rebuilt from source, never committed)
+data/
+*.log

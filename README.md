@@ -3,9 +3,11 @@
 Fund portfolio X-ray: look through an ETF to the companies you actually own, with
 every number traceable to a public filing.
 
-**Status: infrastructure only.** The domain, edge hosting, object storage, and
-data host are live; the application and data pipeline are not written yet, so this
-repository currently holds no application code.
+**Status: infrastructure + app shell.** The domain, edge hosting, object storage,
+and data host are live. `web/` is a scaffolded Next.js static export that builds to
+static files and deploys as a Worker; it serves a placeholder page with no fund
+data. The pipeline, the artifact schemas, and every product surface are still
+unwritten.
 
 ## Architecture
 
@@ -37,25 +39,34 @@ raw/                           private working data, never published
 Artifact requests are cached at the edge by a Cache Rule on the `data.` host, so
 repeat reads do not consume R2 Class B operations.
 
-## Local commands (target surface)
+## Local development
 
-| Command | Purpose |
-| --- | --- |
-| `pnpm install` | Install workspace dependencies. |
-| `pnpm build` | Static export of the site to `web/out`. |
-| `pnpm deploy:prod` | Build and deploy the site to Cloudflare Workers. |
-| `python -m pipeline.build` | Build a data release into `artifacts/`. |
-| `pnpm data:validate` | Validate artifacts against the schema before publishing. |
-| `pnpm verify` | Lint, typecheck, and test. |
+Node 24 (`>=24 <25`) and pnpm 11.28.5, pinned by `.nvmrc` and `packageManager`.
+Install once with `pnpm install`; the store is kept in-repo (`.pnpm-store/`,
+git-ignored) so nothing is written to a user-level cache.
 
-These land with the first code commit; nothing above runs in this repository yet.
+| Command | Purpose | Works today |
+| --- | --- | --- |
+| `pnpm install` | Install workspace dependencies. | yes |
+| `pnpm dev` | Next dev server on :3000. | yes |
+| `pnpm build` | Static export of the site to `web/out`. | yes |
+| `pnpm typecheck` | `tsc --noEmit` across the workspace. | yes |
+| `pnpm lint` | ESLint (flat config, `eslint-config-next`). | yes |
+| `pnpm verify` | Typecheck + lint + build. The pre-push gate. | yes |
+| `python -m pipeline.build` | Build a data release into `artifacts/`. | not yet |
+| `pnpm data:validate` | Validate artifacts against the schema before publishing. | not yet |
+| `pnpm deploy:prod` | Build and deploy to Cloudflare Workers. | not yet |
 
-## Layout (target)
+Deploying is `pnpm build && npx wrangler deploy` against `wrangler.jsonc`
+(`assets.directory: web/out`), not a separate command yet.
+
+## Layout
 
 ```
-web/        static site (static export to web/out)
-pipeline/   Python data pipeline (SEC EDGAR -> artifacts/)
-schemas/    JSON Schemas for published artifacts
+web/            Next.js app, static export to web/out (committed)
+pipeline/       Python data pipeline, SEC EDGAR -> artifacts/ (not yet)
+schemas/        JSON Schemas for published artifacts (not yet)
+wrangler.jsonc  Worker + Static Assets config for the deploy
 ```
 
 ## Security
