@@ -14,6 +14,10 @@
     "typecheck": "pnpm --filter @unpackfund/web typecheck",
     "lint": "pnpm --filter @unpackfund/web lint",
     "format": "pnpm --filter @unpackfund/web format",
-    "verify": "pnpm typecheck && pnpm lint && pnpm build"
+    "pipeline:build": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.build",
+    "pipeline:test": "cd pipeline && ../.venv/pipeline/bin/python -m pytest",
+    "data:validate": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.validate",
+    "check:determinism": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.checks",
+    "verify": "pnpm typecheck && pnpm lint && pnpm pipeline:test && pnpm data:validate --fixtures && pnpm build"
   }
 }
