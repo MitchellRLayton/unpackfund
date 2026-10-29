@@ -21,6 +21,13 @@ from typing import Mapping
 from .sigv4 import EMPTY_PAYLOAD_SHA256, sign
 
 JSON_CONTENT_TYPE = "application/json"
+
+# The data host sits behind Cloudflare, which answers 403 to a bare
+# `Python-urllib/3.x` User-Agent (measured 2026-10-29: curl, python-requests and a
+# named crawler UA all get 200). This reader exists to see what a browser sees, so
+# it presents a named crawler identity rather than a library default — the failure
+# it must detect is a missing object or header, not an edge rule.
+PUBLIC_USER_AGENT = "Mozilla/5.0 (compatible; UnpackFund/0.1; +https://unpackfund.com)"
 IMMUTABLE = "public, max-age=31536000, immutable"
 NO_CACHE = "no-cache"
 
@@ -42,6 +49,12 @@ class R2Error(RuntimeError):
         self.key = key
         where = f" on {key}" if key else ""
         super().__init__(f"{operation}{where} failed: HTTP {status}: {body[:300]}")
+
+
+def lower_headers(headers) -> dict[str, str]:
+    """Header names arrive capitalised (`Content-Length`, `ETag`), so normalise them
+    once: every caller here looks a header up by its lowercase name."""
+    return {name.lower(): value for name, value in headers.items()}
 
 
 @dataclass(frozen=True)
@@ -99,7 +112,7 @@ class R2Client:
         request = urllib.request.Request(url, data=body if body else None, method=method, headers=request_headers)
         try:
             with self._opener(request, timeout=self.timeout) as response:
-                return response.status, dict(response.headers), response.read()
+                return response.status, lower_headers(response.headers), response.read()
         except urllib.error.HTTPError as error:
             detail = error.read().decode("utf-8", "replace")
             raise R2Error(method, error.code, detail, key) from error
@@ -194,16 +207,18 @@ class PublicReader:
 
     def fetch(self, key: str, *, origin: str | None = None) -> PublicResponse:
         url = f"{self.base_url}/{urllib.parse.quote(key, safe='/')}"
-        headers = {"Origin": origin} if origin else {}
+        headers = {"User-Agent": PUBLIC_USER_AGENT}
+        if origin:
+            headers["Origin"] = origin
         # Ask intermediaries for a fresh copy: a cached 404 from before the upload
         # would otherwise be indistinguishable from a failed upload.
         headers["Cache-Control"] = "no-cache"
         request = urllib.request.Request(url, method="GET", headers=headers)
         try:
             with self._opener(request, timeout=self.timeout) as response:
-                return PublicResponse(url, response.status, dict(response.headers), response.read())
+                return PublicResponse(url, response.status, lower_headers(response.headers), response.read())
         except urllib.error.HTTPError as error:
-            return PublicResponse(url, error.code, dict(error.headers or {}), error.read())
+            return PublicResponse(url, error.code, lower_headers(error.headers or {}), error.read())
         except urllib.error.URLError as error:
             raise R2Error("GET", 0, f"transport error: {error.reason}", key) from error
 

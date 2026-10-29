@@ -21,19 +21,19 @@ import time
 
 from .r2 import PublicReader
 from .release import DEFAULT_ORIGIN, DEFAULT_PUBLIC_BASE, LIVE_POINTER
-from .sec import DEFAULT_USER_AGENT, SEC_UA_ENV
+from .sec import USER_AGENT_ENV, user_agent
 
 SEC_PROBE = "https://www.sec.gov/files/company_tickers_mf.json"
 POINTER_CANDIDATES = ("staging/latest/manifest.json", LIVE_POINTER)
 
 
-def check_sec(user_agent: str) -> tuple[bool, str]:
+def check_sec(declared_user_agent: str) -> tuple[bool, str]:
     import urllib.error
     import urllib.request
 
-    if not user_agent or "example.com" in user_agent or "@" not in user_agent:
-        return False, f"no usable User-Agent ({SEC_UA_ENV}); SEC will answer 403"
-    request = urllib.request.Request(SEC_PROBE, headers={"User-Agent": user_agent})
+    if not declared_user_agent or "@" not in declared_user_agent:
+        return False, f"no usable User-Agent ({USER_AGENT_ENV}); SEC will answer 403"
+    request = urllib.request.Request(SEC_PROBE, headers={"User-Agent": declared_user_agent})
     started = time.monotonic()
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
@@ -88,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     import os
 
     failures = 0
-    ok, detail = check_sec(os.environ.get(SEC_UA_ENV) or DEFAULT_USER_AGENT)
+    ok, detail = check_sec(user_agent())
     print(f"  {'ok  ' if ok else 'FAIL'} sec:  {detail}")
     failures += 0 if ok else 1
 

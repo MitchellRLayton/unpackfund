@@ -25,6 +25,7 @@ import urllib.request
 from pathlib import Path
 from threading import Lock
 
+USER_AGENT_ENV = "SEC_USER_AGENT"
 DEFAULT_USER_AGENT = "UnpackFund research data@unpackfund.com"
 MIN_INTERVAL_S = 1 / 8
 CACHE_DIR = Path(os.environ.get("UNPACKFUND_CACHE", "data/cache"))
@@ -38,10 +39,10 @@ class SecError(RuntimeError):
 
 
 def user_agent() -> str:
-    ua = os.environ.get("SEC_USER_AGENT", DEFAULT_USER_AGENT).strip()
+    ua = os.environ.get(USER_AGENT_ENV, DEFAULT_USER_AGENT).strip()
     if "@" not in ua:
         raise SecError(
-            "SEC_USER_AGENT must contain a contact address; SEC returns 403 without one"
+            f"{USER_AGENT_ENV} must contain a contact address; SEC returns 403 without one"
         )
     return ua
 

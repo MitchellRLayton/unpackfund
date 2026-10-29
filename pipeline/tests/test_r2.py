@@ -68,6 +68,23 @@ def test_put_signs_the_metadata_it_sends():
     assert "SignedHeaders=cache-control;content-type;host;x-amz-content-sha256;x-amz-date" in headers["authorization"]
 
 
+def test_head_reads_capitalised_headers():
+    """R2 sends `Content-Length`/`ETag`; a lowercase lookup used to report 0 bytes."""
+    headers = {
+        "Content-Type": "application/json",
+        "Content-Length": "1335",
+        "Cache-Control": r2.IMMUTABLE,
+        "ETag": '"fb9e89d74265eeb39633bda83508b8f3"',
+    }
+    client = make_client([], FakeResponse(b"", headers=headers))
+    head = client.head("releases/x/manifest.json")
+    assert head is not None
+    assert head.size == 1335
+    assert head.etag == "fb9e89d74265eeb39633bda83508b8f3"
+    assert head.cache_control == r2.IMMUTABLE
+    assert head.content_type == "application/json"
+
+
 def test_head_returns_none_on_404():
     def opener(request, timeout=None):
         raise urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, io.BytesIO(b""))
@@ -107,6 +124,21 @@ def test_list_query_is_signed_sorted():
 def test_credentials_repr_never_shows_the_secret():
     assert "s3cr3t" not in repr(CREDS)
     assert CREDS.access_key_id[:4] in repr(CREDS)
+
+
+def test_public_reader_sends_a_user_agent_the_edge_does_not_block():
+    captured: list = []
+
+    def opener(request, timeout=None):
+        captured.append(request)
+        return FakeResponse(b"{}")
+
+    reader = r2.PublicReader("https://data.example", opener=opener)
+    reader.fetch("releases/x/manifest.json", origin="http://localhost:3000")
+    headers = {key.lower(): value for key, value in captured[0].header_items()}
+    assert headers["user-agent"] == r2.PUBLIC_USER_AGENT
+    assert headers["origin"] == "http://localhost:3000"
+    assert headers["cache-control"] == "no-cache"
 
 
 def test_empty_payload_hash_is_the_constant():
