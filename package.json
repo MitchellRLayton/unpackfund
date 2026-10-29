@@ -13,6 +13,7 @@
     "build": "pnpm --filter @unpackfund/web build",
     "lint": "pnpm --filter @unpackfund/web lint",
     "typecheck": "pnpm --filter @unpackfund/web typecheck",
+    "test": "pnpm --filter @unpackfund/web test",
     "format": "pnpm --filter @unpackfund/web format",
     "check:determinism": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.checks",
     "pipeline:build": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.build",
@@ -21,6 +22,6 @@
     "release:upload": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.release upload",
     "release:verify": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.release verify",
     "verify:live": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.live",
-    "verify": "pnpm typecheck && pnpm lint && pnpm pipeline:test && pnpm data:validate --fixtures && pnpm build"
+    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm pipeline:test && pnpm data:validate --fixtures && pnpm build"
   }
 }
