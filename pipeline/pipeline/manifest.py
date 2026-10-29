@@ -13,9 +13,12 @@ import subprocess
 from typing import Any
 
 from .artifact import SCHEMA_VERSION, sha256_hex, utc_now_iso
+from . import classify
 from .classify import looks_like_etf
 
-ETF_CLASSIFIER = "name_rule_v1"
+#: Re-exported for callers that historically imported it from here; the value
+#: belongs to the module that implements the test.
+ETF_CLASSIFIER = classify.ETF_CLASSIFIER
 
 COVERAGE_BANDS: tuple[tuple[str, float, float], ...] = (
     ("under_60", 0.0, 60.0),
@@ -75,11 +78,19 @@ def build_manifest(
     if etf_count is None:
         # Derived here rather than passed in: the count is a property of the
         # documents in this release, so computing it from anything else is a way
-        # to disagree with the files the manifest hashes.
-        etf_count = sum(
-            1
-            for fund in funds
-            if looks_like_etf(fund.get("name"), fund.get("issuer"))
+        # to disagree with the files the manifest hashes. The label itself now
+        # travels on the document, so the count *reads* it instead of re-running
+        # the test — a document without the field falls back to the test rather
+        # than counting as "not an ETF".
+        labelled = [fund for fund in funds if "etf" in fund]
+        etf_count = (
+            sum(1 for fund in labelled if fund["etf"])
+            if labelled
+            else sum(
+                1
+                for fund in funds
+                if looks_like_etf(fund.get("name"), fund.get("issuer"))
+            )
         )
     return {
         "schema_version": SCHEMA_VERSION,

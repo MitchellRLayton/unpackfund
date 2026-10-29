@@ -28,6 +28,9 @@ from .artifact import SCHEMA_VERSION
 
 REPO_ROOT = paths.REPO_ROOT
 
+#: A published fund ticker: upper-case, starts alphanumeric, short.
+TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,9}$")
+
 REQUIRED_FIELDS = (
     "schema_version",
     "ticker",
@@ -38,6 +41,7 @@ REQUIRED_FIELDS = (
     "filed_at",
     "lag_days",
     "source",
+    "etf",
     "source_url",
     "coverage_pct",
     "holdings",
@@ -140,6 +144,18 @@ def _check_manifest(manifest: dict, funds: list[dict], report: Report, release_d
         manifest.get("etf_classifier", "")
     ).startswith("pending"):
         report.fail("manifest.etf_count", "null without a stated reason")
+    elif manifest.get("etf_count") is not None:
+        # The count and the labels are two spellings of one fact. They disagreed
+        # once — the count said 3,172, every published label said "no" — and the
+        # only reason nobody noticed is that nothing compared them.
+        labelled = sum(1 for fund in funds if fund.get("etf") is True)
+        if manifest["etf_count"] != labelled:
+            report.fail(
+                "manifest.etf_count",
+                f"{manifest['etf_count']} != {labelled} fund(s) labelled etf",
+            )
+        elif labelled and labelled == len(funds):
+            report.warn("manifest.etf_count", "every fund is labelled an ETF — the test is broken")
     histogram = manifest.get("coverage_histogram") or {}
     if sum(histogram.values()) != len(funds):
         report.fail("manifest.coverage_histogram", f"sums to {sum(histogram.values())}")
@@ -172,6 +188,10 @@ def _check_fund(document: dict, report: Report) -> None:
         return
     if document["schema_version"] != SCHEMA_VERSION:
         report.fail(f"{ticker}.schema_version", str(document["schema_version"]))
+    # ``etf`` is additive to schema 1 and required in practice: an absent label
+    # counted as "not an ETF" for 8,531 funds once, so absence is a failure now.
+    if not isinstance(document.get("etf"), bool):
+        report.fail(f"{ticker}.etf", f"{document.get('etf')!r} is not a boolean")
     if document["source"] not in ALLOWED_SOURCES:
         report.fail(f"{ticker}.source", str(document["source"]))
     if not str(document["source_url"]).startswith("https://www.sec.gov/"):
@@ -406,12 +426,24 @@ def _check_catalogue(release_dir: Path, manifest: dict, funds: list[dict], repor
         entries = document.get("funds") or {}
         if set(entries) != set(tickers):
             report.fail("catalogue.funds", f"{len(entries)} entries != {len(tickers)} funds")
+        if not document.get("etf_classifier"):
+            report.fail("catalogue.etf_classifier", "absent — the flag is a test, not a fact")
         for ticker, entry in entries.items():
             if not isinstance(entry, list) or len(entry) != 4:
                 report.fail("catalogue.entry", f"{ticker}: expected [name, issuer, etf, coverage_pct]")
                 break
             if entry[0] != by_ticker.get(ticker, {}).get("name"):
                 report.fail("catalogue.name", f"{ticker}: {entry[0]!r} != the fund's own name")
+                break
+            # The flag this release publishes has to be the fund's own label. It
+            # was all zeros once, because the writer read a field the document did
+            # not have, and a catalogue saying "no ETFs" is worse than no catalogue.
+            expected = 1 if by_ticker.get(ticker, {}).get("etf") else 0
+            if entry[2] != expected:
+                report.fail(
+                    "catalogue.etf",
+                    f"{ticker}: catalogue says {entry[2]}, the fund says {expected}",
+                )
                 break
 
     # index/{L}.json: one entry per fund, hashing the bytes on disk.
@@ -441,6 +473,49 @@ def _check_catalogue(release_dir: Path, manifest: dict, funds: list[dict], repor
             report.ok("index", f"{len(index)} funds across {len(list(index_dir.glob('*.json')))} shard(s)")
 
     _check_reverse_index(release_dir, manifest, by_ticker, report)
+    _check_aliases(release_dir, manifest, tickers, report)
+
+
+def _check_aliases(
+    release_dir: Path, manifest: dict, tickers: list[str], report: Report
+) -> None:
+    """``aliases.json``: every class ticker points at a page this release has.
+
+    The failure this prevents is a dead end that looks like a feature: an alias to an
+    unpublished ticker sends a visitor from "VFIAX" to a 404 with no explanation, and
+    an alias that shadows a published ticker silently renames somebody's fund. Both
+    are invisible in a spot check and obvious in a diff.
+    """
+    path = release_dir / "aliases.json"
+    if not path.is_file():
+        report.fail("aliases", "aliases.json is missing")
+        return
+    document = json.loads(path.read_text())
+    if document.get("as_of") != manifest.get("as_of"):
+        report.fail("aliases.as_of", repr(document.get("as_of")))
+    targets = document.get("targets") or {}
+    published = set(tickers)
+    dangling = sorted(alias for alias, target in targets.items() if target not in published)
+    if dangling:
+        report.fail(
+            "aliases.target",
+            f"{len(dangling)} alias(es) point at unpublished tickers, e.g. "
+            f"{[(alias, targets[alias]) for alias in dangling[:3]]}",
+        )
+    shadowing = sorted(alias for alias in targets if alias in published)
+    if shadowing:
+        report.fail(
+            "aliases.shadow",
+            f"{len(shadowing)} alias(es) collide with a published ticker, e.g. {shadowing[:3]}",
+        )
+    self_ref = sorted(alias for alias, target in targets.items() if alias == target)
+    if self_ref:
+        report.fail("aliases.self", f"{len(self_ref)} alias(es) point at themselves, e.g. {self_ref[:3]}")
+    bad = sorted(alias for alias in targets if not TICKER_RE.match(alias))
+    if bad:
+        report.fail("aliases.shape", f"{len(bad)} alias(es) are not tickers, e.g. {bad[:3]}")
+    if not report.failures:
+        report.ok("aliases", f"{len(targets):,} share-class ticker(s) resolve to a published fund")
 
 
 def _check_reverse_index(

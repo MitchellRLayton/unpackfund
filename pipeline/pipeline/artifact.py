@@ -48,6 +48,7 @@ def build_fund_artifact(
     filed_at: str,
     source_url: str,
     coverage_pct: float,
+    etf: bool,
     holdings: list[dict[str, Any]],
     metrics: dict[str, float | None],
     warnings: list[str],
@@ -60,6 +61,14 @@ def build_fund_artifact(
         "fund_id": fund_id,
         "name": public_name(name),
         "issuer": issuer,
+        # Additive to schema 1, and the reason it is here rather than in the
+        # catalogue: three consumers want one label (the catalogue row, a fund
+        # page, and any ETF/mutual-fund filter), and computing it in three
+        # places is exactly how `catalogue.json` came to say "not an ETF" for
+        # all 8,531 funds while the release summary said 3,172. The test that
+        # produced it is named once per release (`etf_classifier`), not 8,531
+        # times; ADR-0007 C3 will replace the test, not the field.
+        "etf": etf,
         "as_of": as_of,
         "filed_at": filed_at,
         "lag_days": lag_days,

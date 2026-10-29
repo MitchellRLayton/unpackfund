@@ -66,6 +66,25 @@ def _log(message: str) -> None:
     print(message, flush=True)
 
 
+def _alias_map(builds: list["FundBuild"]) -> dict[str, str]:
+    """Share-class ticker → the published ticker of the same series.
+
+    Only aliases that point at a fund this release actually published are kept: an
+    alias to a missing page would be a dead end that looks like a redirect. A class
+    symbol that another series publishes as its own primary ticker is skipped too —
+    the release can only have one page per ticker — and both skips are counted in
+    the build summary rather than silently dropped.
+    """
+    published = {build.ticker for build in builds}
+    aliases: dict[str, str] = {}
+    for build in builds:
+        for symbol in build.ref_symbols:
+            if symbol == build.ticker or symbol in published or symbol in aliases:
+                continue
+            aliases[symbol] = build.ticker
+    return aliases
+
+
 @dataclass
 class FundBuild:
     """One fund's artifact plus everything the run summary needs about it."""
@@ -74,6 +93,9 @@ class FundBuild:
     document: dict
     payload: bytes
     stats: dict = field(default_factory=dict)
+    #: Every symbol the fund's series reports, so the release can publish the
+    #: classes it does not name as files.
+    ref_symbols: tuple[str, ...] = ()
 
 
 def build_fund(ref: universe.FundRef, index: CompanyIndex) -> FundBuild:
@@ -103,11 +125,19 @@ def build_fund(ref: universe.FundRef, index: CompanyIndex) -> FundBuild:
             f"[{MIN_TOTAL_BP}, {MAX_TOTAL_BP}]"
         )
 
+    # One name test, one place: the artifact carries the label, and the
+    # catalogue, the manifest count and (later) a fund page all read that field
+    # instead of re-deriving it.
+    fund_name = filing.series_name or filing.registrant_name or ref.ticker
+    fund_issuer = filing.registrant_name or ""
+    is_etf = classify.looks_like_etf(fund_name, fund_issuer)
+
     document = artifact.build_fund_artifact(
         ticker=ref.ticker,
         fund_id=ref.fund_id,
-        name=filing.series_name or filing.registrant_name or ref.ticker,
-        issuer=filing.registrant_name or "",
+        name=fund_name,
+        issuer=fund_issuer,
+        etf=is_etf,
         as_of=found.report_date,
         filed_at=found.filing_date,
         source_url=found.source_url,
@@ -147,13 +177,15 @@ def build_fund(ref: universe.FundRef, index: CompanyIndex) -> FundBuild:
         # manifest as such. It selects nothing and gates nothing — a reviewer
         # needs the split to see the universe, and naming the test is how the
         # pre-ADR [open] stays visible instead of looking settled.
-        "etf": classify.looks_like_etf(
-            str(document.get("name") or ""), str(document.get("issuer") or "")
-        ),
+        "etf": is_etf,
         "seconds": round(time.monotonic() - started, 3),
     }
     return FundBuild(
-        ticker=ref.ticker, document=document, payload=payload, stats=stats
+        ticker=ref.ticker,
+        document=document,
+        payload=payload,
+        stats=stats,
+        ref_symbols=ref.symbols,
     )
 
 
@@ -331,6 +363,7 @@ def build_release(
     # What a browser actually reads. The manifest above is the inventory (8,533
     # entries at day-4 scale, 0.42 MB gzipped, on nobody's critical path); these
     # are the catalogue, the per-letter hash shards, and the reverse X-Ray shards.
+    new_aliases = _alias_map(builds)
     browser_objects = catalogue.write_release_objects(
         release_dir,
         release=release,
@@ -338,6 +371,8 @@ def build_release(
         files=files,
         header=document,
         manifest_payload=payload,
+        aliases=new_aliases,
+        etf_classifier=classify.ETF_CLASSIFIER,
     )
     elapsed = time.monotonic() - started
     _log(

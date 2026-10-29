@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import artifact, catalogue, manifest as manifest_mod, weights
+from . import artifact, catalogue, classify, manifest as manifest_mod, weights
 from .companies import CompanyIndex
 from .nport import NportFiling, parse
 
@@ -59,6 +59,9 @@ def sample_document(
         filed_at="2026-08-28",
         source_url="https://www.sec.gov/Archives/edgar/data/1/000000000026000001/primary_doc.xml",
         coverage_pct=vector.coverage_pct,
+        etf=classify.looks_like_etf(
+            filing.series_name or "", filing.registrant_name or ""
+        ),
         holdings=[
             artifact.holding_row(
                 company_id=row.company_id,
@@ -104,6 +107,10 @@ def write_release(root: Path, documents: list[dict], release_id: str = FIXTURE_R
         files=files,
         header=manifest_document,
         manifest_payload=manifest_payload,
+        # One alias, so the fixture release exercises the map the way a real one
+        # does; the target is the fixture fund, which is always published.
+        aliases={"TESTX": documents[0]["ticker"]} if documents else {},
+        etf_classifier=classify.ETF_CLASSIFIER,
     )
     return release_dir
 

@@ -71,6 +71,10 @@ def classify(asset_cat: str | None, issuer_cat: str | None, is_derivative: bool)
 #: it never decides what a fund *is* for a displayed number.
 _ETF_NAME = re.compile(r"\b(?:etf|exchange[\s-]traded)\b", re.IGNORECASE)
 
+#: Name of the test behind every published ``etf`` flag. A release names it once
+#: (manifest and catalogue), so a consumer can tell a fact from a heuristic.
+ETF_CLASSIFIER = "name_rule_v1"
+
 
 def looks_like_etf(series_name: str | None, registrant_name: str | None) -> bool:
     """Provisional ETF label from the fund's own filed names.

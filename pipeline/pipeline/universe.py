@@ -37,6 +37,13 @@ class FundRef:
     series_id: str | None
     resolved_by: str
     expected_registrant: str | None = None
+    #: Every ticker the fund's own series reports, primary symbol included. A
+    #: series is a portfolio; its symbols are its share classes, and a person
+    #: holds a class, not a portfolio. The release publishes one symbol per
+    #: series (a file per ticker), so the rest are published as aliases — the
+    #: difference between reaching 8,531 of the SEC's 28,613 fund tickers and
+    #: reaching most of them.
+    symbols: tuple[str, ...] = ()
 
     @property
     def fund_id(self) -> str:
@@ -188,6 +195,7 @@ def all_series() -> list[FundRef]:
                 cik=str(entry["cik"]),
                 series_id=entry["series"] or None,  # type: ignore[arg-type]
                 resolved_by=str(entry["source"]),
+                symbols=tuple(sorted(symbols)),
             )
         )
     # One artifact per file name: two series claiming the same ticker would write

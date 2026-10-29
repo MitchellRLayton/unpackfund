@@ -52,8 +52,23 @@ def test_catalogue_entries_are_four_positional_fields():
                 "coverage_pct": 96.7,
             }
         ],
+        etf_classifier="name_rule_v1",
     )
     assert document["funds"]["VOO"] == ["Vanguard 500 Index Fund", "Vanguard", 1, 96.7]
+    # The flag is a test, not a fact, so the release names the test.
+    assert document["etf_classifier"] == "name_rule_v1"
+
+
+def test_alias_object_maps_classes_to_a_published_ticker():
+    document = catalogue.alias_object(
+        "2026-10-30.1", {"VFIAX": "VOO", "VFINX": "VOO", "VTSAX": "VTI"}
+    )
+    assert document == {
+        "as_of": "2026-10-30.1",
+        "targets": {"VFIAX": "VOO", "VFINX": "VOO", "VTSAX": "VTI"},
+    }
+    # Sorted, so two builds of the same input are byte-identical.
+    assert list(document["targets"]) == sorted(document["targets"])
 
 
 def test_company_shards_are_the_reverse_of_the_documents():

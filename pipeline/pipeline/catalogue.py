@@ -9,6 +9,7 @@ large one:
 
     release.json            the pointer's body: header + where the rest lives (~1 KB)
     tickers.json            every published ticker, sorted (~25 KB gzipped)
+    aliases.json            share-class ticker -> the published ticker for its series
     index/{L}.json          bytes + sha256 per fund, sharded by first character
     catalogue.json          ticker -> name, issuer, ETF flag, coverage
     companies/index.json    company_id -> name, ticker, holder count (search)
@@ -74,13 +75,20 @@ def index_shards(as_of: str, files: Iterable[dict[str, Any]]) -> dict[str, dict[
     return dict(sorted(shards.items()))
 
 
-def catalogue_object(as_of: str, funds: Iterable[dict[str, Any]]) -> dict[str, Any]:
+def catalogue_object(
+    as_of: str, funds: Iterable[dict[str, Any]], *, etf_classifier: str
+) -> dict[str, Any]:
     """Ticker → what a search result needs to show, in as few bytes as possible.
 
     Entries are arrays rather than objects because 8,531 of them is 470 KB instead
     of 940 KB, and the order is fixed: ``[name, issuer, etf, coverage_pct]``. The
     app's ``loadCatalogue`` is the only reader, so a positional format with one
     documented order is cheaper than a self-describing one nobody reads.
+
+    ``etf_classifier`` rides at the top because the flag is a *test*, not a fact:
+    ``name_rule_v1`` misses exchange-traded funds whose name reads like a mutual
+    fund (VOO files as ``VANGUARD 500 INDEX FUND``), so a consumer that shows the
+    label has to know which test it came from and that ADR-0007 C3 will replace it.
     """
     entries: dict[str, list[Any]] = {}
     for fund in funds:
@@ -90,7 +98,25 @@ def catalogue_object(as_of: str, funds: Iterable[dict[str, Any]]) -> dict[str, A
             1 if fund.get("etf") else 0,
             fund["coverage_pct"],
         ]
-    return {"as_of": as_of, "funds": dict(sorted(entries.items()))}
+    return {
+        "as_of": as_of,
+        "etf_classifier": etf_classifier,
+        "funds": dict(sorted(entries.items())),
+    }
+
+
+def alias_object(as_of: str, aliases: dict[str, str]) -> dict[str, Any]:
+    """Share-class ticker → the published ticker of the same portfolio.
+
+    The SEC fund ticker file lists 28,613 tickers across 12,265 series: a fund is a
+    portfolio with many classes (VOO the ETF, VFIAX Admiral, VFINX Investor), and a
+    release publishes one file per series. Without this map a visitor who types the
+    class they actually own gets "not found", which is the one dead end the plan
+    forbids. ``targets`` is alias → published, so a lookup is one dictionary read in
+    the browser; the published ticker is never a key (it is its own page) and a
+    target that is not published is a validator failure, not a redirect to nowhere.
+    """
+    return {"as_of": as_of, "targets": dict(sorted(aliases.items()))}
 
 
 def company_objects(
@@ -201,6 +227,8 @@ def write_release_objects(
     files: list[dict],
     header: dict,
     manifest_payload: bytes,
+    aliases: dict[str, str] | None = None,
+    etf_classifier: str = "",
 ) -> dict:
     """Write the objects a browser reads and describe them in ``release.json``.
 
@@ -234,13 +262,17 @@ def write_release_objects(
                     "ticker": document["ticker"],
                     "name": document["name"],
                     "issuer": document["issuer"],
-                    "etf": document.get("etf"),
+                    "etf": document["etf"],
                     "coverage_pct": document["coverage_pct"],
                 }
                 for document in documents
             ],
+            etf_classifier=etf_classifier,
         ),
     )
+
+    alias_entries = aliases or {}
+    alias_entry = write("aliases.json", alias_object(release, alias_entries))
 
     company_index, company_shards = company_objects(release, documents)
     company_index_entry = write("companies/index.json", company_index)
@@ -267,6 +299,10 @@ def write_release_objects(
                 "prefix": "companies/",
                 "count": len(company_shards),
             },
+            "aliases": {
+                "object": alias_entry,
+                "count": len(alias_entries),
+            },
         },
     )
     release_payload = encode(release_document)
@@ -279,6 +315,7 @@ def write_release_objects(
         f"tickers {sizes['tickers.json'] / 1e3:.0f} kB, catalogue {sizes['catalogue.json'] / 1e3:.0f} kB, "
         f"{len(shard_entries)} index shard(s), {len(company_shards):,} company shard(s) "
         f"({sum(size for path, size in sizes.items() if path.startswith('companies/')) / 1e6:.1f} MB), "
+        f"{len(alias_entries):,} alias(es) ({sizes['aliases.json'] / 1e3:.0f} kB), "
         f"pointer {len(release_payload) / 1e3:.1f} kB"
     )
     return {
@@ -292,6 +329,7 @@ def write_release_objects(
 __all__ = [
     "MAX_COMPANIES",
     "SHARD_OTHER",
+    "alias_object",
     "catalogue_object",
     "company_objects",
     "encode",
