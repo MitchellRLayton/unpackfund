@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unpackfund-pipeline"
+version = "0.1.0"
+description = "UnpackFund build-time pipeline: SEC EDGAR N-PORT → versioned JSON artifacts"
+requires-python = ">=3.13"
+license = "MIT"
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["pipeline*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q --strict-markers --basetemp=.pytest-tmp"

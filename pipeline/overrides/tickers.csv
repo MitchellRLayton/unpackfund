@@ -1,0 +1,10 @@
+# Reviewed ticker → registrant mappings for symbols the SEC fund ticker file does
+# not carry. Chiefly unit investment trusts, which file N-PORT under a registrant
+# CIK with *no* series id, so they cannot resolve from series data at all.
+#
+# Read by pipeline/universe.py after company_tickers_mf.json misses. `registrant`
+# is compared with EDGAR's own entity name for that CIK and with genInfo/regName
+# on the filing; a mismatch fails the build instead of quietly mapping a symbol to
+# the wrong trust. CUSIPs, ISINs, LEIs and class ids do not belong in this file.
+ticker,cik,series_id,registrant
+SPY,884394,,SPDR S&P 500 ETF TRUST

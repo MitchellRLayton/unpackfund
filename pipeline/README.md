@@ -1,0 +1,85 @@
+# pipeline
+
+Build-time data pipeline: SEC EDGAR Form N-PORT → versioned JSON artifacts.
+Python only, no server, no database at rest. It never serves a request; the
+browser reads what this writes.
+
+```
+python -m pipeline.build --tickers VOO     # filing → artifacts/releases/<id>/
+python -m pipeline.validate --release artifacts/releases/<id>/   # the gate
+python -m pipeline.checks --tickers VOO    # two builds must be byte-identical
+```
+
+Wrapped as `pnpm pipeline:build`, `pnpm data:validate --release <dir>`,
+`pnpm data:validate --fixtures` (offline, CI form) and `pnpm check:determinism`.
+
+## Layout
+
+| Module | Responsibility |
+|---|---|
+| `sec.py` | EDGAR HTTP client: declared User-Agent, ≤8 req/s, retries, content-addressed byte cache |
+| `universe.py` | ticker → registrant CIK → N-PORT series (`company_tickers_mf.json`, then `overrides/tickers.csv`) |
+| `filings.py` | newest N-PORT document for one series (the trust files one per series per quarter) |
+| `nport.py` | `primary_doc.xml` parser, matched on local element name |
+| `classify.py` | N-PORT codes → `equity` / `debt` / `cash` / `derivative` / `fund` / `other` |
+| `companies.py` | holding → `company_id`, with the rung recorded |
+| `weights.py` | basis points, coverage, HHI / effective N / top-10 |
+| `artifact.py` | the published per-fund document: field order, canonical bytes, hash |
+| `manifest.py` | the release index consumers read first |
+| `build.py` | orchestration and the three pre-publication gates |
+| `validate.py` | offline contract checks over a built release |
+| `checks.py` | determinism across two builds |
+| `fixtures.py` | the offline sample release used by tests and `--fixtures` |
+
+## Data decisions this code makes
+
+These are the ones a reviewer would otherwise have to reverse-engineer from the
+diff. Each is recorded because the alternative is a silent choice.
+
+**Weights are basis points of the fund's filed NAV, never renormalised.** A row's
+weight is `valUSD / netAssets`; the vector therefore sums to whatever the filing
+sums to. All five real funds measured on 2026-10-28 sum *above* 10,000 bp
+(10,006–10,028) because derivatives and liabilities sit outside `invstOrSec`. The
+artifact keeps that residual, the validator warns when it is outside
+`[9,900, 10,000]`, and the UI must show it rather than hide it. Renormalising to
+100% would make the ledger's cash and derivative lines lie.
+
+**Rounding is largest-remainder, not `round()` per row.** Per-row rounding drifts
+with row count; a 500-holding fund would sum to 10,004 or 9,996 unpredictably.
+Ties break on fraction then position, so two runs produce identical bytes.
+
+**Coverage is weight-based, and it counts resolution, not fundamentals.** The
+contract defines covered weight as "resolved to a `company_id` with
+fundamentals"; fundamentals do not exist yet, so day 1 measures resolution and
+reports it. The field is the same one the UI's 60/70 bands read.
+
+**Two mapping rungs, both exact, and the rung is published.** Ticker equality
+first, then a normalised-name match accepted only when exactly one CIK normalises
+to that name. This exists because the obvious ladder is unusable with free data:
+VOO files 520 holdings with **one** ticker (Vanguard publishes none), so a
+ticker-only mapper reports 0.2% coverage on the largest fund in the set, while
+CUSIP/ISIN need a licensed security master and LEI needs an LEI→CIK table. Rung
+counts go in the manifest (`mapping_rungs`) so a reviewer sees that one release
+leaned on the weaker rung. Ambiguous names are refused, not resolved to "most
+likely".
+
+**No CUSIP or ISIN ever leaves the pipeline.** They are internal join keys; the
+validator fails the release if a licensed identifier appears in any output file.
+
+**Unmapped weight stays unmapped.** It is counted, labelled (`unmapped_holding`)
+and shown, never redistributed across resolved companies — that is the mechanism
+by which a low-coverage fund would look average.
+
+**`etf_count` is `null` until a classifier exists.** VOO's series name is
+"VANGUARD 500 INDEX FUND"; the ETF is a share class, not the series. Guessing from
+the name was wrong for the largest fund in the sample, so the manifest publishes
+`null` with `etf_classifier: pending_adr_0007_c3` and the validator accepts that
+only when the reason is stated.
+
+## Adding a ticker
+
+If `company_tickers_mf.json` has the symbol, nothing to do. If not — chiefly unit
+investment trusts, which file N-PORT with no series id — add a reviewed row to
+`overrides/tickers.csv` with the CIK, the series id (usually empty) and the
+registrant name. The build compares that name with EDGAR's own entity name and
+fails on a mismatch, so a typo cannot silently map a symbol to the wrong trust.

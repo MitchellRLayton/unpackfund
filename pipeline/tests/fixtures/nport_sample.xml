@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic N-PORT covering the shapes real filings put in one document: a
+     derivative row with no CUSIP and no payoff profile, a money-market sweep
+     (STIV) filed by a fund, a fund-of-funds equity position (issuerCat RF), an
+     "N/A" CUSIP placeholder, a negative value, and two rows of the same issuer
+     (Alphabet share classes) that must merge to one weighting line. -->
+<edgarSubmission xmlns="http://www.sec.gov/edgar/nport">
+  <headerData>
+    <submissionType>NPORT-P</submissionType>
+    <filerInfo>
+      <seriesClassInfo>
+        <seriesId>S000000001</seriesId>
+        <classId>C000000011</classId>
+      </seriesClassInfo>
+    </filerInfo>
+    <accessionNumber>0000000000-26-000001</accessionNumber>
+  </headerData>
+  <formData>
+    <genInfo>
+      <regName>TEST TRUST</regName>
+      <seriesName>Test Index Fund</seriesName>
+      <seriesId>S000000001</seriesId>
+      <repPdDate>2026-06-30</repPdDate>
+      <repPdEnd>2026-06-30</repPdEnd>
+    </genInfo>
+    <fundInfo>
+      <totAssets>100000000.00</totAssets>
+      <totLiabs>2000.00</totLiabs>
+      <netAssets>100000000.00</netAssets>
+    </fundInfo>
+    <invstOrSecs>
+      <invstOrSec>
+        <name>Apple Inc</name>
+        <lei>HWUPKR0MPOU8FGXBT394</lei>
+        <title>APPLE INC</title>
+        <cusip>037833100</cusip>
+        <identifiers>
+          <isin value="US0378331005"/>
+          <ticker value="AAPL"/>
+        </identifiers>
+        <balance>100000</balance>
+        <units>NS</units>
+        <curCd>USD</curCd>
+        <valUSD>30000000.00</valUSD>
+        <pctVal>30.0</pctVal>
+        <payoffProfile>Long</payoffProfile>
+        <assetCat>EC</assetCat>
+        <issuerCat>CORP</issuerCat>
+        <invCountry>US</invCountry>
+      </invstOrSec>
+      <invstOrSec>
+        <name>Alphabet Inc Class A</name>
+        <title>ALPHABET INC</title>
+        <cusip>02079K305</cusip>
+        <identifiers>
+          <isin value="US02079K3059"/>
+          <ticker value="GOOGL"/>
+        </identifiers>
+        <balance>50000</balance>
+        <units>NS</units>
+        <curCd>USD</curCd>
+        <valUSD>12000000.00</valUSD>
+        <pctVal>12.0</pctVal>
+        <payoffProfile>Long</payoffProfile>
+        <assetCat>EC</assetCat>
+        <issuerCat>CORP</issuerCat>
+        <invCountry>US</invCountry>
+      </invstOrSec>
+      <invstOrSec>
+        <name>Alphabet Inc Class C</name>
+        <title>ALPHABET INC</title>
+        <cusip>02079K107</cusip>
+        <balance>50000</balance>
+        <units>NS</units>
+        <curCd>USD</curCd>
+        <valUSD>11800000.00</valUSD>
+        <pctVal>11.8</pctVal>
+        <payoffProfile>Long</payoffProfile>
+        <assetCat>EC</assetCat>
+        <issuerCat>CORP</issuerCat>
+        <invCountry>US</invCountry>
+      </invstOrSec>
+      <invstOrSec>
+        <name>Vanguard Total World Stock ETF</name>
+        <title>Common Stock</title>
+        <cusip>N/A</cusip>
+        <balance>100000</balance>
+        <units>NS</units>
+        <curCd>USD</curCd>
+        <valUSD>15000000.00</valUSD>
+        <pctVal>15.0</pctVal>
+        <payoffProfile>Long</payoffProfile>
+        <assetCat>EC</assetCat>
+        <issuerCat>RF</issuerCat>
+        <invCountry>US</invCountry>
+      </invstOrSec>
+      <invstOrSec>
+        <name>Unlisted Holdings Corp</name>
+        <title>PREFERRED STOCK</title>
+        <cusip>N/A</cusip>
+        <balance>1000</balance>
+        <units>NS</units>
+        <curCd>USD</curCd>
+        <valUSD>30600000.00</valUSD>
+        <pctVal>30.6</pctVal>
+        <payoffProfile>Long</payoffProfile>
+        <assetCat>EP</assetCat>
+        <issuerCat>CORP</issuerCat>
+        <invCountry>US</invCountry>
+      </invstOrSec>
+      <invstOrSec>
+        <name>Vanguard Market Liquidity Fund</name>
+        <title>Money Market Fund</title>
+        <balance>1000000</balance>
+        <units>NC</units>
+        <curCd>USD</curCd>
+        <valUSD>1000000.00</valUSD>
+        <pctVal>1.0</pctVal>
+        <assetCat>STIV</assetCat>
+        <issuerCat>RF</issuerCat>
+        <invCountry>US</invCountry>
+      </invstOrSec>
+      <invstOrSec>
+        <name>S&amp;P 500 E-mini Future Sep26</name>
+        <title>FUTURE</title>
+        <balance>12</balance>
+        <units>NC</units>
+        <curCd>USD</curCd>
+        <valUSD>-400000.00</valUSD>
+        <pctVal>-0.4</pctVal>
+        <payoffProfile>Long</payoffProfile>
+        <assetCat>DE</assetCat>
+        <invCountry>US</invCountry>
+        <derivativeInfo>
+          <futrTran>F</futrTran>
+          <futrCtrctsInfo>
+            <futrVal>400000.00</futrVal>
+          </futrCtrctsInfo>
+        </derivativeInfo>
+      </invstOrSec>
+    </invstOrSecs>
+  </formData>
+</edgarSubmission>
