@@ -7,6 +7,10 @@ the same filing must produce identical bytes — that is the determinism gate.
 
 from __future__ import annotations
 
+import re
+
+from .identifiers import UNNAMED_HOLDING, is_licensed, public_name
+
 import hashlib
 import json
 import os
@@ -54,7 +58,7 @@ def build_fund_artifact(
         "schema_version": SCHEMA_VERSION,
         "ticker": ticker,
         "fund_id": fund_id,
-        "name": name,
+        "name": public_name(name),
         "issuer": issuer,
         "as_of": as_of,
         "filed_at": filed_at,
@@ -86,14 +90,28 @@ def holding_row(
 ) -> dict[str, Any]:
     """One published holding row.
 
+    ``name`` is redacted: some filings put the CUSIP where the security name goes
+    (``"742718109"``) or embed one in a Bloomberg string (``"New Issuer: BB Company
+    ID:072219595"``), and 23 funds in the widened universe did exactly that. The row
+    stays — its weight is real and the coverage denominator needs it — but the
+    identifier is replaced, and a name that was nothing but the identifier becomes
+    ``UNNAMED_HOLDING`` rather than an empty string.
+
     ``asset_cat`` is additive to schema v1 and is what lets the UI label cash and
     derivatives instead of presenting them as companies. CUSIP and ISIN are
     deliberately absent: they never leave the pipeline (compliance rule).
+
+    A row with no ``company_id`` gets no ``ticker`` either. The as-filed ticker is
+    not a ticker in that case: on the widened universe it was a fund's own
+    identifier, a Bloomberg suffix (``JHDG US``) or a CUSIP (``47803P419``) for
+    bond and fund-of-funds holdings, and 27 of them failed the release's own CUSIP
+    check. If we cannot name the company, we cannot vouch for the identifier, so
+    the row keeps its as-filed name and nothing else.
     """
     return {
         "company_id": company_id,
-        "name": name,
-        "ticker": ticker,
+        "name": public_name(name),
+        "ticker": ticker if company_id and not is_licensed(ticker) else None,
         "asset_cat": asset_cat,
         "weight_bp": weight_bp,
     }

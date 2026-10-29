@@ -21,7 +21,7 @@ import math
 from collections import Counter
 from dataclasses import dataclass, field
 
-from . import classify
+from . import classify, identifiers
 from .classify import Classification
 from .companies import CompanyIndex
 from .nport import Holding
@@ -56,14 +56,20 @@ class WeightVector:
 
     @property
     def coverage_pct(self) -> float:
-        mapped = sum(
-            row.weight_bp
-            for row in self.holdings
-            if row.company_id and row.weight_bp > 0
-        )
-        if self.total_bp <= 0:
+        """Share of the fund's *gross* weight that we can attribute to a company.
+
+        Gross, not net: a fund that holds 100% long and 50% short has a net weight of
+        50%, so dividing mapped weight by the net total reported 111.2% coverage for
+        AUEIX and 102.6% for ASPCX — 25 funds whose coverage then vanished from the
+        manifest's histogram, because no band covers a value above 100. Both sides
+        of a short are real exposure, so both sides are counted and the ratio cannot
+        exceed 100.
+        """
+        gross = sum(abs(row.weight_bp) for row in self.holdings)
+        if gross <= 0:
             return 0.0
-        return round(100 * mapped / self.total_bp, 1)
+        mapped = sum(abs(row.weight_bp) for row in self.holdings if row.company_id)
+        return round(100 * mapped / gross, 1)
 
 
 def _fraction(holding: Holding, net_assets: float | None) -> float | None:
@@ -182,7 +188,11 @@ def build_vector(
                 merged_rows=row["rows"],
             )
         )
-    vector.holdings.sort(key=lambda row: (-row.weight_bp, row.name.upper()))
+    # Sorted by the *published* name: redaction can give two rows the same name,
+    # and the validator re-derives this order from the artifact.
+    vector.holdings.sort(
+        key=lambda row: (-row.weight_bp, identifiers.public_name(row.name).upper())
+    )
     vector.total_bp = sum(row.weight_bp for row in vector.holdings)
 
     # 2. Warnings: each one describes data the UI must label.

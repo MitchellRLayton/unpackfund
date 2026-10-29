@@ -10,6 +10,7 @@ import {
   formatRatio,
   formatShare,
   formatWeightBp,
+  formatFundList,
 } from "./format";
 
 describe("formatWeightBp", () => {
@@ -74,5 +75,20 @@ describe("other formatting", () => {
     expect(formatRatio(0.02074643, 4)).toBe("0.0207");
     expect(formatRatio(48.201064, 1)).toBe("48.2");
     expect(formatCoveragePct(90.3)).toBe("90.3%");
+  });
+});
+
+describe("formatFundList", () => {
+  it("names a short list in full", () => {
+    expect(formatFundList(["VOO", "QQQ"])).toBe("VOO, QQQ");
+    expect(formatFundList(["VOO"])).toBe("VOO");
+    expect(formatFundList([])).toBe("no funds");
+  });
+
+  it("summarises the widened universe with an exact remaining count", () => {
+    const universe = Array.from({ length: 12265 }, (_, index) => `F${index}`);
+    const text = formatFundList(universe);
+    expect(text).toBe("F0, F1, F2, F3, F4, F5, F6, F7 and 12,257 more");
+    expect(text.length).toBeLessThan(80);
   });
 });

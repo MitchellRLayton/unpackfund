@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import { Notice } from "@/components/Notice";
 import { encodePortfolio } from "@/lib/fragment";
 import { usePortfolio } from "@/lib/use-portfolio";
+import { formatFundList } from "@/lib/format";
 import { useRelease } from "@/lib/use-release";
 import { FULL_ALLOCATION_BP } from "@/lib/types";
 
@@ -109,7 +110,7 @@ export function PortfolioBuilder() {
         title: `${ticker} is not in release ${release.data.manifest.as_of}`,
         body:
           catalog.length > 0
-            ? `This release publishes ${catalog.join(", ")}.`
+            ? `This release publishes ${formatFundList(catalog)}.`
             : "This release publishes no funds.",
       });
       return;
@@ -165,7 +166,7 @@ export function PortfolioBuilder() {
         style={{ fontSize: "0.85rem", marginTop: "0.5rem" }}
       >
         {release.status === "ready"
-          ? `Release ${release.data.manifest.as_of} publishes ${catalog.length} ${catalog.length === 1 ? "fund" : "funds"}: ${catalog.join(", ")}.`
+          ? `Release ${release.data.manifest.as_of} publishes ${catalog.length} ${catalog.length === 1 ? "fund" : "funds"}: ${formatFundList(catalog)}.`
           : release.status === "loading"
             ? "Reading the release pointer…"
             : "The release pointer could not be read."}

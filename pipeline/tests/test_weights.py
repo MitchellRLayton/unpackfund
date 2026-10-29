@@ -95,8 +95,24 @@ def test_unmapped_rows_do_not_collapse_into_one(vector):
 
 
 def test_coverage_is_weight_based_not_count_based(vector):
-    """5 of 7 rows resolve, but coverage is 84.4% of weight — the number that matters."""
-    assert vector.coverage_pct == pytest.approx(84.4)
+    """5 of 7 rows resolve, but coverage is a share of gross weight, not of rows."""
+    assert vector.coverage_pct == pytest.approx(83.7)
+
+
+def test_short_positions_cannot_push_coverage_above_100(index):
+    """A 100% long / 50% short fund is fully attributed, not 200% attributed.
+
+    Net-weight coverage reported 111.2% for AUEIX and 102.6% for ASPCX on the widened
+    universe: dividing positive mapped weight by a net total that shorts had reduced.
+    Both sides of a short are real exposure, so both sides are counted.
+    """
+    rows = [
+        _holding("Apple Inc", 100.0),
+        _holding("Microsoft Corp", 50.0, val_usd=-50.0, payoff_profile="Short"),
+    ]
+    vector = weights.build_vector(rows, index, 100.0, lag_days=0)
+    assert vector.coverage_pct <= 100.0
+    assert vector.coverage_pct == pytest.approx(66.7)
 
 
 def test_empty_filing_is_an_error(index):

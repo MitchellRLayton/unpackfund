@@ -1,8 +1,10 @@
-"""Build a release: tickers in, immutable per-fund JSON + manifest out.
+"""Build a release: funds in, immutable per-fund JSON + manifest out.
 
     python -m pipeline.build --tickers VOO,AVUV,SPY,QQQ,ARKK
+    python -m pipeline.build --universe all --limit 50
+    python -m pipeline.build --universe all          # the whole SEC fund universe
 
-Every fund passes three gates **before** the release is written, so a bad filing
+Every fund passes three gates **before** its file is written, so a bad filing
 cannot produce a published artifact:
 
 1. the filing's holdings reconcile to NAV (``|Σ valUSD / netAssets − 1| ≤ 5%``,
@@ -14,6 +16,15 @@ cannot produce a published artifact:
 
 Nothing is fetched twice: the byte cache under ``data/cache`` is the only source
 after the first run, which is what makes the determinism check meaningful.
+
+**Scale.** A single-fund build is the day-1 shape; a 12,000-series build is what
+day 4 asks for, and three things had to change for it: the universe is enumerated
+rather than typed (``--universe all``), funds are built on a small thread pool
+(the SEC client still throttles the whole process to 8 req/s, but a build spends
+most of its wall clock parsing and hashing, not waiting), and a failing fund is
+**recorded** instead of aborting the run — a universe walk that dies on the first
+fund with an odd filing never finishes. ``--on-error fail`` restores the strict
+behaviour, and publishing uses it: a release must be clean.
 """
 
 from __future__ import annotations
@@ -22,11 +33,12 @@ import argparse
 import json
 import sys
 import time
-from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import artifact, filings, manifest as manifest_mod, universe, weights
-from .companies import CompanyIndex, rung_counts
+from . import artifact, classify, filings, manifest as manifest_mod, universe, weights
+from .companies import CompanyIndex
 from .nport import NportParseError
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -34,6 +46,8 @@ MAX_FUND_BYTES = 200_000
 MIN_TOTAL_BP = 9_000
 MAX_TOTAL_BP = 10_500
 NAV_RESIDUAL_LIMIT = 0.05
+DEFAULT_WORKERS = 8
+RUNG_NAMES = ("ticker", "name_exact", "unmapped")
 
 
 class GateError(RuntimeError):
@@ -44,8 +58,18 @@ def _log(message: str) -> None:
     print(message, flush=True)
 
 
-def build_fund(ticker: str, index: CompanyIndex) -> tuple[dict, bytes, dict]:
-    ref = universe.resolve(ticker)
+@dataclass
+class FundBuild:
+    """One fund's artifact plus everything the run summary needs about it."""
+
+    ticker: str
+    document: dict
+    payload: bytes
+    stats: dict = field(default_factory=dict)
+
+
+def build_fund(ref: universe.FundRef, index: CompanyIndex) -> FundBuild:
+    started = time.monotonic()
     found = filings.latest(ref)
     filing = found.filing
 
@@ -60,14 +84,14 @@ def build_fund(ticker: str, index: CompanyIndex) -> tuple[dict, bytes, dict]:
     residual = abs(filed_total / filing.net_assets - 1) if filing.net_assets else None
     if residual is not None and residual > NAV_RESIDUAL_LIMIT:
         raise GateError(
-            f"{ticker}: holdings sum to {filed_total:,.0f} vs netAssets "
+            f"{ref.ticker}: holdings sum to {filed_total:,.0f} vs netAssets "
             f"{filing.net_assets:,.0f} ({residual:.2%}) — over the {NAV_RESIDUAL_LIMIT:.0%} band"
         )
 
     # Gate 2 — the vector is a whole fund, not a fragment or a double count.
     if not MIN_TOTAL_BP <= vector.total_bp <= MAX_TOTAL_BP:
         raise GateError(
-            f"{ticker}: weight vector totals {vector.total_bp} bp, outside "
+            f"{ref.ticker}: weight vector totals {vector.total_bp} bp, outside "
             f"[{MIN_TOTAL_BP}, {MAX_TOTAL_BP}]"
         )
 
@@ -98,31 +122,102 @@ def build_fund(ticker: str, index: CompanyIndex) -> tuple[dict, bytes, dict]:
     # Gate 3 — the size budget the plan promises the browser.
     if len(payload) > MAX_FUND_BYTES:
         raise GateError(
-            f"{ticker}: artifact is {len(payload):,} bytes, over the "
+            f"{ref.ticker}: artifact is {len(payload):,} bytes, over the "
             f"{MAX_FUND_BYTES:,}-byte budget"
         )
 
-    _log(
-        f"  {ref.ticker:6} {document['as_of']} lag={document['lag_days']:>3}d "
-        f"cover={document['coverage_pct']:>5.1f}% rows={len(document['holdings']):>4} "
-        f"bp={vector.total_bp:>5} {len(payload):>7,}B "
-        f"rungs={dict(vector.rung_counts)} warnings={document['warnings']}"
-    )
     stats = {
-        "rungs": vector.rung_counts,
-        "asset_cats": vector.asset_cat_counts,
+        "rungs": dict(vector.rung_counts),
+        "asset_cats": dict(vector.asset_cat_counts),
+        "total_bp": vector.total_bp,
+        "net_assets": filing.net_assets,
+        "as_of": found.report_date,
+        "name": document["name"],
+        "issuer": document["issuer"],
+        "coverage_pct": document["coverage_pct"],
+        # Provisional ETF label (ADR-0007 C3): a name test, recorded in the
+        # manifest as such. It selects nothing and gates nothing — a reviewer
+        # needs the split to see the universe, and naming the test is how the
+        # pre-ADR [open] stays visible instead of looking settled.
+        "etf": classify.looks_like_etf(
+            str(document.get("name") or ""), str(document.get("issuer") or "")
+        ),
+        "seconds": round(time.monotonic() - started, 3),
     }
-    return document, payload, stats
+    return FundBuild(
+        ticker=ref.ticker, document=document, payload=payload, stats=stats
+    )
+
+
+def _attempt(
+    ref: universe.FundRef, index: CompanyIndex
+) -> tuple[FundBuild | None, str | None]:
+    try:
+        return build_fund(ref, index), None
+    except Exception as error:  # noqa: BLE001 — a universe walk records and continues
+        # Deliberately broad: one malformed filing, one EDGAR hiccup after its own
+        # retries, one unexpected shape must not throw away 12,000 built funds. The
+        # failure is recorded with its type and counted, and `--on-error fail`
+        # (which publishing uses) still refuses to write a release with holes.
+        return None, f"{type(error).__name__}: {error}"
+
+
+def resolve_universe(
+    spec: str,
+    *,
+    limit: int | None = None,
+    top: int | None = None,
+    from_summary: Path | None = None,
+) -> list[universe.FundRef]:
+    """Turn ``--universe`` / ``--tickers`` into a deterministic list of funds.
+
+    ``all`` is the SEC fund file's series, ``tickers:VOO,QQQ`` the reviewed list,
+    and ``--top N --from-summary`` ranks a previous walk's funds by N-PORT net
+    assets — which is how a publishable subset is chosen without a second
+    universe sweep and without a hand-maintained list.
+    """
+    if spec == universe.UNIVERSE_ALL:
+        refs = universe.all_series()
+        if top is not None:
+            if from_summary is None:
+                raise GateError("--top needs --from-summary from an earlier walk")
+            summary = json.loads(from_summary.read_text())
+            ranked = sorted(
+                (row for row in summary.get("funds", []) if row.get("net_assets")),
+                key=lambda row: (-float(row["net_assets"]), row["ticker"]),
+            )
+            wanted = {row["ticker"]: float(row["net_assets"]) for row in ranked[:top]}
+            refs = [ref for ref in refs if ref.ticker in wanted]
+            refs.sort(key=lambda ref: (-wanted[ref.ticker], ref.ticker))
+            missing = sorted(set(wanted) - {ref.ticker for ref in refs})
+            if missing:
+                raise GateError(
+                    f"--top: {len(missing)} funds are not in the universe: {missing[:5]}"
+                )
+        if limit is not None:
+            refs = refs[:limit]
+        return refs
+    if spec.startswith("tickers:"):
+        wanted = [t.strip().upper() for t in spec.split(":", 1)[1].split(",") if t.strip()]
+        refs = [universe.resolve(ticker) for ticker in wanted]
+        if limit is not None:
+            refs = refs[:limit]
+        return refs
+    raise GateError(f"unknown universe spec {spec!r} — use 'all' or 'tickers:VOO,QQQ'")
 
 
 def build_release(
-    tickers: list[str],
+    refs: list[universe.FundRef],
     *,
     out_dir: Path,
     release_id: str | None = None,
     generated_at: str | None = None,
+    workers: int = 1,
+    on_error: str = "fail",
+    label: str = "tickers",
+    progress_every: int = 0,
 ) -> Path:
-    started = time.time()
+    started = time.monotonic()
     index = CompanyIndex.load()
     _log(f"company index: {len(index.by_ticker):,} tickers, {len(index.by_name):,} unique names")
 
@@ -131,47 +226,131 @@ def build_release(
     funds_dir = release_dir / "funds"
     funds_dir.mkdir(parents=True, exist_ok=True)
 
-    documents: list[dict] = []
-    files: list[dict] = []
-    rung_totals: Counter[str] = Counter()
-    cat_totals: Counter[str] = Counter()
+    _log(f"building release {release} → {release_dir} ({len(refs):,} funds, {label})")
 
-    _log(f"building release {release} → {release_dir}")
-    for ticker in tickers:
-        document, payload, stats = build_fund(ticker, index)
-        rel_path = f"funds/{document['ticker']}.json"
-        (release_dir / rel_path).write_bytes(payload)
-        documents.append(document)
-        files.append(manifest_mod.file_entry(rel_path, payload))
-        rung_totals.update(stats["rungs"])
-        cat_totals.update(stats["asset_cats"])
+    # Resolve every registrant's series→filing index up front. This is the whole
+    # reason a 12,000-fund run is affordable: fetching inside the build loop made
+    # a trust's filing history be re-read once per series (O(n²) per trust).
+    started_prefetch = time.monotonic()
+    indexed = filings.prefetch(
+        refs, workers=workers, progress=_log if progress_every else None
+    )
+    _log(
+        f"indexed {indexed['documents']:,} N-PORT documents across "
+        f"{indexed['registrants']:,} registrants (largest {indexed['largest']:,} series) "
+        f"in {time.monotonic() - started_prefetch:.1f}s"
+    )
+
+    builds: list[FundBuild] = []
+    failures: list[dict[str, str]] = []
+    done = 0
+
+    def record(result: tuple[FundBuild | None, str | None], ref: universe.FundRef) -> None:
+        nonlocal done
+        build, problem = result
+        done += 1
+        if build is None:
+            failures.append({"ticker": ref.ticker, "cik": ref.cik, "error": problem or ""})
+            if progress_every:
+                _log(f"  !! {ref.ticker}: {problem}")
+        else:
+            builds.append(build)
+        if progress_every and done % progress_every == 0:
+            elapsed = time.monotonic() - started
+            rate = done / elapsed if elapsed else 0
+            _log(
+                f"  … {done:,}/{len(refs):,} funds, {len(failures)} failed, "
+                f"{rate:.1f} funds/s, {elapsed / 60:.1f} min elapsed"
+            )
+
+    if workers <= 1:
+        for ref in refs:
+            record(_attempt(ref, index), ref)
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [(ref, pool.submit(_attempt, ref, index)) for ref in refs]
+            for ref, future in futures:
+                record(future.result(), ref)
+
+    if failures and on_error == "fail":
+        preview = "; ".join(f"{row['ticker']}: {row['error']}" for row in failures[:5])
+        raise GateError(
+            f"{len(failures):,} of {len(refs):,} funds failed — refusing the release "
+            f"({preview}{' …' if len(failures) > 5 else ''})"
+        )
+
+    builds.sort(key=lambda build: build.ticker)
+    files: list[dict] = []
+    rung_totals: dict[str, int] = {}
+    cat_totals: dict[str, int] = {}
+    documents: list[dict] = []
+    summary_funds: list[dict] = []
+    for build in builds:
+        rel_path = f"funds/{build.ticker}.json"
+        (release_dir / rel_path).write_bytes(build.payload)
+        documents.append(build.document)
+        files.append(manifest_mod.file_entry(rel_path, build.payload))
+        for rung, count in build.stats["rungs"].items():
+            rung_totals[rung] = rung_totals.get(rung, 0) + count
+        for category, count in build.stats["asset_cats"].items():
+            cat_totals[category] = cat_totals.get(category, 0) + count
+        summary_funds.append(
+            {
+                "ticker": build.ticker,
+                "name": build.stats["name"],
+                "issuer": build.stats["issuer"],
+                "as_of": build.stats["as_of"],
+                "net_assets": build.stats["net_assets"],
+                "coverage_pct": build.stats["coverage_pct"],
+                "bytes": len(build.payload),
+                "total_bp": build.stats["total_bp"],
+                "etf": build.stats["etf"],
+                "seconds": build.stats["seconds"],
+            }
+        )
 
     document = manifest_mod.build_manifest(
         release_id=release,
         funds=documents,
         files=files,
-        rung_counts=rung_counts(rung_totals),
+        rung_counts={name: int(rung_totals.get(name, 0)) for name in RUNG_NAMES},
         asset_cat_counts=dict(sorted(cat_totals.items())),
-        etf_count=None,  # ETF vs mutual fund needs a classifier (ADR-0007 C3)
         generated_at=generated_at,
     )
     payload = artifact.canonical_bytes(document)
     (release_dir / "manifest.json").write_bytes(payload)
+    elapsed = time.monotonic() - started
     _log(
-        f"manifest: {len(documents)} funds, {document['company_count']:,} companies, "
-        f"{len(payload):,}B, coverage={document['coverage_histogram']}"
+        f"manifest: {len(documents):,} funds, {document['company_count']:,} companies, "
+        f"{len(payload):,}B, etf={document['etf_count']:,}, "
+        f"coverage={document['coverage_histogram']}"
     )
-    _log(f"done in {time.time() - started:.1f}s")
 
     summary = {
         "release": release,
         "release_dir": str(release_dir),
-        "funds": len(documents),
+        "universe": label,
+        "funds": summary_funds,
+        "fund_count": len(documents),
+        "attempted": len(refs),
+        "failed": sorted(failures, key=lambda row: row["ticker"]),
         "company_count": document["company_count"],
+        "etf_count": document["etf_count"],
+        "etf_classifier": document["etf_classifier"],
         "rungs": document["mapping_rungs"],
+        "coverage_histogram": document["coverage_histogram"],
+        "manifest_bytes": len(payload),
+        "manifest_sha256": artifact.sha256_hex(payload),
+        "elapsed_seconds": round(elapsed, 1),
+        "workers": workers,
+        "generated_at": document["generated_at"],
     }
     (release_dir / "build-summary.json").write_text(
-        json.dumps(summary, indent=2) + "\n"
+        json.dumps(summary, indent=2, sort_keys=True) + "\n"
+    )
+    _log(
+        f"done in {elapsed:.1f}s — {len(documents):,} funds, {len(failures):,} failed, "
+        f"{sum(row['bytes'] for row in summary_funds) / 1e6:.1f} MB of fund files"
     )
     return release_dir
 
@@ -180,8 +359,31 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m pipeline.build", description=__doc__)
     parser.add_argument(
         "--tickers",
-        default="VOO",
-        help="comma-separated tickers (default: VOO — one fund, the day-1 slice)",
+        default=None,
+        help="comma-separated tickers (the day-1 slice; same as --universe tickers:…)",
+    )
+    parser.add_argument(
+        "--universe",
+        default=None,
+        help="'all' for every SEC fund series, or 'tickers:VOO,QQQ' (default: VOO)",
+    )
+    parser.add_argument(
+        "--top",
+        type=int,
+        default=None,
+        help="with --universe all and --from-summary: keep the N largest funds by N-PORT net assets",
+    )
+    parser.add_argument(
+        "--from-summary",
+        type=Path,
+        default=None,
+        help="a previous release's build-summary.json, used by --top",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="first N funds of the resolved universe (a deterministic sample)",
     )
     parser.add_argument(
         "--out",
@@ -200,15 +402,49 @@ def main(argv: list[str] | None = None) -> int:
         help="override generated_at (ISO 8601) — use with SOURCE_DATE_EPOCH for "
         "byte-identical rebuilds",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="funds built concurrently (default 1; SEC requests stay throttled to 8/s)",
+    )
+    parser.add_argument(
+        "--on-error",
+        choices=("fail", "skip"),
+        default=None,
+        help="fail on the first unusable fund (default for tickers) or record it and "
+        "continue (default for --universe all)",
+    )
+    parser.add_argument(
+        "--progress-every",
+        type=int,
+        default=0,
+        help="print a progress line every N funds (0 = only the final summary)",
+    )
     args = parser.parse_args(argv)
 
-    tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+    if args.universe:
+        spec = args.universe
+    else:
+        spec = f"tickers:{args.tickers or 'VOO'}"
+    label = spec if args.top is None and args.limit is None else (
+        f"{spec} top={args.top} limit={args.limit}"
+    )
+    on_error = args.on_error or ("fail" if spec.startswith("tickers:") else "skip")
+
     try:
+        refs = resolve_universe(
+            spec, limit=args.limit, top=args.top, from_summary=args.from_summary
+        )
         build_release(
-            tickers,
+            refs,
             out_dir=args.out,
             release_id=args.release_id,
             generated_at=args.generated_at,
+            workers=max(1, args.workers),
+            on_error=on_error,
+            label=label,
+            progress_every=max(0, args.progress_every),
         )
     except (GateError, NportParseError, LookupError, filings.NoFilingError) as error:
         _log(f"FAILED: {type(error).__name__}: {error}")

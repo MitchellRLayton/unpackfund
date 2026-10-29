@@ -21,6 +21,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from .identifiers import LICENSED_ID_RE, is_licensed
+
 from . import paths
 from .artifact import SCHEMA_VERSION
 
@@ -59,7 +61,9 @@ RELEASE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(\.\d+)?$")
 # A CUSIP is 3-digit issuer prefix + 5 alphanumeric + 1 check digit. Bounded so it
 # cannot match inside a 10-digit CIK or a series id. Non-US issuers may use letters
 # in the prefix, which this misses — hence the belt-and-braces key check.
-CUSIP_RE = re.compile(r"(?<![0-9A-Za-z])[0-9]{3}[0-9A-Z]{5}[0-9](?![0-9A-Za-z])")
+# Imported rather than restated: the pattern that redacts in ``artifact`` and the
+# pattern that fails the release here must be the same rule.
+CUSIP_RE = LICENSED_ID_RE
 
 MIN_TOTAL_BP = 9_000
 MAX_TOTAL_BP = 10_500
@@ -256,16 +260,52 @@ def _check_fund(document: dict, report: Report) -> None:
         report.fail(f"{ticker}.metrics.top10_pct", str(metrics["top10_pct"]))
 
 
-def _check_cusip(release_dir: Path, report: Report) -> None:
-    """No CUSIP, ISIN or other licensed identifier may leave the pipeline."""
+def _published_files(release_dir: Path, manifest: dict) -> list[Path]:
+    """The objects this release actually publishes, plus the manifest itself.
+
+    ``build-summary.json`` sits beside them as build telemetry: it is not listed in
+    ``manifest.files``, is not hashed, and is not uploaded, so scanning it for
+    licensed identifiers reports on text no consumer can ever fetch — and did, with
+    a holdings total formatted as ``456,871,994`` read as a CUSIP-shaped token.
+    """
+    listed = [release_dir / entry["path"] for entry in manifest.get("files") or []]
+    listed.append(release_dir / "manifest.json")
+    found = [path for path in listed if path.is_file()]
+    return found or sorted(release_dir.rglob("*.json"))
+
+
+def _strings(node: Any):
+    """Every string in a parsed document, values and keys alike."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            yield str(key)
+            yield from _strings(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _strings(value)
+    elif isinstance(node, str):
+        yield node
+
+
+def _check_cusip(release_dir: Path, manifest: dict, report: Report) -> None:
+    """No CUSIP, ISIN or other licensed identifier may leave the pipeline.
+
+    Searches *string values*, not the file's bytes: ``effective_n: 100000000.0`` is a
+    number, and a byte scan read it as a CUSIP on two funds whose covered weight is
+    one basis point. A licensed identifier in a published artifact is a string.
+    """
     offenders = []
-    for path in sorted(release_dir.rglob("*.json")):
-        text = path.read_text()
-        if re.search(r'"(cusip|isin|CUSIP|ISIN)"\s*:', text):
-            offenders.append(f"{path.name}: licensed identifier key")
-        match = CUSIP_RE.search(text)
-        if match:
-            offenders.append(f"{path.name}: CUSIP-shaped token {match.group(0)!r}")
+    for path in _published_files(release_dir, manifest):
+        document = json.loads(path.read_text())
+        kept = {"cusip", "isin", "CUSIP", "ISIN"}
+        for value in _strings(document):
+            if value in kept:
+                offenders.append(f"{path.name}: licensed identifier key")
+                break
+        for value in _strings(document):
+            if is_licensed(value):
+                offenders.append(f"{path.name}: CUSIP-shaped token {value!r}")
+                break
     if offenders:
         report.fail("cusip", "; ".join(offenders))
     else:
@@ -293,7 +333,7 @@ def validate(release_dir: Path) -> int:
     _check_manifest(manifest, funds, report, release_dir)
     for document in funds:
         _check_fund(document, report)
-    _check_cusip(release_dir, report)
+    _check_cusip(release_dir, manifest, report)
     _check_budget(release_dir, report)
     print(
         f"\n{len(funds)} funds · {report.failures} failure(s) · "

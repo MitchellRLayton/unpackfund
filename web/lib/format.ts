@@ -117,3 +117,21 @@ export function coverageChip(coveragePct: number): string {
       return "not covered";
   }
 }
+
+/**
+ * A release's ticker list as prose.
+ *
+ * The day-3 release published five funds, so naming them all was honest and
+ * useful. The widened release publishes 12,265, and a sentence that lists them is
+ * neither: it is 60 KB of text in a paragraph, on every page load. So the list is
+ * named while it is short enough to read, and summarised — with the real count —
+ * once it is not. The count is never rounded in the summary line, because "12k
+ * funds" reads as approximate and the number is exact.
+ */
+export function formatFundList(tickers: string[], namedLimit = 12): string {
+  if (tickers.length === 0) return "no funds";
+  if (tickers.length === 1) return tickers[0] ?? "one fund";
+  if (tickers.length <= namedLimit) return tickers.join(", ");
+  const named = tickers.slice(0, 8).join(", ");
+  return `${named} and ${formatCount(tickers.length - 8)} more`;
+}

@@ -15,7 +15,10 @@ from .conftest import corrupt_release, fund_document, write_release
 #: Pinned hash of the fixture fund artifact. If a field, its order, or a weight
 #: changes, this fails — which is the point: a schema change is a release event,
 #: and the number below is what a consumer's cache and the manifest will see.
-GOLDEN_SHA256 = "0ea757f7ab7308aa3189e9ec1975c594485085d0d57150a6930ae68529a201dd"
+# Re-pinned 2026-10-29 when coverage_pct moved from a net-weight denominator to a
+# gross one: the old formula reported 111.2% coverage for funds holding shorts, so
+# the fixture's own number was impossible. The hash still pins every other byte.
+GOLDEN_SHA256 = "d67f57d4da351d91855245d44aefa45d5dd44597f7ea6d31e5331bb4de1a9513"
 
 
 def test_artifact_shape(document):
@@ -126,8 +129,8 @@ def test_manifest_counts_agree_with_files(tmp_path, document):
     manifest_document = json.loads((release_dir / "manifest.json").read_text())
     assert manifest_document["fund_count"] == 1
     assert manifest_document["company_count"] == 3
-    assert manifest_document["etf_count"] is None
-    assert manifest_document["etf_classifier"] == "pending_adr_0007_c3"
+    assert manifest_document["etf_count"] == 0
+    assert manifest_document["etf_classifier"] == "name_rule_v1"
     assert sum(manifest_document["coverage_histogram"].values()) == 1
     assert manifest_document["files"][0]["bytes"] == len(
         (release_dir / "funds" / "TEST.json").read_bytes()

@@ -14,6 +14,7 @@ mapper with a pile of if-statements.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 EQUITY = "equity"
@@ -60,3 +61,28 @@ def classify(asset_cat: str | None, issuer_cat: str | None, is_derivative: bool)
         is_cash_or_derivative=category in (CASH, DERIVATIVE),
         is_fund_position=category == FUND,
     )
+
+
+#: ADR-0007 C3 splits the universe gate in three: series coverage, an explicit
+#: ETF classifier, and ticker resolution. N-PORT's XML carries no ETF flag (the
+#: 2026 form's ``fundInfo`` has no such element — checked against real filings),
+#: so the free path is a **name rule** plus, later, N-CEN's flag. This is the name
+#: rule, and it is labelled as such wherever it is used: it brackets the universe,
+#: it never decides what a fund *is* for a displayed number.
+_ETF_NAME = re.compile(r"\b(?:etf|exchange[\s-]traded)\b", re.IGNORECASE)
+
+
+def looks_like_etf(series_name: str | None, registrant_name: str | None) -> bool:
+    """Provisional ETF label from the fund's own filed names.
+
+    ``SPDR S&P 500 ETF Trust`` and ``ARK Innovation ETF`` match on the series
+    name; a unit investment trust whose series name is ``N/A`` (SPY) matches on
+    the registrant. A fund named without "ETF" anywhere is *not* called one here
+    even if it probably is — the label is used for the release's ``etf_count``,
+    and a count that silently guesses is worse than one that undercounts and says
+    how it counted.
+    """
+    for name in (series_name, registrant_name):
+        if name and _ETF_NAME.search(name):
+            return True
+    return False

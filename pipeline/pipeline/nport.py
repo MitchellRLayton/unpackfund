@@ -13,12 +13,31 @@ place (``classify.py``) against recorded distributions, not from memory.
 
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
 
 class NportParseError(RuntimeError):
     pass
+
+
+_SERIES_ID = re.compile(rb"<seriesId>\s*([^<]*?)\s*</seriesId>")
+
+
+def peek_series_id(xml: bytes) -> str | None:
+    """The filing's ``seriesId`` without parsing the holdings.
+
+    Walking a trust's filing history to find one series used to parse every
+    document it passed — thousands of holdings each, for one string. A regex over
+    the first kilobyte answers the same question, which is what makes a
+    per-registrant index affordable on a 12,000-series run.
+    """
+    match = _SERIES_ID.search(xml)
+    if not match:
+        return None
+    value = match.group(1).decode("utf-8", "replace").strip()
+    return None if value.upper() in ("", "N/A") else value
 
 
 def _local(tag: str) -> str:

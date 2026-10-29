@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import time
 import os
 import sys
 from dataclasses import asdict, dataclass, field
@@ -273,8 +274,20 @@ def _verify_pointer_content(
 
 
 def _observe_live_pointer(report: UploadReport, public: PublicReader) -> None:
-    """Record what the live pointer says, without touching it."""
+    """Record what the live pointer says, without touching it.
+
+    A pointer written seconds ago can still be answered with the *previous* 404 by
+    an edge holding the negative lookup, which is exactly what this run did on its
+    first live promotion: the report said "absent (HTTP 404)" while the pointer was
+    already serving the new manifest. Three tries over 1.5 s makes the observation
+    describe the pointer instead of the edge's cache.
+    """
     response = public.fetch(LIVE_POINTER)
+    for _ in range(2):
+        if response.status == 200 or report.dry_run:
+            break
+        time.sleep(0.5)
+        response = public.fetch(LIVE_POINTER)
     report.live_pointer_status = response.status
     if response.status == 200:
         try:

@@ -8,17 +8,21 @@ UI state data quality without reading every fund.
 
 from __future__ import annotations
 
+import math
 import subprocess
 from typing import Any
 
 from .artifact import SCHEMA_VERSION, sha256_hex, utc_now_iso
+from .classify import looks_like_etf
+
+ETF_CLASSIFIER = "name_rule_v1"
 
 COVERAGE_BANDS: tuple[tuple[str, float, float], ...] = (
     ("under_60", 0.0, 60.0),
     ("60_to_70", 60.0, 70.0),
     ("70_to_90", 70.0, 90.0),
     ("90_to_99", 90.0, 99.0),
-    ("99_plus", 99.0, 100.0001),
+    ("99_plus", 99.0, math.inf),
 )
 
 
@@ -36,6 +40,9 @@ def pipeline_git_sha() -> str:
 
 
 def coverage_histogram(coverage_values: list[float]) -> dict[str, int]:
+    # The last band is open-ended on purpose: a band table with a hole in it drops
+    # rows silently, and a histogram that does not sum to ``fund_count`` is how 25
+    # over-100 funds disappeared from a release before the validator noticed.
     histogram = {name: 0 for name, _low, _high in COVERAGE_BANDS}
     for value in coverage_values:
         for name, low, high in COVERAGE_BANDS:
@@ -52,7 +59,7 @@ def build_manifest(
     files: list[dict[str, Any]],
     rung_counts: dict[str, int],
     asset_cat_counts: dict[str, int],
-    etf_count: int | None,
+    etf_count: int | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     """Assemble the manifest for one release.
@@ -65,6 +72,15 @@ def build_manifest(
     companies = {
         row["company_id"] for fund in funds for row in fund["holdings"] if row["company_id"]
     }
+    if etf_count is None:
+        # Derived here rather than passed in: the count is a property of the
+        # documents in this release, so computing it from anything else is a way
+        # to disagree with the files the manifest hashes.
+        etf_count = sum(
+            1
+            for fund in funds
+            if looks_like_etf(fund.get("name"), fund.get("issuer"))
+        )
     return {
         "schema_version": SCHEMA_VERSION,
         "as_of": release_id,
@@ -72,7 +88,10 @@ def build_manifest(
         "pipeline_git_sha": pipeline_git_sha(),
         "fund_count": len(funds),
         "etf_count": etf_count,
-        "etf_classifier": "pending_adr_0007_c3",
+        # ADR-0007 C3 is still open; the release says which test produced
+        # ``etf_count`` so a reader can weigh it instead of trusting a number
+        # that looks authoritative because it is in a manifest.
+        "etf_classifier": ETF_CLASSIFIER,
         "company_count": len(companies),
         "coverage_histogram": coverage_histogram([f["coverage_pct"] for f in funds]),
         "mapping_rungs": rung_counts,

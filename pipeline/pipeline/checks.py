@@ -42,7 +42,11 @@ def determinism(tickers: list[str], workdir: Path = DEFAULT_WORKDIR) -> int:
         releases = []
         for run in ("a", "b"):
             out = workdir / run
-            build.build_release(tickers, out_dir=out, release_id="determinism")
+            build.build_release(
+                build.resolve_universe(f"tickers:{','.join(tickers)}"),
+                out_dir=out,
+                release_id="determinism",
+            )
             releases.append(out / "releases" / "determinism")
     finally:
         if previous is None:
