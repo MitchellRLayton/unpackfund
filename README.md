@@ -108,6 +108,20 @@ to 8/s; override the first with `SEC_USER_AGENT`.
 Deploying is `pnpm build && npx wrangler deploy` against `wrangler.jsonc`
 (`assets.directory: web/out`), not a separate command yet.
 
+**Preview, without touching production.** `wrangler.preview.jsonc` deploys the
+same `web/out` as a *separate* Worker with its own `workers.dev` hostname, so the
+app can be reviewed on a real URL before anything reaches `unpackfund.com`:
+
+```
+pnpm build
+npx wrangler@4 deploy --config wrangler.preview.jsonc   # https://unpackfund-preview.<subdomain>.workers.dev
+```
+
+It owns no custom domain and is never built by Workers Builds. Remove it with
+`npx wrangler@4 delete --config wrangler.preview.jsonc`. The data host allows the
+preview origin in its R2 CORS rule; a new preview hostname needs its origin added
+there or the app will report that it cannot reach the data host.
+
 ## Layout
 
 ```

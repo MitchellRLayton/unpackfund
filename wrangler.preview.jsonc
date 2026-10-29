@@ -1,0 +1,23 @@
+{
+  // Preview deploy: the same static export on a separate Worker, with its own
+  // workers.dev hostname, so the app can be reviewed on a real URL before
+  // anything reaches unpackfund.com.
+  //
+  // Deliberately a different `name` from wrangler.jsonc: this Worker owns no
+  // domain, is never deployed by Workers Builds, and can be deleted with
+  // `npx wrangler@4 delete --config wrangler.preview.jsonc` without touching
+  // the production Worker or its version history.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "unpackfund-preview",
+  "compatibility_date": "2026-10-28",
+  "assets": {
+    "directory": "./web/out",
+    "not_found_handling": "404-page"
+  },
+  // The one intentional difference from production: a hostname to look at.
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true
+  }
+}
