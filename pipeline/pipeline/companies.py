@@ -200,6 +200,32 @@ class CompanyIndex:
         """A listed symbol for a resolved company, or None."""
         return self.primary_ticker.get(company_id) if company_id else None
 
+    def explain(self, ticker: str | None, name: str | None) -> str:
+        """Why a holding did or did not map — the rung, and for a miss the reason.
+
+        ``resolve`` answers "which company"; this answers "which branch decided".
+        A diagnostic needs the second: 26% of resolved equity weight is unmapped,
+        and "unmapped" covers four different problems with four different fixes —
+        a symbol the index has never heard of, a symbol the name refused, a name
+        no company in EDGAR shares, and a row with no identifier at all.
+
+        The branch order and the corroboration rule are the same as ``resolve`` by
+        construction: both are written against ``by_ticker``/``by_name``/
+        ``names_agree`` in the same order, and the test suite pins them together.
+        """
+        if ticker:
+            hit = self.by_ticker.get(ticker.strip().upper())
+            if hit:
+                if names_agree(name or "", self.title_by_id.get(hit, "")):
+                    return _RUNG_TICKER
+                return "ticker_rejected_by_name"
+            if name and self.by_name.get(normalize_name(name)):
+                return _RUNG_NAME
+            return "ticker_unknown"
+        if name:
+            return _RUNG_NAME if self.by_name.get(normalize_name(name)) else "name_unmatched"
+        return "no_identifier"
+
     def resolve(self, ticker: str | None, name: str | None) -> tuple[str | None, str]:
         if ticker:
             hit = self.by_ticker.get(ticker.strip().upper())
