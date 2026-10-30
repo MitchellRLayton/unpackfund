@@ -36,6 +36,11 @@ DEFAULT_POINTER_PREFIX = "staging/latest"
 DEFAULT_POINTER_NAME = "release.json"
 DEFAULT_PUBLIC_BASE = "https://data.unpackfund.com"
 DEFAULT_ORIGIN = "http://localhost:3000"
+#: The R2 bucket that holds releases: a **bucket name**, not a Worker binding. The Worker
+#: that serves the site has no `r2_buckets` binding and reads the artifacts over HTTPS from
+#: the data host, so `R2_BUCKET` here is an S3 client argument. Overridable by env var so a
+#: test bucket can never reach the real one; CI passes nothing (an unset secret arrives as
+#: ""), so the default has to survive an empty string — see `credentials_from_env`.
 DEFAULT_BUCKET = "unpackfund-artifacts"
 
 #: Objects in flight during an upload. R2 tolerates far more; 8 keeps a failure
