@@ -5,10 +5,13 @@ packages:
 # to a user-level cache, and keep node_modules hardlinks on one filesystem.
 storeDir: .pnpm-store
 
-# unrs-resolver ships prebuilt platform binaries and is only an optional fast
-# path for eslint-plugin-import-x's resolver, so its postinstall is not needed.
-# Acknowledging it here keeps `pnpm install` exit 0 without running it.
-ignoredBuiltDependencies:
+# pnpm 11 fails an install when a dependency has a build script nobody has
+# approved (`ERR_PNPM_IGNORED_BUILDS`, strictDepBuilds is on by default). Both of
+# these are legitimate: esbuild's postinstall selects its platform binary and
+# unrs-resolver's fetches its prebuilt one. Approving them keeps `pnpm install
+# --frozen-lockfile` exit 0 in CI, which is where it has to be non-interactive.
+onlyBuiltDependencies:
+  - esbuild
   - unrs-resolver
 
 # Added by pnpm 11: @types/node publishes ahead of the release-age threshold.
