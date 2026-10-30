@@ -47,7 +47,7 @@ from . import (
     weights,
 )
 from .companies import CompanyIndex
-from .nport import NportParseError
+from .nport import NportFiling, NportParseError
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 #: One owner for the number: the module that produces the bytes (artifact.py).
@@ -55,6 +55,10 @@ MAX_FUND_BYTES = artifact.MAX_FUND_BYTES
 MIN_TOTAL_BP = 9_000
 MAX_TOTAL_BP = 10_500
 NAV_RESIDUAL_LIMIT = 0.05
+#: How close a cash row's value must sit to total liabilities before it is read as
+#: borrowed collateral rather than a cash position. Same 5% band as the gate: one
+#: number for "these are the same amount", used in one place.
+COLLATERAL_BAND = 0.05
 DEFAULT_WORKERS = 8
 RUNG_NAMES = ("ticker", "name_exact", "unmapped")
 
@@ -99,6 +103,53 @@ class FundBuild:
     ref_symbols: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class Collateral:
+    """Cash in the schedule that is borrowed, not owned.
+
+    A securities-lending or repo program appears in N-PORT twice: a cash-like row
+    inside ``invstOrSec`` (the collateral received) and a liability of the same
+    size (the obligation to return it). Publishing the row as a holding overstates
+    the fund by that amount, depresses every other weight, and — because the gate
+    reconciles the schedule against *net* assets — rejects a filing that is
+    perfectly good: EA Bridgeway Omni Small-Cap Value (BSVO) holds $237.6M of
+    collateral against $245.0M of borrowings, so its schedule reads 9.93% over net
+    assets while sitting 0.3% under total assets.
+
+    The rows are set aside only when the numbers fit one story: cash ≈ liabilities
+    *and* the remaining schedule ≈ net assets. A fund with a genuine cash position
+    and unrelated borrowings fails at least one test and keeps every row it filed.
+    """
+
+    rows: frozenset[int]
+    usd: float
+
+
+def lending_collateral(filing: NportFiling) -> Collateral:
+    net = filing.net_assets or 0.0
+    liabilities = filing.total_liabilities or 0.0
+    if net <= 0 or liabilities <= 0:
+        return Collateral(frozenset(), 0.0)
+    cash = [
+        holding
+        for holding in filing.holdings
+        if classify.classify(
+            holding.asset_cat, holding.issuer_cat, holding.is_derivative
+        ).category
+        == classify.CASH
+        and (holding.val_usd or 0.0) > 0
+    ]
+    if not cash:
+        return Collateral(frozenset(), 0.0)
+    cash_usd = sum(holding.val_usd or 0.0 for holding in cash)
+    filed_total = sum(holding.val_usd or 0.0 for holding in filing.holdings)
+    if abs(cash_usd - liabilities) / liabilities > COLLATERAL_BAND:
+        return Collateral(frozenset(), 0.0)
+    if abs((filed_total - cash_usd) - net) / net > COLLATERAL_BAND:
+        return Collateral(frozenset(), 0.0)
+    return Collateral(frozenset(id(holding) for holding in cash), cash_usd)
+
+
 def build_fund(ref: universe.FundRef, index: CompanyIndex) -> FundBuild:
     started = time.monotonic()
     found = filings.latest(ref)
@@ -106,14 +157,36 @@ def build_fund(ref: universe.FundRef, index: CompanyIndex) -> FundBuild:
 
     lag_days = artifact._days_between(found.filing_date, found.report_date)
 
+    collateral = lending_collateral(filing)
+    investable = [
+        holding
+        for holding in filing.holdings
+        if id(holding) not in collateral.rows
+    ]
+
     vector = weights.build_vector(
-        filing.holdings, index, filing.net_assets, lag_days=lag_days
+        investable, index, filing.net_assets, lag_days=lag_days
     )
 
-    # Gate 1 — the filing reconciles to its own NAV.
-    filed_total = sum(row.val_usd or 0.0 for row in filing.holdings)
+    # Gate 1 — the *investable* schedule reconciles to the fund's own NAV.
+    filed_total = sum(row.val_usd or 0.0 for row in investable)
     residual = abs(filed_total / filing.net_assets - 1) if filing.net_assets else None
     if residual is not None and residual > NAV_RESIDUAL_LIMIT:
+        schedule_total = filed_total + collateral.usd
+        assets = filing.total_assets or 0.0
+        # A schedule that reconciles to total assets but not to net assets is a
+        # leverage question, not a parse gap, and the two need different answers.
+        against_assets = (
+            abs(schedule_total / assets - 1) if assets else None
+        )
+        if against_assets is not None and against_assets <= NAV_RESIDUAL_LIMIT:
+            raise GateError(
+                f"{ref.ticker}: schedule reconciles to total assets "
+                f"({schedule_total:,.0f} of {assets:,.0f}) but not to net assets "
+                f"({filing.net_assets:,.0f}); liabilities are "
+                f"{filing.total_liabilities or 0:,.0f} and no single cash row matches "
+                "them, so this is leverage, not a truncated filing"
+            )
         raise GateError(
             f"{ref.ticker}: holdings sum to {filed_total:,.0f} vs netAssets "
             f"{filing.net_assets:,.0f} ({residual:.2%}) — over the {NAV_RESIDUAL_LIMIT:.0%} band"
@@ -166,6 +239,7 @@ def build_fund(ref: universe.FundRef, index: CompanyIndex) -> FundBuild:
         )
 
     stats = {
+        "collateral_usd": collateral.usd,
         "rungs": dict(vector.rung_counts),
         "asset_cats": dict(vector.asset_cat_counts),
         "total_bp": vector.total_bp,
