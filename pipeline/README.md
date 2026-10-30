@@ -5,6 +5,7 @@ Python only, no server, no database at rest. It never serves a request; the
 browser reads what this writes.
 
 ```
+python -m pipeline.refresh detect          # did EDGAR change? one index file, ~1 s
 python -m pipeline.build --tickers VOO     # filing → artifacts/releases/<id>/
 python -m pipeline.validate --release 2026-10-29.1   # the gate
 python -m pipeline.checks --tickers VOO    # two builds must be byte-identical
@@ -13,7 +14,7 @@ python -m pipeline.release verify --release 2026-10-29.1   # re-read a published
 python -m pipeline.live                    # is EDGAR up, is the data host answering
 ```
 
-Wrapped as `pnpm pipeline:build`, `pnpm data:validate --release <id>`,
+Wrapped as `pnpm refresh:detect`, `pnpm pipeline:build`, `pnpm data:validate --release <id>`,
 `pnpm data:validate --fixtures` (offline, CI form), `pnpm check:determinism`,
 `pnpm release:upload`, `pnpm release:verify` and `pnpm verify:live`. A bare release
 id resolves against `artifacts/releases/`.
@@ -22,8 +23,9 @@ id resolves against `artifacts/releases/`.
 
 | Module | Responsibility |
 |---|---|
-| `sec.py` | EDGAR HTTP client: declared User-Agent, ≤8 req/s, retries, content-addressed byte cache |
+| `sec.py` | EDGAR HTTP client: declared User-Agent, ≤8 req/s, retries, content-addressed byte cache with an explicit lifetime per URL kind |
 | `universe.py` | ticker → registrant CIK → N-PORT series (`company_tickers_mf.json`, then `overrides/tickers.csv`) |
+| `refresh.py` | the refresh trigger: EDGAR's daily index → which registrants filed, optionally which published funds that supersedes |
 | `filings.py` | newest N-PORT document for one series (the trust files one per series per quarter) |
 | `nport.py` | `primary_doc.xml` parser, matched on local element name |
 | `classify.py` | N-PORT codes → `equity` / `debt` / `cash` / `derivative` / `fund` / `other` |

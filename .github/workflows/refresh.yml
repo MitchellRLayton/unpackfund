@@ -1,0 +1,184 @@
+# Refresh the published release from EDGAR — poll cheaply, publish on change.
+#
+# Design and the numbers behind it: docs/08-operations/2026-10-30-edgar-refresh-architecture.md
+# Decision (GitHub Actions as executor, daily cadence, daily-index trigger):
+# docs/04-decisions/ADR-0010-refresh-orchestration-and-cadence.md
+#
+# Phase 1 by design: this workflow may write only the *staging* pointer. The live
+# pointer (`latest/release.json`) is a production change and stays an explicit
+# operator action until the ADR's open question (a) is answered.
+#
+# Cost: public-repo standard runners are free, so the only metered resource is R2
+# Class A operations — one full publish is 14,239 of the free 1,000,000 per month.
+
+name: refresh
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "complete filing days to scan (1 = yesterday alone, 7 = catch up a week)"
+        default: "3"
+      stage:
+        description: "upload the built release and move the staging pointer"
+        type: boolean
+        default: true
+      force:
+        description: "build even when detection finds no new filings"
+        type: boolean
+        default: false
+  schedule:
+    # 06:30 UTC = 02:30 ET, about 4.5 hours after EDGAR writes the previous day's
+    # index (observed 22:01 ET). GitHub's cron is best-effort and can start hours
+    # late; the margin is there so lateness is not a correctness problem.
+    # Monday's run scans 3 days, which absorbs a weekend and a federal holiday.
+    - cron: "30 6 * * *"
+
+permissions:
+  contents: read
+
+# One data release at a time: two runs writing the pointer concurrently would leave
+# the site serving whichever finished last. Queue instead of cancelling — a
+# cancelled publish is a wasted 26-minute upload.
+concurrency:
+  group: data-refresh
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.13"
+  # The pipeline refuses to make a request without a declared contact.
+  SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+  UNPACKFUND_CACHE: data/cache
+
+jobs:
+  detect:
+    name: detect new filings
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      new_filings: ${{ steps.detect.outputs.new_filings }}
+      superseded: ${{ steps.detect.outputs.superseded }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install the pipeline
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ./pipeline
+
+      - name: Poll EDGAR's daily index
+        id: detect
+        working-directory: pipeline
+        run: |
+          set -euo pipefail
+          DAYS="${{ inputs.days || '3' }}"
+          python -m pipeline.refresh detect --days "$DAYS" --peek \
+            --json ../artifacts/detect/delta.json
+          COUNT=$(python -c "import json;print(json.load(open('../artifacts/detect/delta.json'))['change']['new_filings'])")
+          SUPERSEDED=$(python -c "import json;d=json.load(open('../artifacts/detect/delta.json'));print(d.get('peek',{}).get('published_funds_affected',0))")
+          echo "new_filings=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "superseded=$SUPERSEDED" >> "$GITHUB_OUTPUT"
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "### Detection"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| filing days scanned | ${{ inputs.days || '3' }} |"
+            echo "| N-PORT filings in the published universe | ${{ steps.detect.outputs.new_filings }} |"
+            echo "| published funds superseded | ${{ steps.detect.outputs.superseded }} |"
+            echo
+            echo '```json'
+            head -c 4000 artifacts/detect/delta.json || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: delta
+          path: artifacts/detect/delta.json
+          retention-days: 14
+          if-no-files-found: ignore
+
+  build:
+    name: build, validate, stage
+    needs: detect
+    if: needs.detect.outputs.new_filings != '0' || inputs.force
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install the pipeline
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ./pipeline
+
+      # No actions/cache here: a cold byte cache is ~6 GB of immutable EDGAR
+      # documents, which does not fit the 10 GB repo cache alongside anything else
+      # and would be evicted between runs anyway. Phase 2 seeds the cache from the
+      # R2 raw prefix instead, which is cheap and already paid for.
+      - name: Build the wide release
+        working-directory: pipeline
+        run: |
+          python -m pipeline.build --universe all \
+            --out ../artifacts --workers 8 --progress-every 1000
+
+      - name: Validate (the gate)
+        working-directory: pipeline
+        run: |
+          RELEASE_DIR=$(ls -d ../artifacts/releases/*/ | tail -1)
+          echo "validating $RELEASE_DIR"
+          python -m pipeline.validate --release "$RELEASE_DIR"
+
+      - name: Stage the release (never live)
+        # `inputs.stage` is empty on `schedule` events, so the scheduled run has to
+        # say so explicitly or the daily job would build and then throw the release away.
+        if: inputs.stage || github.event_name == 'schedule'
+        working-directory: pipeline
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          RELEASE_DIR=$(ls -d ../artifacts/releases/*/ | tail -1)
+          # No --allow-live: `release upload` refuses to touch latest/ without it,
+          # and this workflow does not pass it. Promotion stays an operator action.
+          python -m pipeline.release upload --release "$RELEASE_DIR"
+
+      - name: Summarise
+        if: always()
+        run: |
+          RELEASE_DIR=$(ls -d artifacts/releases/*/ 2>/dev/null | tail -1 || true)
+          {
+            echo "### Release"
+            echo
+            if [ -n "$RELEASE_DIR" ] && [ -f "$RELEASE_DIR/build-summary.json" ]; then
+              echo '```json'
+              head -c 4000 "$RELEASE_DIR/build-summary.json"
+              echo '```'
+            else
+              echo "no release was produced"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-summary
+          path: artifacts/releases/*/build-summary.json
+          retention-days: 14
+          if-no-files-found: ignore

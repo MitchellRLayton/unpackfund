@@ -18,6 +18,7 @@
     "check:determinism": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.checks",
     "pipeline:build": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.build",
     "pipeline:test": "cd pipeline && ../.venv/pipeline/bin/python -m pytest",
+    "refresh:detect": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.refresh detect",
     "data:validate": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.validate",
     "release:upload": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.release upload",
     "release:verify": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.release verify",

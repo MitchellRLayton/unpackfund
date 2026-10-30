@@ -19,7 +19,7 @@ unwritten, and the live pointer is deliberately unmoved.
 | Data artifacts | Cloudflare R2, bucket `unpackfund-artifacts` | Public read-only via `data.unpackfund.com`; private raw zone. |
 | DNS / TLS / email | Cloudflare | Registrar + DNS, strict TLS, email forwarding (receive-only). |
 | Builds | Workers Builds (Git integration) | Build from this repository, deploy with `wrangler deploy`. |
-| Data pipeline | GitHub Actions (planned) | Quarterly run; writes artifacts to R2. |
+| Data pipeline | GitHub Actions (`refresh.yml`) | Daily 06:30 UTC on EDGAR's daily index; writes artifacts to R2; staging pointer only ([ADR-0010](../docs/04-decisions/ADR-0010-refresh-orchestration-and-cadence.md)). |
 
 ## Domains
 
