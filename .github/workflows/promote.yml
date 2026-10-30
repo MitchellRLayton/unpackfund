@@ -60,6 +60,10 @@ on:
 
 permissions:
   contents: read
+  # The site artifact is uploaded by *yesterday's* refresh run, so this workflow has to
+  # list and download artifacts across runs. Without it `download-artifact` silently finds
+  # nothing and the promotion would move the pointer while the site stayed a day old.
+  actions: read
 
 # Same group as refresh: never let a promotion overlap a build.
 concurrency:
@@ -125,6 +129,31 @@ jobs:
             exit 1
           fi
 
+      # `download-artifact` defaults to the run it is called in, and this run has no site
+      # artifact of its own — the pages were built by day 1. Unqualified, the step below
+      # finds nothing, `if-no-files-found: warn` keeps the run green, the deploy step then
+      # skips ("no site artifact for this candidate") and the pointer moves while the site
+      # stays on yesterday's pages: the exact inconsistency the ordering at the top of this
+      # file exists to prevent. So resolve the day-1 run first, and let a missing artifact
+      # be a refusal rather than a silent skip.
+      - name: Find the site artifact day 1 built
+        id: site
+        if: ${{ !inputs.skip_deploy && steps.resolve.outputs.already_live != 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Newest unexpired `site` artifact. Day 1 keeps it 3 days and the candidate-age
+          # guard above already refuses anything older than that.
+          RUN_ID=$(gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=site&per_page=30" \
+            --jq '[.artifacts[] | select(.expired | not)] | sort_by(.created_at) | last | .workflow_run.id // empty')
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::no unexpired 'site' artifact exists; run refresh.yml (README §Day 1) before promoting"
+            exit 1
+          fi
+          echo "site artifact from refresh run $RUN_ID"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
       - name: Move the data pointer (production)
         if: steps.resolve.outputs.already_live != 'true'
         working-directory: pipeline
@@ -145,9 +174,10 @@ jobs:
         with:
           name: site
           path: web/out
-          # Artifacts expire in 3 days; a promotion of an older candidate has no pages to
-          # ship, and the pointer move above is still worth having. Say so, do not fail.
-          if-no-files-found: warn
+          # Cross-run: the artifact belongs to the refresh run resolved above, not this one.
+          run-id: ${{ steps.site.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          if-no-files-found: error
 
       - name: Deploy the site that day 1 built
         if: ${{ !inputs.skip_deploy && steps.resolve.outputs.already_live != 'true' }}
@@ -159,9 +189,12 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
+          # The download above fails the run rather than warning, so reaching this without
+          # index.html means the artifact was empty. Refuse: the pointer is already live by
+          # now, and shipping nothing leaves pages a day behind the data.
           if [ ! -f web/out/index.html ]; then
-            echo "::warning::no site artifact for this candidate; leaving the site on its current version"
-            exit 0
+            echo "::error::the site artifact is empty; production still serves the previous pages"
+            exit 1
           fi
           echo "files to deploy: $(find web/out -type f | wc -l)"
           test "$(find web/out -type f | wc -l)" -le 20000
