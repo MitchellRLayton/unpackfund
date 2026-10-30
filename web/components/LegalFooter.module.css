@@ -1,0 +1,25 @@
+.inner {
+  max-width: 64rem;
+  margin: 0 auto;
+}
+
+.disclaimer,
+.attribution {
+  margin: 0 0 0.6rem;
+}
+
+.attribution {
+  font-size: 0.78rem;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+}
+
+.links a {
+  text-decoration: underline;
+}

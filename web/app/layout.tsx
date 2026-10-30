@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 
+import { LegalFooter } from "@/components/LegalFooter";
 import { SiteNav } from "@/components/SiteNav";
 import "./globals.css";
 
@@ -35,12 +36,7 @@ export default function RootLayout({
           </div>
         </header>
         {children}
-        <footer className="site-footer">
-          <p>
-            Holdings from SEC Form N-PORT filings. Not investment advice, and not a
-            recommendation of any fund. UnpackFund is not affiliated with any fund issuer.
-          </p>
-        </footer>
+        <LegalFooter />
       </body>
     </html>
   );
