@@ -90,8 +90,9 @@ class TestFetch:
         monkeypatch.setattr(sec.urllib.request, "urlopen", fake_urlopen)
         assert sec.fetch("https://www.sec.gov/x") == b'<?xml version="1.0"?><x/>'
         assert calls["n"] == 2
-        # The server's own number, not an exponential guess.
-        assert _no_real_sleep[0] == 4.0
+        # The server's own number, not an exponential guess. It may not be the first
+        # sleep in the list: the global rate limiter sleeps too.
+        assert 4.0 in _no_real_sleep
 
     def test_it_gives_up_after_its_attempts(self, monkeypatch):
         def always_throttled(request, timeout=0):

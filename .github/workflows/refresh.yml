@@ -47,7 +47,9 @@ env:
   PYTHON_VERSION: "3.13"
   # The pipeline refuses to make a request without a declared contact.
   SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
-  UNPACKFUND_CACHE: data/cache
+  # Where fetched SEC documents are kept between runs. Absolute, because half a dozen
+  # steps run from `pipeline/` and the cache path must not depend on which one.
+  UNPACKFUND_CACHE: ${{ github.workspace }}/sec-cache
   # A GitHub-hosted runner shares its egress IP with every other job on that host, so
   # SEC's per-IP cap (~10 req/s) is not ours to spend. 5/s leaves headroom and the extra
   # minutes are cheaper than a 429 that kills a 55-minute build.
@@ -153,12 +155,43 @@ jobs:
           echo "id=$ID" >> "$GITHUB_OUTPUT"
           echo "release id: $ID"
 
+      - name: Restore the documents we already fetched
+        uses: actions/cache/restore@v4
+        with:
+          path: sec-cache
+          # Immutable per run (a cache entry cannot be rewritten), so the key carries the
+          # run and every run starts from the newest entry that exists.
+          key: sec-cache-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            sec-cache-
+
+      - name: Report how much we already have
+        run: |
+          if [ -d sec-cache ]; then
+            printf 'cached documents: %s files, %s\n' \
+              "$(find sec-cache -type f -name '*.bin' | wc -l | tr -d ' ')" \
+              "$(du -sh sec-cache | cut -f1)"
+          else
+            echo "cached documents: none — this run fetches everything (cold start)"
+          fi
+
       - name: Build the wide release
         working-directory: pipeline
         run: |
+          # The cache makes this incremental in the CDC sense: an accession-addressed
+          # document is immutable, so a hit is final and only new filings hit EDGAR.
+          # Index documents are re-read on their own max_age, so a cached copy can never
+          # answer "nothing changed" for yesterday.
           python -m pipeline.build --universe all \
             --out ../artifacts --workers 8 --progress-every 1000 \
             --release-id ${{ steps.allocate.outputs.id }}
+
+      - name: Keep the documents for tomorrow
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: sec-cache
+          key: sec-cache-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Record the release id
         id: release

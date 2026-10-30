@@ -59,7 +59,7 @@ def _mf_map() -> dict[str, tuple[str, str, str]]:
     symbols, and re-parsing this 2 MB document per call dominated the first
     widened run. ``_clear_caches`` exists for tests and for an in-process reload.
     """
-    document = sec.fetch_json(MF_TICKERS_URL)
+    document = sec.fetch_json(MF_TICKERS_URL, max_age=sec.INDEX_MAX_AGE_S)
     fields = document["fields"]
     index = {name: position for position, name in enumerate(fields)}
     out: dict[str, tuple[str, str, str]] = {}
@@ -101,7 +101,12 @@ def resolve(ticker: str) -> FundRef:
     if symbol in overrides:
         cik, series, registrant = overrides[symbol]
         if registrant:
-            name = str(sec.fetch_json(sec.submissions_url(cik)).get("name") or "")
+            name = str(
+                sec.fetch_json(
+                    sec.submissions_url(cik), max_age=sec.INDEX_MAX_AGE_S
+                ).get("name")
+                or ""
+            )
             if name.strip().upper() != registrant.strip().upper():
                 raise LookupError(
                     f"{symbol}: override registrant {registrant!r} does not match "

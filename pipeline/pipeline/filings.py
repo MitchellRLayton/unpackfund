@@ -88,12 +88,15 @@ def _submission_rows(cik: str) -> list[dict]:
     same API, so both are read; the paged files predate N-PORT but a matcher that
     silently skipped them would break the day the recent window rolls over.
     """
-    document = sec.fetch_json(sec.submissions_url(cik))
+    document = sec.fetch_json(sec.submissions_url(cik), max_age=sec.INDEX_MAX_AGE_S)
     filings = document.get("filings") or {}
     rows = _columns_to_rows(filings.get("recent") or {})
     for extra in filings.get("files", []):
         try:
-            page = sec.fetch_json(f"https://data.sec.gov/submissions/{extra['name']}")
+            page = sec.fetch_json(
+                f"https://data.sec.gov/submissions/{extra['name']}",
+                max_age=sec.INDEX_MAX_AGE_S,
+            )
         except sec.SecError:
             continue
         if isinstance(page.get("filings"), dict):

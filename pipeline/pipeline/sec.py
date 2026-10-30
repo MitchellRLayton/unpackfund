@@ -58,6 +58,17 @@ DEFAULT_TRIES = 6
 BACKOFF_CAP_S = 20.0
 MAX_RETRY_AFTER_S = 60.0
 
+#: How long an *index* document may be reused before EDGAR is asked again.
+#:
+#: N-PORT documents are accession-addressed, so a cached copy is final. Index documents
+#: are rewritten in place: `submissions/CIK….json` gains a row every time a fund files,
+#: and `company_tickers_mf.json` gains a fund whenever one launches. A daily run that
+#: restored yesterday's cache and treated those as final would resolve every fund to its
+#: *previous* filing — correct-looking, silently a quarter behind — which is exactly the
+#: failure the module docstring warns about and no caller used to declare. Six hours is
+#: shorter than the run interval and long enough that one run reads each index once.
+INDEX_MAX_AGE_S = 6 * 3600
+
 _last_request = 0.0
 _throttle_lock = Lock()
 
