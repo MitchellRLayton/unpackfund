@@ -22,9 +22,15 @@
     "data:validate": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.validate",
     "release:upload": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.release upload",
     "release:verify": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.release verify",
+    "release:promote": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.release promote",
+    "data:review": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.review",
+    "data:triage": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.triage",
+    "data:retention": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.retention",
     "verify:live": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.live",
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm pipeline:test && pnpm data:validate --fixtures && pnpm build",
     "pages:funds": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.fund_pages --out ../web/out",
-    "build:site": "pnpm build && pnpm pages:funds"
+    "build:site": "pnpm build && pnpm pages:funds",
+    "deploy:preview": "npx --yes wrangler@4.155.0 deploy --config wrangler.preview.jsonc",
+    "deploy:prod": "npx --yes wrangler@4.155.0 deploy --config wrangler.jsonc"
   }
 }

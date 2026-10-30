@@ -1,8 +1,9 @@
-"""R2 transport: the four S3 verbs the release step needs, and a public reader.
+"""R2 transport: the S3 verbs the release and retention steps need, and a public reader.
 
 Nothing here knows about funds or manifests. It knows how to sign a request, how
 to turn an HTTP status into a sentence a human can act on, and how to read back
-what it wrote. The release command composes it; the tests substitute it.
+what it wrote. The release command composes it; the retention command lists,
+deletes and batches; the tests substitute it.
 
 Credentials are passed in, never read from the environment here, and never
 logged: `R2Error` carries a status and a response body, and R2's error bodies
@@ -11,16 +12,48 @@ name the operation and the key, not the key material.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Mapping, Sequence
 
 from .sigv4 import EMPTY_PAYLOAD_SHA256, sign
 
 JSON_CONTENT_TYPE = "application/json"
+XML_CONTENT_TYPE = "application/xml"
+
+#: S3's ceiling on one DeleteObjects request. 14,239 objects take 15 requests at
+#: this size instead of 14,239 — and a delete is free either way, so the only
+#: thing batching buys is time.
+DELETE_BATCH_LIMIT = 1000
+
+#: Real R2 XML carries this default namespace; a hand-written fixture usually does
+#: not. The two helpers below accept both shapes rather than one, so a test can
+#: state a listing in the smallest form that is still the same document.
+S3_NAMESPACE = "{http://s3.amazonaws.com/doc/2006-03-01/}"
+
+
+def _findtext(node, name: str) -> str | None:
+    value = node.findtext(f"{S3_NAMESPACE}{name}")
+    return node.findtext(name) if value is None else value
+
+
+def _findall(node, name: str) -> list:
+    found = node.findall(f"{S3_NAMESPACE}{name}")
+    return found if found else node.findall(name)
+
+
+def delete_request_body(keys: Sequence[str]) -> bytes:
+    """The `DeleteObjects` XML: one `<Object><Key>` per key, in the S3 namespace."""
+    root = ET.Element("Delete", {"xmlns": "http://s3.amazonaws.com/doc/2006-03-01/"})
+    for key in keys:
+        ET.SubElement(ET.SubElement(root, "Object"), "Key").text = key
+    return ET.tostring(root, encoding="utf-8")
 
 # The data host sits behind Cloudflare, which answers 403 to a bare
 # `Python-urllib/3.x` User-Agent (measured 2026-10-29: curl, python-requests and a
@@ -66,6 +99,18 @@ class ObjectHead:
     cache_control: str | None
 
 
+@dataclass(frozen=True)
+class ObjectEntry:
+    """One row of a bucket listing: what it is called and what it costs to store.
+
+    `size` is what R2 says it holds, not what a download returned — the retention
+    plan's byte totals are storage arithmetic, so it must come from the listing.
+    """
+
+    key: str
+    size: int = 0
+
+
 class R2Client:
     """Path-style S3 client against one bucket. Region is always `auto` on R2."""
 
@@ -97,12 +142,20 @@ class R2Client:
         headers: Mapping[str, str] | None = None,
         signed_headers: Mapping[str, str] | None = None,
         key: str | None = None,
+        sign_url: str | None = None,
     ) -> tuple[int, dict[str, str], bytes]:
+        # `sign_url` exists because `sigv4.canonical_query` takes the query in its
+        # *decoded* form (its own test pins `prefix=releases/` → `prefix=releases%2F`),
+        # while the URL on the wire must be percent-encoded. Signing the wire URL
+        # double-encodes every value — a `max-keys`-only listing happens to be
+        # unaffected, so this only bites on `prefix` and `continuation-token`, where
+        # it is a 403 `SignatureDoesNotMatch`. Measured against the real bucket
+        # 2026-10-30: signing the decoded query lists all 57 pages.
         request_headers = dict(headers or {})
         request_headers.update(
             sign(
                 method,
-                url,
+                sign_url or url,
                 access_key_id=self.credentials.access_key_id,
                 secret_access_key=self.credentials.secret_access_key,
                 body=body,
@@ -159,16 +212,122 @@ class R2Client:
         _, _, body = self._send("GET", self.object_url(key), key=key)
         return body
 
+    def _list_page(
+        self, prefix: str, token: str | None, page_size: int
+    ) -> tuple[list[ObjectEntry], str | None]:
+        """One `ListObjectsV2` page: the entries and the token for the next one."""
+        params: list[tuple[str, str]] = [("list-type", "2"), ("max-keys", str(page_size))]
+        if prefix:
+            params.append(("prefix", prefix))
+        if token:
+            params.append(("continuation-token", token))
+        encoded = "&".join(
+            f"{urllib.parse.quote(name, safe='')}={urllib.parse.quote(value, safe='')}" for name, value in params
+        )
+        decoded = "&".join(f"{name}={value}" for name, value in params)
+        _, _, body = self._send(
+            "GET",
+            f"{self.endpoint}/{self.bucket}?{encoded}",
+            sign_url=f"{self.endpoint}/{self.bucket}?{decoded}",
+            key=prefix or None,
+        )
+        try:
+            root = ET.fromstring(body)
+        except ET.ParseError as error:
+            raise R2Error("ListObjectsV2", 0, f"unparseable listing: {error}", prefix or None) from error
+
+        entries = [
+            ObjectEntry(key=_findtext(contents, "Key") or "", size=int(_findtext(contents, "Size") or 0))
+            for contents in _findall(root, "Contents")
+        ]
+        truncated = (_findtext(root, "IsTruncated") or "false").strip().lower() == "true"
+        next_token = _findtext(root, "NextContinuationToken") if truncated else None
+        if truncated and not next_token:
+            # Silently returning page one would make a bucket look 1,000 objects
+            # smaller than it is — which is exactly the state a mass-delete guard
+            # must never see.
+            raise R2Error("ListObjectsV2", 0, "truncated listing with no continuation token", prefix or None)
+        return entries, next_token
+
+    def list_objects(
+        self, prefix: str = "", *, page_size: int = 1000, max_pages: int = 10_000
+    ) -> list[ObjectEntry]:
+        """Every object under `prefix`, following continuation tokens to the end.
+
+        `list_keys` used to read one page with a string split; that is enough for a
+        five-fund release and wrong for a bucket holding a month of 14,000-object
+        releases, where the first page is 7% of the answer.
+        """
+        entries: list[ObjectEntry] = []
+        token: str | None = None
+        for _page in range(max_pages):
+            page, token = self._list_page(prefix, token, page_size)
+            entries.extend(page)
+            if not token:
+                return entries
+        raise R2Error(
+            "ListObjectsV2", 0, f"listing {prefix!r} still truncated after {max_pages} pages", prefix or None
+        )
+
     def list_keys(self, prefix: str = "") -> list[str]:
-        """One page is enough for a release (tens of objects); `truncated` is reported."""
-        query = urllib.parse.urlencode({"list-type": "2", "prefix": prefix, "max-keys": "1000"})
-        url = f"{self.endpoint}/{self.bucket}?{query}"
-        _, _, body = self._send("GET", url, key=prefix or None)
-        text = body.decode("utf-8", "replace")
-        keys = []
-        for chunk in text.split("<Key>")[1:]:
-            keys.append(chunk.split("</Key>", 1)[0])
-        return keys
+        """The keys under `prefix`, every page of them."""
+        return [entry.key for entry in self.list_objects(prefix)]
+
+    def delete_object(self, key: str) -> None:
+        """Delete one object. Missing is not an error: DELETE is idempotent on R2."""
+        try:
+            self._send("DELETE", self.object_url(key), key=key)
+        except R2Error as error:
+            if error.status == 404:
+                return
+            raise
+
+    def delete_objects(self, keys: Sequence[str]) -> int:
+        """Delete up to `DELETE_BATCH_LIMIT` objects in one request; returns how many.
+
+        DeleteObject is free on R2, so a batch buys time only: the first real
+        retention run removes ~40,000 objects, which is 41 requests this way and
+        40,000 the other. A key that is already gone is reported as deleted by S3
+        (that is the verb's contract) and is never an error here.
+        """
+        batch = list(keys)
+        if not batch:
+            return 0
+        if len(batch) > DELETE_BATCH_LIMIT:
+            raise ValueError(f"delete_objects takes at most {DELETE_BATCH_LIMIT} keys, got {len(batch)}")
+        body = delete_request_body(batch)
+        headers = {
+            "content-type": XML_CONTENT_TYPE,
+            "content-md5": base64.b64encode(hashlib.md5(body).digest()).decode("ascii"),
+        }
+        _, _, response = self._send(
+            "POST",
+            f"{self.endpoint}/{self.bucket}?delete",
+            body=body,
+            headers=headers,
+            signed_headers=headers,
+        )
+        try:
+            root = ET.fromstring(response)
+        except ET.ParseError as error:
+            raise R2Error("DeleteObjects", 0, f"unparseable delete response: {error}") from error
+
+        deleted = len(_findall(root, "Deleted"))
+        failed = _findall(root, "Error")
+        # A key deleted twice, or deleted by an earlier interrupted run, comes back
+        # as `NoSuchKey` on some S3 implementations — the verb's contract says that
+        # is success, so it counts as deleted rather than aborting a clean-up.
+        missing = [error for error in failed if (_findtext(error, "Code") or "") in ("NoSuchKey", "404")]
+        hard = [error for error in failed if error not in missing]
+        if hard:
+            detail = "; ".join(f"{_findtext(error, 'Key')}: {_findtext(error, 'Code')}" for error in hard[:5])
+            raise R2Error("DeleteObjects", 200, detail)
+        if not deleted and not failed:
+            # A 200 with no per-key entries is not a shape S3 produces; if it ever
+            # does, the batch was accepted, so report it as confirmed rather than
+            # turning it into a silent no-op the caller would read as "failed".
+            return len(batch)
+        return deleted + len(missing)
 
 
 @dataclass(frozen=True)

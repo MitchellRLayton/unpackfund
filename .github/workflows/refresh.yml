@@ -1,15 +1,18 @@
-# Refresh the published release from EDGAR — poll cheaply, publish on change.
+# Day 1 of the daily loop: detect, build, gate, stage, and publish a preview.
 #
 # Design and the numbers behind it: docs/08-operations/2026-10-30-edgar-refresh-architecture.md
-# Decision (GitHub Actions as executor, daily cadence, daily-index trigger):
-# docs/04-decisions/ADR-0010-refresh-orchestration-and-cadence.md
+# Decisions: ADR-0010 (executor, cadence, staging) and ADR-0011 (two-day promotion,
+# triage log, retention).
 #
-# Phase 1 by design: this workflow may write only the *staging* pointer. The live
-# pointer (`latest/release.json`) is a production change and stays an explicit
-# operator action until the ADR's open question (a) is answered.
+# This workflow may write only *non-production* surfaces:
+#   - the staged release under `staging/latest/release.json` in R2;
+#   - the unrecoverable-submission log under `triage/` in R2;
+#   - the preview Worker (`unpackfund-preview`), which owns no domain.
+# It never writes `latest/release.json` and never deploys the `unpackfund` Worker.
+# `promote.yml` does those, one day later, only if the checks recorded here pass.
 #
-# Cost: public-repo standard runners are free, so the only metered resource is R2
-# Class A operations — one full publish is 14,239 of the free 1,000,000 per month.
+# Cost: public-repo standard runners are free; R2 Class A operations are the only
+# metered resource (one staged publish = 14,239 puts of the free 1,000,000/month).
 
 name: refresh
 
@@ -19,10 +22,6 @@ on:
       days:
         description: "complete filing days to scan (1 = yesterday alone, 7 = catch up a week)"
         default: "3"
-      stage:
-        description: "upload the built release and move the staging pointer"
-        type: boolean
-        default: true
       force:
         description: "build even when detection finds no new filings"
         type: boolean
@@ -30,8 +29,8 @@ on:
   schedule:
     # 06:30 UTC = 02:30 ET, about 4.5 hours after EDGAR writes the previous day's
     # index (observed 22:01 ET). GitHub's cron is best-effort and can start hours
-    # late; the margin is there so lateness is not a correctness problem.
-    # Monday's run scans 3 days, which absorbs a weekend and a federal holiday.
+    # late; the margin is there so lateness is not a correctness problem, and the
+    # 25-hour gap to promote.yml is what makes "promote the previous day" true.
     - cron: "30 6 * * *"
 
 permissions:
@@ -49,6 +48,8 @@ env:
   # The pipeline refuses to make a request without a declared contact.
   SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
   UNPACKFUND_CACHE: data/cache
+  # Pinned: `npx wrangler@4` resolved to a version that did not exist on 2026-10-29.
+  WRANGLER: "wrangler@4.155.0"
 
 jobs:
   detect:
@@ -108,12 +109,14 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-  build:
-    name: build, validate, stage
+  stage:
+    name: build, gate, stage, preview
     needs: detect
     if: needs.detect.outputs.new_filings != '0' || inputs.force
     runs-on: ubuntu-latest
     timeout-minutes: 300
+    outputs:
+      release: ${{ steps.release.outputs.id }}
     steps:
       - uses: actions/checkout@v4
 
@@ -126,27 +129,45 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install ./pipeline
 
-      # No actions/cache here: a cold byte cache is ~6 GB of immutable EDGAR
-      # documents, which does not fit the 10 GB repo cache alongside anything else
-      # and would be evicted between runs anyway. Phase 2 seeds the cache from the
-      # R2 raw prefix instead, which is cheap and already paid for.
+      # No actions/cache for the byte cache: a cold cache is ~6 GB of immutable
+      # EDGAR documents, which does not fit the 10 GB repo cache alongside anything
+      # else and would be evicted between runs anyway. Phase 2 seeds it from the R2
+      # raw prefix instead.
       - name: Build the wide release
         working-directory: pipeline
         run: |
           python -m pipeline.build --universe all \
             --out ../artifacts --workers 8 --progress-every 1000
 
-      - name: Validate (the gate)
+      - name: Record the release id
+        id: release
+        run: |
+          RELEASE_DIR=$(ls -d artifacts/releases/*/ | tail -1)
+          ID=$(basename "$RELEASE_DIR")
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+          echo "dir=$RELEASE_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Validate (schema, sums, hashes — the blocking gate)
         working-directory: pipeline
         run: |
-          RELEASE_DIR=$(ls -d ../artifacts/releases/*/ | tail -1)
-          echo "validating $RELEASE_DIR"
-          python -m pipeline.validate --release "$RELEASE_DIR"
+          python -m pipeline.validate --release "../artifacts/releases/${{ steps.release.outputs.id }}"
 
-      - name: Stage the release (never live)
-        # `inputs.stage` is empty on `schedule` events, so the scheduled run has to
-        # say so explicitly or the daily job would build and then throw the release away.
-        if: inputs.stage || github.event_name == 'schedule'
+      - name: Review what changed (deterministic rules, blocks on a blocker)
+        working-directory: pipeline
+        run: |
+          set -euo pipefail
+          PREV=$(ls -d ../artifacts/releases/*/ | tail -2 | head -1 | xargs -r basename || true)
+          ARGS=(--release "../artifacts/releases/${{ steps.release.outputs.id }}"
+                --json "../artifacts/review/${{ steps.release.outputs.id }}.json"
+                --fail-on blocker)
+          if [ -n "$PREV" ] && [ "$PREV" != "${{ steps.release.outputs.id }}" ]; then
+            ARGS+=(--parent "../artifacts/releases/$PREV")
+          fi
+          python -m pipeline.review "${ARGS[@]}"
+
+      # A log, not a gate: whatever could not be published is recorded here so it can
+      # be triaged later, instead of scrolling out of a 300-minute job log.
+      - name: Log unrecoverable submissions
         working-directory: pipeline
         env:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
@@ -154,31 +175,108 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
-          RELEASE_DIR=$(ls -d ../artifacts/releases/*/ | tail -1)
-          # No --allow-live: `release upload` refuses to touch latest/ without it,
-          # and this workflow does not pass it. Promotion stays an operator action.
-          python -m pipeline.release upload --release "$RELEASE_DIR"
+          python -m pipeline.triage \
+            --release "../artifacts/releases/${{ steps.release.outputs.id }}" \
+            --out ../artifacts --upload
+
+      - name: Stage the release (never live)
+        working-directory: pipeline
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          # No --allow-live: `release upload` refuses to touch latest/ without it, and
+          # this workflow does not pass it. Promotion is promote.yml's job, tomorrow.
+          python -m pipeline.release upload \
+            --release "../artifacts/releases/${{ steps.release.outputs.id }}"
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install the site
+        run: pnpm install --frozen-lockfile
+
+      # The Next export starts empty every run, so every page is written here; the
+      # daily *upload* is still incremental because Cloudflare's asset manifest skips
+      # files whose hash it already has. `pnpm verify` deliberately does not do this.
+      - name: Build the site with the fund pages for this release
+        # `python -m`, not `pnpm pages:funds`: the pnpm wrapper pins the local venv
+        # interpreter and appends arguments inside `pipeline/`, neither of which is true
+        # on a runner. `pip install ./pipeline` puts the same module on the path here.
+        run: |
+          pnpm build
+          python -m pipeline.fund_pages \
+            --release "artifacts/releases/${{ steps.release.outputs.id }}" \
+            --out web/out
+
+      # The one human-reviewable surface: a Worker with no domain of its own.
+      - name: Publish the preview
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes ${{ env.WRANGLER }} deploy --config wrangler.preview.jsonc
+
+      - name: Smoke the preview
+        run: |
+          set -euo pipefail
+          BASE="https://unpackfund-preview.mitchell-layton.workers.dev"
+          for PATHNAME in / /funds/ /x/; do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --retry 3 "$BASE$PATHNAME")
+            echo "$PATHNAME -> $CODE"
+            test "$CODE" = "200"
+          done
+
+      # The exact bytes that ship tomorrow. `promote.yml` deploys this artifact rather
+      # than rebuilding, so a promotion cannot publish pages nobody looked at.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: web/out
+          retention-days: 3
+          if-no-files-found: error
 
       - name: Summarise
         if: always()
         run: |
-          RELEASE_DIR=$(ls -d artifacts/releases/*/ 2>/dev/null | tail -1 || true)
           {
-            echo "### Release"
+            echo "### Staged release ${{ steps.release.outputs.id }}"
             echo
-            if [ -n "$RELEASE_DIR" ] && [ -f "$RELEASE_DIR/build-summary.json" ]; then
+            for FILE in build-summary.json upload-report.json; do
+              if [ -f "artifacts/releases/${{ steps.release.outputs.id }}/$FILE" ]; then
+                echo "**$FILE**"
+                echo '```json'
+                head -c 3000 "artifacts/releases/${{ steps.release.outputs.id }}/$FILE" || true
+                echo '```'
+              fi
+            done
+            if [ -f "artifacts/review/${{ steps.release.outputs.id }}.json" ]; then
+              echo "**review**"
               echo '```json'
-              head -c 4000 "$RELEASE_DIR/build-summary.json"
+              python -c "import json;d=json.load(open('artifacts/review/${{ steps.release.outputs.id }}.json'));print(json.dumps({k:d[k] for k in ('counts','rules') if k in d}, indent=2))"
               echo '```'
-            else
-              echo "no release was produced"
+            fi
+            if [ -f artifacts/triage/index.json ]; then
+              echo "**triage**"
+              echo '```json'
+              head -c 2000 artifacts/triage/index.json || true
+              echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: build-summary
-          path: artifacts/releases/*/build-summary.json
+          name: gate-reports
+          path: |
+            artifacts/releases/*/build-summary.json
+            artifacts/releases/*/upload-report.json
+            artifacts/review/
+            artifacts/triage/
           retention-days: 14
           if-no-files-found: ignore

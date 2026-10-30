@@ -18,6 +18,27 @@ gates (below 60% of weight covered: metrics suppressed, "not covered"; 60–70%:
 renormalise as-filed weights to 100%, does not print a number without its `as_of`
 and source, and does not hide a fund because its coverage is low — a low-coverage
 fund gets a page that says so, in the same place a high-coverage fund says 99.4%.
+
+**Why rebuild only the funds that changed.** Regenerating all 8,983 pages costs
+4.6 s, so the saving is not the generator's time — it is the upload. A deploy
+ships `web/out` to the Worker and Cloudflare skips every asset whose bytes hash
+to what it already serves, so a daily refresh that rewrites only the funds whose
+document changed uploads a dozen files instead of 87.6 MB. That only holds while
+the other 8,973 documents stay byte-identical, which is why `build(only=…)`
+writes pages and never deletes, moves, or rewrites anything outside them, and why
+a page carries no release-wide field — no release id, no generated-at stamp —
+that would make every page different on every day.
+
+**What "changed" means, and what it cannot see.** A fund changed when its
+`funds/{TICKER}.json` bytes differ from the parent release, and the bytes are
+compared through each release's `manifest.json` per-file `sha256` rather than by
+re-hashing 8,983 files: the manifest is the record the validator already
+re-checks, so trusting it cannot make this disagree with a release that passed.
+One edge sits outside that test — a page also embeds its neighbours, the
+same-style bucket's ranked list and the issuer list, both read from
+`catalogue.json`, so a fund added, renamed, or re-covered in another fund's row
+can change a page whose own document did not move. The daily partial run is the
+cheap path; a full rebuild (or an explicit `--only-file` list) repairs those.
 """
 
 from __future__ import annotations
@@ -31,6 +52,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from .artifact import sha256_hex
 from .style import Style, classify
 
 #: Contract gates (`lookthrough-math-and-qa` §5, conventions I8). Below 60% of
@@ -168,10 +190,12 @@ def render_page(
     if band.show_metrics:
         metrics_html = f"""
       <dl class="metrics">
-        <div><dt>Concentration (HHI)</dt><dd>{number(metrics.get("hhi"), 4)}</dd></div>
-        <div><dt>Effective companies</dt><dd>{number(metrics.get("effective_n"), 1)}</dd></div>
-        <div><dt>Top 10 weight</dt><dd>{number(metrics.get("top10_pct"), 2)}%</dd></div>
-      </dl>"""
+        <div><dt>Concentration</dt><dd>{number(metrics.get("hhi"), 4)}</dd></div>
+        <div><dt>Same-size companies</dt><dd>{number(metrics.get("effective_n"), 1)}</dd></div>
+        <div><dt>Biggest 10 companies</dt><dd>{number(metrics.get("top10_pct"), 2)}%</dd></div>
+      </dl>
+      <p class="note">Same-size companies: how many equal-sized companies would be
+      spread the same way. Concentration: 0 = spread evenly, 1 = all in one company.</p>"""
     else:
         metrics_html = f"""
       <p class="note">Concentration figures are withheld: only {coverage:.1f}% of this fund's
@@ -379,10 +403,103 @@ def _issuer_index(catalogue: dict[str, list]) -> dict[str, list[tuple[str, str]]
     return by_issuer
 
 
+def _manifest_hashes(release_dir: Path) -> dict[str, str]:
+    """`sha256` per fund ticker from the release manifest; empty when unusable.
+
+    The manifest lists every generated file as `{path, bytes, sha256}`, so the
+    hashes of 8,983 documents arrive in one 1.4 MB read instead of 300 MB of file
+    hashing — and the value is the one the validator already re-checks, so this
+    cannot quietly disagree with a release that passed. Whatever the manifest does
+    not cover is hashed from disk by `_fund_hashes`.
+    """
+    try:
+        manifest = json.loads((release_dir / "manifest.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    entries = manifest.get("files") if isinstance(manifest, dict) else None
+    if not isinstance(entries, list):
+        return {}
+    prefix, suffix = "funds/", ".json"
+    hashes: dict[str, str] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        path, digest = entry.get("path"), entry.get("sha256")
+        if not isinstance(path, str) or not isinstance(digest, str):
+            continue
+        if path.startswith(prefix) and path.endswith(suffix) and "/" not in path[len(prefix) :]:
+            hashes[path[len(prefix) : -len(suffix)]] = digest
+    return hashes
+
+
+def _fund_hashes(release_dir: Path) -> dict[str, str]:
+    """`sha256` per fund document in a release directory.
+
+    The manifest is the source; a document it does not name is hashed from disk,
+    so a release written without a manifest still diffs correctly and a manifest
+    that is short of a file cannot silently hide a change.
+    """
+    hashes = _manifest_hashes(release_dir)
+    funds_dir = release_dir / "funds"
+    if not funds_dir.is_dir():
+        return hashes
+    on_disk = {path.stem for path in funds_dir.glob("*.json")}
+    for ticker in sorted(on_disk - set(hashes)):
+        hashes[ticker] = sha256_hex((funds_dir / f"{ticker}.json").read_bytes())
+    return hashes
+
+
+def changed_tickers(release_dir: Path, parent_dir: Path) -> set[str]:
+    """Tickers whose fund document differs from the parent release, new ones included.
+
+    A fund is rebuilt when it is new, when its document bytes differ, or when the
+    parent has no document for it. A fund that left the catalogue is not returned:
+    this decides what to write, never what to delete.
+    """
+    release = _fund_hashes(release_dir)
+    parent = _fund_hashes(parent_dir)
+    return {
+        ticker
+        for ticker, digest in release.items()
+        if SAFE_TICKER.match(ticker) and parent.get(ticker) != digest
+    }
+
+
+def read_only_file(path: Path) -> set[str]:
+    """Tickers from a newline-separated file; `#` starts a comment anywhere on a line.
+
+    Upper-cased on the way in because tickers are upper-case everywhere else in
+    the release; a hand-written list should not need to know that.
+    """
+    tickers: set[str] = set()
+    for line in path.read_text().splitlines():
+        ticker = line.split("#", 1)[0].strip()
+        if ticker:
+            tickers.add(ticker.upper())
+    return tickers
+
+
+def _looks_like_release(path: Path) -> bool:
+    """A directory this can diff against: fund hashes or the documents themselves."""
+    return (path / "manifest.json").is_file() or (path / "funds").is_dir()
+
+
 def build(
-    release_dir: Path, out_dir: Path, *, limit: int | None = None, indexable: bool = False
+    release_dir: Path,
+    out_dir: Path,
+    *,
+    only: set[str] | None = None,
+    limit: int | None = None,
+    indexable: bool = False,
 ) -> dict:
-    """Write every fund page under `out_dir`, plus the shared stylesheet."""
+    """Write fund pages under `out_dir`, plus the shared stylesheet.
+
+    With `only`, write those tickers and nothing else. Every other file already
+    in `out_dir` is left exactly as it was: this runs against the live `web/out`,
+    so a partial rebuild that swept the directory would take the site's fund
+    directory down with it. A ticker in `only` that this release does not publish
+    is reported back, not raised — a stale name in a list must not fail a deploy.
+    """
     catalogue_doc = json.loads((release_dir / "catalogue.json").read_text())
     catalogue: dict[str, list] = catalogue_doc["funds"]
     by_issuer = _issuer_index(catalogue)
@@ -391,7 +508,15 @@ def build(
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / CSS_NAME).write_text(stylesheet())
 
-    tickers = [ticker for ticker in catalogue if SAFE_TICKER.match(ticker)]
+    catalogue_tickers = [ticker for ticker in catalogue if SAFE_TICKER.match(ticker)]
+    tickers = catalogue_tickers
+    requested: int | None = None
+    unmatched: list[str] = []
+    if only is not None:
+        wanted = {ticker.upper() for ticker in only}
+        requested = len(wanted)
+        unmatched = sorted(wanted - set(catalogue_tickers))
+        tickers = [ticker for ticker in catalogue_tickers if ticker in wanted]
     if limit is not None:
         tickers = tickers[:limit]
 
@@ -442,6 +567,13 @@ def build(
         "median_bytes": bytes_total // written if written else 0,
         "bands": bands,
         "catalogue": len(catalogue),
+        # `requested` is None for a full rebuild, which is how a caller tells the
+        # two modes apart without repeating the flag it passed in.
+        "requested": requested,
+        "unmatched": unmatched,
+        # Catalogue entries this run did not rewrite; on a full rebuild it is 0,
+        # and on a partial one it is the number of pages left as they were.
+        "untouched": len(catalogue_tickers) - written - len(skipped),
     }
 
 
@@ -546,16 +678,78 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Write one plain HTML page per fund.")
     parser.add_argument("--release", type=Path, default=None)
     parser.add_argument("--out", required=True, type=Path)
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument(
+        "--only-file",
+        type=Path,
+        default=None,
+        help="rebuild only the tickers listed in this file (one per line, '#' comments)",
+    )
+    selection.add_argument(
+        "--changed-from",
+        type=Path,
+        default=None,
+        help="rebuild only the funds whose document differs from this release",
+    )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--indexable", action="store_true")
     args = parser.parse_args(argv)
 
+    # The parent says what changed; it cannot say what to build. Without
+    # `--release` the newest release would be picked, which is a different
+    # question from the one the flag asks.
+    if args.changed_from is not None and args.release is None:
+        print(
+            "--changed-from needs --release: the parent says what changed, not what to build",
+            file=sys.stderr,
+        )
+        return 2
+    if args.changed_from is not None and not _looks_like_release(args.changed_from):
+        print(f"not a release directory: {args.changed_from}", file=sys.stderr)
+        return 2
+
     release = args.release or newest_release()
     print(f"release: {release}")
-    stats = build(release, args.out, limit=args.limit, indexable=args.indexable)
+
+    only: set[str] | None = None
+    if args.only_file is not None:
+        try:
+            only = read_only_file(args.only_file)
+        except OSError as error:
+            print(f"cannot read --only-file: {error}", file=sys.stderr)
+            return 2
+        print(f"only: {len(only):,} ticker(s) from {args.only_file}")
+    elif args.changed_from is not None:
+        only = changed_tickers(release, args.changed_from)
+        print(f"changed since {args.changed_from.name}: {len(only):,} fund(s)")
+
+    stats = build(
+        release, args.out, only=only, limit=args.limit, indexable=args.indexable
+    )
+    if stats["requested"] is not None:
+        print(
+            f"partial rebuild: {stats['pages']:,} page(s) written, "
+            f"{stats['untouched']:,} left untouched"
+            + (
+                f", {len(stats['unmatched']):,} requested ticker(s) not in the catalogue: "
+                f"{', '.join(stats['unmatched'][:5])}"
+                if stats["unmatched"]
+                else ""
+            )
+        )
     if stats["pages"] == 0:
+        # A full rebuild that wrote nothing means the release path is wrong, which
+        # is why it is one line and a failure. A partial rebuild that wrote
+        # nothing means no fund changed since the parent — the normal quiet day —
+        # so the same warning is printed and the run still succeeds.
         print("no pages written — is the release directory correct?", file=sys.stderr)
-        return 1
+        if only is None:
+            return 1
+        print(
+            "nothing to rebuild: no requested or changed fund in this release",
+            file=sys.stderr,
+        )
+        return 0
     print(
         f"{stats['pages']:,} fund page(s) of {stats['catalogue']:,} in the catalogue, "
         f"{stats['bytes'] / 1e6:.1f} MB ({stats['median_bytes'] / 1e3:.1f} kB median) — "

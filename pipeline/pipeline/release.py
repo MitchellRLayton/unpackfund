@@ -336,6 +336,158 @@ def upload_release(
 
 
 
+# -- promotion, which is not an upload ----------------------------------------
+def _public_json(public: PublicReader, key: str, origin: str | None) -> tuple[dict, bytes]:
+    """Fetch one published JSON object, or say which object blocked the promotion."""
+    response = public.fetch(key, origin=origin)
+    if response.status != 200:
+        raise ReleaseError(f"{key} is not published (HTTP {response.status}); nothing to promote")
+    try:
+        return json.loads(response.body), response.body
+    except json.JSONDecodeError as error:
+        raise ReleaseError(f"{key} is not JSON ({error}); rebuild and republish the release") from error
+
+
+def _pointer_document(public: PublicReader, pointer_key: str, origin: str | None) -> tuple[dict | None, int]:
+    """Read a pointer the way the edge serves it: plain URL first, cache-buster second.
+
+    A pointer written seconds ago can be answered with a cached 404 — measured at about
+    three minutes per POP, see `_observe_live_pointer`. For a *read* that means the plain
+    URL is not evidence on its own, so the second attempt asks for a fresh copy.
+    """
+    response = public.fetch(pointer_key, origin=origin)
+    if response.status == 200:
+        try:
+            return json.loads(response.body), 200
+        except json.JSONDecodeError:
+            return None, 200
+    busted = public.fetch(f"{pointer_key}?probe={int(time.time())}", origin=origin)
+    if busted.status == 200:
+        try:
+            return json.loads(busted.body), 200
+        except json.JSONDecodeError:
+            return None, 200
+    return None, response.status
+
+
+def promote_release(
+    release_id: str,
+    *,
+    client: R2Client | None,
+    public: PublicReader,
+    prefix: str | None = None,
+    pointer_prefix: str = "latest",
+    pointer_name: str = DEFAULT_POINTER_NAME,
+    origin: str | None = DEFAULT_ORIGIN,
+    allow_live: bool = False,
+    allow_downgrade: bool = False,
+    dry_run: bool = False,
+    verify: bool = True,
+) -> dict:
+    """Move the live pointer onto a release that is already published and verified.
+
+    A promotion is deliberately **not** an upload. The refresh job uploads and verifies
+    every object under `staging/`; promotion re-reads what is already on the public host,
+    proves the descriptor agrees with the manifest beside it, and then writes the one
+    mutable object in the bucket. Re-uploading 14,239 objects (331 MB, ~26 minutes at the
+    measured 9–10 objects/s) to change a 1.9 kB pointer would also re-open the possibility
+    that the promotion publishes bytes nobody reviewed — the exact thing staging exists to
+    prevent.
+
+    The integrity check is two objects, not fourteen thousand: the release descriptor
+    (`release.json`) claims a sha256 and size for `manifest.json`, and the manifest claims
+    a sha256 for `release.json`. Fetching both and comparing both closes the loop without a
+    local copy of the release, which is what lets the promotion run on a machine that never
+    built the data.
+
+    Downgrades are refused unless `--allow-downgrade` is given: a rollback is a promotion
+    of an older release id, and it should be a decision recorded in the run, not something a
+    stale workflow input can do by accident.
+    """
+    prefix = (prefix or f"releases/{release_id}").strip("/")
+    guard_prefixes(prefix, pointer_prefix, allow_live)
+    pointer_key = f"{pointer_prefix.strip('/')}/{pointer_name}"
+
+    descriptor, descriptor_bytes = _public_json(public, f"{prefix}/release.json", origin)
+    if descriptor.get("kind") != "release":
+        raise ReleaseError(f"{prefix}/release.json kind is {descriptor.get('kind')!r}, expected 'release'")
+    if descriptor.get("as_of") != release_id:
+        raise ReleaseError(
+            f"{prefix}/release.json describes {descriptor.get('as_of')!r}, not {release_id!r}; "
+            "the published path and the descriptor disagree"
+        )
+
+    manifest, manifest_bytes = _public_json(public, f"{prefix}/manifest.json", origin)
+    if manifest.get("as_of") != release_id:
+        raise ReleaseError(f"{prefix}/manifest.json describes {manifest.get('as_of')!r}, not {release_id!r}")
+
+    # Both directions of the claim: descriptor → manifest, and manifest → descriptor.
+    claimed_manifest = ((descriptor.get("objects") or {}).get("manifest") or {})
+    actual_manifest = sha256_hex(manifest_bytes)
+    if claimed_manifest.get("sha256") != actual_manifest:
+        raise ReleaseError(
+            f"{prefix}/manifest.json hashes to {actual_manifest[:12]}… but its descriptor claims "
+            f"{str(claimed_manifest.get('sha256'))[:12]}…; the release is not internally consistent"
+        )
+    if claimed_manifest.get("bytes") not in (None, len(manifest_bytes)):
+        raise ReleaseError(
+            f"{prefix}/manifest.json is {len(manifest_bytes)} bytes but its descriptor claims "
+            f"{claimed_manifest.get('bytes')}; the release is not internally consistent"
+        )
+    claimed_self = next(
+        (entry for entry in manifest.get("files") or [] if entry.get("path") == "release.json"), None
+    )
+    if claimed_self is not None and claimed_self.get("sha256") not in (None, sha256_hex(descriptor_bytes)):
+        raise ReleaseError(
+            f"{prefix}/release.json hashes to {sha256_hex(descriptor_bytes)[:12]}… but the manifest beside it "
+            f"claims {str(claimed_self.get('sha256'))[:12]}…; the release is not internally consistent"
+        )
+
+    current, pointer_status = _pointer_document(public, pointer_key, origin)
+    live_id = (current or {}).get("as_of")
+    result = {
+        "pointer_key": pointer_key,
+        "from": live_id,
+        "to": release_id,
+        "prefix": prefix,
+        "pointer_status_before": pointer_status,
+        "dry_run": dry_run,
+        "wrote_pointer": False,
+        "verified": False,
+        "action": "promote",
+    }
+    if live_id == release_id:
+        result["action"] = "already-live"
+        return result
+    if live_id and release_id < live_id and not allow_downgrade:
+        raise ReleaseError(
+            f"the live pointer names {live_id!r} and {release_id!r} sorts before it; a rollback is a "
+            "deliberate act — re-run with --allow-downgrade when that is the intent"
+        )
+    if dry_run:
+        return result
+    if client is None:
+        raise ReleaseError("no R2 client: promotion needs credentials unless --dry-run")
+
+    # The only mutable object in the bucket, written last: everything it names is already
+    # published and just proved consistent.
+    _retrying(lambda: client.put(pointer_key, descriptor_bytes, cache_control=NO_CACHE), label=pointer_key)
+    result["wrote_pointer"] = True
+    if verify:
+        published, status = _pointer_document(public, pointer_key, origin)
+        result["pointer_status_after"] = status
+        if (published or {}).get("as_of") != release_id:
+            raise ReleaseError(
+                f"{pointer_key} was written but reads back as {(published or {}).get('as_of')!r} "
+                f"(HTTP {status}); the edge may still be serving a cached 404 — re-check in ~3 minutes"
+            )
+        described = ((published or {}).get("objects") or {}).get("manifest") or {}
+        if described.get("sha256") != actual_manifest:
+            raise ReleaseError(f"{pointer_key} reads back describing manifest {described.get('sha256')}, expected {actual_manifest}")
+        result["verified"] = True
+    return result
+
+
 #: Statuses worth a second attempt: a DNS or connection failure (0), throttling, and
 #: the two gateway errors R2 returns while an object is still settling. A 403 or a 404
 #: is never retried — those are answers, and repeating them only slows the failure down.
@@ -617,9 +769,65 @@ def main(argv: list[str] | None = None) -> int:
     verify.add_argument("--env-file", type=Path, default=None)
     verify.add_argument("--verbose", action="store_true", help="print every object, not just failures")
 
+
+    promote = sub.add_parser("promote", help="move the live pointer onto an already-published release")
+    promote.add_argument("--release", required=True, help="release id already published, e.g. 2026-10-31.1")
+    promote.add_argument("--prefix", default=None, help="object prefix (default releases/<release>)")
+    promote.add_argument("--pointer-prefix", default="latest", help="pointer prefix (default latest)")
+    promote.add_argument("--pointer-name", default=DEFAULT_POINTER_NAME)
+    promote.add_argument("--public-base", default=DEFAULT_PUBLIC_BASE)
+    promote.add_argument("--origin", default=DEFAULT_ORIGIN, help="Origin header for the CORS check; '' to skip")
+    promote.add_argument("--env-file", type=Path, default=None)
+    promote.add_argument(
+        "--allow-live",
+        action="store_true",
+        help="required: a promotion writes the pointer the live site reads",
+    )
+    promote.add_argument(
+        "--allow-downgrade",
+        action="store_true",
+        help="permit moving the pointer back to an older release id (rollback)",
+    )
+    promote.add_argument("--dry-run", action="store_true", help="prove the release is promotable, write nothing")
+    promote.add_argument("--skip-verify", action="store_true", help="write the pointer without the public read-back")
+
     args = parser.parse_args(argv)
     try:
         loaded = load_env(args.env_file)
+
+        if args.command == "promote":
+            public = PublicReader(args.public_base)
+            client = None
+            if not args.dry_run:
+                credentials, endpoint, bucket = credentials_from_env()
+                client = R2Client(endpoint, bucket, credentials)
+            promotion = promote_release(
+                args.release,
+                client=client,
+                public=public,
+                prefix=args.prefix,
+                pointer_prefix=args.pointer_prefix,
+                pointer_name=args.pointer_name,
+                origin=args.origin or None,
+                allow_live=args.allow_live,
+                allow_downgrade=args.allow_downgrade,
+                dry_run=args.dry_run,
+                verify=not args.skip_verify,
+            )
+            if loaded:
+                print(f"  credentials from .env: {', '.join(loaded)}")
+            arrow = f"{promotion['from'] or '(empty)'} -> {promotion['to']}"
+            print(f"\nrelease {promotion['to']}  {arrow}  under {promotion['pointer_key']}")
+            if promotion["action"] == "already-live":
+                print("  the pointer already names this release; nothing written")
+                return 0
+            if promotion["dry_run"]:
+                print("  dry run: the release is consistent and promotable; the pointer was not written")
+                return 0
+            state = "verified public read-back" if promotion["verified"] else "written, read-back skipped"
+            print(f"  pointer moved: {state}")
+            return 0
+
         release = paths.release_dir(args.release)
         if release is None or not release.is_dir():
             raise ReleaseError(f"{args.release} does not exist under artifacts/releases/")

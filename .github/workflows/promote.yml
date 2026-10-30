@@ -1,0 +1,239 @@
+# Day 2 of the daily loop: promote yesterday's staged release to production.
+#
+# Why a second run and not the end of the first: the staged release spends a day on the
+# preview Worker and in `staging/`, which is a window for the checks to run twice, for a
+# human to look, and for a bad pull to be caught before it is what the site serves.
+# The gate that matters is the checks, not the delay.
+#
+# Order, and it is deliberate (cloudflare-workers-r2-deploy §5):
+#   1. the data pointer moves first — the app reads it, and the pages discover their
+#      numbers through it;
+#   2. then the Worker that serves the pages, from the *same artifact* day 1 built, so a
+#      promotion cannot publish pages nobody reviewed;
+#   3. then retention, so the prune runs only after a successful promotion.
+# A failure at (2) leaves fresh data with pages one day old, which is visible and
+# recoverable; the reverse (new pages, old data) would show a fund page the app disagrees
+# with.
+#
+# Refuses, rather than guesses, when: there is no staged candidate, the candidate is
+# already live, the candidate is more than 3 days old (day 1 has been failing), or the
+# artifact day 1 produced is missing.
+
+name: promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "release id to promote (default: whatever staging/latest names)"
+        default: ""
+      allow_downgrade:
+        description: "permit promoting an OLDER release id — this is the rollback path"
+        type: boolean
+        default: false
+      skip_deploy:
+        description: "move the data pointer only, leave the site on its current version"
+        type: boolean
+        default: false
+      prune_force:
+        # The 60% mass-delete guard exists so a truncated bucket listing cannot empty the
+        # bucket. The first real prune legitimately crosses it (72.6%: four full releases
+        # and one five-fund rehearsal release exist, and only two are kept), so this is a
+        # one-time switch for that run — never leave it on.
+        description: "allow the prune to remove more than 60% of the bucket (first run only)"
+        type: boolean
+        default: false
+  schedule:
+    # 07:30 UTC, one hour after refresh.yml starts and ~25 hours after the previous
+    # day's refresh began. The hour is slack for a slow build, and the schedule is
+    # separate so a failed day 1 cannot promote anything.
+    - cron: "30 7 * * *"
+
+permissions:
+  contents: read
+
+# Same group as refresh: never let a promotion overlap a build.
+concurrency:
+  group: data-refresh
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.13"
+  WRANGLER: "wrangler@4.155.0"
+  DATA_HOST: "https://data.unpackfund.com"
+  PREVIEW_HOST: "https://unpackfund-preview.mitchell-layton.workers.dev"
+  SITE_HOST: "https://unpackfund.com"
+
+jobs:
+  promote:
+    name: promote the staged release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install the pipeline
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ./pipeline
+
+      # curl, not urllib: the data host answers Python-urllib with 403 (edge rule), and a
+      # cached 404 on a pointer is why the query string is there.
+      - name: Resolve what to promote
+        id: resolve
+        run: |
+          set -euo pipefail
+          probe() { curl -fsS --retry 3 --retry-delay 2 "$1?probe=$(date +%s)"; }
+          STAGED="${{ inputs.release }}"
+          if [ -z "$STAGED" ]; then
+            STAGED=$(probe "$DATA_HOST/staging/latest/release.json" | python -c "import json,sys;print(json.load(sys.stdin)['as_of'])")
+          fi
+          LIVE=$(probe "$DATA_HOST/latest/release.json" 2>/dev/null | python -c "import json,sys;print(json.load(sys.stdin).get('as_of',''))" || echo "")
+          echo "staged=$STAGED" >> "$GITHUB_OUTPUT"
+          echo "live=$LIVE" >> "$GITHUB_OUTPUT"
+          echo "staged release: ${STAGED:-none}"
+          echo "live release:   ${LIVE:-none}"
+          if [ -z "$STAGED" ]; then
+            echo "::error::nothing is staged; refresh.yml did not stage a release"
+            exit 1
+          fi
+          if [ "$STAGED" = "$LIVE" ]; then
+            echo "already_live=true" >> "$GITHUB_OUTPUT"
+            echo "the staged release is already live — nothing to promote"
+          fi
+          # Staleness: a candidate older than three days means day 1 has been failing and
+          # this is no longer "yesterday's data" — fail loudly instead of promoting it.
+          CANDIDATE_DATE="${STAGED%%.*}"
+          AGE_DAYS=$(( ( $(date -u +%s) - $(date -u -d "$CANDIDATE_DATE" +%s) ) / 86400 ))
+          echo "age_days=$AGE_DAYS" >> "$GITHUB_OUTPUT"
+          echo "staged ${AGE_DAYS} day(s) old"
+          if [ "$AGE_DAYS" -gt 3 ]; then
+            echo "::error::the staged release is ${AGE_DAYS} days old; refresh.yml has not staged anything recent"
+            exit 1
+          fi
+
+      - name: Move the data pointer (production)
+        if: steps.resolve.outputs.already_live != 'true'
+        working-directory: pipeline
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          set -euo pipefail
+          ARGS=(--release "${{ steps.resolve.outputs.staged }}" --allow-live)
+          if [ "${{ inputs.allow_downgrade }}" = "true" ]; then ARGS+=(--allow-downgrade); fi
+          # Proves the staged release is internally consistent from the public host and
+          # then writes the one mutable object. It re-uploads nothing.
+          python -m pipeline.release promote "${ARGS[@]}"
+
+      - uses: actions/download-artifact@v4
+        if: ${{ !inputs.skip_deploy && steps.resolve.outputs.already_live != 'true' }}
+        with:
+          name: site
+          path: web/out
+          # Artifacts expire in 3 days; a promotion of an older candidate has no pages to
+          # ship, and the pointer move above is still worth having. Say so, do not fail.
+          if-no-files-found: warn
+
+      - name: Deploy the site that day 1 built
+        if: ${{ !inputs.skip_deploy && steps.resolve.outputs.already_live != 'true' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [ ! -f web/out/index.html ]; then
+            echo "::warning::no site artifact for this candidate; leaving the site on its current version"
+            exit 0
+          fi
+          echo "files to deploy: $(find web/out -type f | wc -l)"
+          test "$(find web/out -type f | wc -l)" -le 20000
+          npx --yes ${{ env.WRANGLER }} deploy --config wrangler.jsonc
+
+      - name: Smoke the live surfaces
+        if: steps.resolve.outputs.already_live != 'true'
+        run: |
+          set -euo pipefail
+          for URL in "$SITE_HOST/" "$SITE_HOST/funds/" "$SITE_HOST/x/" \
+                     "$PREVIEW_HOST/" \
+                     "$DATA_HOST/latest/release.json?probe=$(date +%s)"; do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --retry 3 "$URL")
+            echo "$URL -> $CODE"
+            test "$CODE" = "200"
+          done
+          # The pointer must name what we just promoted, not merely answer 200.
+          LIVE=$(curl -fsS --retry 3 "$DATA_HOST/latest/release.json?probe=$(date +%s)" \
+            | python -c "import json,sys;print(json.load(sys.stdin).get('as_of',''))")
+          echo "live pointer now: $LIVE"
+          test "$LIVE" = "${{ steps.resolve.outputs.staged }}"
+
+      # Free operations only: DeleteObject is not billed, so a prune never touches the ops
+      # budget — it moves GB-month, which is the whole point (ADR-0011).
+      #
+      # `plan` runs first and its JSON is kept with the run even if `apply` fails; `apply`
+      # then re-derives the same plan from the same inputs and acts on it. It never runs if
+      # the promotion itself failed (`already_live` short-circuit above) and is
+      # `continue-on-error` because a refused prune must not mark a good promotion failed.
+      #
+      # The five prefixes below are named as ignored, never deleted: they are the day-4
+      # five-fund rehearsals, uploaded before `release.json` existed, so they have `funds/`
+      # and no descriptor. `retention` refuses any release-looking prefix it cannot read,
+      # which is the right default; this list is the operator's explicit exception.
+      - name: Prune old releases (stay inside the R2 free tier)
+        if: steps.resolve.outputs.already_live != 'true'
+        working-directory: pipeline
+        continue-on-error: true
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          LEGACY=(
+            --ignore-prefix releases/2026-10-28
+            --ignore-prefix releases/2026-10-28.2
+            --ignore-prefix releases/2026-10-28.3
+            --ignore-prefix releases/2026-10-29.1
+            --ignore-prefix releases/2026-10-29.2
+          )
+          python -m pipeline.retention plan "${LEGACY[@]}" --json ../artifacts/retention/plan.json
+          FORCE=()
+          if [ "${{ inputs.prune_force }}" = "true" ]; then FORCE+=(--force); fi
+          python -m pipeline.retention apply "${LEGACY[@]}" "${FORCE[@]}" --yes
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "### Promotion"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| staged release | ${{ steps.resolve.outputs.staged }} |"
+            echo "| live release before | ${{ steps.resolve.outputs.live }} |"
+            echo "| already live | ${{ steps.resolve.outputs.already_live }} |"
+            echo "| candidate age (days) | ${{ steps.resolve.outputs.age_days }} |"
+            echo
+            if [ -f artifacts/retention/plan.json ]; then
+              echo "**retention plan**"
+              echo '```json'
+              head -c 3000 artifacts/retention/plan.json || true
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: promotion
+          path: |
+            artifacts/retention/
+            node_modules/.wrangler/
+          retention-days: 14
+          if-no-files-found: ignore

@@ -9,15 +9,25 @@ python -m pipeline.refresh detect          # did EDGAR change? one index file, ~
 python -m pipeline.build --tickers VOO     # filing → artifacts/releases/<id>/
 python -m pipeline.validate --release 2026-10-29.1   # the gate
 python -m pipeline.checks --tickers VOO    # two builds must be byte-identical
+python -m pipeline.review --release <id> --parent <id>      # what changed, deterministic rules
+python -m pipeline.triage --release 2026-10-29.1 --upload   # log what could not be published
 python -m pipeline.release upload --release 2026-10-29.1   # R2, verified by public GET
 python -m pipeline.release verify --release 2026-10-29.1   # re-read a published prefix
+python -m pipeline.release promote --release 2026-10-29.1 --allow-live   # move the pointer only
+python -m pipeline.retention plan          # what a prune would keep, stub, or delete
+python -m pipeline.retention apply --yes   # the prune (DeleteObject is free)
 python -m pipeline.live                    # is EDGAR up, is the data host answering
 ```
 
 Wrapped as `pnpm refresh:detect`, `pnpm pipeline:build`, `pnpm data:validate --release <id>`,
 `pnpm data:validate --fixtures` (offline, CI form), `pnpm check:determinism`,
-`pnpm release:upload`, `pnpm release:verify` and `pnpm verify:live`. A bare release
+`pnpm data:review`, `pnpm data:triage`, `pnpm release:upload`, `pnpm release:verify`,
+`pnpm release:promote`, `pnpm data:retention` and `pnpm verify:live`. A bare release
 id resolves against `artifacts/releases/`.
+
+The daily loop is two workflows, not one: `refresh.yml` stages a release and deploys the
+preview Worker, `promote.yml` moves the live pointer and deploys production the next day.
+[ADR-0011](../../docs/04-decisions/ADR-0011-daily-refresh-promotion-and-retention.md) is why.
 
 ## Layout
 
@@ -38,8 +48,11 @@ id resolves against `artifacts/releases/`.
 | `checks.py` | determinism across two builds |
 | `paths.py` | where a release lives on disk; bare id → `artifacts/releases/<id>` |
 | `sigv4.py` | AWS SigV4 in stdlib, so the upload step installs nothing |
-| `r2.py` | R2 S3 client (put/head/get/list) and the public reader used for verification |
-| `release.py` | the publish sequence: objects, verify every one by public GET, pointer last |
+| `r2.py` | R2 S3 client (put/head/get/list/delete, batched) and the public reader used for verification |
+| `release.py` | the publish sequence (objects, verify every one by public GET, pointer last) and `promote`, which moves the pointer without re-uploading |
+| `review.py` | deterministic rules comparing a release to its parent: coverage, residual, holdings count, top-10, `as_of` sanity |
+| `triage.py` | the append-only log of submissions that could not be published, by failure kind, in R2 under `triage/` |
+| `retention.py` | the prune: three live releases, four quarterly archive stubs, everything else deleted |
 | `live.py` | reachability checks for EDGAR and the data host — never a gate |
 | `fixtures.py` | the offline sample release used by tests and `--fixtures` |
 
