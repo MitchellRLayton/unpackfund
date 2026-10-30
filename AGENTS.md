@@ -7,6 +7,11 @@ the workspace `AGENTS.md` one level up; they apply here too.
 **Canonical local clone:** `Personal-AI-Sandbox/unpackfund` (this repo).
 Do not create a second working copy; do not work from `.work/`.
 
+**Multiple concurrent sessions:** work in a worktree — see
+`docs/08-operations/2026-10-30-multi-session-playbook.md`. The single-session rules above apply when you are
+the only session running. (Added 2026-10-30: `.work/wt-*` is a worktree of the same `.git`, not a second working
+copy; the older prohibition was written when one session owned the tree.)
+
 ## Git authority
 
 - Agents may **commit and push directly to `main`**, and may push feature
