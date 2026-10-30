@@ -501,7 +501,17 @@ SITE_ORIGIN = "https://unpackfund.com"
 
 #: The app's own routes, in the sitemap's order. Fund pages are added from the
 #: catalogue. `/x` is deliberately absent: it is a tool, not a document.
-APP_ROUTES = ("/", "/funds/", "/compare/", "/c/", "/methodology/", "/disclaimer/", "/privacy/", "/terms/")
+APP_ROUTES = (
+    "/",
+    "/funds/",
+    "/compare/",
+    "/c/",
+    "/about/",
+    "/methodology/",
+    "/disclaimer/",
+    "/privacy/",
+    "/terms/",
+)
 
 
 def sitemap_xml(tickers: list[str]) -> str:

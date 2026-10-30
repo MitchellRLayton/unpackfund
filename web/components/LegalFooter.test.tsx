@@ -30,7 +30,7 @@ describe("LegalFooter", () => {
 
   it("links to every legal page", () => {
     render(<LegalFooter />);
-    for (const href of ["/methodology", "/disclaimer", "/privacy", "/terms"]) {
+    for (const href of ["/about", "/methodology", "/disclaimer", "/privacy", "/terms"]) {
       const link = screen.getByRole("link", { name: new RegExp(href.slice(1), "i") });
       expect(link.getAttribute("href")).toBe(href);
     }

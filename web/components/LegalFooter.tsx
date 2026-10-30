@@ -23,6 +23,7 @@ export function LegalFooter() {
           documents.
         </p>
         <nav className={styles.links} aria-label="Legal">
+          <Link href="/about/">About</Link>
           <Link href="/methodology/">Methodology</Link>
           <Link href="/disclaimer/">Disclaimer</Link>
           <Link href="/privacy/">Privacy</Link>
