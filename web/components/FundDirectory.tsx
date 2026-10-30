@@ -13,12 +13,24 @@
  * It shows ticker, name, issuer and coverage — not the `etf` flag, which is a name
  * rule (`name_rule_v1`) that calls VOO a mutual fund, and which therefore is not
  * allowed to decide anything visible (ADR-0007 C3).
+ *
+ * The list opens on the curated widely held funds (`popular.ts`) instead of A–Z,
+ * which would lead with AAAA, AAAAX, AAAC. The order is editorial, not a size
+ * ranking — the release carries no assets — and the line above the table says so.
  */
 
 import { useMemo, useState } from "react";
 
 import { Notice } from "@/components/Notice";
-import { filterRows, PARTIAL_COVERAGE, shownCoverage, toRows } from "@/lib/directory";
+import {
+  DEFAULT_SORT,
+  type DirectorySort,
+  filterRows,
+  PARTIAL_COVERAGE,
+  shownCoverage,
+  sortRows,
+  toRows,
+} from "@/lib/directory";
 import { formatCount } from "@/lib/format";
 import { useCatalogue, useRelease } from "@/lib/use-release";
 
@@ -29,13 +41,15 @@ export function FundDirectory() {
   const release = useRelease();
   const catalogue = useCatalogue(release.status === "ready" ? release.data : null);
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<DirectorySort>(DEFAULT_SORT);
   const [limit, setLimit] = useState(ROW_PAGE);
 
   const rows = useMemo(
     () => (catalogue.status === "ready" ? toRows(catalogue.data.funds) : []),
     [catalogue],
   );
-  const matches = useMemo(() => filterRows(rows, query), [rows, query]);
+  const ordered = useMemo(() => sortRows(rows, sort), [rows, sort]);
+  const matches = useMemo(() => filterRows(ordered, query), [ordered, query]);
   const visible = matches.slice(0, limit);
 
   return (
@@ -56,14 +70,14 @@ export function FundDirectory() {
 
       <form className="field" role="search" onSubmit={(event) => event.preventDefault()}>
         <label htmlFor="fund-search" className="sr-only">
-          Fund ticker, name or issuer
+          Fund ticker, name or issuer — separate words must all match
         </label>
         <input
           id="fund-search"
           type="search"
           autoComplete="off"
           spellCheck={false}
-          placeholder="Ticker, fund or issuer"
+          placeholder={'Ticker, fund, issuer — or "avantis etf"'}
           value={query}
           aria-describedby="fund-search-hint"
           onChange={(event) => {
@@ -104,12 +118,45 @@ export function FundDirectory() {
 
       {catalogue.status === "ready" && matches.length === 0 ? (
         <p className="muted" role="status">
-          No fund matches “{query}”. Try a ticker, or part of a fund or issuer name.
+          No fund matches “{query}”. Try a ticker, part of a fund or issuer name, or fewer
+          words.
         </p>
       ) : null}
 
       {visible.length > 0 ? (
         <>
+          <p className="muted" style={{ fontSize: "0.85rem", margin: "0.25rem 0" }}>
+            {sort === "popular" ? (
+              <>
+                Popular funds first — our pick of the widely held ones, not a size
+                ranking.{" "}
+                <button
+                  type="button"
+                  className="quiet"
+                  onClick={() => {
+                    setSort("alpha");
+                    setLimit(ROW_PAGE);
+                  }}
+                >
+                  A–Z instead
+                </button>
+              </>
+            ) : (
+              <>
+                A–Z by ticker.{" "}
+                <button
+                  type="button"
+                  className="quiet"
+                  onClick={() => {
+                    setSort("popular");
+                    setLimit(ROW_PAGE);
+                  }}
+                >
+                  Popular first
+                </button>
+              </>
+            )}
+          </p>
           <p
             className="muted"
             style={{ fontSize: "0.85rem", margin: "0.25rem 0 0.5rem" }}
@@ -123,8 +170,8 @@ export function FundDirectory() {
             <table className="ledger">
               <caption className="sr-only">
                 {formatCount(matches.length)} {matches.length === 1 ? "fund" : "funds"} in
-                release {catalogue.status === "ready" ? catalogue.data.as_of : ""}, by
-                ticker.
+                release {catalogue.status === "ready" ? catalogue.data.as_of : ""},{" "}
+                {sort === "popular" ? "widely held first" : "by ticker"}.
               </caption>
               <thead>
                 <tr>

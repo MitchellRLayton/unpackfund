@@ -52,7 +52,10 @@ def test_page_states_the_filing_its_dates_and_its_source():
     assert "<title>AVUV holdings" in page
     assert "Holdings as of <strong>2026-05-31</strong>, filed 2026-07-29" in page
     assert "59 days later" in page
-    assert "SEC Form N-PORT" in page
+    # The source line links the fund's own filing: naming the form alone left a reader
+    # thinking a fund with foreign holdings was not an SEC filer at all.
+    assert 'href="https://www.sec.gov/Archives/edgar/data/1/2/primary_doc.xml"' in page
+    assert "N-PORT filing on SEC EDGAR" in page
     assert "https://www.sec.gov/Archives/edgar/data/1/2/primary_doc.xml" in page
 
 
@@ -68,6 +71,9 @@ def test_a_low_coverage_fund_gets_no_concentration_numbers():
     page = render(fund(coverage_pct=12.8))
     assert "not covered" in page
     assert "Concentration figures are withheld" in page
+    # ...and says why coverage is low, and whose limit it is.
+    assert "outside the U.S." in page
+    assert "the gap is in" in page
     # The metric values themselves must be absent, not merely unlabelled.
     assert "81.3" not in page
     assert "0.0123" not in page
@@ -119,7 +125,7 @@ def test_same_issuer_links_are_relative_and_never_self_referential():
     )
     assert '<a href="/f/AVLV/">AVLV</a>' in page
     # The canonical URL is the page's own address; what must not appear is a link to it.
-    assert 'href="/f/AVUV/"' not in page
+    assert '<li><a href="/f/AVUV/">' not in page
 
 
 def test_the_fund_offers_a_prefilled_ledger_link_it_built_the_apps_way():
@@ -201,3 +207,73 @@ def test_the_stylesheet_carries_the_apps_palette():
     assert "--accent:" in css
     assert "prefers-color-scheme: dark" in css
     assert ".site-header" in css
+
+def test_similar_funds_replace_the_issuer_list_and_name_their_bucket():
+    """Same style box, not same trust: the heading says what the funds have in common."""
+    from pipeline.style import classify
+
+    style = classify("Avantis U.S. Small Cap Value ETF")
+    page = fund_pages.render_page(
+        fund(),
+        issuer_funds=[("ZZZZ", "Some Unrelated Fund")],
+        style=style,
+        similar=[("AVUV", "Avantis U.S. Small Cap Value ETF"), ("IJS", "iShares S&P Small-Cap 600 Value ETF")],
+    )
+    assert "Similar U.S. small cap value funds" in page
+    # The bucket wins over the issuer list; a reader asked for comparable funds.
+    assert "More from" not in page
+    assert '<a href="/f/IJS/">IJS</a>' in page
+    # The heading claims a grouping, so the page says how it was made.
+    assert "Names Rule" in page
+
+
+def test_without_a_bucket_the_issuer_list_still_shows():
+    page = fund_pages.render_page(
+        fund(),
+        issuer_funds=[("ZZZZ", "Some Unrelated Fund")],
+        style=None,
+        similar=[],
+    )
+    assert "More from" in page
+    assert "Similar" not in page
+
+
+def test_similar_links_are_capped_and_never_link_to_the_fund_itself():
+    from pipeline.style import classify
+
+    style = classify("Avantis U.S. Small Cap Value ETF")
+    others = [(f"T{n:03d}", f"Fund {n}") for n in range(30)]
+    page = fund_pages.render_page(
+        fund(ticker="AVUV"),
+        issuer_funds=[],
+        style=style,
+        similar=[("AVUV", "This Fund")] + others,
+    )
+    listed = page.count('<li><a href="/f/')
+    assert listed == fund_pages.SIMILAR_FUND_LINKS
+    assert '<li><a href="/f/AVUV/">' not in page
+
+
+def test_build_groups_funds_by_style_not_by_issuer(tmp_path: Path):
+    release = tmp_path / "release"
+    (release / "funds").mkdir(parents=True)
+    catalogue = {
+        "as_of": "2026-10-30.5",
+        "etf_classifier": "name_rule_v1",
+        "funds": {
+            # Same bucket, two different trusts.
+            "AVUV": ["Avantis U.S. Small Cap Value ETF", "EA Series Trust", 1, 97.7],
+            "IJS": ["iShares S&P Small-Cap 600 Value ETF", "iSHARES TRUST", 1, 99.0],
+            # Same trust, different bucket.
+            "AVLV": ["Avantis U.S. Large Cap Value ETF", "EA Series Trust", 1, 99.7],
+        },
+    }
+    (release / "catalogue.json").write_text(json.dumps(catalogue))
+    for ticker in catalogue["funds"]:
+        (release / "funds" / f"{ticker}.json").write_text(json.dumps(fund(ticker=ticker)))
+    out = tmp_path / "out"
+    fund_pages.build(release, out)
+
+    page = (out / "f" / "AVUV" / "index.html").read_text()
+    assert '<a href="/f/IJS/">IJS</a>' in page
+    assert '<a href="/f/AVLV/">AVLV</a>' not in page

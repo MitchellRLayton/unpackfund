@@ -16,6 +16,7 @@ import { resolveAlias } from "@/lib/data";
 import { encodePortfolio } from "@/lib/fragment";
 import { usePortfolio } from "@/lib/use-portfolio";
 import { formatFundList } from "@/lib/format";
+import { POPULAR_ORDER } from "@/lib/popular";
 import { useRelease, useTickers } from "@/lib/use-release";
 import { WeightInput } from "@/components/WeightInput";
 import { FULL_ALLOCATION_BP } from "@/lib/types";
@@ -47,6 +48,14 @@ export function PortfolioBuilder() {
 
   const catalog = tickers.status === "ready" ? tickers.data : [];
   const unallocated = FULL_ALLOCATION_BP - portfolio.totalBp;
+
+  // The release publishes 8,983 funds, so a list of them is useless as a starting
+  // point: the first screen would be AAAA. These are the widely held ones, in the
+  // operator's curated order, filtered to what this release can actually load.
+  const chips = useMemo(
+    () => POPULAR_ORDER.filter((ticker) => catalog.includes(ticker)).slice(0, 12),
+    [catalog],
+  );
 
   const shareHref = useMemo(() => {
     if (portfolio.entries.length === 0) return "/x/";
@@ -143,7 +152,13 @@ export function PortfolioBuilder() {
           id="ticker"
           type="text"
           name="ticker"
-          placeholder={catalog.length > 0 ? `Ticker, e.g. ${catalog[0]}` : "Ticker"}
+          placeholder={
+            chips.length > 0
+              ? `Ticker, e.g. ${chips[0]}`
+              : catalog.length > 0
+                ? `Ticker, e.g. ${catalog[0]}`
+                : "Ticker"
+          }
           autoComplete="off"
           autoCapitalize="characters"
           spellCheck={false}
@@ -174,6 +189,26 @@ export function PortfolioBuilder() {
             ? "Reading the release pointer…"
             : "The release pointer could not be read."}
       </p>
+
+      {chips.length > 0 ? (
+        <div className="chips-row">
+          <span className="muted">Popular</span>
+          <ul className="chips">
+            {chips.map((ticker) => (
+              <li key={ticker}>
+                <button
+                  type="button"
+                  onClick={() => portfolio.add(ticker)}
+                  disabled={portfolio.entries.some((entry) => entry.ticker === ticker)}
+                  aria-label={`Add ${ticker}`}
+                >
+                  {ticker}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {message ? (
         <Notice

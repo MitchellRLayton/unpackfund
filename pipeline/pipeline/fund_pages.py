@@ -31,6 +31,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from .style import Style, classify
+
 #: Contract gates (`lookthrough-math-and-qa` §5, conventions I8). Below 60% of
 #: weight covered, a concentration figure is not a fact about the fund; it is a
 #: fact about our mapping, so it is withheld rather than shown small.
@@ -43,6 +45,7 @@ TOP_HOLDINGS = 25
 
 #: Same-issuer links, so a reader can move sideways through a family of funds.
 SAME_ISSUER_LINKS = 12
+SIMILAR_FUND_LINKS = 12
 
 #: A ticker becomes a directory name, so it must be a plain path segment.
 SAFE_TICKER = re.compile(r"^[A-Za-z0-9._-]{1,12}$")
@@ -100,6 +103,8 @@ def render_page(
     *,
     issuer_funds: list[tuple[str, str]],
     indexable: bool = False,
+    style: Style | None = None,
+    similar: list[tuple[str, str]] | None = None,
 ) -> str:
     """One fund document → one standalone HTML page."""
     ticker = _esc(fund["ticker"])
@@ -171,7 +176,33 @@ def render_page(
         metrics_html = f"""
       <p class="note">Concentration figures are withheld: only {coverage:.1f}% of this fund's
       weight maps to a company we can identify, and a concentration number computed from
-      the mapped part would describe our mapping rather than the fund.</p>"""
+      the mapped part would describe our mapping rather than the fund.</p>
+      <p class="note">Low coverage is usually one of two things. Either the fund holds companies
+      outside the U.S., which have no registered ticker here for us to match, or its holdings
+      are filed under names that do not match an issuer we already know. The filing linked
+      above is the fund&rsquo;s own and is filed with the SEC either way &mdash; the gap is in
+      our mapping, not in the source.</p>"""
+
+    similar_html = ""
+    if style is not None and similar:
+        links = "\n".join(
+            f'<li><a href="/f/{_esc(other)}/">{_esc(other)}</a>'
+            f'<span class="muted"> · {_esc(other_name)}</span></li>'
+            for other, other_name in [
+                pair for pair in similar if pair[0] != fund["ticker"]
+            ][:SIMILAR_FUND_LINKS]
+        )
+        similar_html = f"""
+      <section aria-labelledby="similar-heading">
+        <h2 id="similar-heading">Similar {_esc(style.label)} funds</h2>
+        <p class="muted">Grouped from each fund&rsquo;s own filed name, which the
+        SEC&rsquo;s Names Rule requires a fund to invest 80% by, and listed with the
+        funds we can see the most of first. Not a recommendation, and not a claim that
+        one is better than another.</p>
+        <ul class="plain">
+{links}
+        </ul>
+      </section>"""
 
     issuer_html = ""
     if issuer_funds:
@@ -232,7 +263,8 @@ def render_page(
   <h1>{name}</h1>
   <p class="freshness">
     Holdings as of <strong>{as_of}</strong>, filed {filed_at}
-    {f"· {lag} days later" if lag is not None else ""} · source: SEC Form N-PORT
+    {f"· {lag} days later" if lag is not None else ""} ·
+    {f'<a href="{source_url}" rel="nofollow noopener">the fund&#39;s N-PORT filing on SEC EDGAR</a>' if source_url else "SEC N-PORT filing"}
   </p>
 
   <dl class="summary">
@@ -256,7 +288,7 @@ def render_page(
 {holdings_html}
       </tbody>
     </table>
-  </section>{issuer_html}
+  </section>{similar_html or issuer_html}
 
   <section aria-labelledby="caveats-heading">
     <h2 id="caveats-heading">What this page does not tell you</h2>
@@ -278,7 +310,6 @@ def render_page(
     {ledger_action}
     <a href="/funds/">All funds</a>
     <a href="/">Build a portfolio</a>
-    {f'<a href="{source_url}" rel="nofollow noopener">This filing on SEC EDGAR</a>' if source_url else ""}
   </p>
 </main>
 <footer class="site-footer">
@@ -305,6 +336,38 @@ def ledger_link(ticker: str) -> str | None:
     return f"/x/#v1.{encoded}"
 
 
+def _style_index(catalogue: dict[str, list]) -> dict[str, list[tuple[str, str]]]:
+    """Style bucket key → funds in it, alphabetically.
+
+    Built once for the whole release: 8,983 classifications of names, then a lookup
+    per page. A fund whose name supports no bucket is simply absent, and its page
+    falls back to the issuer list.
+    """
+    ranked: dict[str, list[tuple[tuple, str, str]]] = {}
+    for ticker, row in catalogue.items():
+        if not SAFE_TICKER.match(ticker):
+            continue
+        name, issuer = row[0], row[1] if len(row) > 1 else ""
+        style = classify(name, issuer)
+        if style is None:
+            continue
+        coverage = float(row[3]) if len(row) > 3 and row[3] is not None else 0.0
+        # Alphabetical would show the same A-names forever and hide half the bucket.
+        # A visitor wants a peer they can act on, so: ETFs first (the wrapper most
+        # readers are looking for, read off the name like everything else here), then
+        # the funds we can see the most of, then ticker for determinism. A bucket of
+        # 552 therefore shows its best twelve on every page rather than a rotating
+        # window: repetition across pages is the lesser cost, and the reader of one
+        # page cannot see it.
+        key = (0 if "ETF" in name.upper() else 1, -coverage, ticker)
+        ranked.setdefault(style.key, []).append((key, ticker, name))
+    index: dict[str, list[tuple[str, str]]] = {}
+    for style_key, items in ranked.items():
+        items.sort()
+        index[style_key] = [(ticker, name) for _, ticker, name in items]
+    return index
+
+
 def _issuer_index(catalogue: dict[str, list]) -> dict[str, list[tuple[str, str]]]:
     by_issuer: dict[str, list[tuple[str, str]]] = {}
     for ticker, row in catalogue.items():
@@ -323,6 +386,7 @@ def build(
     catalogue_doc = json.loads((release_dir / "catalogue.json").read_text())
     catalogue: dict[str, list] = catalogue_doc["funds"]
     by_issuer = _issuer_index(catalogue)
+    by_style = _style_index(catalogue)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / CSS_NAME).write_text(stylesheet())
@@ -346,7 +410,18 @@ def build(
             for other, other_name in by_issuer.get(fund["issuer"], [])
             if other != ticker
         ]
-        page = render_page(fund, issuer_funds=others, indexable=indexable)
+        style = classify(fund["name"], fund.get("issuer") or "")
+        page = render_page(
+            fund,
+            issuer_funds=others,
+            indexable=indexable,
+            style=style,
+            similar=(
+                [pair for pair in by_style.get(style.key, []) if pair[0] != ticker]
+                if style is not None
+                else []
+            ),
+        )
         target = out_dir / "f" / ticker / "index.html"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(page)
