@@ -130,7 +130,9 @@ def credentials_from_env() -> tuple[Credentials, str, str]:
         access_key_id=os.environ["R2_ACCESS_KEY_ID"],
         secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
     )
-    return credentials, os.environ["R2_ENDPOINT"], os.environ.get("R2_BUCKET", DEFAULT_BUCKET)
+    # `R2_BUCKET` is optional, and CI passes it as an empty string when the secret is
+    # unset — `or` rather than a `get` default, because "" is a present key.
+    return credentials, os.environ["R2_ENDPOINT"], os.environ.get("R2_BUCKET") or DEFAULT_BUCKET
 
 
 # -- planning ----------------------------------------------------------------

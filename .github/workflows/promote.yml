@@ -144,7 +144,10 @@ jobs:
       - name: Deploy the site that day 1 built
         if: ${{ !inputs.skip_deploy && steps.resolve.outputs.already_live != 'true' }}
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # wrangler's env var name is CLOUDFLARE_API_TOKEN; the repository secret is
+          # CLOUDFLARE_ACCOUNT_API_TOKEN (set 2026-10-28), so map one onto the other rather
+          # than asking for the same credential under a second name.
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_ACCOUNT_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail

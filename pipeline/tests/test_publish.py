@@ -193,6 +193,25 @@ def test_missing_credentials_name_the_variable_not_the_value(monkeypatch):
     assert "=" not in message  # names only, never a value
 
 
+def test_an_empty_bucket_name_falls_back_to_the_default(monkeypatch):
+    """GitHub Actions exports `R2_BUCKET` as "" when the secret is unset.
+
+    `os.environ.get("R2_BUCKET", DEFAULT_BUCKET)` returns "" in that case — a present key —
+    and an empty bucket name would make every object URL start with a stray slash. The
+    default has to survive an empty string, not just a missing one.
+    """
+    monkeypatch.setenv("R2_ENDPOINT", "https://e")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "ak")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "sk")
+    monkeypatch.setenv("R2_BUCKET", "")
+    _, _, bucket = release.credentials_from_env()
+    assert bucket == release.DEFAULT_BUCKET
+
+    monkeypatch.setenv("R2_BUCKET", "other-bucket")
+    _, _, bucket = release.credentials_from_env()
+    assert bucket == "other-bucket"
+
+
 def test_env_file_fills_only_missing_names(tmp_path, monkeypatch):
     env_file = tmp_path / ".env"
     env_file.write_text('R2_BUCKET=from-file\nR2_ENDPOINT="https://e"\n# comment\n\n')
