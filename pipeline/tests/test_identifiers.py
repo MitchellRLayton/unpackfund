@@ -1003,7 +1003,7 @@ def test_the_api_key_is_never_printed(tmp_path, capsys, monkeypatch):
         == 0
     )
     captured = capsys.readouterr()
-    assert secret not in captured.out + captured.err
+    assert stub_key not in captured.out + captured.err
     assert "harvest: keyed" in captured.out
 
 
