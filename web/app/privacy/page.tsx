@@ -78,6 +78,14 @@ export default function PrivacyPage() {
         </li>
       </ul>
 
+      <h2>If you email me</h2>
+      <p>
+        Writing to {CONTACT_EMAIL} is the only way to send me anything, and it is always
+        your choice. Your message is handled by my email provider under its own terms, and
+        I keep it only as long as it takes to answer or to act on a correction. I do not
+        add you to a list, and there is no newsletter.
+      </p>
+
       <h2>Links out</h2>
       <p>
         Some pages link to SEC filings at <code>sec.gov</code> and, where relevant, to an

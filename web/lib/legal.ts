@@ -14,18 +14,30 @@
  *
  * See docs/07-legal/2026-10-30-privacy-disclaimer-methodology-draft.md §1.
  */
-export const LEGAL_ENTITY = "[LEGAL_ENTITY]";
+/**
+ * The operator, as a natural person. A revocable trust is not a separate legal
+ * person and gives no liability protection — the grantor is the trustee and the
+ * beneficiary — so naming it here would add a confusing third name to a policy
+ * about a personal site without changing what it means. If the operator later
+ * forms an LLC, this becomes the LLC and nothing else changes.
+ */
+export const LEGAL_ENTITY = "Mitchell Layton";
 
 /** Governing law for the terms. The operator's state of residence, most likely. */
-export const JURISDICTION = "[JURISDICTION]";
+export const JURISDICTION = "California";
 
 /**
  * Where corrections, privacy requests, and complaints go. A dedicated address,
  * not the SEC contact `data@unpackfund.com`.
  */
-export const CONTACT_EMAIL = "[CONTACT_EMAIL]";
+export const CONTACT_EMAIL = "mitchell.layton@proton.me";
 
-/** The day the wide release is promoted to unpackfund.com, not the day it was drafted. */
+/**
+ * The day the wide release is promoted to unpackfund.com, not the day it was
+ * drafted. Deliberately still a placeholder: the operator fills it at promotion,
+ * and the pre-flight gate treats it separately from the three values above so a
+ * promotion cannot ship a policy dated to a draft.
+ */
 export const EFFECTIVE_DATE = "[EFFECTIVE_DATE]";
 
 /** Bumped by hand when the method changes; the page and the copy must move together. */
