@@ -200,18 +200,47 @@ jobs:
       - name: Install the site
         run: pnpm install --frozen-lockfile
 
+      # Two builds, and the difference is one baked-in string: the pointer the browser
+      # reads. `NEXT_PUBLIC_POINTER_PATH` is compiled into the chunks, so one build
+      # cannot serve both. Production must read `latest/release.json` (a staging default
+      # in a production build would let a later staging upload move the live site — see
+      # web/lib/data.ts), and the preview must read `staging/latest/release.json` or it
+      # would review yesterday's live data against today's pages.
+      #
       # The Next export starts empty every run, so every page is written here; the
       # daily *upload* is still incremental because Cloudflare's asset manifest skips
       # files whose hash it already has. `pnpm verify` deliberately does not do this.
-      - name: Build the site with the fund pages for this release
-        # `python -m`, not `pnpm pages:funds`: the pnpm wrapper pins the local venv
-        # interpreter and appends arguments inside `pipeline/`, neither of which is true
-        # on a runner. `pip install ./pipeline` puts the same module on the path here.
+      #
+      # `python -m`, not `pnpm pages:funds`: the pnpm wrapper pins the local venv
+      # interpreter and appends arguments inside `pipeline/`, neither of which is true
+      # on a runner. `pip install ./pipeline` puts the same module on the path here.
+      - name: Build the production site with the fund pages for this release
         run: |
           pnpm build
           python -m pipeline.fund_pages \
             --release "artifacts/releases/${{ steps.release.outputs.id }}" \
             --out web/out
+
+      # The exact bytes that ship tomorrow. `promote.yml` deploys this artifact rather
+      # than rebuilding, so a promotion cannot publish pages nobody looked at.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: web/out
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Build the preview site against the staged pointer
+        env:
+          NEXT_PUBLIC_POINTER_PATH: staging/latest/release.json
+        run: |
+          pnpm build
+          python -m pipeline.fund_pages \
+            --release "artifacts/releases/${{ steps.release.outputs.id }}" \
+            --out web/out
+          # Prove the baked pointer: a preview reading the live pointer looks plausible
+          # and reviews the wrong release.
+          test "$(grep -rl 'staging/latest/release.json' web/out/_next/static/chunks | wc -l | tr -d ' ')" -gt 0
 
       # The one human-reviewable surface: a Worker with no domain of its own.
       - name: Publish the preview
@@ -233,15 +262,9 @@ jobs:
             test "$CODE" = "200"
           done
 
-      # The exact bytes that ship tomorrow. `promote.yml` deploys this artifact rather
-      # than rebuilding, so a promotion cannot publish pages nobody looked at.
-      - uses: actions/upload-artifact@v4
-        with:
-          name: site
-          path: web/out
-          retention-days: 3
-          if-no-files-found: error
-
+      # The site artifact was uploaded before the preview rebuild on purpose: the
+      # artifact must be the *production* pointer build, and this step overwrote
+      # `web/out` with the staging-pointer one.
       - name: Summarise
         if: always()
         run: |

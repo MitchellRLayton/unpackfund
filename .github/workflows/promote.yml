@@ -43,11 +43,20 @@ on:
         description: "allow the prune to remove more than 60% of the bucket (first run only)"
         type: boolean
         default: false
-  schedule:
-    # 07:30 UTC, one hour after refresh.yml starts and ~25 hours after the previous
-    # day's refresh began. The hour is slack for a slow build, and the schedule is
-    # separate so a failed day 1 cannot promote anything.
-    - cron: "30 7 * * *"
+  # PAUSED until the operator has seen one promotion by hand.
+  #
+  # The loop this file implements is meant to run unattended (ADR-0011), but the first
+  # promotion moves the public site from a 5-fund release to the wide one. Flipping that
+  # on a timer before anyone has watched it happen once would be exactly the "routine
+  # commit that ships unreviewed production" the operating rules forbid. Re-enable by
+  # uncommenting the two lines below after the first `workflow_dispatch` promotion is
+  # green — nothing else needs to change.
+  #
+  # 07:30 UTC, one hour after refresh.yml starts and ~25 hours after the previous day's
+  # refresh began. The hour is slack for a slow build, and the schedule is separate so a
+  # failed day 1 cannot promote anything.
+  # schedule:
+  #   - cron: "30 7 * * *"
 
 permissions:
   contents: read
