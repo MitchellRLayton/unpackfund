@@ -32,7 +32,18 @@ set -euo pipefail
 BOUNDARY="/Users/mitchell.layton/Personal-AI-Sandbox"
 
 SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-REPO_ROOT="$(cd -P "$SCRIPT_DIR/.." && pwd -P)"
+# The lock must be the same file for every session, and sessions run in
+# worktrees of this same repository (.work/wt-*). Resolving the root from the
+# script's own location therefore finds the *worktree* when run from one, which
+# wrote .work/.work/deploy.lock -- a second lock no trunk session could see, on
+# exactly the worktree-plus-lock combination the playbook recommends. Ask git for
+# the shared git directory instead: it is per-repository, not per-worktree.
+_common="$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+if [ -n "$_common" ]; then
+  REPO_ROOT="$(cd -P "$(dirname "$_common")" && pwd -P)"
+else
+  REPO_ROOT="$(cd -P "$SCRIPT_DIR/.." && pwd -P)"
+fi
 WORKSPACE="$(cd -P "$REPO_ROOT/.." && pwd -P)"
 WORK_ROOT="$WORKSPACE/.work"
 LOCK="$WORK_ROOT/deploy.lock"
