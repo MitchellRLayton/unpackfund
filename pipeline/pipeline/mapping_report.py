@@ -32,9 +32,12 @@ from typing import Any
 
 from . import classify, filings, paths, universe, weights
 from .build import resolve_universe
-from .companies import CompanyIndex, name_tokens
+from .companies import IDENTITY_RUNGS, CompanyIndex, name_tokens
 
-MAPPED_RUNGS = {"ticker", "name_exact"}
+#: Rungs whose rows count as mapped. A rung added to the ladder without being
+#: added here would understate the report's mapped weight, so the identity rungs
+#: come from their one owner rather than a second literal.
+MAPPED_RUNGS = {"ticker", "name_exact", *IDENTITY_RUNGS}
 
 #: A filed name that reads like a fund rather than an operating company. Some
 #: filings put another fund's shares in ``assetCat`` EC (equity) without the

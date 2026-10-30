@@ -41,12 +41,13 @@ from . import (
     artifact,
     catalogue,
     classify,
+    companies,
     filings,
     manifest as manifest_mod,
     universe,
     weights,
 )
-from .companies import CompanyIndex
+from .companies import CompanyIndex, IdentityEvidence, IdentityTable
 from .nport import NportFiling, NportParseError
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -60,7 +61,10 @@ NAV_RESIDUAL_LIMIT = 0.05
 #: number for "these are the same amount", used in one place.
 COLLATERAL_BAND = 0.05
 DEFAULT_WORKERS = 8
-RUNG_NAMES = ("ticker", "name_exact", "unmapped")
+#: One owner for the rung names: companies.py walks the ladder, so it names the
+#: rungs. The manifest publishes a count per name, and a rung missing here would
+#: make its rows look like a mapping failure.
+RUNG_NAMES = companies.ALL_RUNGS
 
 
 class GateError(RuntimeError):
@@ -101,6 +105,9 @@ class FundBuild:
     #: Every symbol the fund's series reports, so the release can publish the
     #: classes it does not name as files.
     ref_symbols: tuple[str, ...] = ()
+    #: What this fund's ladder-resolved rows said about ISIN/LEI identity. Only the
+    #: first pass fills it; the second pass reads the table it produced.
+    evidence: IdentityEvidence | None = None
 
 
 @dataclass(frozen=True)
@@ -150,7 +157,13 @@ def lending_collateral(filing: NportFiling) -> Collateral:
     return Collateral(frozenset(id(holding) for holding in cash), cash_usd)
 
 
-def build_fund(ref: universe.FundRef, index: CompanyIndex) -> FundBuild:
+def build_fund(
+    ref: universe.FundRef,
+    index: CompanyIndex,
+    *,
+    identity: IdentityTable | None = None,
+    collect_evidence: bool = False,
+) -> FundBuild:
     started = time.monotonic()
     found = filings.latest(ref)
     filing = found.filing
@@ -164,8 +177,14 @@ def build_fund(ref: universe.FundRef, index: CompanyIndex) -> FundBuild:
         if id(holding) not in collateral.rows
     ]
 
+    evidence = IdentityEvidence() if collect_evidence else None
     vector = weights.build_vector(
-        investable, index, filing.net_assets, lag_days=lag_days
+        investable,
+        index,
+        filing.net_assets,
+        lag_days=lag_days,
+        identity=identity,
+        evidence=evidence,
     )
 
     # Gate 1 — the *investable* schedule reconciles to the fund's own NAV.
@@ -261,14 +280,27 @@ def build_fund(ref: universe.FundRef, index: CompanyIndex) -> FundBuild:
         payload=payload,
         stats=stats,
         ref_symbols=ref.symbols,
+        evidence=evidence,
     )
 
 
 def _attempt(
-    ref: universe.FundRef, index: CompanyIndex
+    ref: universe.FundRef,
+    index: CompanyIndex,
+    *,
+    identity: IdentityTable | None = None,
+    collect_evidence: bool = False,
 ) -> tuple[FundBuild | None, str | None]:
     try:
-        return build_fund(ref, index), None
+        return (
+            build_fund(
+                ref,
+                index,
+                identity=identity,
+                collect_evidence=collect_evidence,
+            ),
+            None,
+        )
     except Exception as error:  # noqa: BLE001 — a universe walk records and continues
         # Deliberately broad: one malformed filing, one EDGAR hiccup after its own
         # retries, one unexpected shape must not throw away 12,000 built funds. The
@@ -321,6 +353,75 @@ def resolve_universe(
     raise GateError(f"unknown universe spec {spec!r} — use 'all' or 'tickers:VOO,QQQ'")
 
 
+def _walk(
+    refs: list[universe.FundRef],
+    index: CompanyIndex,
+    *,
+    workers: int,
+    identity: IdentityTable | None,
+    log: int,
+    on_error: str,
+    started: float,
+    merge_evidence: IdentityEvidence | None = None,
+) -> tuple[list[FundBuild], list[dict[str, str]]]:
+    """Build every fund once, collecting the artifacts and the failures.
+
+    ``merge_evidence`` turns this into the evidence pass: each fund's sightings are
+    folded into the caller's collector as it lands (the fold runs on the consumer
+    thread, so the counter updates are not racing), and no artifact is kept — pass
+    1 would otherwise hold two releases' worth of bytes at once.
+    """
+    builds: list[FundBuild] = []
+    failures: list[dict[str, str]] = []
+    done = 0
+
+    def record(result: tuple[FundBuild | None, str | None], ref: universe.FundRef) -> None:
+        nonlocal done
+        build, problem = result
+        done += 1
+        if build is None:
+            failures.append({"ticker": ref.ticker, "cik": ref.cik, "error": problem or ""})
+            if log:
+                _log(f"  !! {ref.ticker}: {problem}")
+        elif merge_evidence is not None:
+            if build.evidence is not None:
+                merge_evidence.merge(build.evidence)
+        else:
+            builds.append(build)
+        if log and done % log == 0:
+            elapsed = time.monotonic() - started
+            rate = done / elapsed if elapsed else 0
+            _log(
+                f"  … {done:,}/{len(refs):,} funds, {len(failures)} failed, "
+                f"{rate:.1f} funds/s, {elapsed / 60:.1f} min elapsed"
+            )
+
+    collect = merge_evidence is not None
+    if workers <= 1:
+        for ref in refs:
+            record(
+                _attempt(ref, index, identity=identity, collect_evidence=collect), ref
+            )
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [
+                (
+                    ref,
+                    pool.submit(
+                        _attempt,
+                        ref,
+                        index,
+                        identity=identity,
+                        collect_evidence=collect,
+                    ),
+                )
+                for ref in refs
+            ]
+            for ref, future in futures:
+                record(future.result(), ref)
+    return builds, failures
+
+
 def build_release(
     refs: list[universe.FundRef],
     *,
@@ -331,6 +432,7 @@ def build_release(
     on_error: str = "fail",
     label: str = "tickers",
     progress_every: int = 0,
+    identity: bool = True,
 ) -> Path:
     started = time.monotonic()
     index = CompanyIndex.load()
@@ -356,36 +458,46 @@ def build_release(
         f"in {time.monotonic() - started_prefetch:.1f}s"
     )
 
-    builds: list[FundBuild] = []
-    failures: list[dict[str, str]] = []
-    done = 0
-
-    def record(result: tuple[FundBuild | None, str | None], ref: universe.FundRef) -> None:
-        nonlocal done
-        build, problem = result
-        done += 1
-        if build is None:
-            failures.append({"ticker": ref.ticker, "cik": ref.cik, "error": problem or ""})
-            if progress_every:
-                _log(f"  !! {ref.ticker}: {problem}")
-        else:
-            builds.append(build)
-        if progress_every and done % progress_every == 0:
-            elapsed = time.monotonic() - started
-            rate = done / elapsed if elapsed else 0
-            _log(
-                f"  … {done:,}/{len(refs):,} funds, {len(failures)} failed, "
-                f"{rate:.1f} funds/s, {elapsed / 60:.1f} min elapsed"
-            )
-
-    if workers <= 1:
-        for ref in refs:
-            record(_attempt(ref, index), ref)
+    # The identity table is built from what the ladder proved, then the funds are
+    # rebuilt once with it. Two passes rather than one because the evidence is
+    # cross-fund: a security this fund cannot name is often named correctly by
+    # three others. Pass 1 keeps no artifacts and no failures — it exists only to
+    # collect evidence — so a fund that fails here is reported by pass 2, with the
+    # same error, exactly once.
+    table = IdentityTable.empty()
+    if identity:
+        started_evidence = time.monotonic()
+        evidence = IdentityEvidence()
+        _, pass_one_failures = _walk(
+            refs,
+            index,
+            workers=workers,
+            identity=None,
+            log=progress_every,
+            on_error="skip",
+            started=started,
+            merge_evidence=evidence,
+        )
+        table = evidence.table()
+        _log(
+            f"identity pass: {len(table.by_isin):,} ISINs + {len(table.by_lei):,} LEIs "
+            f"corroborated from {len(refs) - len(pass_one_failures):,} funds "
+            f"({table.contested.get('isin', 0)}/{table.contested.get('lei', 0)} keys "
+            f"contested, {table.thin.get('isin', 0)}/{table.thin.get('lei', 0)} seen "
+            f"once) in {time.monotonic() - started_evidence:.1f}s"
+        )
     else:
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = [(ref, pool.submit(_attempt, ref, index)) for ref in refs]
-            for ref, future in futures:
-                record(future.result(), ref)
+        _log("identity pass: disabled (--no-identity)")
+
+    builds, failures = _walk(
+        refs,
+        index,
+        workers=workers,
+        identity=table if identity else None,
+        log=progress_every,
+        on_error=on_error,
+        started=started,
+    )
 
     if failures and on_error == "fail":
         preview = "; ".join(f"{row['ticker']}: {row['error']}" for row in failures[:5])
@@ -550,6 +662,12 @@ def main(argv: list[str] | None = None) -> int:
         "continue (default for --universe all)",
     )
     parser.add_argument(
+        "--no-identity",
+        action="store_true",
+        help="skip the corroborated ISIN/LEI identity pass (one build instead of two); "
+        "the control for measuring what the pass is worth",
+    )
+    parser.add_argument(
         "--progress-every",
         type=int,
         default=0,
@@ -579,6 +697,7 @@ def main(argv: list[str] | None = None) -> int:
             on_error=on_error,
             label=label,
             progress_every=max(0, args.progress_every),
+            identity=not args.no_identity,
         )
     except (GateError, NportParseError, LookupError, filings.NoFilingError) as error:
         _log(f"FAILED: {type(error).__name__}: {error}")

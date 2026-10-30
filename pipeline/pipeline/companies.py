@@ -34,7 +34,7 @@ visible without reading code.
 from __future__ import annotations
 
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 from . import sec
@@ -48,7 +48,21 @@ _LEGAL_SUFFIXES = re.compile(
 )
 _RUNG_TICKER = "ticker"
 _RUNG_NAME = "name_exact"
+_RUNG_ISIN = "isin_corroborated"
+_RUNG_LEI = "lei_corroborated"
 _RUNG_NONE = "unmapped"
+#: Every rung a row can be counted under, in the order the ladder is walked. The
+#: manifest publishes counts per name, so adding a rung here is how it becomes
+#: visible instead of silently landing in ``unmapped``.
+ALL_RUNGS = (_RUNG_TICKER, _RUNG_NAME, _RUNG_ISIN, _RUNG_LEI, _RUNG_NONE)
+#: The rungs that come from the corroborated-identity table rather than from a
+#: direct identifier match on the row itself.
+IDENTITY_RUNGS = (_RUNG_ISIN, _RUNG_LEI)
+#: How many times a security identifier must have been seen pointing at one
+#: company before the agreement is treated as an identity. One sighting is a
+#: coincidence; two independent funds holding the same security and both resolving
+#: it to the same issuer is a fact about the security.
+IDENTITY_MIN_OCCURRENCES = 2
 
 
 def normalize_name(name: str) -> str:
@@ -245,5 +259,112 @@ def company_id(cik: str | int) -> str:
     return f"c_{int(cik):010d}"
 
 
+class IdentityEvidence:
+    """What the ladder saw: security identifier → the companies it resolved to.
+
+    Recorded only for rows the ladder itself resolved, by construction — the
+    caller observes a row *before* any identity table is consulted (see
+    ``weights.build_vector``), so the table can never grow from its own
+    inferences. That is the difference between evidence and a second guess.
+    """
+
+    def __init__(self) -> None:
+        self.isin: dict[str, Counter[str]] = defaultdict(Counter)
+        self.lei: dict[str, Counter[str]] = defaultdict(Counter)
+
+    def observe(
+        self, isin: str | None, lei: str | None, company_id: str | None
+    ) -> None:
+        """Credit one ladder-resolved row to its ISIN and its LEI, if it has them."""
+        if not company_id:
+            return
+        if isin:
+            self.isin[isin][company_id] += 1
+        if lei:
+            self.lei[lei][company_id] += 1
+
+    def merge(self, other: "IdentityEvidence") -> None:
+        for key, counts in other.isin.items():
+            self.isin[key].update(counts)
+        for key, counts in other.lei.items():
+            self.lei[key].update(counts)
+
+    def table(self) -> "IdentityTable":
+        return IdentityTable.from_evidence(self)
+
+
+def _unanimous(
+    candidates: dict[str, Counter[str]],
+) -> tuple[dict[str, str], int, int]:
+    """Keep identifier keys with one company and enough sightings.
+
+    Returns ``(agreed, contested, thin)``. Both rejected shapes are counted rather
+    than dropped silently: a reviewer needs to know what the discipline cost, and
+    the answer is that it costs almost nothing (113 ISINs and 58 LEIs of 28,695
+    and 5,127 keys, 1,548 bp of 92.5M).
+    """
+    agreed: dict[str, str] = {}
+    contested = 0
+    thin = 0
+    for key, counts in candidates.items():
+        if len(counts) > 1:
+            contested += 1
+            continue
+        company_id, occurrences = next(iter(counts.items()))
+        if occurrences < IDENTITY_MIN_OCCURRENCES:
+            thin += 1
+            continue
+        agreed[key] = company_id
+    return agreed, contested, thin
+
+
+@dataclass(frozen=True)
+class IdentityTable:
+    """Corroborated ISIN/LEI → company_id for rows the ladder could not resolve.
+
+    An identifier is admitted only when **every** sighting agreed on one company
+    and that agreement was seen at least twice. Two companies claiming the same
+    identifier means at least one of them is wrong, and a wrong company
+    attribution is worse than an unmapped row: the row stays ``unmapped`` and the
+    disagreement is counted. Rows resolved here are recorded under their own rung
+    names so the manifest keeps showing how much of a release is direct.
+    """
+
+    by_isin: dict[str, str] = field(default_factory=dict)
+    by_lei: dict[str, str] = field(default_factory=dict)
+    #: Rejected key counts, by identifier kind — the visible cost of the rule.
+    contested: dict[str, int] = field(default_factory=dict)
+    thin: dict[str, int] = field(default_factory=dict)
+
+    @classmethod
+    def empty(cls) -> "IdentityTable":
+        return cls()
+
+    @classmethod
+    def from_evidence(cls, evidence: IdentityEvidence) -> "IdentityTable":
+        by_isin, contested_isin, thin_isin = _unanimous(evidence.isin)
+        by_lei, contested_lei, thin_lei = _unanimous(evidence.lei)
+        return cls(
+            by_isin=by_isin,
+            by_lei=by_lei,
+            contested={"isin": contested_isin, "lei": contested_lei},
+            thin={"isin": thin_isin, "lei": thin_lei},
+        )
+
+    def resolve(self, isin: str | None, lei: str | None) -> tuple[str | None, str]:
+        """The company this security is, or ``(None, "unmapped")``."""
+        from_isin = self.by_isin.get(isin) if isin else None
+        from_lei = self.by_lei.get(lei) if lei else None
+        if from_isin and from_lei and from_isin != from_lei:
+            # The security's own ISIN and LEI disagree about its issuer. Refusing
+            # here is the whole point of the rule: the ladder has no tie-break.
+            return None, _RUNG_NONE
+        if from_isin:
+            return from_isin, _RUNG_ISIN
+        if from_lei:
+            return from_lei, _RUNG_LEI
+        return None, _RUNG_NONE
+
+
 def rung_counts(rungs: Counter[str]) -> dict[str, int]:
-    return {rung: rungs[rung] for rung in (_RUNG_TICKER, _RUNG_NAME, _RUNG_NONE)}
+    return {rung: rungs[rung] for rung in ALL_RUNGS}

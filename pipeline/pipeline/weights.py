@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 
 from . import classify, identifiers
 from .classify import Classification
-from .companies import CompanyIndex
+from .companies import CompanyIndex, IdentityEvidence, IdentityTable
 from .nport import Holding
 
 BP_PER_UNIT = 10_000
@@ -115,6 +115,8 @@ def build_vector(
     net_assets: float | None,
     *,
     lag_days: int | None,
+    identity: IdentityTable | None = None,
+    evidence: IdentityEvidence | None = None,
 ) -> WeightVector:
     if not holdings:
         raise WeightError("filing reports no holdings")
@@ -133,6 +135,12 @@ def build_vector(
         )
         asset_cats[classification.category] += 1
         company_id, rung = index.resolve(holding.ticker, holding.name)
+        # Observed *before* the identity table is consulted, so the table can only
+        # ever learn from rows the ladder resolved on their own evidence.
+        if evidence is not None:
+            evidence.observe(holding.isin, holding.lei, company_id)
+        if company_id is None and identity is not None:
+            company_id, rung = identity.resolve(holding.isin, holding.lei)
         rungs[rung] += 1
 
         # Unmapped rows merge on identity of their own, so a fund with 500 distinct
