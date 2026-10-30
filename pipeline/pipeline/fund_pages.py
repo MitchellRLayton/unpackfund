@@ -337,8 +337,19 @@ def render_page(
   </p>
 </main>
 <footer class="site-footer">
-  <p>Holdings from SEC Form N-PORT filings. Not investment advice, and not a
-  recommendation of any fund. UnpackFund is not affiliated with any fund issuer.</p>
+  <div class="site-footer__inner">
+    <p><strong>UnpackFund is not investment advice.</strong> It is a free tool showing
+    what this fund holds, built from public SEC filings. It is not a recommendation to
+    buy, hold, or sell any security, and the operator is not a registered investment
+    adviser. Holdings come from quarterly filings and typically describe a portfolio
+    <strong>60 to 150 days</strong> old; they can be wrong. <strong>Verify anything that
+    matters</strong> against this fund's own documents and filings.</p>
+    <p class="site-footer__links"><a href="/methodology/">Methodology</a>
+    <a href="/disclaimer/">Disclaimer</a> <a href="/privacy/">Privacy</a>
+    <a href="/terms/">Terms</a></p>
+    <p>Source: SEC EDGAR (Form N-PORT). No SEC seal or logo is used, and the SEC has not
+    reviewed or endorsed this site. UnpackFund is not affiliated with any fund issuer.</p>
+  </div>
 </footer>
 </body>
 </html>
@@ -484,6 +495,49 @@ def _looks_like_release(path: Path) -> bool:
     return (path / "manifest.json").is_file() or (path / "funds").is_dir()
 
 
+#: Where the site lives. The sitemap must carry absolute URLs, and a relative one
+#: is silently ignored by crawlers, so this is a constant rather than a guess.
+SITE_ORIGIN = "https://unpackfund.com"
+
+#: The app's own routes, in the sitemap's order. Fund pages are added from the
+#: catalogue. `/x` is deliberately absent: it is a tool, not a document.
+APP_ROUTES = ("/", "/funds/", "/compare/", "/c/", "/methodology/", "/disclaimer/", "/privacy/", "/terms/")
+
+
+def sitemap_xml(tickers: list[str]) -> str:
+    """Every published page, as a sitemap.
+
+    8,983 fund pages plus the app's own routes is far below the 50,000-URL and
+    50 MB limits, so this is one file, not an index. `lastmod` is deliberately
+    omitted: the pages carry their own dates, and a `lastmod` that means "the
+    build ran" would tell a crawler nothing true.
+    """
+    urls = [f"{SITE_ORIGIN}{route}" for route in APP_ROUTES]
+    urls += [f"{SITE_ORIGIN}/f/{ticker}/" for ticker in tickers]
+    body = "".join(f"  <url><loc>{html.escape(url)}</loc></url>\n" for url in urls)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"{body}"
+        "</urlset>\n"
+    )
+
+
+def robots_txt() -> str:
+    """Allow everything and point at the sitemap.
+
+    There is nothing here to hide: every page is meant to be read. The file
+    exists because a site with no `robots.txt` is served one by the host, and
+    that one carries no `Sitemap:` line.
+    """
+    return (
+        "# UnpackFund: every page is meant to be read.\n"
+        "User-agent: *\n"
+        "Allow: /\n"
+        f"\nSitemap: {SITE_ORIGIN}/sitemap.xml\n"
+    )
+
+
 def build(
     release_dir: Path,
     out_dir: Path,
@@ -560,8 +614,19 @@ def build(
         else:
             bands["not-covered"] += 1
 
+    # One flag flips the package: page-level `noindex`, the sitemap, and robots.
+    # A site that is `noindex` but advertises a sitemap tells a crawler two
+    # different things, so these three move together or not at all.
+    sitemap_written = robots_written = False
+    if indexable:
+        (out_dir / "sitemap.xml").write_text(sitemap_xml(tickers))
+        (out_dir / "robots.txt").write_text(robots_txt())
+        sitemap_written = robots_written = True
+
     return {
         "pages": written,
+        "sitemap": sitemap_written,
+        "robots": robots_written,
         "skipped": skipped,
         "bytes": bytes_total,
         "median_bytes": bytes_total // written if written else 0,
@@ -626,8 +691,12 @@ tbody td { border-bottom: 1px solid var(--rule); padding: 0.375rem 0.5rem; }
 .muted { color: var(--muted); font-size: 0.875rem; }
 .actions { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 2rem; }
 .site-footer { border-top: 1px solid var(--rule); margin-top: 2rem; }
-.site-footer p { max-width: 60rem; margin: 0 auto; padding: 1rem;
+.site-footer__inner { max-width: 60rem; margin: 0 auto; padding: 1rem;
   color: var(--muted); font-size: 0.8125rem; }
+.site-footer__inner p { margin: 0 0 0.6rem; }
+.site-footer__inner p:last-child { margin-bottom: 0; }
+.site-footer__links { display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; }
+.site-footer__links a { text-decoration: underline; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden;
   clip: rect(0 0 0 0); white-space: nowrap; }
 @media (max-width: 32rem) {

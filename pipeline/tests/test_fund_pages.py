@@ -560,6 +560,26 @@ def test_a_partial_rebuild_with_nothing_to_do_warns_and_exits_zero(tmp_path: Pat
     assert not (out / "f").exists()
 
 
+def test_footer_carries_the_four_disclaimer_clauses_and_legal_links():
+    """Launch rule 7, for the surface that is 8,983 of the site's pages.
+
+    The Next app has its own footer with the same four clauses; this one is the
+    generated page's. Two surfaces, one rule — a test on each is what keeps the
+    copy from drifting apart silently.
+    """
+    page = render(fund())
+    # The template wraps prose across lines, so collapse whitespace first: a
+    # phrase that breaks mid-sentence is still the phrase on the page.
+    flat = " ".join(page.split())
+    assert "not investment advice" in flat.lower()
+    assert "not a registered investment adviser" in flat
+    assert "60 to 150 days" in flat
+    assert "Verify anything that matters" in flat
+    assert "No SEC seal or logo" in flat
+    for href in ("/methodology/", "/disclaimer/", "/privacy/", "/terms/"):
+        assert f'href="{href}"' in page
+
+
 def test_a_full_rebuild_that_wrote_nothing_still_exits_nonzero(tmp_path: Path, capsys):
     """The existing behaviour of a broken `--release` path must not soften."""
     release = tmp_path / "release"
@@ -569,3 +589,52 @@ def test_a_full_rebuild_that_wrote_nothing_still_exits_nonzero(tmp_path: Path, c
     )
     assert cli(["--release", str(release), "--out", str(tmp_path / "out")]) == 1
     assert "no pages written" in capsys.readouterr().err
+
+
+def test_sitemap_lists_every_page_and_nothing_invented():
+    """The sitemap is the crawl surface, so it is exactly the published pages."""
+    xml = fund_pages.sitemap_xml(["AVUV", "VTI"])
+    assert xml.startswith('<?xml version="1.0" encoding="UTF-8"?>')
+    assert xml.count("<url>") == len(fund_pages.APP_ROUTES) + 2
+    for route in fund_pages.APP_ROUTES:
+        assert f"<loc>https://unpackfund.com{route}</loc>" in xml
+    assert "<loc>https://unpackfund.com/f/AVUV/</loc>" in xml
+    # Absolute URLs only: a relative <loc> is ignored by crawlers.
+    assert "<loc>/" not in xml
+    # `/x` is a tool, not a document, and is not advertised to crawlers.
+    assert "/x/" not in xml
+
+
+def test_robots_points_at_the_sitemap():
+    robots = fund_pages.robots_txt()
+    assert "User-agent: *" in robots
+    assert "Allow: /" in robots
+    assert "Sitemap: https://unpackfund.com/sitemap.xml" in robots
+
+
+def test_the_indexable_flag_writes_all_three_parts_and_nothing_without_it(tmp_path):
+    """One flag, three files: page meta, sitemap, robots.
+
+    A site that is `noindex` but advertises a sitemap tells a crawler two
+    different things. This test is what keeps the flip from half-happening.
+    """
+    release = tmp_path / "release"
+    (release / "funds").mkdir(parents=True)
+    (release / "catalogue.json").write_text(
+        json.dumps({"funds": {"AVUV": ["Avantis U.S. Small Cap Value ETF", "EA Series Trust", 1, 97.7]}})
+    )
+    (release / "funds" / "AVUV.json").write_text(json.dumps(fund()))
+
+    quiet = tmp_path / "quiet"
+    fund_pages.build(release, quiet)
+    assert not (quiet / "sitemap.xml").exists()
+    assert not (quiet / "robots.txt").exists()
+    assert '<meta name="robots" content="noindex, follow">' in (quiet / "f/AVUV/index.html").read_text()
+
+    loud = tmp_path / "loud"
+    stats = fund_pages.build(release, loud, indexable=True)
+    assert stats["sitemap"] is True and stats["robots"] is True
+    page = (loud / "f/AVUV/index.html").read_text()
+    assert 'name="robots"' not in page
+    assert (loud / "sitemap.xml").exists()
+    assert (loud / "robots.txt").exists()
