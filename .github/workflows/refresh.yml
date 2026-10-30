@@ -48,6 +48,10 @@ env:
   # The pipeline refuses to make a request without a declared contact.
   SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
   UNPACKFUND_CACHE: data/cache
+  # A GitHub-hosted runner shares its egress IP with every other job on that host, so
+  # SEC's per-IP cap (~10 req/s) is not ours to spend. 5/s leaves headroom and the extra
+  # minutes are cheaper than a 429 that kills a 55-minute build.
+  SEC_REQUESTS_PER_SECOND: "5"
   # Pinned: `npx wrangler@4` resolved to a version that did not exist on 2026-10-29.
   WRANGLER: "wrangler@4.155.0"
 

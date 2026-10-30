@@ -25,6 +25,7 @@ every day forever. ``max_age`` is the caller's statement about which kind it is:
 from __future__ import annotations
 
 import calendar
+import email.utils
 import gzip
 import hashlib
 import json
@@ -39,8 +40,23 @@ from threading import Lock
 
 USER_AGENT_ENV = "SEC_USER_AGENT"
 DEFAULT_USER_AGENT = "UnpackFund research data@unpackfund.com"
-MIN_INTERVAL_S = 1 / 8
+#: Seconds between requests, process-wide. 8/s keeps us under SEC's stated 10/s cap from
+#: our own machine, which is what the number was measured against. On a CI runner the
+#: cap is shared with every other job behind the same egress IP, so the workflow lowers
+#: the rate rather than racing for it: ``SEC_REQUESTS_PER_SECOND=5``.
+MIN_INTERVAL_S = 1 / float(os.environ.get("SEC_REQUESTS_PER_SECOND", "8"))
 CACHE_DIR = Path(os.environ.get("UNPACKFUND_CACHE", "data/cache"))
+
+# EDGAR answers 429 when an IP exceeds ~10 requests/second, and a CI runner shares its
+# egress IP with every job on that host — so a wide build sees throttling it did not
+# cause and cannot avoid by being polite itself. These are the knobs that turn that from
+# a dead run into a slower one: more attempts, `Retry-After` honoured, and a backoff
+# ceiling high enough to outlast a throttle window.
+RETRY_STATUSES = (403, 429, 500, 502, 503, 504)
+THROTTLE_STATUSES = (403, 429)
+DEFAULT_TRIES = 6
+BACKOFF_CAP_S = 20.0
+MAX_RETRY_AFTER_S = 60.0
 
 _last_request = 0.0
 _throttle_lock = Lock()
@@ -66,6 +82,36 @@ def _throttle() -> None:
         if wait > 0:
             time.sleep(wait)
         _last_request = time.monotonic()
+
+
+def retry_after_seconds(headers) -> float | None:
+    """The server's own instruction, when it sends one.
+
+    `Retry-After` is either delta-seconds or an HTTP date. Honouring it is both more
+    polite and more effective than guessing: EDGAR's throttle window is longer than an
+    exponential backoff from 0.5 s reaches in four attempts.
+    """
+    value = headers.get("Retry-After") if headers else None
+    if not value:
+        return None
+    text = str(value).strip()
+    try:
+        return min(MAX_RETRY_AFTER_S, max(0.0, float(text)))
+    except ValueError:
+        pass
+    try:
+        when = email.utils.parsedate_to_datetime(text)
+    except (TypeError, ValueError):
+        return None
+    if when is None:
+        return None
+    delta = when.timestamp() - time.time()
+    return min(MAX_RETRY_AFTER_S, max(0.0, delta))
+
+
+def backoff_seconds(attempt: int) -> float:
+    """Exponential, capped, jittered: two workers must not resume together."""
+    return min(BACKOFF_CAP_S, 2**attempt * 0.5) + random.random() * 0.5
 
 
 def _cache_paths(url: str) -> tuple[Path, Path]:
@@ -98,7 +144,7 @@ def fetch(
     url: str,
     *,
     timeout: float = 45.0,
-    tries: int = 4,
+    tries: int = DEFAULT_TRIES,
     use_cache: bool = True,
     max_age: float | None = None,
 ) -> bytes:
@@ -153,13 +199,18 @@ def fetch(
             last_error = error
             # 403 is EDGAR's shape/rate policing as well as a UA problem; back off
             # rather than concluding the URL is wrong.
-            if error.code not in (403, 429, 500, 502, 503, 504) or attempt == tries - 1:
+            if error.code not in RETRY_STATUSES or attempt == tries - 1:
                 raise SecError(f"HTTP {error.code} for {url}") from error
+            if error.code in THROTTLE_STATUSES:
+                wait = retry_after_seconds(error.headers)
+                if wait is not None:
+                    time.sleep(wait)
+                    continue
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             last_error = error
             if attempt == tries - 1:
                 raise SecError(f"{type(error).__name__} for {url}") from error
-        time.sleep(2**attempt * 0.5 + random.random() * 0.5)
+        time.sleep(backoff_seconds(attempt))
 
     raise SecError(f"exhausted retries for {url}: {last_error}")
 

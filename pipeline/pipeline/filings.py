@@ -135,6 +135,27 @@ def _windows(rows: list[dict], count: int) -> list[list[dict]]:
     return [periods[key] for key in sorted(periods, reverse=True)[:count]]
 
 
+#: Series lookups that failed on an EDGAR rate limit, counted per process.
+#:
+#: One 429 on one `primary_doc.xml` used to abort a 53-minute build: the peek runs during
+#: universe indexing, outside the per-fund handler that already treats a fetch error as
+#: one excluded fund. Tolerating a few is right; tolerating hundreds would publish a
+#: release with whole registrants missing and no gate would notice, so `prefetch` refuses
+#: past this budget instead of quietly shrinking the universe.
+THROTTLE_BUDGET = 25
+_throttled = {"count": 0, "last": ""}
+
+
+def throttled_lookups() -> int:
+    """How many series lookups this process skipped on an EDGAR rate limit."""
+    return _throttled["count"]
+
+
+def reset_throttled_lookups() -> None:
+    _throttled["count"] = 0
+    _throttled["last"] = ""
+
+
 def index_registrant(cik: str, refs: Sequence[universe.FundRef]) -> int:
     """Read this registrant's newest filings until every wanted series is known.
 
@@ -160,12 +181,19 @@ def index_registrant(cik: str, refs: Sequence[universe.FundRef]) -> int:
         for row in period:
             accession = row["accessionNumber"]
             if accession not in _ACCESSION_SERIES:
-                _remember(
-                    cik,
-                    accession,
-                    peek_series_id(sec.fetch(sec.primary_doc_url(cik, accession))),
-                    row["filingDate"],
-                )
+                try:
+                    series_id = peek_series_id(
+                        sec.fetch(sec.primary_doc_url(cik, accession))
+                    )
+                except sec.SecError as error:
+                    # Rate-limited after its own retries. Do not remember the accession —
+                    # it may well name a wanted series, and a later window or the next run
+                    # can still read it. Count it so `prefetch` can refuse if there were
+                    # too many to trust.
+                    _throttled["count"] += 1
+                    _throttled["last"] = str(error)
+                    continue
+                _remember(cik, accession, series_id, row["filingDate"])
                 fetched += 1
             wanted.discard(_ACCESSION_SERIES[accession] or "")
             if not wanted:
@@ -201,10 +229,18 @@ def prefetch(
     else:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             counts = list(pool.map(run, order))
+    skipped = throttled_lookups()
+    if skipped > THROTTLE_BUDGET:
+        raise sec.SecError(
+            f"EDGAR rate-limited {skipped:,} series lookups (budget {THROTTLE_BUDGET}); "
+            "refusing to index a universe that would silently lose registrants — rerun "
+            "once the throttle window has passed"
+        )
     return {
         "registrants": len(order),
         "documents": sum(counts),
         "largest": len(order[0][1]),
+        "skipped": skipped,
     }
 
 
