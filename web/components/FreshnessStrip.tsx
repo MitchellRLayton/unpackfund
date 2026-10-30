@@ -90,32 +90,41 @@ export function FreshnessStrip({
 /**
  * Concentration, from the summed ledger weights (math §2).
  *
- * `effective_n` is `1/HHI`, which is the number of equally-weighted companies
- * that would produce the same concentration — far more legible than 0.0197.
+ * `effective_n` is `1/HHI`, the number of equally weighted companies that would
+ * produce the same spread — far more legible than 0.0197. The labels here are the
+ * ones the 8,983 generated fund pages use, and the notes are the fund pages'
+ * one-line explanations: two surfaces showing the same three numbers under
+ * different names is the drift that makes a reader think they are different
+ * metrics. `components.test.tsx` pins the labels.
  */
 export function MetricsList({ ledger }: { ledger: Ledger }) {
   const { hhi, effective_n: effectiveN, top10 } = ledger.metrics;
   return (
     <ul className="metrics">
       <li>
-        <dt>Concentration (HHI)</dt>
+        <dt>Concentration</dt>
         <dd>
           <strong>{hhi === null ? "not computable" : formatRatio(hhi, 4)}</strong>
         </dd>
+        <p className="metric-note">0 = spread evenly, 1 = all in one company.</p>
       </li>
       <li>
-        <dt>Effective companies</dt>
+        <dt>Same-size companies</dt>
         <dd>
           <strong>
             {effectiveN === null ? "not computable" : formatRatio(effectiveN, 1)}
           </strong>
         </dd>
+        <p className="metric-note">
+          How many equal-sized companies would be spread the same way.
+        </p>
       </li>
       <li>
-        <dt>Top 10 weight</dt>
+        <dt>Biggest 10 companies</dt>
         <dd>
           <strong>{top10 === null ? "not computable" : formatShare(top10)}</strong>
         </dd>
+        <p className="metric-note">Their share of your money.</p>
       </li>
     </ul>
   );

@@ -112,6 +112,22 @@ describe("MetricsList", () => {
     );
     expect(screen.getAllByText("not computable")).toHaveLength(3);
   });
+
+  it("uses the fund pages' names for the same three numbers", () => {
+    // The generated fund pages say "Concentration", "Same-size companies" and
+    // "Biggest 10 companies" with a one-line explanation each. Two surfaces
+    // showing the same number under two names reads as two different metrics.
+    render(<MetricsList ledger={ledger} />);
+    expect(screen.getByText("Concentration")).toBeTruthy();
+    expect(screen.getByText("Same-size companies")).toBeTruthy();
+    expect(screen.getByText("Biggest 10 companies")).toBeTruthy();
+    expect(
+      screen.getByText(/0 = spread evenly, 1 = all in one company/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/How many equal-sized companies would be spread the same way/),
+    ).toBeTruthy();
+  });
 });
 
 describe("LedgerTable", () => {
