@@ -34,11 +34,10 @@ export const CONTACT_EMAIL = "mitchell.layton@proton.me";
 
 /**
  * The day the wide release is promoted to unpackfund.com, not the day it was
- * drafted. Deliberately still a placeholder: the operator fills it at promotion,
- * and the pre-flight gate treats it separately from the three values above so a
- * promotion cannot ship a policy dated to a draft.
+ * drafted. Set 2026-10-30, the promotion date; the pre-flight gate (P15) exists
+ * so a promotion cannot ship a policy still dated to a draft.
  */
-export const EFFECTIVE_DATE = "[EFFECTIVE_DATE]";
+export const EFFECTIVE_DATE = "October 30, 2026";
 
 /** Bumped by hand when the method changes; the page and the copy must move together. */
 export const METHODOLOGY_VERSION = "1.0.0";
