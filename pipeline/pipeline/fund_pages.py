@@ -168,10 +168,12 @@ def render_page(
     if band.show_metrics:
         metrics_html = f"""
       <dl class="metrics">
-        <div><dt>Concentration (HHI)</dt><dd>{number(metrics.get("hhi"), 4)}</dd></div>
-        <div><dt>Effective companies</dt><dd>{number(metrics.get("effective_n"), 1)}</dd></div>
-        <div><dt>Top 10 weight</dt><dd>{number(metrics.get("top10_pct"), 2)}%</dd></div>
-      </dl>"""
+        <div><dt>Concentration</dt><dd>{number(metrics.get("hhi"), 4)}</dd></div>
+        <div><dt>Same-size companies</dt><dd>{number(metrics.get("effective_n"), 1)}</dd></div>
+        <div><dt>Biggest 10 companies</dt><dd>{number(metrics.get("top10_pct"), 2)}%</dd></div>
+      </dl>
+      <p class="note">Same-size companies: how many equal-sized companies would be
+      spread the same way. Concentration: 0 = spread evenly, 1 = all in one company.</p>"""
     else:
         metrics_html = f"""
       <p class="note">Concentration figures are withheld: only {coverage:.1f}% of this fund's

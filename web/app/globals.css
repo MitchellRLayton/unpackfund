@@ -537,6 +537,7 @@ th[aria-sort="ascending"] .sort-button::after {
 
 .metrics li {
   min-width: 9rem;
+  max-width: 19rem;
 }
 
 .metrics dt {
@@ -548,6 +549,14 @@ th[aria-sort="ascending"] .sort-button::after {
 
 .metrics strong {
   font-size: 1.05rem;
+}
+
+/* The plain-language line under a metric; small enough to stay a note. */
+.metric-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--muted);
 }
 
 /* --- Compare: two columns that stay two columns until there is no room ------- */

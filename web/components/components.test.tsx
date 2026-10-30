@@ -84,6 +84,7 @@ describe("FreshnessStrip", () => {
     expect(screen.getByText("59 days")).toBeTruthy();
     expect(screen.getByText("90.3%")).toBeTruthy();
     expect(screen.getByText("90.3% of weight covered")).toBeTruthy();
+    expect(screen.getByText("Unique companies")).toBeTruthy();
     expect(screen.getByText("189 holdings unmapped")).toBeTruthy();
   });
 
@@ -101,6 +102,27 @@ describe("FreshnessStrip", () => {
 });
 
 describe("MetricsList", () => {
+  it("names the effective count in plain words and explains the gap", () => {
+    render(<MetricsList ledger={ledger} />);
+    expect(screen.getByText("Same-size companies")).toBeTruthy();
+    expect(screen.getByText("3.3")).toBeTruthy();
+    expect(screen.getByText("Biggest 10 companies")).toBeTruthy();
+    expect(screen.getByText("Concentration")).toBeTruthy();
+    expect(screen.getByText(/as spread out as 3\.3 equal-sized companies/)).toBeTruthy();
+    expect(screen.getByText(/0 = spread evenly, 1 = all in one company/)).toBeTruthy();
+  });
+
+  it("says why the same-size count is lower than the company count", () => {
+    render(
+      <MetricsList
+        ledger={{ ...ledger, metrics: { ...ledger.metrics, effective_n: 1.5 } }}
+      />,
+    );
+    expect(
+      screen.getByText(/not 2, because a few big companies take up more of your money/),
+    ).toBeTruthy();
+  });
+
   it("renders a not-computable metric as words, never as zero", () => {
     render(
       <MetricsList
@@ -125,7 +147,7 @@ describe("LedgerTable", () => {
       "Portfolio weight",
     );
     expect(container.querySelectorAll('th[aria-sort="none"]')).toHaveLength(2);
-    expect(table?.querySelector("caption")?.textContent).toContain("2 companies");
+    expect(table?.querySelector("caption")?.textContent).toContain("2 unique companies");
   });
 
   it("shows each company once with its weight and how many funds hold it", () => {

@@ -17,7 +17,13 @@ import { CompanyDrawer } from "@/components/CompanyDrawer";
 import { FreshnessStrip, MetricsList } from "@/components/FreshnessStrip";
 import { LedgerTable } from "@/components/LedgerTable";
 import { Notice } from "@/components/Notice";
-import { coverageBand, coverageChip, formatCount, formatDays } from "@/lib/format";
+import {
+  coverageBand,
+  coverageChip,
+  formatCount,
+  formatCoveragePct,
+  formatDays,
+} from "@/lib/format";
 import { FULL_ALLOCATION_BP } from "@/lib/types";
 import { useLedger } from "@/lib/use-ledger";
 import { usePortfolio } from "@/lib/use-portfolio";
@@ -155,10 +161,18 @@ export function LedgerView() {
     <>
       <h1>Your look-through</h1>
       <p className="muted">
-        {formatCount(ledger.rows.length)} companies across {ledger.funds.length}{" "}
-        {ledger.funds.length === 1 ? "fund" : "funds"}. Every weight is a share of the
-        whole portfolio, so the column adds up to the covered part of your holdings, not
-        to 100%.
+        {formatCount(ledger.rows.length)} unique companies across {ledger.funds.length}{" "}
+        {ledger.funds.length === 1 ? "fund" : "funds"} — a company held by more than one
+        fund is counted once. Each weight is a share of the whole portfolio, so the column
+        adds up to{" "}
+        {ledger.metrics.covered_weight_pct >= 99.95 ? (
+          "100% of your money."
+        ) : (
+          <>
+            {formatCoveragePct(ledger.metrics.covered_weight_pct)} of your money — the
+            part we could trace to companies, not 100%.
+          </>
+        )}
       </p>
 
       {release.status === "ready" ? (
@@ -197,8 +211,8 @@ export function LedgerView() {
 
       <h2 id="ledger-start">Companies</h2>
       <p className="sr-only" role="status">
-        {formatCount(ledger.rows.length)} companies loaded, sorted by portfolio weight.
-        Aggregated in {mode === "worker" ? "a worker" : "the main thread"}
+        {formatCount(ledger.rows.length)} unique companies loaded, sorted by portfolio
+        weight. Aggregated in {mode === "worker" ? "a worker" : "the main thread"}
         {durationMs === null ? "" : ` in ${Math.round(durationMs)} milliseconds`}.
       </p>
 

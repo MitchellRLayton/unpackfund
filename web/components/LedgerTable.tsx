@@ -75,8 +75,8 @@ export function LedgerTable({
     <div className="table-wrap">
       <table className="ledger">
         <caption>
-          {formatCount(sorted.length)} companies, after look-through. Weight is this
-          company&apos;s share of the whole portfolio, not of any one fund.
+          {formatCount(sorted.length)} unique companies — each company is counted once.
+          Weight is this company&apos;s share of the whole portfolio, not of any one fund.
         </caption>
         <thead>
           <tr>

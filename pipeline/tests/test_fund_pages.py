@@ -62,8 +62,9 @@ def test_page_states_the_filing_its_dates_and_its_source():
 def test_coverage_is_quoted_and_the_metrics_are_shown_when_it_is_full():
     page = render(fund())
     assert "97.7% of weight" in page
-    assert "Effective companies" in page
+    assert "Same-size companies" in page
     assert "81.3" in page
+    assert "how many equal-sized companies would be" in page
     assert "Concentration figures are withheld" not in page
 
 
@@ -82,7 +83,7 @@ def test_a_low_coverage_fund_gets_no_concentration_numbers():
 def test_the_partial_band_says_partial_and_still_shows_the_numbers():
     page = render(fund(coverage_pct=64.2))
     assert "partial — 64.2% of weight" in page
-    assert "Effective companies" in page
+    assert "Same-size companies" in page
 
 
 def test_an_unmapped_holding_is_listed_but_not_linked():

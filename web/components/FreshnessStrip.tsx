@@ -74,7 +74,7 @@ export function FreshnessStrip({
           </span>
         </div>
         <div className="strip__cell">
-          <span className="strip__label">Companies</span>
+          <span className="strip__label">Unique companies</span>
           <span className="strip__value">{formatCount(ledger.rows.length)}</span>
           <span className="strip__note">
             {ledger.unmapped_holdings === 0
@@ -88,34 +88,50 @@ export function FreshnessStrip({
 }
 
 /**
- * Concentration, from the summed ledger weights (math §2).
+ * The three headline numbers, in plain words (math §2).
  *
- * `effective_n` is `1/HHI`, which is the number of equally-weighted companies
- * that would produce the same concentration — far more legible than 0.0197.
+ * `effective_n` is `1/HHI`, the number of equally weighted companies that would
+ * produce the same spread. The old label — "effective companies" — was a term of
+ * art; "same-size companies" says what the number is, and the note explains why
+ * it is lower than the number of companies in the table. The HHI keeps its own
+ * card, but with the 0-to-1 scale spelled out.
  */
 export function MetricsList({ ledger }: { ledger: Ledger }) {
   const { hhi, effective_n: effectiveN, top10 } = ledger.metrics;
+  const companies = ledger.rows.length;
+  const sameSize = effectiveN === null ? null : formatRatio(effectiveN, 1);
   return (
     <ul className="metrics">
       <li>
-        <dt>Concentration (HHI)</dt>
+        <dt>Same-size companies</dt>
         <dd>
-          <strong>{hhi === null ? "not computable" : formatRatio(hhi, 4)}</strong>
+          <strong>{sameSize ?? "not computable"}</strong>
         </dd>
+        {sameSize === null ? null : (
+          <p className="metric-note">
+            {effectiveN !== null && effectiveN < companies
+              ? `Your portfolio is as spread out as ${sameSize} equal-sized companies — not ${formatCount(companies)}, because a few big companies take up more of your money.`
+              : `Your portfolio is as spread out as ${sameSize} equal-sized companies.`}
+          </p>
+        )}
       </li>
       <li>
-        <dt>Effective companies</dt>
-        <dd>
-          <strong>
-            {effectiveN === null ? "not computable" : formatRatio(effectiveN, 1)}
-          </strong>
-        </dd>
-      </li>
-      <li>
-        <dt>Top 10 weight</dt>
+        <dt>Biggest 10 companies</dt>
         <dd>
           <strong>{top10 === null ? "not computable" : formatShare(top10)}</strong>
         </dd>
+        {top10 === null ? null : (
+          <p className="metric-note">Their share of your money.</p>
+        )}
+      </li>
+      <li>
+        <dt>Concentration</dt>
+        <dd>
+          <strong>{hhi === null ? "not computable" : formatRatio(hhi, 4)}</strong>
+        </dd>
+        {hhi === null ? null : (
+          <p className="metric-note">0 = spread evenly, 1 = all in one company.</p>
+        )}
       </li>
     </ul>
   );
