@@ -242,6 +242,62 @@ def guard_prefixes(prefix: str, pointer_prefix: str, allow_live: bool) -> None:
 
 
 # -- the release itself ------------------------------------------------------
+def _refuse_rewrite(client, prefix: str, manifest: dict) -> None:
+    """Stop a second run from overwriting a published release with different bytes.
+
+    Re-running the *same* release is a legitimate retry and stays allowed; publishing
+    *different* content under a published id is the defect this exists to catch, because
+    every consumer that read the first version would keep a mixture of the two.
+    """
+    key = f"{prefix}/manifest.json"
+    existing = client.get(key) if _exists(client, key) else None
+    if existing is None:
+        return
+    actual = sha256_hex(existing)
+    expected_entry = (manifest.get("self") or {}).get("sha256")
+    if expected_entry and actual != expected_entry:
+        raise ReleaseError(
+            f"{prefix}/manifest.json is already published with sha256 {actual[:12]}… and this "
+            f"build's manifest hashes to {expected_entry[:12]}… — a release id is immutable; "
+            "allocate a new one with `python -m pipeline.release next-id`"
+        )
+
+
+def _exists(client, key: str) -> bool:
+    """Is this key already stored? A write-only client cannot say, so it says no."""
+    if getattr(client, "head", None) is None:
+        return False
+    try:
+        return client.head(key) is not None
+    except R2Error:
+        return False
+
+
+def next_release_id(client, prefix: str, as_of: str) -> str:
+    """The first free ``<as_of>.<n>`` under ``releases/`` for this data date.
+
+    A release id is published bytes with a name on them, so reusing one is not a
+    retry, it is a rewrite: on 2026-10-30 a second CI run for the same data date
+    reused `2026-10-30.1`, rewrote 14,275 keys, and the public verification then read
+    the edge's copy of the *first* upload and reported 1,267 hash mismatches. The id
+    has to be allocated from the store, which is the only place that knows what is
+    already published.
+    """
+    date = as_of.strip("/")
+    if not date:
+        raise ReleaseError("as_of must be a release date like 2026-10-30")
+    used: set[str] = set()
+    for key in client.list_keys(f"releases/{date}"):
+        parts = key.split("/")
+        if len(parts) > 2 and parts[1].startswith(date):
+            used.add(parts[1])
+    taken = used | {date}
+    suffix = 1
+    while f"{date}.{suffix}" in taken:
+        suffix += 1
+    return f"{date}.{suffix}"
+
+
 def upload_release(
     release: Path,
     *,
@@ -295,6 +351,7 @@ def upload_release(
         )
 
     if not dry_run:
+        _refuse_rewrite(client, prefix, manifest)
         _upload_objects(
             objects,
             report=report,
@@ -601,7 +658,9 @@ def _log_progress(done: int, total: int, started: float, report: UploadReport) -
 
 def _verify_public(item: UploadedObject, public: PublicReader, origin: str | None, *, expected_cache: str) -> None:
     """Check the object as a browser sees it: status, bytes, cache header, CORS."""
-    response = public.fetch(item.key, origin=origin)
+    # Keyed by the content we expect: a fresh URL per expected body, so no layer can
+    # answer a rewrite with the bytes it cached for the previous upload.
+    response = public.fetch(item.key, origin=origin, cache_bust=item.sha256[:16])
     if response.status != 200:
         item.problem = f"public GET returned {response.status}"
         return
@@ -768,6 +827,14 @@ def main(argv: list[str] | None = None) -> int:
         help=f"objects in flight (default {DEFAULT_CONCURRENCY})",
     )
 
+    next_id = sub.add_parser(
+        "next-id",
+        help="print the first free release id for a data date, e.g. 2026-10-31.2",
+    )
+    next_id.add_argument("--as-of", required=True, help="data date, YYYY-MM-DD")
+    next_id.add_argument("--prefix-root", default="releases", help="root prefix (default releases)")
+    next_id.add_argument("--env-file", type=Path, default=None)
+
     verify = sub.add_parser("verify", help="re-check an already-published prefix")
     verify.add_argument("--release", required=True)
     verify.add_argument("--prefix", default=None)
@@ -801,6 +868,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         loaded = load_env(args.env_file)
+
+        if args.command == "next-id":
+            credentials, endpoint, bucket = credentials_from_env()
+            client = R2Client(endpoint, bucket, credentials)
+            print(next_release_id(client, args.prefix_root, args.as_of))
+            return 0
 
         if args.command == "promote":
             public = PublicReader(args.public_base)

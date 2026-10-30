@@ -40,9 +40,13 @@ class FakePublic:
         self.storage = storage
         self.corrupt = corrupt
         self.fetched: list[str] = []
+        self.cache_busts: list[str | None] = []
 
-    def fetch(self, key: str, *, origin: str | None = None) -> PublicResponse:
+    def fetch(
+        self, key: str, *, origin: str | None = None, cache_bust: str | None = None
+    ) -> PublicResponse:
         self.fetched.append(key)
+        self.cache_busts.append(cache_bust)
         stored = self.storage.objects.get(key)
         if stored is None:
             return PublicResponse(f"{self.base_url}/{key}", 404, {}, b"")
@@ -268,7 +272,7 @@ def test_a_read_timeout_on_the_public_check_is_retried(release_dir):
             super().__init__(storage)
             self.calls = 0
 
-        def fetch(self, key, *, origin=None):
+        def fetch(self, key, *, origin=None, cache_bust=None):
             self.calls += 1
             if self.calls == 1:
                 raise TimeoutError("The read operation timed out")

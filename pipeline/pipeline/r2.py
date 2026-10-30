@@ -364,8 +364,17 @@ class PublicReader:
         self.timeout = timeout
         self._opener = opener or urllib.request.urlopen
 
-    def fetch(self, key: str, *, origin: str | None = None) -> PublicResponse:
+    def fetch(
+        self, key: str, *, origin: str | None = None, cache_bust: str | None = None
+    ) -> PublicResponse:
         url = f"{self.base_url}/{urllib.parse.quote(key, safe='/')}"
+        if cache_bust:
+            # A request directive is not a cache key. When an object is legitimately
+            # rewritten under the same name — a re-run of the same release id — the edge
+            # still holds the previous bytes and answers 200 with them, which reads as a
+            # hash mismatch on every object that changed (1,267 of 14,275 on 2026-10-30).
+            # The query string is part of the cache key, so it forces a trip to origin.
+            url = f"{url}?v={urllib.parse.quote(cache_bust, safe='')}"
         headers = {"User-Agent": PUBLIC_USER_AGENT}
         if origin:
             headers["Origin"] = origin
@@ -388,8 +397,10 @@ class PublicReader:
             # already landed.
             raise R2Error("GET", 0, f"transport error: {error!r}", key) from error
 
-    def fetch_json(self, key: str, *, origin: str | None = None) -> dict:
-        response = self.fetch(key, origin=origin)
+    def fetch_json(
+        self, key: str, *, origin: str | None = None, cache_bust: str | None = None
+    ) -> dict:
+        response = self.fetch(key, origin=origin, cache_bust=cache_bust)
         if response.status != 200:
             raise R2Error("GET", response.status, response.body.decode("utf-8", "replace"), key)
         return json.loads(response.body)

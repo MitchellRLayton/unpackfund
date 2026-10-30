@@ -137,11 +137,28 @@ jobs:
       # EDGAR documents, which does not fit the 10 GB repo cache alongside anything
       # else and would be evicted between runs anyway. Phase 2 seeds it from the R2
       # raw prefix instead.
+      - name: Allocate the release id
+        id: allocate
+        working-directory: pipeline
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          # Ask the store, not the workspace: a fresh checkout always starts at `.1`, and
+          # reusing an id that is already published rewrites bytes under a name consumers
+          # have read — the failure that cost run 3 its staging step.
+          AS_OF=$(date -u +%F)
+          ID=$(python -m pipeline.release next-id --as-of "$AS_OF")
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+          echo "release id: $ID"
+
       - name: Build the wide release
         working-directory: pipeline
         run: |
           python -m pipeline.build --universe all \
-            --out ../artifacts --workers 8 --progress-every 1000
+            --out ../artifacts --workers 8 --progress-every 1000 \
+            --release-id ${{ steps.allocate.outputs.id }}
 
       - name: Record the release id
         id: release

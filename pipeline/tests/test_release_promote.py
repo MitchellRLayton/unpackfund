@@ -46,7 +46,9 @@ class FakePublic:
         self.fetched: list[str] = []
         self._served_404 = set()
 
-    def fetch(self, key: str, *, origin: str | None = None) -> PublicResponse:
+    def fetch(
+        self, key: str, *, origin: str | None = None, cache_bust: str | None = None
+    ) -> PublicResponse:
         self.fetched.append(key)
         # A cache-busting query is not part of the object's name; the edge ignores it too.
         lookup = key.split("?")[0]
