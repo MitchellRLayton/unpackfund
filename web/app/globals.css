@@ -237,7 +237,8 @@ footer.site-footer p {
   max-width: 26rem;
 }
 
-.field input[type="text"] {
+.field input[type="text"],
+.field input[type="search"] {
   flex: 1;
   font: inherit;
   padding: 0.5rem 0.65rem;
@@ -247,7 +248,8 @@ footer.site-footer p {
   color: var(--fg);
 }
 
-.field input[type="text"]:focus-visible {
+.field input[type="text"]:focus-visible,
+.field input[type="search"]:focus-visible {
   border-color: var(--accent);
 }
 
@@ -399,6 +401,24 @@ table.ledger {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
+}
+
+/* A second line inside a table cell, shown only where a column of secondary
+   text (an issuer name) would otherwise squeeze the row into a paragraph. */
+.cell-note {
+  display: none;
+}
+
+@media (max-width: 40rem) {
+  .cell-note {
+    display: block;
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+
+  table.ledger .optional {
+    display: none;
+  }
 }
 
 @media (max-width: 34rem) {

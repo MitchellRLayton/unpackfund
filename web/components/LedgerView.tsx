@@ -155,9 +155,10 @@ export function LedgerView() {
     <>
       <h1>Your look-through</h1>
       <p className="muted">
-        {formatCount(ledger.rows.length)} companies across {ledger.funds.length} funds.
-        Every weight is a share of the whole portfolio, so the column adds up to the
-        covered part of your holdings, not to 100%.
+        {formatCount(ledger.rows.length)} companies across {ledger.funds.length}{" "}
+        {ledger.funds.length === 1 ? "fund" : "funds"}. Every weight is a share of the
+        whole portfolio, so the column adds up to the covered part of your holdings, not
+        to 100%.
       </p>
 
       {release.status === "ready" ? (
