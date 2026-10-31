@@ -120,6 +120,7 @@ BRGIX,Bridges Investment Fund,,,1.000,typesafe/jev-1.14,style-jev-2026-10-30.8-1
 CAPPX,CANTERBURY PORTFOLIO THERMOSTAT FUND,,,0.990,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 CMCMX,CONESTOGA DISCOVERY FUND,,,0.950,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 BOBP,CORE16 Best of Breed Premier Index ETF,,,0.880,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+CMALX,CRAWFORD MULTI-ASSET INCOME FUND,income_allocation,below threshold,0.800,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793420429
 CVAAX,Calamos Select Fund,,,1.000,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 CVSB,Calvert Ultra-Short Investment Grade ETF,,,0.430,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 CAMOX,Cambiar Opportunity Fund,,,1.000,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -685,6 +686,7 @@ VWELX,VANGUARD WELLINGTON FUND,,,0.940,typesafe/jev-1.14,style-jev-2026-10-30.8-
 VWNDX,VANGUARD WINDSOR FUND,,,0.960,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 VWNAX,VANGUARD WINDSOR II FUND,,,0.950,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 VOLMX,VOLUMETRIC FUND,,,0.990,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+ISEAX,VOYA INDEX SOLUTION 2035 PORTFOLIO,target_date_allocation,below threshold,0.820,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793420429
 ISNFX,VOYA SOLUTION 2030 PORTFOLIO,,,0.740,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 ISPCX,VOYA SOLUTION 2035 PORTFOLIO,,,0.630,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 ISNPX,VOYA SOLUTION 2050 PORTFOLIO,,,0.710,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -711,6 +713,7 @@ MMEAX,Victory Integrity Discovery Fund,,,0.940,typesafe/jev-1.14,style-jev-2026-
 PCODX,Victory Pioneer Fund,,,1.000,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 RIVCX,Victory RS Investors Fund,,,0.980,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 RPPRX,Victory RS Partners Fund,,,1.000,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+USSCX,Victory Science & Technology Fund,u_s_technology,below threshold,0.780,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793420429
 VFLO,VictoryShares Free Cash Flow ETF,,,0.530,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 PDPAX,Virtus Duff & Phelps Real Asset Fund,,,0.630,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 PLXGX,Virtus KAR Capital Growth Fund,,,0.970,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
