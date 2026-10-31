@@ -88,10 +88,12 @@ jobs:
 
       - name: Install the pipeline as a package
         # `python -m`, not `pnpm pages:funds`: the pnpm wrapper pins the local venv
-        # interpreter, which no runner has.
+        # interpreter, which no runner has. `pip install ./pipeline` brings no test
+        # runner — pytest is a developer dependency, added here because the gate below
+        # runs the pipeline's own suite before anything is published.
         run: |
           python -m pip install --upgrade pip
-          python -m pip install ./pipeline
+          python -m pip install ./pipeline pytest
 
       - name: Read the release the live site is serving
         id: live
