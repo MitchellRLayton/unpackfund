@@ -423,3 +423,59 @@ def test_an_override_reaches_the_page_and_changes_no_other_page(tmp_path, monkey
     )
     # The overridden fund, and the peer list of the fund it joined. Nothing else.
     assert changed == ["ACRNX", "TEBRGX"]
+
+
+# --- the credential preflight -------------------------------------------------
+#
+# A rejected key must say so in one line, before a run and before any spend. "User not
+# found." from OpenRouter means the token does not resolve to a live account — revoked,
+# deleted, or not an API key — which is a different problem from "the model is down" and
+# needs a different fix.
+
+
+def test_the_key_is_found_under_either_spelling_and_an_export_wins():
+    canonical = style_jev.api_key_from_env({"OPENROUTER_API_KEY": " a "})
+    assert canonical == "a"
+    assert style_jev.api_key_from_env({"OPEN_ROUTER_API_KEY": "b"}) == "b"
+    assert style_jev.api_key_from_env(
+        {"OPENROUTER_API_KEY": "canonical", "OPEN_ROUTER_API_KEY": "typo"}
+    ) == "canonical"
+    assert style_jev.api_key_from_env({"OPEN_ROUTER_API_KEY": "   "}) == ""
+    assert style_jev.api_key_from_env({}) == ""
+
+
+def test_key_status_asks_the_free_endpoint_and_spends_nothing():
+    seen = {}
+
+    def get(url, headers, timeout):
+        seen.update(url=url, headers=dict(headers), timeout=timeout)
+        return 401, {"error": {"message": "User not found.", "code": 401}}
+
+    status, payload = style_jev.key_status("test-key", get=get)
+    assert status == 401
+    assert payload["error"]["message"] == "User not found."
+    assert seen["url"] == style_jev.KEY_INFO_URL
+    assert seen["headers"]["Authorization"] == "Bearer test-key"
+
+
+def probe(argv=None, monkeypatch=None, key="k", status=(200, {"data": {"label": "t"}})):
+    monkeypatch.setattr("pipeline.release.load_env", lambda *a, **k: [])
+    monkeypatch.setattr(style_jev, "api_key_from_env", lambda *a, **k: key)
+    monkeypatch.setattr(style_jev, "key_status", lambda *a, **k: status)
+    return style_jev.main(argv or ["probe"])
+
+
+def test_probe_without_a_key_refuses_to_guess(monkeypatch):
+    assert probe(monkeypatch=monkeypatch, key="") == 2
+
+
+def test_probe_says_the_key_is_dead_instead_of_blaming_the_model(monkeypatch):
+    code = probe(
+        monkeypatch=monkeypatch,
+        status=(401, {"error": {"message": "User not found.", "code": 401}}),
+    )
+    assert code == 3
+
+
+def test_probe_exits_zero_on_a_live_key(monkeypatch):
+    assert probe(monkeypatch=monkeypatch) == 0

@@ -49,6 +49,15 @@ from typing import Callable, Iterable, Mapping, Sequence
 
 from .style import Style, classify, normalise
 
+#: Environment variable names, in the order they are tried. The operator's `.env` uses
+#: the second spelling; the first is the canonical one, and a run must not fail on a
+#: typo in the name of a key that is right there.
+API_KEY_ENV = ("OPENROUTER_API_KEY", "OPEN_ROUTER_API_KEY")
+
+#: Where OpenRouter answers "is this token a live account?". It costs nothing and it is the
+#: difference between "the model is down" and "the key in your .env was revoked".
+KEY_INFO_URL = "https://openrouter.ai/api/v1/key"
+
 #: The Decisions endpoint. Alpha, and the only one that serves Jev.
 ENDPOINT = "https://openrouter.ai/api/alpha/decisions"
 
@@ -98,8 +107,39 @@ FIELDS = (
 )
 
 
+Get = Callable[[str, Mapping[str, str], float], tuple[int, dict]]
+
+
+def _urlopen_get(url: str, headers: Mapping[str, str], timeout: float) -> tuple[int, dict]:
+    request = urllib.request.Request(url, headers=dict(headers))
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.status, json.loads(response.read().decode())
+    except urllib.error.HTTPError as error:
+        return error.code, {"body": error.read().decode(errors="replace")[:300]}
+    except urllib.error.URLError as error:
+        return 0, {"body": str(error)[:300]}
+
+
+def key_status(api_key: str, *, get: Get | None = None, timeout: float = 45.0) -> tuple[int, dict]:
+    """Ask OpenRouter whether a token is a live account. No tokens spent, ever."""
+    return (get or _urlopen_get)(
+        KEY_INFO_URL, {"Authorization": f"Bearer {api_key}"}, timeout
+    )
+
+
 class JevError(RuntimeError):
     """A request failed in a way worth stopping for."""
+
+
+def api_key_from_env(environ: Mapping[str, str] | None = None) -> str:
+    """The first present key name wins; an empty string means there is nothing to spend."""
+    source = os.environ if environ is None else environ
+    for name in API_KEY_ENV:
+        value = source.get(name, "").strip()
+        if value:
+            return value
+    return ""
 
 
 # --- what we send -------------------------------------------------------------
@@ -635,12 +675,67 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         command.add_argument("--min-accuracy", type=float, default=0.85)
 
+    probe = sub.add_parser("probe")
+    probe.add_argument("--release", type=Path, default=None)
+    probe.add_argument("--from-url", default=None)
+    probe.add_argument("--model", default=DEFAULT_MODEL)
+    probe.add_argument(
+        "--send",
+        action="store_true",
+        help="also send one two-fund Decisions request (~$0.0002) to prove the surface",
+    )
+
     check = sub.add_parser("check")
     check.add_argument("--gold", type=Path, required=True)
     check.add_argument("--predictions", type=Path, required=True)
     check.add_argument("--min-accuracy", type=float, default=0.8)
 
     args = parser.parse_args(argv)
+
+    # The workspace keeps the key in the `.env` one level above the repo, so a run from a
+    # plain shell must not fail because nothing exported it. Existing environment wins, and
+    # only names are ever printed (see pipeline.release.load_env).
+    if args.command in ("fill", "audit", "probe"):
+        from .release import load_env
+
+        loaded = load_env()
+        if loaded:
+            print(f"  credentials from .env: {', '.join(loaded)}")
+
+    if args.command == "probe":
+        api_key = api_key_from_env()
+        if not api_key:
+            print(f"no key: none of {', '.join(API_KEY_ENV)} is set", file=sys.stderr)
+            return 2
+        status, payload = key_status(api_key)
+        if status != 200:
+            body = payload.get("body") if isinstance(payload, dict) else None
+            message = ""
+            if isinstance(payload, dict):
+                message = str((payload.get("error") or {}).get("message") or body or "")
+            print(f"key rejected by OpenRouter: HTTP {status} · {message}", file=sys.stderr)
+            print("  the token in .env does not resolve to a live account: revoked, deleted, "
+                  "or not an API key. Create a fresh one at openrouter.ai → Keys, on the "
+                  "account that has typesafe/jev-1.14 allowed.", file=sys.stderr)
+            return 3
+        data = payload.get("data") or {}
+        print(f"key ok · label {data.get('label')!r} · usage ${data.get('usage') or 0:.4f} "
+              f"· limit {data.get('limit')} · remaining {data.get('limit_remaining')}")
+        if not args.send:
+            print("no request sent (add --send for one two-fund Decisions call)")
+            return 0
+        catalogue, release_id = load_catalogue(args.release, args.from_url)
+        options = option_set(catalogue)
+        items = catalogue_items(catalogue)[:2]
+        result = run(
+            items, options, transport=http_transport, api_key=api_key, model=args.model,
+            batch_items=2, session_id=f"unpackfund-style-jev/probe/{release_id}",
+        )
+        for reading in result.readings:
+            print(f"  {reading.item.name!r:38} -> {reading.label or 'unknown':32} "
+                  f"conf {reading.confidence:.3f}")
+        print(f"decisions ok · served {result.model} · spent ${result.cost:.6f}")
+        return 0
 
     if args.command == "check":
         gold = read_gold(args.gold)
@@ -704,9 +799,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"dry run: one batch written to {preview}; add --apply to spend")
         return 0
 
-    api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    api_key = api_key_from_env()
     if not api_key:
-        raise SystemExit("OPENROUTER_API_KEY is not set; no request was sent")
+        raise SystemExit(
+            f"none of {', '.join(API_KEY_ENV)} is set; no request was sent"
+        )
 
     result = run(
         chosen,

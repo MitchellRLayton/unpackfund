@@ -75,7 +75,8 @@ jobs:
       - name: Check for the credential
         id: creds
         env:
-          KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # Either spelling: the local .env uses OPEN_ROUTER_API_KEY.
+          KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPEN_ROUTER_API_KEY }}
         run: |
           if [ -z "${KEY}" ]; then
             echo "OPENROUTER_API_KEY is not a repository secret yet — skipping (ADR-0012)"
@@ -88,7 +89,7 @@ jobs:
         if: steps.creds.outputs.ready == 'true'
         working-directory: pipeline
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPEN_ROUTER_API_KEY }}
         run: |
           set -euo pipefail
           MAX="${{ inputs.max_new || '300' }}"
