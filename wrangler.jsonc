@@ -1,9 +1,21 @@
 {
+  // The Worker that Workers Builds deploys on every push to `main`.
+  //
+  // It is not production and owns no domain. It exists because the Git build runs
+  // `pnpm build` → `npx wrangler deploy`, which reads *this* file and cannot generate
+  // the 9,016 fund pages (that needs Python, the pipeline, and a release). On 2026-10-30
+  // that limitation published a shell-only site over unpackfund.com and took the fund
+  // pages down with it. Pointing the unprefixed deploy at a throwaway Worker keeps the
+  // Git build useful as a "does main still compile" canary while making it structurally
+  // unable to touch production: publishing the real site needs
+  // `--config wrangler.prod.jsonc` and the pages that go with it.
+  //
+  // Production deploys: `.github/workflows/deploy-site.yml` (code, on push to main and
+  // after a successful promote), `.github/workflows/promote.yml` (the reviewed data
+  // artefact, nightly), or `pnpm deploy:prod` by hand.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "unpackfund",
+  "name": "unpackfund-buildcheck",
   "compatibility_date": "2026-10-28",
-  // Static export of the Next.js app (ADR-0005: a Worker with Static Assets,
-  // not a Pages project). `pnpm build` must run before `wrangler deploy`.
   "assets": {
     "directory": "./web/out",
     "not_found_handling": "404-page"

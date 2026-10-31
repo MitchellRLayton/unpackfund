@@ -1,0 +1,189 @@
+# Publishing code to production: one complete site, from Actions.
+#
+# Why this workflow exists. Workers Builds is wired to `main` and runs
+# `pnpm build` → `npx wrangler deploy`, which cannot generate the 9,016 fund pages —
+# so on 2026-10-30 a Git build published a shell-only site over unpackfund.com and took
+# `/f/` down with it (version 9010ac64). Teaching the Git build to produce the pages
+# would mean Python, the pipeline, and a 400 MB release inside a build image we cannot
+# test; the wrong owner for the work. Instead `wrangler.jsonc` now names a throwaway
+# Worker (`unpackfund-buildcheck`) so the unprefixed deploy cannot reach production, and
+# the real site is published here: the app from `main`, plus the fund pages for the
+# release that is *live*, so the two cannot disagree.
+#
+# The pages are generated from a copy of the live release (`pipeline.mirror`) rather
+# than from an older `site` artefact, because an artefact can belong to a release that
+# was staged and never promoted. The copy is checked against the catalogue hash the
+# pointer publishes, and cached by release id — a second deploy for the same release
+# downloads nothing.
+#
+# Triggers:
+#   push to main   — code changed, so ship it (paths filter keeps docs-only pushes out)
+#   promote done   — the data moved under the site; re-apply current main's code over
+#                    the promoted pages, which also stops a promotion from reverting a
+#                    code deploy that happened after the artefact was built
+#   manual         — workflow_dispatch, same path with no commit
+#
+# Production-only. Non-prod deploys stay on branches and the preview Worker.
+
+name: deploy-site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "pipeline/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".nvmrc"
+      - "wrangler.prod.jsonc"
+      - ".github/workflows/deploy-site.yml"
+  workflow_run:
+    workflows: [promote]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One site deploy at a time, and never cancel one half-way: a cancelled upload leaves the
+# Worker on whichever version finished last, which is exactly the state this file exists
+# to make impossible to reach by accident.
+concurrency:
+  group: site-deploy
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.13"
+  WRANGLER: "wrangler@4.155.0"
+  SITE_HOST: https://unpackfund.com
+  DATA_HOST: https://data.unpackfund.com
+
+jobs:
+  deploy:
+    name: build the whole site and deploy it
+    # A promote that failed did not move the pointer, so there is nothing to re-apply.
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A workflow_run run starts on the default branch's workflow file, but the code
+          # it should publish is the commit the triggering run used.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install the pipeline as a package
+        # `python -m`, not `pnpm pages:funds`: the pnpm wrapper pins the local venv
+        # interpreter, which no runner has.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ./pipeline
+
+      - name: Read the release the live site is serving
+        id: live
+        run: |
+          set -euo pipefail
+          # no-cache pointer + a query string: the edge holds the previous bytes for a
+          # moment after a promotion, and the whole point is to build what is live now.
+          RELEASE=$(curl -sS --retry 3 "$DATA_HOST/latest/release.json?probe=$(date +%s)" \
+            | python -c 'import json,sys; print(json.load(sys.stdin)["as_of"])')
+          test -n "$RELEASE"
+          echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
+          echo "live release: $RELEASE"
+
+      # The copy of the live release is 400 MB of immutable objects. Keeping it per
+      # release means the second deploy for a release does no network work beyond the
+      # catalogue, which is what makes a push-triggered deploy cheap enough to be normal.
+      # Restores now and saves at the end of the run (a key that already exists is not an
+      # error), so a release is copied once and reused by every later deploy of it.
+      - uses: actions/cache@v4
+        with:
+          path: artifacts/mirror
+          key: release-mirror-${{ steps.live.outputs.release }}
+
+      - name: Install the site
+        run: pnpm install --frozen-lockfile
+
+      # The gate. This workflow publishes production, so it does not take the build on
+      # trust: the app's types and unit tests, and the generator's own tests, all run
+      # before anything is uploaded. `pnpm verify` is not used because it ends in `build`
+      # and the build below is the one that ships.
+      - name: Check the code before publishing it
+        run: |
+          set -euo pipefail
+          pnpm typecheck
+          pnpm test
+          python -m pytest pipeline/tests -q
+
+      - name: Build the app
+        run: pnpm build
+
+      - name: Copy the live release and generate its fund pages
+        run: |
+          set -euo pipefail
+          python -m pipeline.mirror --out artifacts/mirror/live
+          python -m pipeline.fund_pages --release artifacts/mirror/live --out web/out
+          echo "pages: $(find web/out/f -name index.html | wc -l | tr -d ' ')"
+
+      - name: Refuse to ship a site without its pages
+        # The exact failure that started this: a green deploy of an app that has no fund
+        # pages. A shell-only bundle can never be published from here.
+        run: |
+          set -euo pipefail
+          test -f web/out/index.html
+          test -f web/out/fund-page.css
+          PAGES=$(find web/out/f -name index.html | wc -l | tr -d ' ')
+          echo "fund pages in the bundle: $PAGES"
+          # The mirror refuses a short copy itself; this is the last line of defence
+          # against a generator change that writes nothing and exits 0.
+          test "$PAGES" -ge 8000
+          test "$(find web/out -type f | wc -l | tr -d ' ')" -le 20000
+
+      - name: Deploy production
+        env:
+          # wrangler's env var name is CLOUDFLARE_API_TOKEN; the repository secret is
+          # CLOUDFLARE_ACCOUNT_API_TOKEN (set 2026-10-28), so map one onto the other.
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_ACCOUNT_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes ${{ env.WRANGLER }} deploy --config wrangler.prod.jsonc
+
+      - name: Smoke the live surfaces
+        env:
+          # A ticker from this release, not a remembered one: a fund that left the
+          # universe must not fail the deploy for the wrong reason.
+          RELEASE: ${{ steps.live.outputs.release }}
+        run: |
+          set -euo pipefail
+          TICKER=$(curl -sS --retry 3 "$DATA_HOST/releases/$RELEASE/catalogue.json" \
+            | python -c 'import json,sys; print(sorted(json.load(sys.stdin)["funds"])[0])')
+          for PATHNAME in / /funds/ /x/ "/f/$TICKER/" /fund-page.css; do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --retry 3 "$SITE_HOST$PATHNAME")
+            echo "$PATHNAME -> $CODE"
+            test "$CODE" = "200"
+          done
+          # The point of the whole file: the fund pages are in the deployed version, not
+          # just in the directory this job built.
+          {
+            echo "### deploy-site"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| release | \`$RELEASE\` |"
+            echo "| fund pages deployed | $(find web/out/f -name index.html | wc -l | tr -d ' ') |"
+            echo "| commit | \`${{ github.event.workflow_run.head_sha || github.sha }}\` |"
+            echo "| trigger | ${{ github.event_name }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

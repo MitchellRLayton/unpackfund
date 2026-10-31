@@ -29,8 +29,9 @@
     "verify:live": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.live",
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm pipeline:test && pnpm data:validate --fixtures && pnpm build",
     "pages:funds": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.fund_pages --out ../web/out",
+    "pages:mirror": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.mirror --out ../artifacts/mirror/live",
     "build:site": "pnpm build && pnpm pages:funds",
     "deploy:preview": "npx --yes wrangler@4.155.0 deploy --config wrangler.preview.jsonc",
-    "deploy:prod": "npx --yes wrangler@4.155.0 deploy --config wrangler.jsonc"
+    "deploy:prod": "npx --yes wrangler@4.155.0 deploy --config wrangler.prod.jsonc"
   }
 }

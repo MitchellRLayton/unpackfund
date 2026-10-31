@@ -201,7 +201,7 @@ jobs:
           fi
           echo "files to deploy: $(find web/out -type f | wc -l)"
           test "$(find web/out -type f | wc -l)" -le 20000
-          npx --yes ${{ env.WRANGLER }} deploy --config wrangler.jsonc
+          npx --yes ${{ env.WRANGLER }} deploy --config wrangler.prod.jsonc
 
       - name: Smoke the live surfaces
         if: steps.resolve.outputs.already_live != 'true'

@@ -1,0 +1,27 @@
+{
+  // Production: the site that answers on unpackfund.com.
+  //
+  // This was `wrangler.jsonc` until 2026-10-31. It moved to its own file because that
+  // file is what an unprefixed `npx wrangler deploy` reads, and Workers Builds runs
+  // exactly that on every push to `main`. On 2026-10-30 a Git build therefore published
+  // a shell-only site over production (version 9010ac64) and took all 9,016 fund pages
+  // down. The invariant is that production is only ever published by something that has
+  // the fund pages; naming them requires `--config wrangler.prod.jsonc`, which is a
+  // deliberate act, and `wrangler.jsonc` now points at a throwaway Worker.
+  //
+  // Static export of the Next.js app (ADR-0005: a Worker with Static Assets, not a
+  // Pages project). `pnpm build` — and `pnpm pages:funds`, or the pages are missing —
+  // must run before `wrangler deploy --config wrangler.prod.jsonc`.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "unpackfund",
+  "compatibility_date": "2026-10-28",
+  "assets": {
+    "directory": "./web/out",
+    "not_found_handling": "404-page"
+  },
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true
+  }
+}

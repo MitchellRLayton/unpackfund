@@ -105,8 +105,24 @@ SEC requires a declared User-Agent with a contact address, at most 10 requests a
 second. The client sends `UnpackFund research data@unpackfund.com` and throttles
 to 8/s; override the first with `SEC_USER_AGENT`.
 
-Deploying is `pnpm build && npx wrangler deploy` against `wrangler.jsonc`
-(`assets.directory: web/out`), not a separate command yet.
+**Deploying production.** Production is a Worker with Static Assets
+(ADR-0005) and it is only ever published by something that has the fund pages,
+because a shell-only deploy takes all 9,016 `/f/<TICKER>/` pages down with it —
+which is exactly what Workers Builds did twice on 2026-10-30.
+
+- Normal path: push to `main`. `.github/workflows/deploy-site.yml` builds the app,
+  copies the live release (`pipeline.mirror`), generates its fund pages, checks the
+  bundle, and deploys with `--config wrangler.prod.jsonc`. It also runs after a
+  successful `promote`, so a data promotion cannot leave older code behind.
+- Nightly data path: `.github/workflows/promote.yml` deploys the reviewed `site`
+  artefact from `refresh.yml` with the same config.
+- By hand: `pnpm build && pnpm pages:mirror && pnpm pages:funds &&
+  npx wrangler@4.155.0 deploy --config wrangler.prod.jsonc`.
+
+`wrangler.jsonc` is **not** production: it names `unpackfund-buildcheck`, a
+throwaway Worker that Workers Builds deploys on every push so the Git build stays
+a "does main compile" canary without being able to reach the live site. It owns no
+domain and needs no attention; delete it if the Git link is ever removed.
 
 **Preview, without touching production.** `wrangler.preview.jsonc` deploys the
 same `web/out` as a *separate* Worker with its own `workers.dev` hostname, so the
@@ -130,7 +146,9 @@ pipeline/       Python data pipeline, SEC EDGAR -> artifacts/ (see pipeline/READ
 pipeline/overrides/  reviewed ticker -> registrant rows for symbols EDGAR's fund
                 ticker file does not carry (unit investment trusts)
 schemas/        JSON Schemas for published artifacts (not yet)
-wrangler.jsonc  Worker + Static Assets config for the deploy
+wrangler.jsonc  Worker config the Git build reads — a throwaway build-check
+                Worker, not production (see "Deploying production")
+wrangler.prod.jsonc  the production Worker, `unpackfund`
 ```
 
 ## Security
