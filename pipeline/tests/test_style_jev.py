@@ -479,3 +479,22 @@ def test_probe_says_the_key_is_dead_instead_of_blaming_the_model(monkeypatch):
 
 def test_probe_exits_zero_on_a_live_key(monkeypatch):
     assert probe(monkeypatch=monkeypatch) == 0
+
+
+def test_a_rare_allocation_label_is_offered_even_when_it_ranks_last():
+    """A measured failure, kept as a test.
+
+    The first live probe used a 48-label cut. Five of the seven allocation labels were below
+    that cut, so "Amplius Aggressive Asset Allocation ETF" came back *balanced allocation* at
+    0.97 confidence — not a model error: the right option was never on the ballot. Forcing
+    every allocation label into the set made the same call return aggressive allocation at
+    1.000. Rare labels are exactly what an unreadable name tends to state.
+    """
+    catalogue = dict(CATALOGUE)
+    catalogue["AAAA"] = ["Amplius Aggressive Asset Allocation ETF", "Amplius", 1, 99.0]
+
+    options = style_jev.option_set(catalogue, limit=4)
+    assert "aggressive allocation" in {option.label for option in options}
+    assert len(options) == 4
+    # and the ordinary high-count labels still fill the rest of the ballot
+    assert "U.S. all cap blend" in {option.label for option in options}

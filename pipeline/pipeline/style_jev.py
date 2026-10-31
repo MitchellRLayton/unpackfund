@@ -73,16 +73,16 @@ UNKNOWN = "unknown"
 DEFAULT_MIN_CONFIDENCE = 0.85
 
 #: Names per request. Big enough to amortise the option argument, small enough that the
-#: request stays far below the size at which OpenRouter switches the provider into
+#: request stays well below the size at which OpenRouter switches the provider into
 #: TypeSafe's long-context mode (documented as slower and less accurate). Measured, not
-#: assumed: 12 names with 64 options is 54 KB and trips the switch, so the defaults are
-#: 8 names and 48 options, which measures ~17 KB.
-DEFAULT_BATCH_ITEMS = 8
+#: assumed: 6 names with 64 options is 23.6 KB, 8 is 31.4 KB (over the guard below), so the
+#: defaults are 6 and 64.
+DEFAULT_BATCH_ITEMS = 6
 
-#: How many of the rule engine's own labels to offer. The 48 most common labels cover
-#: most of the catalogue; a fund outside that set gets ``unknown``, which is a
-#: defensible answer for a name the rules already could not read.
-DEFAULT_OPTION_LIMIT = 48
+#: How many of the rule engine's own labels to offer: every allocation label plus the most
+#: common others. A name outside the set gets ``unknown``, which is a defensible answer for
+#: a name the rules already could not read.
+DEFAULT_OPTION_LIMIT = 64
 
 #: Refuse a request that would be served by the long-context path. The independent
 #: evaluation of Jev on OpenRouter found the provider flips above roughly 32 KB of text,
@@ -187,7 +187,19 @@ def option_set(
             continue
         counts[style.label] = counts.get(style.label, 0) + 1
         seen.setdefault(style.label, style)
-    ordered = sorted(counts, key=lambda label: (-counts[label], label))[:limit]
+
+    # Every allocation label is offered, whatever its count. Measured on 2026-10-30.8: at a
+    # 48-label cut, five of the seven were missing — conservative, moderate, growth, income
+    # and aggressive — and a live probe answered "balanced allocation" for an *aggressive*
+    # allocation fund at 0.97 confidence. The model was not wrong; it was never offered the
+    # right option. Rare labels are exactly the ones an unreadable name tends to state.
+    structural = sorted(label for label in counts if seen[label].group == "allocation")
+    ordered = structural[:limit]
+    for label in sorted(counts, key=lambda label: (-counts[label], label)):
+        if len(ordered) >= limit:
+            break
+        if label not in ordered:
+            ordered.append(label)
     return [
         Option(key=_slug(label), label=label, style=seen[label]) for label in ordered
     ]
@@ -877,7 +889,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     rows = read_overrides(args.out)
     for reading in kept:
-        rows[reading.item.name] = row_for(reading, model=args.model, run_id=run_id)
+        rows[reading.item.name] = row_for(reading, model=result.model, run_id=run_id)
     written = write_overrides(args.out, rows.values(), header=override_header())
     refused = read_overrides(args.refused) if args.refused.exists() else {}
     for row in refusal_rows(
