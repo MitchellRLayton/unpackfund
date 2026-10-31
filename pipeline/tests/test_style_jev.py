@@ -621,3 +621,31 @@ def test_the_write_gate_fails_closed_when_nothing_was_scored():
         min_confidence=style_jev.DEFAULT_MIN_CONFIDENCE,
     )
     assert not ok and "unknown" in reason
+
+
+def test_a_run_with_nothing_new_sends_nothing(tmp_path, capsys):
+    """The daily job usually has nothing to do, and doing it must cost nothing.
+
+    With every unreadable name already answered, there is no write for a calibration gate to
+    authorise — so the gold rows are not sent either, no CSV is touched, and the run exits 0
+    instead of spending $0.0044 and committing the day's sampling noise to the refusal file.
+    """
+    release = _fixture_release(
+        tmp_path, {"AVUV": ("Avantis U.S. Small Cap Value ETF", "EA Series Trust")}
+    )
+    out = tmp_path / "overrides.csv"
+    refused = tmp_path / "refused.csv"
+    code = style_jev.main(
+        [
+            "fill",
+            "--release", str(release),
+            "--apply",
+            "--out", str(out),
+            "--refused", str(refused),
+            "--gold", str(tmp_path / "no-gold.csv"),
+        ]
+    )
+    assert code == 0
+    assert "nothing new to ask" in capsys.readouterr().out
+    assert not out.exists()
+    assert not refused.exists()

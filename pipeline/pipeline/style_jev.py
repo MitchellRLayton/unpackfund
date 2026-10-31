@@ -801,6 +801,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         command.add_argument("--report", type=Path, default=None)
         command.add_argument("--max-new", type=int, default=None)
+        command.add_argument(
+            "--force",
+            action="store_true",
+            help="send even when nothing is new, to re-measure calibration on demand",
+        )
         command.add_argument("--sample", type=int, default=300)
         command.add_argument("--seed", type=int, default=20261030)
         command.add_argument(
@@ -918,6 +923,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         candidates = fill_candidates(
             items, overrides=overrides, refusals=refusals, max_new=args.max_new
         )
+        if not candidates and not args.force:
+            # The daily job's normal state: a release the two files already answer. Sending the
+            # gold rows anyway cost $0.0044 a run, churned the refusal file with the day's
+            # sampling, and gated a write that could not happen. Nothing new means nothing to
+            # prove, so the run costs nothing and says so.
+            print(
+                f"nothing new to ask in {release_id}: {len(overrides)} overrides and "
+                f"{len(refusals)} refusals already answer every unreadable name"
+            )
+            print("  (a paid pass runs when a promoted release brings a name neither file knows)")
+            return 0
         fillable = {item.name for item in candidates}
         union = {item.ticker: item for item in candidates}
         union.update({item.ticker: item for item in gold_items})
