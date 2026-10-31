@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -61,6 +62,17 @@ def delete_request_body(keys: Sequence[str]) -> bytes:
 # it presents a named crawler identity rather than a library default — the failure
 # it must detect is a missing object or header, not an edge rule.
 PUBLIC_USER_AGENT = "Mozilla/5.0 (compatible; UnpackFund/0.1; +https://unpackfund.com)"
+
+#: Retries the public host's own failures are given before an object counts as unreachable.
+#:
+#: The data host is behind Cloudflare, and Cloudflare answers 503 for a moment of origin
+#: trouble often enough to matter at this object count: on 2026-10-30 a 90-minute build died
+#: at the last gate because 2 of 14,256 objects were read back as HTTP 503 — the upload was
+#: complete and correct, and the release was refused for two transient responses.
+PUBLIC_TRIES = 4
+PUBLIC_BACKOFF_S = (1.0, 3.0, 8.0)
+#: Retryable *from the host*: the origin is briefly unhappy, or the edge is throttling us.
+PUBLIC_RETRY_STATUSES = (408, 425, 429, 500, 502, 503, 504)
 IMMUTABLE = "public, max-age=31536000, immutable"
 NO_CACHE = "no-cache"
 
@@ -381,6 +393,24 @@ class PublicReader:
         # Ask intermediaries for a fresh copy: a cached 404 from before the upload
         # would otherwise be indistinguishable from a failed upload.
         headers["Cache-Control"] = "no-cache"
+        last: PublicResponse | None = None
+        for attempt in range(PUBLIC_TRIES):
+            if attempt:
+                time.sleep(PUBLIC_BACKOFF_S[min(attempt - 1, len(PUBLIC_BACKOFF_S) - 1)])
+            try:
+                response = self._fetch_once(url, headers)
+            except R2Error:
+                # Transport failure: worth another try for the same reason a 503 is.
+                if attempt == PUBLIC_TRIES - 1:
+                    raise
+                last = None
+                continue
+            if response.status not in PUBLIC_RETRY_STATUSES:
+                return response
+            last = response
+        return last if last is not None else PublicResponse(url, 0, {}, b"")
+
+    def _fetch_once(self, url: str, headers: dict[str, str]) -> PublicResponse:
         request = urllib.request.Request(url, method="GET", headers=headers)
         try:
             with self._opener(request, timeout=self.timeout) as response:
@@ -388,14 +418,14 @@ class PublicReader:
         except urllib.error.HTTPError as error:
             return PublicResponse(url, error.code, lower_headers(error.headers or {}), error.read())
         except urllib.error.URLError as error:
-            raise R2Error("GET", 0, f"transport error: {error.reason}", key) from error
+            raise R2Error("GET", 0, f"transport error: {error.reason}", url) from error
         except (TimeoutError, OSError) as error:
             # A socket timeout surfaces as a bare `TimeoutError` from the read, not as a
             # `URLError`, and `socket.timeout` *is* `TimeoutError` on 3.10+. Unwrapped, it
             # escapes every handler that knows what a transport failure is: on 2026-10-30
             # one 30 s read timeout aborted a 13,482-object upload after every object had
             # already landed.
-            raise R2Error("GET", 0, f"transport error: {error!r}", key) from error
+            raise R2Error("GET", 0, f"transport error: {error!r}", url) from error
 
     def fetch_json(
         self, key: str, *, origin: str | None = None, cache_bust: str | None = None

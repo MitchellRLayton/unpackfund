@@ -43,20 +43,23 @@ on:
         description: "allow the prune to remove more than 60% of the bucket (first run only)"
         type: boolean
         default: false
-  # PAUSED until the operator has seen one promotion by hand.
+  # Live since 2026-10-30: the first promotion was watched by hand (`workflow_dispatch`),
+  # went green, and only then was this schedule switched on.
   #
-  # The loop this file implements is meant to run unattended (ADR-0011), but the first
-  # promotion moves the public site from a 5-fund release to the wide one. Flipping that
-  # on a timer before anyone has watched it happen once would be exactly the "routine
-  # commit that ships unreviewed production" the operating rules forbid. Re-enable by
-  # uncommenting the two lines below after the first `workflow_dispatch` promotion is
-  # green — nothing else needs to change.
+  # **05:45 UTC, before the 06:30 refresh — not after it.** The two files share the
+  # `data-refresh` concurrency group, so a promotion cannot overlap a refresh, and the
+  # order decides *what* gets promoted: `staging/latest/release.json` is a single pointer
+  # that the morning refresh overwrites at its end. A promotion scheduled after the
+  # refresh would therefore promote a release built an hour earlier and lose the day of
+  # soak entirely. Running first pins the candidate to what yesterday's run staged and
+  # verified.
   #
-  # 07:30 UTC, one hour after refresh.yml starts and ~25 hours after the previous day's
-  # refresh began. The hour is slack for a slow build, and the schedule is separate so a
-  # failed day 1 cannot promote anything.
-  # schedule:
-  #   - cron: "30 7 * * *"
+  # Residual risk, accepted: GitHub's cron is best-effort, so a promotion that starts
+  # after 06:30 waits for the refresh and then promotes the newer release. That shortens
+  # the soak to minutes; it does not promote anything the gates failed, because the
+  # pointer is only written after every object verified.
+  schedule:
+    - cron: "45 5 * * *"
 
 permissions:
   contents: read
