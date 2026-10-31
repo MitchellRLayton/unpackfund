@@ -92,6 +92,19 @@ MAX_REQUEST_BYTES = 30_000
 
 #: The columns of ``overrides/style_jev.csv``. Every column is a ``Style`` field plus
 #: the evidence needed to review the row without re-running the model.
+#: Columns of the refusal file. Not ``FIELDS``: a refusal has no bucket to record, and
+#: forcing it through the override writer produced rows whose every bucket column was
+#: blank — which then read back as "no rows".
+REFUSAL_FIELDS = (
+    "ticker",
+    "name",
+    "choice",
+    "reason",
+    "confidence",
+    "jev_model",
+    "run_id",
+)
+
 FIELDS = (
     "ticker",
     "name",
@@ -371,6 +384,41 @@ def read_overrides(path: Path) -> dict[str, dict[str, str]]:
             if name and row.get("key"):
                 rows[name] = {key: (row.get(key) or "") for key in FIELDS}
     return rows
+
+
+def read_refusals(path: Path) -> dict[str, dict[str, str]]:
+    """Read the refusal CSV, keyed by filed name.
+
+    This file is the *memory* of what has been asked, so its rows deliberately carry no
+    bucket. Reading it with ``read_overrides`` silently returned nothing — every row's
+    ``key`` column is empty by construction — and the first CI run then re-paid for 300
+    names it had already refused and rewrote the file from the run in hand, dropping 409
+    rows. One reader per file is the fix: a refusal is a fact about a question asked, not a
+    half-filled override.
+    """
+    if not path.exists():
+        return {}
+    rows: dict[str, dict[str, str]] = {}
+    with path.open(newline="", encoding="utf-8") as handle:
+        lines = (line for line in handle if not line.startswith("#"))
+        for row in csv.DictReader(lines):
+            name = (row.get("name") or "").strip()
+            if name:
+                rows[name] = {key: (row.get(key) or "") for key in REFUSAL_FIELDS}
+    return rows
+
+
+def write_refusals(path: Path, rows: Iterable[Mapping[str, str]], *, header: str) -> int:
+    """Write the refusal CSV in a stable order. Returns the row count."""
+    ordered = sorted(rows, key=lambda row: (row["name"], row.get("ticker", "")))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        handle.write(header)
+        writer = csv.DictWriter(handle, fieldnames=list(REFUSAL_FIELDS), lineterminator="\n")
+        writer.writeheader()
+        for row in ordered:
+            writer.writerow({key: row.get(key, "") for key in REFUSAL_FIELDS})
+    return len(ordered)
 
 
 def write_overrides(path: Path, rows: Iterable[Mapping[str, str]], *, header: str) -> int:
@@ -777,7 +825,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     items = catalogue_items(catalogue)
     options = option_set(catalogue, limit=args.option_limit)
     overrides = read_overrides(args.out)
-    refusals = read_overrides(args.refused) if args.refused.exists() else {}
+    refusals = read_refusals(args.refused)
     gold = read_gold(args.gold) if args.gold.exists() else []
     by_ticker = {item.ticker: item for item in items}
     gold_items = [by_ticker[row["ticker"]] for row in gold if row["ticker"] in by_ticker]
@@ -891,15 +939,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     for reading in kept:
         rows[reading.item.name] = row_for(reading, model=result.model, run_id=run_id)
     written = write_overrides(args.out, rows.values(), header=override_header())
-    refused = read_overrides(args.refused) if args.refused.exists() else {}
+    refused = read_refusals(args.refused)
     for row in refusal_rows(
         result.readings,
-        model=args.model,
+        model=result.model,
         run_id=run_id,
         min_confidence=args.min_confidence,
     ):
         refused.setdefault(row["name"], row)
-    write_overrides(args.refused, refused.values(), header=refusal_header())
+    write_refusals(args.refused, refused.values(), header=refusal_header())
     stale = [row["ticker"] for name, row in rows.items() if classify(name, "") is not None]
     print(f"wrote {written} overrides (+{len(kept)} this run), {len(refused)} refusals, "
           f"{len(stale)} now read by the rules")

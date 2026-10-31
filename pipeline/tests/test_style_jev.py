@@ -498,3 +498,71 @@ def test_a_rare_allocation_label_is_offered_even_when_it_ranks_last():
     assert len(options) == 4
     # and the ordinary high-count labels still fill the rest of the ballot
     assert "U.S. all cap blend" in {option.label for option in options}
+
+
+def _refusal(ticker: str, name: str, *, choice: str = "unknown", confidence: str = "0.420") -> dict:
+    return {
+        "ticker": ticker,
+        "name": name,
+        "choice": choice,
+        "reason": "unknown name" if choice == "unknown" else "below threshold",
+        "confidence": confidence,
+        "jev_model": "typesafe/jev-1.14",
+        "run_id": "style-jev-test",
+    }
+
+
+def test_a_refused_name_is_never_paid_for_twice(tmp_path):
+    """The refusal file is the run's memory, and it did not work.
+
+    ``read_overrides`` kept a row only if its ``key`` column was filled — true of an
+    override, never true of a refusal — so the first CI run read the file as empty and
+    re-asked 300 names it had already refused. Two failures compounded: the reader dropped
+    every row, and the writer put refusals through the override schema, losing ``choice``
+    and ``reason``. This test pins the round-trip that makes "pay once" true.
+    """
+    path = tmp_path / "style_jev_refused.csv"
+    style_jev.write_refusals(
+        path, [_refusal("ABSTX", "Teberg Fund")], header=style_jev.refusal_header()
+    )
+    back = style_jev.read_refusals(path)
+    assert back["Teberg Fund"]["choice"] == "unknown"
+    assert back["Teberg Fund"]["reason"] == "unknown name"
+    assert back["Teberg Fund"]["confidence"] == "0.420"
+
+    unreadable = style_jev.catalogue_items({"ABSTX": CATALOGUE["ABSTX"]})
+    assert classify(unreadable[0].name) is None  # the name this row is about
+    assert style_jev.fill_candidates(unreadable, overrides={}, refusals=back) == []
+
+
+def test_a_second_run_keeps_the_refusals_it_did_not_send(tmp_path):
+    """A run must add to the memory, never rewrite it from the batch in hand."""
+    path = tmp_path / "style_jev_refused.csv"
+    style_jev.write_refusals(
+        path,
+        [_refusal("AAAA", "First Fund"), _refusal("BBBB", "Second Fund")],
+        header=style_jev.refusal_header(),
+    )
+    kept = style_jev.read_refusals(path)
+    kept.setdefault("Third Fund", _refusal("CCCC", "Third Fund"))
+    style_jev.write_refusals(path, kept.values(), header=style_jev.refusal_header())
+    assert set(style_jev.read_refusals(path)) == {"First Fund", "Second Fund", "Third Fund"}
+
+
+def test_a_refusal_file_written_by_the_old_schema_still_reads(tmp_path):
+    """The 757 rows already on `main` were written through the override schema: their
+    bucket columns are blank but ticker, name and confidence are intact. They must not be
+    thrown away on the first run after the fix."""
+    import csv
+
+    legacy = tmp_path / "legacy.csv"
+    with legacy.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(style_jev.FIELDS), lineterminator="\n")
+        writer.writeheader()
+        writer.writerow(
+            {"ticker": "TEBRGX", "name": "Teberg Fund", "confidence": "0.420",
+             "jev_model": "typesafe/jev-1.14", "run_id": "old"}
+        )
+    back = style_jev.read_refusals(legacy)
+    assert back["Teberg Fund"]["confidence"] == "0.420"
+    assert back["Teberg Fund"]["choice"] == ""
