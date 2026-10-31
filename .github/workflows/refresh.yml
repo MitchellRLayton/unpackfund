@@ -175,6 +175,26 @@ jobs:
             echo "cached documents: none — this run fetches everything (cold start)"
           fi
 
+      - name: Refresh the foreign-issuer golden copy
+        working-directory: pipeline
+        run: |
+          # 7cb8d60 made the build refuse to publish a release that claims the LEI
+          # namespace without the GLEIF golden copy, and CI has never had one: it is
+          # git-ignored and lived only in the developer's cache. That refusal is the
+          # right behaviour, so CI fetches it — CC0, about 1.5 GB, a minute or so.
+          # The file is addressed by content date and GLEIF publishes a day behind,
+          # so walk back from today instead of assuming today exists.
+          for offset in 0 1 2 3; do
+            day=$(date -u -d "-${offset} day" +%F)
+            if python -m pipeline.gleif --refresh --date "$day"; then
+              echo "golden copy: $day"
+              exit 0
+            fi
+            echo "GLEIF golden copy for $day is not published yet; trying the day before"
+          done
+          echo "no GLEIF golden copy in the last four days — the build cannot claim the issuer namespace" >&2
+          exit 1
+
       - name: Build the wide release
         working-directory: pipeline
         run: |
