@@ -120,9 +120,13 @@ which is exactly what Workers Builds did twice on 2026-10-30.
   npx wrangler@4.155.0 deploy --config wrangler.prod.jsonc`.
 
 `wrangler.jsonc` is **not** production: it names `unpackfund-buildcheck`, a
-throwaway Worker that Workers Builds deploys on every push so the Git build stays
-a "does main compile" canary without being able to reach the live site. It owns no
-domain and needs no attention; delete it if the Git link is ever removed.
+throwaway Worker, so a human typing `npx wrangler deploy` cannot publish the live
+site by accident. It does not control the Git build — Cloudflare's Workers Builds
+connection pins its own Worker, which is why the repo stops that build instead:
+`web/scripts/build-worker.mjs` exits non-zero whenever `WORKERS_CI` is set, and a
+failed build is never deployed. Expect one red "Workers Builds" check per push
+until the Git link is disconnected in the Cloudflare dashboard (Worker
+`unpackfund` → Settings → Build → Disconnect); nothing depends on it.
 
 **Preview, without touching production.** `wrangler.preview.jsonc` deploys the
 same `web/out` as a *separate* Worker with its own `workers.dev` hostname, so the
