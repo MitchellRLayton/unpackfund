@@ -72,6 +72,17 @@ UNKNOWN = "unknown"
 #: number: 0.85 was chosen before the first run and is re-checked by ``check``.
 DEFAULT_MIN_CONFIDENCE = 0.85
 
+#: The write gate is a *band*, not the whole key. Three runs of the same 100 gold rows scored
+#: 81.9%, 86.1% and 87.5% on the whole key — about ±4 rows of model sampling noise on 72
+#: certain rows, one standard deviation wide — while the band at or above the write threshold
+#: held 93.2%, 93.2% and 93.3%. Gating on the noisy number turns a green job red at random;
+#: gating on the band that actually governs writes is the signal that was meant.
+DEFAULT_MIN_BAND_ACCURACY = 0.90
+
+#: A regression floor for the whole key, set below every sample observed so far. It catches a
+#: model that has genuinely degraded, and it never fires on sampling noise alone.
+DEFAULT_MIN_ACCURACY = 0.75
+
 #: Names per request. Big enough to amortise the option argument, small enough that the
 #: request stays well below the size at which OpenRouter switches the provider into
 #: TypeSafe's long-context mode (documented as slower and less accurate). Measured, not
@@ -144,6 +155,62 @@ def key_status(api_key: str, *, get: Get | None = None, timeout: float = 45.0) -
 
 class JevError(RuntimeError):
     """A request failed in a way worth stopping for."""
+
+
+def calibration_band(scored: Mapping, *, min_confidence: float) -> tuple[str, Mapping]:
+    """The band whose rows are eligible to become overrides: the one at or above the threshold.
+
+    Band names are ``"low-high"``. If the threshold falls inside a band, that band is used;
+    if it falls above every band, the top band is used. An empty answer means the report had
+    no bands at all, which the gate treats as uncalibrated.
+    """
+    parsed: list[tuple[float, str, Mapping]] = []
+    for name, values in (scored.get("bands") or {}).items():
+        try:
+            low = float(str(name).split("-")[0])
+        except (ValueError, IndexError):
+            continue
+        parsed.append((low, name, values))
+    if not parsed:
+        return "", {"rows": 0, "correct": 0, "accuracy": None}
+    eligible = [entry for entry in parsed if entry[0] >= min_confidence - 1e-9]
+    low, name, values = min(eligible, key=lambda entry: entry[0]) if eligible else max(
+        parsed, key=lambda entry: entry[0]
+    )
+    return name, values
+
+
+def gate(
+    scored: Mapping,
+    *,
+    min_accuracy: float,
+    min_band_accuracy: float,
+    min_confidence: float,
+) -> tuple[bool, str]:
+    """Whether this run's calibration is good enough to write a row. Fails closed.
+
+    Two numbers, for two different jobs. The **band** at or above ``min_confidence`` is the
+    population the overrides come from, so it decides. The **whole key** is a floor: it exists
+    to catch a model that has genuinely degraded, not to fail a run on sampling noise.
+    """
+    if not scored.get("rows"):
+        return False, "no gold rows were scored, so calibration is unknown"
+    if float(scored.get("accuracy") or 0.0) < min_accuracy:
+        return (
+            False,
+            f"gold accuracy {scored['accuracy']:.1%} is below the {min_accuracy:.0%} floor",
+        )
+    name, band = calibration_band(scored, min_confidence=min_confidence)
+    if band.get("rows", 0) >= 10:
+        accuracy = band.get("accuracy")
+        if accuracy is None or accuracy < min_band_accuracy:
+            shown = "none" if accuracy is None else format(accuracy, ".1%")
+            return (
+                False,
+                f"accuracy above {min_confidence:.0%} confidence is {shown} "
+                f"(band {name}), below {min_band_accuracy:.0%}",
+            )
+    return True, "calibration ok"
 
 
 def api_key_from_env(environ: Mapping[str, str] | None = None) -> str:
@@ -743,7 +810,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             help="the answer key; every row is sent and scored, and fill refuses to "
             "write overrides when the score is below --min-accuracy",
         )
-        command.add_argument("--min-accuracy", type=float, default=0.85)
+        command.add_argument(
+            "--min-accuracy",
+            type=float,
+            default=DEFAULT_MIN_ACCURACY,
+            help="floor on the whole gold key; catches a degraded model, not noise",
+        )
+        command.add_argument(
+            "--min-band-accuracy",
+            type=float,
+            default=DEFAULT_MIN_BAND_ACCURACY,
+            help="the real gate: accuracy of the rows at or above --min-confidence",
+        )
 
     probe = sub.add_parser("probe")
     probe.add_argument("--release", type=Path, default=None)
@@ -912,10 +990,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         for miss in scored["misses"][:8]:
             print(f"  miss {miss['ticker']}: gold {miss['gold']!r} · jev {miss['jev']!r} "
                   f"@ {miss['confidence']}")
-        if scored["accuracy"] < args.min_accuracy:
-            print(f"refusing to write: calibration {scored['accuracy']:.1%} is below "
-                  f"{args.min_accuracy:.0%}")
+        may_write, reason = gate(
+            scored,
+            min_accuracy=args.min_accuracy,
+            min_band_accuracy=args.min_band_accuracy,
+            min_confidence=args.min_confidence,
+        )
+        if not may_write:
+            print(f"refusing to write: {reason}")
             return 1
+        print(f"write gate: {reason}")
         if args.command == "audit":
             rules = {
                 reading.item.ticker: (

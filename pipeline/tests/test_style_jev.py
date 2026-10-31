@@ -566,3 +566,58 @@ def test_a_refusal_file_written_by_the_old_schema_still_reads(tmp_path):
     back = style_jev.read_refusals(legacy)
     assert back["Teberg Fund"]["confidence"] == "0.420"
     assert back["Teberg Fund"]["choice"] == ""
+
+
+def _scored(*, whole: float, band_correct: int, band_rows: int) -> dict:
+    """A gold report shaped like the ones three real runs produced."""
+    return {
+        "rows": 72,
+        "accuracy": whole,
+        "bands": {
+            "0.50-0.70": {"rows": 8, "correct": 5, "accuracy": 0.625},
+            "0.70-0.85": {"rows": 14, "correct": 12, "accuracy": 0.857},
+            "0.85-1.00": {
+                "rows": band_rows,
+                "correct": band_correct,
+                "accuracy": band_correct / band_rows,
+            },
+        },
+    }
+
+
+def test_the_write_gate_reads_the_band_it_writes_from():
+    """The gate used to read the whole key and failed a run that was fine.
+
+    Three runs of the same 100 gold rows scored 81.9%, 86.1% and 87.5% on the whole key —
+    model sampling, about one standard deviation on 72 rows — while the band those overrides
+    actually come from held 93.2 / 93.2 / 93.3. The 81.9% run failed the old 85% gate and
+    wrote nothing. It now passes, and a genuinely degraded band still refuses.
+    """
+    observed_worst = _scored(whole=0.819, band_correct=42, band_rows=45)
+    ok, reason = style_jev.gate(
+        observed_worst,
+        min_accuracy=style_jev.DEFAULT_MIN_ACCURACY,
+        min_band_accuracy=style_jev.DEFAULT_MIN_BAND_ACCURACY,
+        min_confidence=style_jev.DEFAULT_MIN_CONFIDENCE,
+    )
+    assert ok, reason
+
+    degraded = _scored(whole=0.85, band_correct=36, band_rows=45)
+    ok, reason = style_jev.gate(
+        degraded,
+        min_accuracy=style_jev.DEFAULT_MIN_ACCURACY,
+        min_band_accuracy=style_jev.DEFAULT_MIN_BAND_ACCURACY,
+        min_confidence=style_jev.DEFAULT_MIN_CONFIDENCE,
+    )
+    assert not ok
+    assert "0.85-1.00" in reason and "80.0%" in reason
+
+
+def test_the_write_gate_fails_closed_when_nothing_was_scored():
+    ok, reason = style_jev.gate(
+        {"rows": 0, "accuracy": 0.0, "bands": {}},
+        min_accuracy=style_jev.DEFAULT_MIN_ACCURACY,
+        min_band_accuracy=style_jev.DEFAULT_MIN_BAND_ACCURACY,
+        min_confidence=style_jev.DEFAULT_MIN_CONFIDENCE,
+    )
+    assert not ok and "unknown" in reason
