@@ -18,19 +18,25 @@ import { build } from "esbuild";
 /**
  * Refuse to build when Workers Builds is the one running.
  *
- * `WORKERS_CI` is set by Cloudflare for every Git-connected build. That build's deploy
- * target is pinned in the dashboard, so pointing `wrangler.jsonc` at a different Worker
- * did not move it: on 2026-10-31 a push deployed a shell-only version over
- * unpackfund.com at 14:40:57Z and took all 9,016 fund pages down 93 seconds after
- * `.github/workflows/deploy-site.yml` had published a complete site. It cannot generate
- * the pages — that needs the pipeline and a release — so the only safe outcomes are "does
- * not deploy" and "deploys everything".
+ * `WORKERS_CI` is set by Cloudflare for every Git-connected build (confirmed 2026-10-31:
+ * the commit that added this guard failed its build while the commit before it, with no
+ * other change, stayed green). That build's deploy target is pinned in the dashboard, so
+ * pointing `wrangler.jsonc` at a different Worker does not move it — it published
+ * shell-only versions over unpackfund.com twice that day (`052632bd` 14:40:57Z,
+ * `7aaae08c` 14:47:05Z), each time taking all 9,016 fund pages down minutes after
+ * `.github/workflows/deploy-site.yml` had published a complete site.
  *
- * Failing the build is the first of those: Workers Builds does not deploy a build that
- * failed. The red check on every push is the point — it says this build cannot ship, and
- * it disappears once the Cloudflare Git link is disconnected. Production is published by
+ * The build cannot generate the pages — that needs the pipeline and a release copy — so
+ * the only safe outcomes are "does not deploy" and "deploys everything". Failing the
+ * build is the first of those: Workers Builds does not deploy a build that failed.
+ *
+ * The red check on every push is the point — it says this build cannot ship, and it
+ * disappears once the Cloudflare Git link is disconnected. Production is published by
  * `.github/workflows/deploy-site.yml` (and `promote.yml` for data); both build the pages
  * themselves, so neither sets `WORKERS_CI`.
+ *
+ * `CI` without `GITHUB_ACTIONS` is the fallback: if Cloudflare ever stops setting
+ * `WORKERS_CI`, the build still refuses rather than publishing half a site.
  */
 const gitBuild =
   Boolean(process.env.WORKERS_CI) ||
@@ -39,9 +45,9 @@ const gitBuild =
 if (gitBuild) {
   process.stderr.write(
     [
-      "build-worker: this build is running in a CI that is not GitHub Actions — in",
-      "practice Workers Builds — which cannot generate the",
-      "9,016 fund pages, so its deploy would replace production with a page-less site",
+      "build-worker: this build is running in Workers Builds (or another CI that is not",
+      "GitHub Actions). It cannot generate the 9,016 fund pages, so its deploy would",
+      "replace production with a page-less site",
       "(2026-10-30 and 2026-10-31 both lost every /f/ page that way). Refusing to build.",
       "",
       "Production is published by .github/workflows/deploy-site.yml on push to main, and",

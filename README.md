@@ -123,12 +123,12 @@ which is exactly what Workers Builds did twice on 2026-10-30.
 throwaway (`unpackfund-buildcheck`) and its `assets.directory` points at a path that
 never exists, so a deploy that reads it dies in validation instead of publishing half
 a site. It does not control the Git build either — Cloudflare's Workers Builds
-connection pins its own Worker — which is why the repo stops that build in two
-independent ways: the web build exits non-zero under any CI that is not GitHub
-Actions (`web/scripts/build-worker.mjs`), and the assets path above fails the deploy
-if the build ever gets that far. Expect one red "Workers Builds" check per push until
-the Git link is disconnected in the Cloudflare dashboard (Worker `unpackfund` →
-Settings → Build → Disconnect); nothing depends on it.
+connection pins its own Worker — which is why the repo stops that build: the web
+build exits non-zero whenever `WORKERS_CI` is set (`web/scripts/build-worker.mjs`),
+and the assets path above fails the deploy if the build ever gets that far. Expect
+one red "Workers Builds" check per push until the Git link is disconnected in the
+Cloudflare dashboard (Worker `unpackfund` → Settings → Build → Disconnect); nothing
+depends on it.
 
 **Preview, without touching production.** `wrangler.preview.jsonc` deploys the
 same `web/out` as a *separate* Worker with its own `workers.dev` hostname, so the
