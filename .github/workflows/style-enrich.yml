@@ -70,7 +70,22 @@ jobs:
         working-directory: pipeline
         run: python -m pytest tests/test_style_jev.py tests/test_fund_pages.py -q
 
+      # A scheduled job that fails every morning because a secret is missing is noise that
+      # trains people to ignore red runs. Until the credential exists, say so and stop.
+      - name: Check for the credential
+        id: creds
+        env:
+          KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "${KEY}" ]; then
+            echo "OPENROUTER_API_KEY is not a repository secret yet — skipping (ADR-0012)"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Ask Jev about the names the rules cannot read
+        if: steps.creds.outputs.ready == 'true'
         working-directory: pipeline
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -92,6 +107,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit the reviewed rows
+        if: steps.creds.outputs.ready == 'true'
         # Only these two paths are staged, so a secret cannot ride along, and the diff is
         # the review record: every row says which fund, which bucket, and how sure.
         run: |
