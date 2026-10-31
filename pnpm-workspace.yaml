@@ -10,9 +10,14 @@ storeDir: .pnpm-store
 # these are legitimate: esbuild's postinstall selects its platform binary and
 # unrs-resolver's fetches its prebuilt one. Approving them keeps `pnpm install
 # --frozen-lockfile` exit 0 in CI, which is where it has to be non-interactive.
-onlyBuiltDependencies:
-  - esbuild
-  - unrs-resolver
+# pnpm 11 replaced the `onlyBuiltDependencies` list with an `allowBuilds` map
+# (true = run the build script, false = skip it, a string pins an exact version).
+# The old key is what run 1 was fixed with; nothing exercised it until run 5 got
+# that far, and by then it was no longer the key pnpm reads — the install failed
+# with `ERR_PNPM_IGNORED_BUILDS` exactly as it had before the fix.
+allowBuilds:
+  esbuild: true
+  unrs-resolver: true
 
 # Added by pnpm 11: @types/node publishes ahead of the release-age threshold.
 minimumReleaseAgeExclude:
