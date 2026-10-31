@@ -32,10 +32,15 @@ import { build } from "esbuild";
  * `.github/workflows/deploy-site.yml` (and `promote.yml` for data); both build the pages
  * themselves, so neither sets `WORKERS_CI`.
  */
-if (process.env.WORKERS_CI) {
+const gitBuild =
+  Boolean(process.env.WORKERS_CI) ||
+  (Boolean(process.env.CI) && !process.env.GITHUB_ACTIONS);
+
+if (gitBuild) {
   process.stderr.write(
     [
-      "build-worker: this build is running in Workers Builds, which cannot generate the",
+      "build-worker: this build is running in a CI that is not GitHub Actions — in",
+      "practice Workers Builds — which cannot generate the",
       "9,016 fund pages, so its deploy would replace production with a page-less site",
       "(2026-10-30 and 2026-10-31 both lost every /f/ page that way). Refusing to build.",
       "",

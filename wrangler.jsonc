@@ -16,8 +16,14 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "unpackfund-buildcheck",
   "compatibility_date": "2026-10-28",
+  // Deliberately not the built site. Workers Builds pins the Worker on Cloudflare's
+  // side, so renaming this file's Worker did not move the deploy target (measured
+  // 2026-10-31: a Git build published a page-less version over production 93 s after a
+  // complete deploy). What is left is the assets: a directory that never exists, so any
+  // deploy that reads this config fails loudly instead of publishing half a site.
+  // `wrangler.prod.jsonc` is the one that ships.
   "assets": {
-    "directory": "./web/out",
+    "directory": "./web/out-requires-fund-pages",
     "not_found_handling": "404-page"
   },
   "workers_dev": false,
