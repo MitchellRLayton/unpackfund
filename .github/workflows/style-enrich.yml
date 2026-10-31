@@ -65,6 +65,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install ./pipeline
+          # The gate below runs the classifier tests, and pytest is a test tool rather than
+          # a runtime dependency of the package. Without this the job dies with "No module
+          # named pytest" before it ever checks the credential (run 41166942522).
+          python -m pip install pytest
 
       - name: Confirm the classifier layer is intact before spending anything
         working-directory: pipeline
