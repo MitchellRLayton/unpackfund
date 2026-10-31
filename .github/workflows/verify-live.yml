@@ -24,6 +24,10 @@ on:
     - cron: "15 7 * * *"    # 00:15 PT, ~1.5 h after the promote slot
     - cron: "0 12 * * *"    # 05:00 PT, catches a promotion that slipped hours late
   workflow_dispatch:
+    inputs:
+      site_host:
+        description: "site to verify (default: production) — a bad value here is how the alarm itself gets tested"
+        default: "https://unpackfund.com"
 
 permissions:
   contents: read
@@ -43,7 +47,7 @@ jobs:
       - name: Verify the live site against the live data
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SITE_HOST: https://unpackfund.com
+          SITE_HOST: ${{ inputs.site_host || 'https://unpackfund.com' }}
           DATA_BASE: https://data.unpackfund.com
         run: |
           set -o pipefail
