@@ -47,7 +47,14 @@ export function buildLedger({ funds, weightsBp }: AggregateInput): Ledger {
   }
 
   const companies = new Map<string, Accumulator>();
-  let unmappedHoldings = 0;
+  // The four quantities the "not traced" disclosure needs, counted once here so
+  // the UI cannot disagree with the weights it is describing (math §7a).
+  let unmappedPositions = 0;
+  let unmappedWithWeight = 0;
+  let securitiesWithWeight = 0;
+  let securitiesWeight = 0;
+  let cashAndDerivativesWithWeight = 0;
+  let cashAndDerivativesWeight = 0;
   let portfolioWeightFraction = 0;
   let coveredWeightPct = 0;
   let suppressedWeight = 0;
@@ -80,7 +87,23 @@ export function buildLedger({ funds, weightsBp }: AggregateInput): Ledger {
 
     for (const holding of fund.holdings) {
       if (!holding.company_id) {
-        unmappedHoldings += 1;
+        unmappedPositions += 1;
+        // A position that rounds to zero basis points cannot move a weight, so it
+        // is counted but never described as money: that distinction is the whole
+        // reason "3,126 holdings unmapped" was misleading.
+        if (holding.weight_bp !== 0) {
+          unmappedWithWeight += 1;
+          const contribution = fundWeight * (holding.weight_bp / FULL_ALLOCATION_BP);
+          // Cash and derivatives have no company by definition (math §3); they
+          // are part of the gap in coverage but never a mapping failure.
+          if (holding.asset_cat === "cash" || holding.asset_cat === "derivative") {
+            cashAndDerivativesWithWeight += 1;
+            cashAndDerivativesWeight += contribution;
+          } else {
+            securitiesWithWeight += 1;
+            securitiesWeight += contribution;
+          }
+        }
         continue;
       }
       if (holding.weight_bp === 0) continue;
@@ -131,7 +154,6 @@ export function buildLedger({ funds, weightsBp }: AggregateInput): Ledger {
     portfolioWeightFraction,
     coveredWeightPct,
     suppressedWeight,
-    unmappedHoldings,
   });
 
   return {
@@ -140,7 +162,14 @@ export function buildLedger({ funds, weightsBp }: AggregateInput): Ledger {
     funds: contributingFunds,
     oldest_as_of: oldestAsOf,
     max_lag_days: maxLagDays,
-    unmapped_holdings: unmappedHoldings,
+    unmapped: {
+      positions: unmappedPositions,
+      positions_with_weight: unmappedWithWeight,
+      securities_with_weight: securitiesWithWeight,
+      securities_weight: securitiesWeight,
+      cash_and_derivatives_with_weight: cashAndDerivativesWithWeight,
+      cash_and_derivatives_weight: cashAndDerivativesWeight,
+    },
   };
 }
 
@@ -150,7 +179,6 @@ function computeMetrics(
     portfolioWeightFraction: number;
     coveredWeightPct: number;
     suppressedWeight: number;
-    unmappedHoldings: number;
   },
 ): LedgerMetrics {
   const positive = rows.filter((row) => row.weight > 0);

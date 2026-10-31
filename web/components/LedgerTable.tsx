@@ -37,11 +37,22 @@ const DEFAULTS: Record<SortKey, Direction> = {
   fund_count: "descending",
 };
 
+/** What each sort is called in the caption, in words a reader already knows. */
+const SORT_LABEL: Record<SortKey, string> = {
+  name: "company name",
+  weight: "portfolio weight",
+  fund_count: "number of funds",
+};
+
 export function LedgerTable({
   rows,
+  limit,
   onSelect,
 }: {
+  /** Every company in the ledger. Sorting applies to all of them, not to a page. */
   rows: LedgerRow[];
+  /** Render at most this many, after sorting. Absent means all of them. */
+  limit?: number;
   /** Opens the company drawer. Without it the name is plain text. */
   onSelect?: (row: LedgerRow) => void;
 }) {
@@ -71,12 +82,25 @@ export function LedgerTable({
 
   const ariaSort = (key: SortKey) => (sort.key === key ? sort.direction : "none");
 
+  // Sorting the whole ledger before slicing is the point: sorting only the page
+  // would answer "which of these 100 funds hold this" instead of "which company do
+  // most of my funds hold".
+  const total = rows.length;
+  const shown = limit === undefined ? sorted.length : Math.min(limit, sorted.length);
+  const visible = shown === sorted.length ? sorted : sorted.slice(0, shown);
+  const paged = shown < total;
+
   return (
     <div className="table-wrap">
       <table className="ledger">
         <caption>
-          {formatCount(sorted.length)} companies, after look-through. Weight is this
-          company&apos;s share of the whole portfolio, not of any one fund.
+          {paged
+            ? sort.key === "weight" && sort.direction === "descending"
+              ? `Showing the top ${formatCount(shown)} of ${formatCount(total)} companies by portfolio weight.`
+              : `Showing ${formatCount(shown)} of ${formatCount(total)} companies, sorted by ${SORT_LABEL[sort.key]}.`
+            : `${formatCount(total)} ${total === 1 ? "company" : "companies"}, after look-through, sorted by ${SORT_LABEL[sort.key]}.`}{" "}
+          Each company is counted once. Weight is this company&apos;s share of the whole
+          portfolio, not of any one fund.
         </caption>
         <thead>
           <tr>
@@ -110,7 +134,7 @@ export function LedgerTable({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((row) => (
+          {visible.map((row) => (
             <tr key={row.company_id}>
               <th scope="row">
                 {onSelect ? (
@@ -124,13 +148,23 @@ export function LedgerTable({
                 ) : (
                   row.name
                 )}
+                {/* Every fund, never a "+N more": an attribution a reader has to
+                    expand a tooltip to see is an attribution the row does not show
+                    (static-xray-frontend §6, "no meaning behind hover"). The chips
+                    wrap, so a 12-fund portfolio grows the row rather than clipping
+                    it. */}
                 <span className="row-note">
                   {row.ticker ? `${row.ticker} · ` : ""}
-                  {row.sources
-                    .slice(0, 3)
-                    .map((source) => `${source.ticker} ${formatShare(source.weight)}`)
-                    .join(" · ")}
-                  {row.sources.length > 3 ? ` · +${row.sources.length - 3} more` : ""}
+                  <span className="fund-attrib">
+                    {row.sources.map((source) => (
+                      <span className="fund-attrib__item" key={source.ticker}>
+                        <span className="fund-attrib__ticker">{source.ticker}</span>{" "}
+                        <span className="fund-attrib__weight">
+                          {formatShare(source.weight)}
+                        </span>
+                      </span>
+                    ))}
+                  </span>
                 </span>
               </th>
               <td className="numeric">{formatShare(row.weight)}</td>

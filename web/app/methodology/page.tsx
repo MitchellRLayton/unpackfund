@@ -55,10 +55,23 @@ export default function MethodologyPage() {
         dropped, back-filled from another source, or silently treated as zero.
       </p>
 
+      <p>
+        Not every position is a company. Cash, money-market sweep funds, and derivatives
+        have no company identity by definition, so they are part of a fund&rsquo;s assets
+        but never a mapping failure. A non-US issuer files no N-PORT and often has no SEC
+        ticker, so a position is matched through a legal-entity identifier where the
+        filing carries one and otherwise stays unmatched. That is why a broad
+        international fund can have thousands of unresolved positions that hold a small
+        share of its money — and why the coverage figure beside a portfolio is a share of
+        weight, never a count of rows.
+      </p>
+
       <h2>Coverage, and why some pages withhold numbers</h2>
       <p>
         Coverage is the share of a fund&rsquo;s assets, by weight, that could be matched
-        to a company. It decides what a fund page shows:
+        to a company. It is measured by weight rather than by counting positions, because
+        a thousand tiny unresolved positions are not the same thing as a tenth of the fund
+        missing. It decides what a fund page shows:
       </p>
       <table>
         <thead>

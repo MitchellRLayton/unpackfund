@@ -19,7 +19,7 @@ import { formatFundList } from "@/lib/format";
 import { POPULAR_ORDER } from "@/lib/popular";
 import { useRelease, useTickers } from "@/lib/use-release";
 import { WeightInput } from "@/components/WeightInput";
-import { FULL_ALLOCATION_BP } from "@/lib/types";
+import { FULL_ALLOCATION_BP, type PortfolioEntry } from "@/lib/types";
 
 function formatPercent(weightBp: number): string {
   return (weightBp / 100).toFixed(2);
@@ -45,9 +45,40 @@ export function PortfolioBuilder() {
     title: string;
     body?: string;
   } | null>(null);
+  // The portfolio that "Remove all" just deleted, held only so the visitor can
+  // put it back. It is never a second source of truth: the URL fragment was
+  // already cleared, and Undo writes the old entries back through the same store.
+  const [cleared, setCleared] = useState<PortfolioEntry[] | null>(null);
 
   const catalog = tickers.status === "ready" ? tickers.data : [];
   const unallocated = FULL_ALLOCATION_BP - portfolio.totalBp;
+
+  /** Every add path clears the undo offer: it belongs to the portfolio it removed. */
+  function addFund(ticker: string) {
+    setCleared(null);
+    portfolio.add(ticker);
+  }
+
+  /**
+   * Empty the portfolio, keeping the old entries for one click.
+   *
+   * No confirm dialog: the design contract has no modal on this page, and a
+   * dialog in front of a reversible action is friction with nothing behind it.
+   * The offer to undo is the safety net, and it disappears the moment the
+   * visitor adds a fund again.
+   */
+  function clearAll() {
+    if (portfolio.entries.length === 0) return;
+    setMessage(null);
+    setCleared(portfolio.entries);
+    portfolio.clear();
+  }
+
+  function undoClear() {
+    if (!cleared) return;
+    portfolio.replace(cleared);
+    setCleared(null);
+  }
 
   // The release publishes 8,983 funds, so a list of them is useless as a starting
   // point: the first screen would be AAAA. These are the widely held ones, in the
@@ -104,7 +135,7 @@ export function PortfolioBuilder() {
           setInput("");
           return;
         }
-        portfolio.add(published);
+        addFund(published);
         setInput("");
         setMessage({
           tone: "info",
@@ -124,7 +155,7 @@ export function PortfolioBuilder() {
       return;
     }
 
-    portfolio.add(ticker);
+    addFund(ticker);
     setInput("");
     setMessage(null);
   }
@@ -198,7 +229,7 @@ export function PortfolioBuilder() {
               <li key={ticker}>
                 <button
                   type="button"
-                  onClick={() => portfolio.add(ticker)}
+                  onClick={() => addFund(ticker)}
                   disabled={portfolio.entries.some((entry) => entry.ticker === ticker)}
                   aria-label={`Add ${ticker}`}
                 >
@@ -217,6 +248,18 @@ export function PortfolioBuilder() {
           role="status"
         >
           {message.body ? <p className="muted">{message.body}</p> : null}
+        </Notice>
+      ) : null}
+
+      {cleared ? (
+        <Notice tone="accent" title="Portfolio cleared" role="status">
+          <p>
+            Removed {cleared.length} {cleared.length === 1 ? "fund" : "funds"}. Undo puts
+            them back exactly as they were, weights included.{" "}
+            <button type="button" className="quiet" onClick={undoClear}>
+              Undo
+            </button>
+          </p>
         </Notice>
       ) : null}
 
@@ -258,6 +301,14 @@ export function PortfolioBuilder() {
             </span>
             <button type="button" className="quiet" onClick={() => portfolio.equalise()}>
               Split equally
+            </button>
+            <button
+              type="button"
+              className="quiet"
+              onClick={clearAll}
+              aria-label="Remove all funds from the portfolio"
+            >
+              Remove all
             </button>
             <Link href={shareHref} className="tally__go">
               View the ledger

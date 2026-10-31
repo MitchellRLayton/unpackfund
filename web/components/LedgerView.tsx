@@ -24,9 +24,20 @@ import { usePortfolio } from "@/lib/use-portfolio";
 import { useFunds, useRelease } from "@/lib/use-release";
 import type { LedgerRow } from "@/lib/types";
 
+/**
+ * How many companies the ledger renders before the visitor asks for the rest.
+ *
+ * A five-fund global portfolio resolves to about 4,500 companies, and rendering
+ * all of them made the page several screens of scrolling before a reader saw
+ * anything they had not already seen. The 100 largest by portfolio weight are
+ * the answer to "what do I own?"; the tail is one click away rather than hidden.
+ */
+const LEDGER_PAGE = 100;
+
 export function LedgerView() {
   const portfolio = usePortfolio();
   const [selected, setSelected] = useState<LedgerRow | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const release = useRelease();
   const tickers = useMemo(
     () => portfolio.entries.map((entry) => entry.ticker),
@@ -144,6 +155,11 @@ export function LedgerView() {
     );
   }
 
+  // LedgerTable sorts the whole ledger and renders `limit` rows, so a sort answers
+  // "which companies do most of my funds hold", not "of these 100".
+  const visibleCount = showAll
+    ? ledger.rows.length
+    : Math.min(LEDGER_PAGE, ledger.rows.length);
   const suppressed = ledger.funds.filter(
     (fund) => coverageBand(fund.coverage_pct) === "none",
   );
@@ -197,12 +213,54 @@ export function LedgerView() {
 
       <h2 id="ledger-start">Companies</h2>
       <p className="sr-only" role="status">
-        {formatCount(ledger.rows.length)} companies loaded, sorted by portfolio weight.
-        Aggregated in {mode === "worker" ? "a worker" : "the main thread"}
+        {showAll
+          ? `All ${formatCount(ledger.rows.length)} companies shown`
+          : `Showing ${formatCount(visibleCount)} of ${formatCount(ledger.rows.length)} companies`}
+        . Aggregated in {mode === "worker" ? "a worker" : "the main thread"}
         {durationMs === null ? "" : ` in ${Math.round(durationMs)} milliseconds`}.
       </p>
 
-      <LedgerTable rows={ledger.rows} onSelect={setSelected} />
+      <LedgerTable
+        rows={ledger.rows}
+        limit={showAll ? undefined : LEDGER_PAGE}
+        onSelect={setSelected}
+      />
+
+      {ledger.rows.length > LEDGER_PAGE ? (
+        <p className="table-more">
+          {showAll ? (
+            <button type="button" onClick={() => setShowAll(false)}>
+              Show the largest {LEDGER_PAGE} only
+            </button>
+          ) : (
+            <button type="button" onClick={() => setShowAll(true)}>
+              Show all {formatCount(ledger.rows.length)} companies
+            </button>
+          )}
+        </p>
+      ) : null}
+
+      <details className="what-not-traced">
+        <summary>What is not traced, and why</summary>
+        <p>
+          Coverage counts money, not rows. In this portfolio the positions with no company
+          behind them are {formatCount(ledger.unmapped.positions_with_weight)} that carry
+          any weight: {formatCount(ledger.unmapped.securities_with_weight)} share
+          positions — mostly small non-US holdings filed through an identifier this
+          release could not resolve — and{" "}
+          {formatCount(ledger.unmapped.cash_and_derivatives_with_weight)} cash or
+          derivative lines, which have no company by definition.
+        </p>
+        <p className="muted">
+          Another{" "}
+          {formatCount(ledger.unmapped.positions - ledger.unmapped.positions_with_weight)}{" "}
+          filed positions round to 0.00% of their fund. They are counted honestly but
+          cannot move a weight, so they are not shown as companies. Nothing is
+          redistributed across the companies that did resolve — that would make a
+          partly-read fund look average.{" "}
+          <Link href="/methodology/">How mapping works</Link>.
+        </p>
+      </details>
 
       <CompanyDrawer
         release={release.status === "ready" ? release.data : null}

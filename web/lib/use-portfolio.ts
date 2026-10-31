@@ -28,6 +28,12 @@ export interface PortfolioState {
   setWeightBp: (ticker: string, weightBp: number) => void;
   equalise: () => void;
   clear: () => void;
+  /**
+   * Put a whole portfolio back, weights included. The one caller is the
+   * builder's Undo after "Remove all": `add` would re-equalise the weights, and
+   * an undo that returns a different portfolio is not an undo.
+   */
+  replace: (entries: PortfolioEntry[]) => void;
 }
 
 export function usePortfolio(): PortfolioState {
@@ -78,6 +84,10 @@ export function usePortfolio(): PortfolioState {
     write([]);
   }, []);
 
+  const replace = useCallback((next: PortfolioEntry[]) => {
+    write(next);
+  }, []);
+
   const totalBp = totalWeightBp(entries);
 
   return {
@@ -91,5 +101,6 @@ export function usePortfolio(): PortfolioState {
     setWeightBp,
     equalise,
     clear,
+    replace,
   };
 }

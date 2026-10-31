@@ -141,6 +141,6 @@ describe("buildOverlap", () => {
     const result = buildOverlap({ a: withCash, b });
     expect(result.overlap).toBeCloseTo(0.2, 10);
     expect(result.onlyA).toBeCloseTo(0.3, 10);
-    expect(result.ledgerA.unmapped_holdings).toBe(1);
+    expect(result.ledgerA.unmapped.positions).toBe(1);
   });
 });

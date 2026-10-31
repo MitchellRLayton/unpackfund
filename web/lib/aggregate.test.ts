@@ -39,11 +39,12 @@ const holding = (
   company_id: string | null,
   weight_bp: number,
   ticker: string | null = null,
+  asset_cat: Holding["asset_cat"] = "equity",
 ): Holding => ({
   company_id,
   name: `Company ${company_id ?? "unmapped"}`,
   ticker,
-  asset_cat: "equity",
+  asset_cat,
   weight_bp,
 });
 
@@ -88,10 +89,40 @@ describe("buildLedger", () => {
 
   it("counts the unmapped holding and never redistributes it", () => {
     const ledger = buildLedger({ funds: [a, b], weightsBp: { A: 5000, B: 5000 } });
-    expect(ledger.unmapped_holdings).toBe(1);
+    expect(ledger.unmapped.positions).toBe(1);
     // 100% weight resolved: A's 2000bp cash row is unmapped but A reports 100%
     // coverage in this fixture, so the disclosed number is used as filed.
     expect(ledger.metrics.covered_weight_pct).toBeCloseTo(100, 10);
+  });
+
+  it("separates the uncovered gap by cause and by weight", () => {
+    // F at 50%: X 5000bp mapped; unmatched equity 3000bp; unmatched cash 1000bp;
+    //          unmatched equity 0bp (rounds to nothing).
+    // G at 50%: Z 10000bp mapped.
+    // Securities gap = 0.5 × 0.30 = 0.15. Cash gap = 0.5 × 0.10 = 0.05.
+    // Three unmatched positions; two of them carry weight.
+    const f = fund({
+      ticker: "F",
+      holdings: [
+        holding("c_x", 5000, "X"),
+        holding(null, 3000),
+        holding(null, 1000, null, "cash"),
+        holding(null, 0),
+      ],
+    });
+    const g = fund({ ticker: "G", holdings: [holding("c_z", 10000, "Z")] });
+    const ledger = buildLedger({ funds: [f, g], weightsBp: { F: 5000, G: 5000 } });
+
+    expect(ledger.unmapped.positions).toBe(3);
+    expect(ledger.unmapped.positions_with_weight).toBe(2);
+    expect(ledger.unmapped.securities_with_weight).toBe(1);
+    expect(ledger.unmapped.securities_weight).toBeCloseTo(0.15, 12);
+    expect(ledger.unmapped.cash_and_derivatives_with_weight).toBe(1);
+    expect(ledger.unmapped.cash_and_derivatives_weight).toBeCloseTo(0.05, 12);
+    // The gap is disclosed, not spread over X and Z: their weights are unchanged.
+    const byId = Object.fromEntries(ledger.rows.map((row) => [row.company_id, row]));
+    expect(byId.c_x?.weight).toBeCloseTo(0.25, 12);
+    expect(byId.c_z?.weight).toBeCloseTo(0.5, 12);
   });
 
   it("sums share classes of one issuer exactly once", () => {

@@ -235,6 +235,32 @@ export interface LedgerMetrics {
   suppressed_weight: number;
 }
 
+/**
+ * What the uncovered part of a portfolio is made of.
+ *
+ * The old ledger carried one number — the count of positions with no company id
+ * — and the ledger printed it as "N holdings unmapped". On a five-fund global
+ * portfolio that is 3,126, which reads as 3,126 failures; in fact 2,354 of those
+ * positions round to 0.00% of their fund, and 74 are cash or derivatives, which
+ * have no company **by definition** (`lookthrough-math-and-qa` §3). Coverage is
+ * a statement about money, so the display needs weights, and it needs the cause
+ * split rather than one alarming total (math §5, §7a).
+ */
+export interface UnmappedBreakdown {
+  /** Every filed position with no company id, zero-weight rows included. */
+  positions: number;
+  /** Of those, the ones that carry any weight at all (`weight_bp !== 0`). */
+  positions_with_weight: number;
+  /** Share positions (equity, debt, fund, other) that carry weight — the real gap. */
+  securities_with_weight: number;
+  /** Portfolio weight those share positions represent, as a fraction. */
+  securities_weight: number;
+  /** Cash and derivative lines that carry weight: no company by definition. */
+  cash_and_derivatives_with_weight: number;
+  /** Portfolio weight those lines represent (net), as a fraction. */
+  cash_and_derivatives_weight: number;
+}
+
 export interface Ledger {
   rows: LedgerRow[];
   metrics: LedgerMetrics;
@@ -255,6 +281,6 @@ export interface Ledger {
   oldest_as_of: string | null;
   /** Largest `lag_days`, for the freshness strip. */
   max_lag_days: number | null;
-  /** Holdings dropped because they have no `company_id`. */
-  unmapped_holdings: number;
+  /** Positions that could not be tied to a company, by cause and by weight. */
+  unmapped: UnmappedBreakdown;
 }

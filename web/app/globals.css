@@ -664,3 +664,72 @@ th[aria-sort="ascending"] .sort-button::after {
 .chips button:disabled {
   opacity: 0.45;
 }
+
+/* --- Ledger: fund attribution, and the page of companies --------------------- */
+
+/*
+ * Every fund a company is attributable to, as one chip each.
+ *
+ * The row used to slice this list to three and append "+N more", which hid two
+ * attributions for anyone with five funds. The chips wrap instead: a long list
+ * makes the row taller, never narrower, so nothing is ever clipped and nothing
+ * hides behind a hover.
+ */
+.fund-attrib {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.2rem;
+  margin-top: 0.1rem;
+  vertical-align: baseline;
+}
+
+/* Sized so two chips fit the company column of a 390 px phone: at that width the
+   cell is about 145 px, and one chip per line turned a five-fund row into five
+   lines. Two per line keeps the attribution complete and the row readable. */
+.fund-attrib__item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.18rem;
+  padding: 0 0.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.fund-attrib__ticker {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: var(--fg);
+}
+
+.fund-attrib__weight {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The control under the table: the tail is one click away, not one scroll away. */
+.table-more {
+  margin: 0.75rem 0 0;
+}
+
+.table-more button {
+  font-size: 0.85rem;
+}
+
+/* The coverage gap, explained where the ledger shows it rather than in a footnote. */
+.what-not-traced {
+  margin-top: 1.5rem;
+}
+
+.what-not-traced summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 0.95rem;
+}
+
+.what-not-traced p {
+  max-width: 46rem;
+  font-size: 0.9rem;
+}

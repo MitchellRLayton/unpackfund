@@ -33,6 +33,10 @@ export function FreshnessStrip({
             .map((fund) => fund.as_of)
             .sort()
             .at(-1)}`;
+  // Coverage is weight-weighted, so its complement is the share of money not tied
+  // to a company. Clamped because a filed coverage over 100% is a data warning,
+  // not a negative amount of money.
+  const notTraced = Math.max(0, 1 - ledger.metrics.covered_weight_pct / 100);
 
   return (
     <section aria-labelledby="freshness-heading">
@@ -74,13 +78,14 @@ export function FreshnessStrip({
           </span>
         </div>
         <div className="strip__cell">
+          <span className="strip__label">Not traced</span>
+          <span className="strip__value">{formatShare(notTraced)}</span>
+          <span className="strip__note">of your money, incl. cash and derivatives</span>
+        </div>
+        <div className="strip__cell">
           <span className="strip__label">Companies</span>
           <span className="strip__value">{formatCount(ledger.rows.length)}</span>
-          <span className="strip__note">
-            {ledger.unmapped_holdings === 0
-              ? "every holding mapped"
-              : `${formatCount(ledger.unmapped_holdings)} holdings unmapped`}
-          </span>
+          <span className="strip__note">each company counted once</span>
         </div>
       </div>
     </section>

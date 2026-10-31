@@ -73,7 +73,14 @@ const ledger: Ledger = {
   ],
   oldest_as_of: "2026-06-30",
   max_lag_days: 59,
-  unmapped_holdings: 189,
+  unmapped: {
+    positions: 3126,
+    positions_with_weight: 772,
+    securities_with_weight: 764,
+    securities_weight: 0.0282,
+    cash_and_derivatives_with_weight: 8,
+    cash_and_derivatives_weight: 0.0148,
+  },
 };
 
 describe("FreshnessStrip", () => {
@@ -84,7 +91,13 @@ describe("FreshnessStrip", () => {
     expect(screen.getByText("59 days")).toBeTruthy();
     expect(screen.getByText("90.3%")).toBeTruthy();
     expect(screen.getByText("90.3% of weight covered")).toBeTruthy();
-    expect(screen.getByText("189 holdings unmapped")).toBeTruthy();
+    // Coverage is money, so its complement is money: 9.7% of the portfolio is not
+    // traced. The count of unmapped *positions* is a disclosure below the table,
+    // not a headline number that reads as 3,126 failures.
+    expect(screen.getByText("9.70%")).toBeTruthy();
+    expect(screen.getByText("of your money, incl. cash and derivatives")).toBeTruthy();
+    expect(screen.getByText("each company counted once")).toBeTruthy();
+    expect(screen.queryByText(/holdings unmapped/)).toBeNull();
   });
 
   it("does not claim a date it does not have", () => {
@@ -121,9 +134,7 @@ describe("MetricsList", () => {
     expect(screen.getByText("Concentration")).toBeTruthy();
     expect(screen.getByText("Same-size companies")).toBeTruthy();
     expect(screen.getByText("Biggest 10 companies")).toBeTruthy();
-    expect(
-      screen.getByText(/0 = spread evenly, 1 = all in one company/),
-    ).toBeTruthy();
+    expect(screen.getByText(/0 = spread evenly, 1 = all in one company/)).toBeTruthy();
     expect(
       screen.getByText(/How many equal-sized companies would be spread the same way/),
     ).toBeTruthy();
@@ -144,12 +155,43 @@ describe("LedgerTable", () => {
     expect(table?.querySelector("caption")?.textContent).toContain("2 companies");
   });
 
+  it("shows every fund a company is attributable to, never a +N more", () => {
+    // Five funds, which is where the old table sliced to three and appended
+    // "+2 more" — an attribution the row does not show is one it withholds.
+    const fiveFunds: LedgerRow = {
+      ...row("c_5", "Five Fund Co", 0.05, 5),
+      sources: [
+        { ticker: "QQQ", weight: 0.02 },
+        { ticker: "VTI", weight: 0.01 },
+        { ticker: "VTV", weight: 0.008 },
+        { ticker: "VEA", weight: 0.007 },
+        { ticker: "VWO", weight: 0.005 },
+      ],
+    };
+    const { container } = render(<LedgerTable rows={[fiveFunds]} />);
+    expect(container.querySelectorAll(".fund-attrib__item")).toHaveLength(5);
+    for (const ticker of ["QQQ", "VTI", "VTV", "VEA", "VWO"]) {
+      expect(screen.getByText(ticker)).toBeTruthy();
+    }
+    expect(screen.queryByText(/\+\d+ more/)).toBeNull();
+    expect(container.querySelector("caption")?.textContent).toContain("1 company");
+  });
+
+  it("says what it is showing when it is a page of a larger ledger", () => {
+    const { container } = render(<LedgerTable rows={ledger.rows} limit={1} />);
+    expect(
+      screen.getByText(/Showing the top 1 of 2 companies by portfolio weight/),
+    ).toBeTruthy();
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(1);
+  });
+
   it("shows each company once with its weight and how many funds hold it", () => {
-    render(<LedgerTable rows={ledger.rows} />);
+    const { container } = render(<LedgerTable rows={ledger.rows} />);
     expect(screen.getByText("NVIDIA Corp")).toBeTruthy();
-    expect(screen.getByText("7.51%")).toBeTruthy();
+    // Twice: the weight column, and the fund chip that explains where it came from.
+    expect(screen.getAllByText("7.51%")).toHaveLength(2);
     // Weight is a share of the portfolio, and the row note names the source.
-    expect(screen.getAllByText(/VOO 7\.51%/).length).toBeGreaterThan(0);
+    expect(container.querySelector(".row-note")?.textContent).toContain("VOO 7.51%");
   });
 });
 

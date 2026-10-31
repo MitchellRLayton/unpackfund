@@ -29,8 +29,15 @@ export const JURISDICTION = "California";
 /**
  * Where corrections, privacy requests, and complaints go. A dedicated address,
  * not the SEC contact `data@unpackfund.com`.
+ *
+ * Changed 2026-10-30 from the operator's personal address to the site's own
+ * duck.com alias, at the operator's instruction. Deliberately one constant: five
+ * pages name a contact address, and a correction that reached only the page the
+ * operator happened to be looking at would leave the personal address published
+ * on the other four. `legal.test.ts` fails if any page hard-codes an address
+ * instead of reading this one.
  */
-export const CONTACT_EMAIL = "mitchell.layton@proton.me";
+export const CONTACT_EMAIL = "unfetteredaccess@duck.com";
 
 /**
  * The day the wide release is promoted to unpackfund.com, not the day it was
@@ -42,5 +49,12 @@ export const EFFECTIVE_DATE = "October 30, 2026";
 /** Bumped by hand when the method changes; the page and the copy must move together. */
 export const METHODOLOGY_VERSION = "1.0.0";
 
-/** Version of the copy above, for the change history in the footer of each page. */
-export const LEGAL_COPY_VERSION = "1.0.0";
+/**
+ * Version of the copy above, for the change history in the footer of each page.
+ *
+ * 1.1.0 (2026-10-30): the public contact address moved to the site's own alias,
+ * and the methodology gained its paragraph on positions that have no company
+ * (cash, derivatives, and unresolved non-US issuers). The method itself did not
+ * change, so `METHODOLOGY_VERSION` stays at 1.0.0.
+ */
+export const LEGAL_COPY_VERSION = "1.1.0";
