@@ -53,7 +53,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .artifact import sha256_hex
-from .style import Style, classify
+from .style import Style
+from .style_overrides import resolve
 
 #: Contract gates (`lookthrough-math-and-qa` §5, conventions I8). Below 60% of
 #: weight covered, a concentration figure is not a fact about the fund; it is a
@@ -383,7 +384,7 @@ def _style_index(catalogue: dict[str, list]) -> dict[str, list[tuple[str, str]]]
         if not SAFE_TICKER.match(ticker):
             continue
         name, issuer = row[0], row[1] if len(row) > 1 else ""
-        style = classify(name, issuer)
+        style = resolve(name, issuer)
         if style is None:
             continue
         coverage = float(row[3]) if len(row) > 3 and row[3] is not None else 0.0
@@ -599,7 +600,7 @@ def build(
             for other, other_name in by_issuer.get(fund["issuer"], [])
             if other != ticker
         ]
-        style = classify(fund["name"], fund.get("issuer") or "")
+        style = resolve(fund["name"], fund.get("issuer") or "")
         page = render_page(
             fund,
             issuer_funds=others,

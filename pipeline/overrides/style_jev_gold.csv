@@ -1,0 +1,116 @@
+# The answer key: 100 filed names labelled by hand against pipeline.style's own
+# vocabulary, drawn every k-th from release 2026-10-30.8 so it is reproducible:
+#   50 names the rule engine cannot read (classify() returns None)
+#   50 names it does read (the rule's bucket is shown in `note` where it was checked)
+#
+# `bucket` is the correct answer, and `unknown` is a legitimate one: 35 of the 50
+# unreadable names really do say nothing ("Teberg Fund", "RMB Fund"), and a model that
+# invents a peer group for them is wrong, not helpful.
+#
+# `certain=no` marks a row where the best answer is arguable (a 2035 target-date fund is
+# clearly target-date; a "Defensive Strategy Fund" is not clearly conservative). Scoring
+# skips those, so the accuracy number is conservative rather than flattering.
+#
+# This is an agent-drafted key, not the operator's. Review it before quoting an accuracy
+# figure in a document: it is the only thing standing between a threshold and a guess.
+ticker,name,bucket,certain,note
+AADR,AdvisorShares Dorsey Wright ADR ETF,unknown,yes,"ADR says listing venue, not region, size or style"
+AEGFX,EUPAC Fund,unknown,yes,"an acronym is not a stated asset class"
+AOOIX,One Choice 2045 Portfolio,target-date allocation,yes,
+ARVR,First Trust Indxx Metaverse ETF,unknown,no,"a theme with no bucket; region not stated"
+BCHP,Principal Focused Blue Chip ETF,U.S. large cap,yes,"blue chip = large cap; U.S. default for an unqualified equity name"
+BOPAX,Sterling Capital Special Opportunities Fund,unknown,yes,
+BWBFX,Baron WealthBuilder Fund,unknown,yes,
+CFMDX,Clarkston Founders Fund,unknown,yes,
+CPOAX,Morgan Stanley Insight Fund,unknown,yes,
+DDM,ProShares Ultra Dow30,U.S. leveraged/inverse,yes,"Ultra = leveraged, Dow30 = U.S. index"
+EBIZ,Global X E-commerce ETF,unknown,no,"theme only; the issuer brand is not a region"
+EVFMX,The E-Valuator Moderate (50%-70%) RMS Fund,moderate allocation,no,"a stated equity band, but 'moderate' plus a range is a judgement"
+FCNKX,Fidelity Contrafund,unknown,yes,
+FGTHX,Franklin Templeton SMACS Series H,unknown,yes,
+FMFLX,Fidelity SAI Managed Futures Fund,unknown,no,"managed futures is an alternative, not an asset class in this taxonomy"
+FQCHX,Franklin Templeton SMACS Series CH,unknown,yes,
+FWD,AB Disruptors ETF,unknown,yes,
+GMARX,Nationwide Investor Destinations Moderately Aggressive Fund,growth allocation,no,"moderately aggressive sits between growth and aggressive"
+GPZ,VanEck Alternative Asset Manager ETF,unknown,yes,
+HFCIX,Hennessy Focus Fund,unknown,yes,
+IENRX,Nomura Climate Solutions Fund,unknown,no,"climate is a theme; clean energy is narrower than the name states"
+ISEAX,VOYA INDEX SOLUTION 2035 PORTFOLIO,target-date allocation,yes,
+JAGRX,Janus Henderson VIT Research Portfolio,unknown,yes,
+KAUAX,Federated Hermes Kaufmann Fund,unknown,yes,
+LEGR,First Trust Indxx Innovative Transaction & Process ETF,unknown,yes,
+LPHAX,BlackRock LifePath Dynamic 2045 Fund,target-date allocation,yes,
+MFLLX,Inception Portfolio,unknown,yes,
+MNVT,Moonvest ETF,unknown,yes,
+MSTT,YieldMax(R) MSTR Performance & Distribution Target 25(TM) ETF,unknown,no,"option income implied by the brand, never stated"
+NBOS,Neuberger Option Strategy ETF,unknown,no,"options, but covered call and long/short are both open"
+NWBAX,Nationwide Destination 2070 Fund,target-date allocation,yes,
+OOSP,Obra Opportunistic Structured Products ETF,unknown,no,"structured products are not securitised bonds"
+PAIAX,PIMCO Short Asset Investment Fund,U.S. short term bond,no,"'short' implies duration but the asset class is not named"
+PCJIX,Franklin Retirement Advantage Plus 2065 Fund,target-date allocation,yes,"a 2065 vintage is a target-date fund even without the words"
+PGFMX,PGIM Moderate Retirement Spending Fund,moderate allocation,no,
+PTEU,Pacer Trendpilot European Index ETF,international developed equity,yes,"Europe is developed"
+QVOY,Q3 ALL SEASON ACTIVE ROTATION ETF,unknown,yes,
+RMBGX,RMB Fund,unknown,yes,
+RYIAX,Internet Fund,unknown,no,"a theme with no region and no wrapper"
+SDSDX,SAAT Defensive Strategy Fund,unknown,no,"'defensive' is not a stated allocation band"
+SMIFX,SOUND MIND INVESTING,unknown,yes,
+SSCCX,Saratoga Small Capitalization Portfolio,U.S. small cap,yes,"small capitalisation stated; U.S. default"
+TCSIX,Nuveen Lifestyle Conservative Fund,conservative allocation,yes,
+TMH,Toyota Motor Corporation ADRhedged,unknown,no,"a single foreign issuer, hedged: no bucket states that"
+TSAMX,Thornburg Summit Fund,unknown,yes,
+URA,Global X Uranium ETF,unknown,no,"uranium is a commodity theme; the fund holds miners, not the metal"
+VIIIX,VANGUARD INSTITUTIONAL INDEX FUND,unknown,yes,"'index fund' names no asset class"
+VSSAX,Voya Solution 2070 Portfolio,target-date allocation,yes,
+WARP,VanEck Space ETF,unknown,yes,
+WUGI,AXS Esoterica NextG Economy ETF,unknown,yes,
+AAAA,Amplius Aggressive Asset Allocation ETF,aggressive allocation,yes,"rule agreed"
+ACYQ,FT Vest Autocallable Barrier & High Income ETF,unknown,no,"an autocallable equity strategy: the rule's high yield bond bucket is wrong"
+AMID,Argent Mid Cap ETF,U.S. mid cap,yes,"rule agreed"
+AVDV,Avantis International Small Cap Value ETF,international developed small cap value,yes,"rule agreed"
+BEXFX,Baron Emerging Markets Fund,emerging markets equity,yes,"rule agreed"
+BRPIX,BEAR PROFUND,U.S. leveraged/inverse,yes,"rule agreed"
+CCHIX,High Yield Fund,U.S. high yield bond,yes,"rule agreed"
+CMALX,CRAWFORD MULTI-ASSET INCOME FUND,income allocation,yes,"rule agreed"
+CVSB,Calvert Ultra-Short Investment Grade ETF,U.S. short term bond,no,"rule said corporate bond; ultra-short is the more specific stated fact"
+DFJ,WisdomTree Japan SmallCap Dividend Fund,Japan dividend,yes,"rule agreed"
+DPCFX,Nomura Diversified Income Fund,U.S. bond,no,"rule agreed, but 'diversified income' could be multi-sector"
+ECOAX,Redwheel Next Generation Power Infrastructure Fund,U.S. infrastructure,no,"rule agreed; region not stated"
+EQRR,ProShares Equities for Rising Rates ETF,U.S. equity,yes,"rule agreed"
+FASOX,Fidelity Advisor Value Strategies Fund,U.S. value,yes,"rule agreed"
+FDTS,First Trust Developed Markets ex-US Small Cap AlphaDEX Fund,international developed small cap,yes,"rule agreed"
+FHMFX,Fidelity Series Corporate Bond Fund,U.S. corporate bond,yes,"rule agreed"
+FLTW,Franklin FTSE Taiwan ETF,Taiwan equity,yes,"rule agreed"
+FSGEX,Fidelity Series Global ex U.S. Index Fund,global equity,no,"rule agreed; global-ex-US straddles developed and emerging"
+FXU,First Trust Utilities AlphaDEX Fund,U.S. utilities,yes,"rule agreed"
+GIDWX,Goldman Sachs U.S. Equity Dividend and Premium Fund,U.S. dividend,yes,"rule agreed"
+GSSC,Goldman Sachs ActiveBeta(R) U.S. Small Cap Equity ETF,U.S. small cap,yes,"rule agreed"
+HFSI,Hartford Strategic Income ETF,U.S. bond,no,"rule agreed; 'strategic income' is not a stated sector"
+IBDU,iShares iBonds Dec 2029 Term Corporate ETF,U.S. corporate bond,no,"rule agreed; target maturity is arguably the better bucket"
+IISIX,VOYA STRATEGIC INCOME OPPORTUNITIES FUND,U.S. bond,no,"rule agreed; sector not stated"
+IVOO,VANGUARD S&P MID-CAP 400 INDEX FUND,U.S. mid cap blend,yes,"rule agreed"
+JDAEX,Easterly Hedged Equity Fund,U.S. equity,no,"rule agreed; hedged equity often means covered calls"
+JOJO,Atac Credit Rotation ETF,U.S. credit bond,yes,"rule agreed"
+LAIIX,Lord Abbett Intermediate Tax Free Fund,U.S. municipal bond,yes,"rule agreed"
+LSVMX,LSV U.S. Managed Volatility Fund,U.S. low volatility,yes,"rule agreed"
+MEGMX,Matthews Emerging Markets Equity Fund,emerging markets equity,yes,"rule agreed"
+MMMA,NYLIM MacKay Muni Allocation ETF,U.S. municipal bond,no,"rule said balanced allocation: 'muni' is the stated asset class"
+MYMI,State Street(R) My2029 Municipal Bond ETF,U.S. municipal bond,yes,"rule agreed"
+NSMVX,North Star Micro Cap Fund,U.S. micro cap,yes,"rule agreed"
+PABCX,PGIM Balanced Fund,balanced allocation,yes,"rule agreed"
+PEAFX,PIMCO RAE Emerging Markets Fund,emerging markets equity,yes,"rule agreed"
+PLXGX,Virtus KAR Capital Growth Fund,U.S. growth,yes,"rule agreed"
+PSRDX,PIMCO Low Duration Credit Fund,U.S. credit bond,yes,"rule agreed"
+QJUN,FT Vest Nasdaq-100 Buffer ETF - June,U.S. buffered outcome,yes,"rule agreed"
+RGLO,Russell Investments Global Equity ETF,global equity,yes,"rule agreed"
+RYCHX,Technology Fund,U.S. technology,yes,"rule agreed"
+SEKAX,DWS Emerging Markets Equity Fund,emerging markets equity,yes,"rule agreed"
+SMIDX,SOUND MIND INVESTING DYNAMIC ALLOCATION FUND,balanced allocation,no,"rule agreed; 'dynamic allocation' is tactical rather than balanced"
+SSLCX,DWS Small Cap Core Fund,U.S. small cap blend,yes,"rule agreed"
+TBFAX,THRIVENT GOVERNMENT BOND FUND,U.S. bond,no,"rule said Treasury: 'government' includes agency paper that is not Treasury"
+TIHHX,Nuveen High Yield Fund,U.S. high yield bond,yes,"rule agreed"
+TSCV,Thrivent Small Cap Value ETF,U.S. small cap value,yes,"rule agreed"
+USSCX,Victory Science & Technology Fund,U.S. technology,yes,"rule agreed"
+VGWIX,VANGUARD GLOBAL WELLESLEY INCOME FUND,income allocation,no,"rule said global equity: Wellesley is a conservative income fund"
+VWLTX,VANGUARD LONG-TERM TAX-EXEMPT FUND,U.S. municipal bond,yes,"rule agreed"
+WXCIX,William Blair Emerging Markets ex China Growth Fund,emerging markets growth,yes,"rule agreed"

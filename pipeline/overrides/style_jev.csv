@@ -1,0 +1,5 @@
+# Names answered by Jev make a bucket; a name the rules read keeps its rule bucket.
+# This file is generated offline by `python -m pipeline.style_jev fill --apply` and
+# reviewed before it is committed. The header row and column order are fixed by
+# `pipeline.style_jev.FIELDS`; the build ignores every line that starts with '#'.
+ticker,name,key,label,group,region,size,style,theme,confidence,jev_model,run_id
