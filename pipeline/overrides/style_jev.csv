@@ -46,6 +46,7 @@ QLMAIX,Franklin Templeton Conservative Model Portfolio,conservative-allocation,c
 QLMAEX,Franklin Templeton Moderate Model Portfolio,moderate-allocation,moderate allocation,allocation,,,,moderate,0.970,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
 XRLX,FundX Conservative ETF,conservative-allocation,conservative allocation,allocation,,,,conservative,0.870,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
 CLOU,Global X Cloud Computing ETF,us-information-technology,U.S. technology,equity,U.S.,,,technology,0.870,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
+BUG,Global X Cybersecurity ETF,us-information-technology,U.S. technology,equity,U.S.,,,technology,0.850,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793420015
 TEC,Harbor Transformative Technologies ETF,us-information-technology,U.S. technology,equity,U.S.,,,technology,0.850,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
 HOMZ,Hoya Capital Housing ETF,us-real-estate,U.S. real estate,real estate,U.S.,,,,0.920,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
 KBWB,Invesco KBW Bank ETF,us-financials,U.S. financials,equity,U.S.,,,financials,0.950,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
@@ -77,6 +78,7 @@ NWWRX,Nationwide Destination 2060 Fund,target-date,target-date allocation,alloca
 NWAQX,Nationwide Destination 2065 Fund,target-date,target-date allocation,allocation,,,,target-date,0.990,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
 NWBAX,Nationwide Destination 2070 Fund,target-date,target-date allocation,allocation,,,,target-date,0.990,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
 GMDIX,Nationwide Investor Destinations Moderate Fund,moderate-allocation,moderate allocation,allocation,,,,moderate,0.960,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
+GMIMX,Nationwide Investor Destinations Moderately Conservative Fund,conservative-allocation,conservative allocation,allocation,,,,conservative,0.850,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793420015
 TSIMX,Nuveen Lifestyle Moderate Fund,moderate-allocation,moderate allocation,allocation,,,,moderate,0.950,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
 ARCMX,One Choice 2030 Portfolio,target-date,target-date allocation,allocation,,,,target-date,0.990,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
 ARLCX,One Choice 2035 Portfolio,target-date,target-date allocation,allocation,,,,target-date,0.930,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
@@ -108,6 +110,7 @@ FSLBX,Select Brokerage and Investment Management Portfolio,us-financials,U.S. fi
 FSCHX,Select Chemicals Portfolio,us-materials,U.S. materials,equity,U.S.,,,materials,0.860,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
 FSHOX,Select Construction and Housing Portfolio,us-real-estate,U.S. real estate,real estate,U.S.,,,,0.860,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
 FIDSX,Select Financials Portfolio,us-financials,U.S. financials,equity,U.S.,,,financials,0.900,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
+FWRLX,Select Wireless Portfolio,us-information-technology,U.S. technology,equity,U.S.,,,technology,0.860,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793420015
 PRAB,State Street(R) IG Public & Private ABS ETF,us-securitized-bond,U.S. securitized bond,fixed income,U.S.,,,securitized,0.980,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
 FEZ,State Street(R) SPDR(R) EURO STOXX 50(R) ETF,developed-equity,international developed equity,equity,international developed,,,,0.930,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
 TFNS,T. Rowe Price Financials ETF,us-financials,U.S. financials,equity,U.S.,,,financials,0.950,typesafe/jev-1.14-20261014,style-jev-2026-10-30.8-1793419545
