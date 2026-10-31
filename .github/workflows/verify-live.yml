@@ -1,0 +1,65 @@
+# Verifying production without a laptop: pages vs the live data, and the hand-off.
+#
+# Why this exists. `deploy-site.yml` republishes production on a push to `main` *and* on
+# the `workflow_run` event that follows a successful `promote` — the second is what stops
+# a data promotion from leaving app code a day stale. Every deploy-site run before
+# 2026-10-31 was triggered by a push, so that hand-off path had never actually fired.
+#
+# Checking it from the operator's machine only works while the machine is awake, and the
+# promotion runs at 22:45 PT. So the check lives here instead: it runs on GitHub's
+# infrastructure at 00:15 PT (after the 05:45Z promote and 06:30Z refresh) and again at
+# 05:00 PT, in case the scheduler slipped the way it did on 2026-10-31 (5.5–6.4 h late).
+#
+# The five checks are in `scripts/verify-live.py`, which takes no secrets: the data
+# origin and the site are public, and the run history is read with the workflow's own
+# GITHUB_TOKEN. A failure fails the run — that is the alarm, since a red scheduled run
+# notifies the repository owner.
+#
+# Not a deploy. Nothing here writes to production.
+
+name: verify-live
+
+on:
+  schedule:
+    - cron: "15 7 * * *"    # 00:15 PT, ~1.5 h after the promote slot
+    - cron: "0 12 * * *"    # 05:00 PT, catches a promotion that slipped hours late
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: verify-live
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify the live site against the live data
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SITE_HOST: https://unpackfund.com
+          DATA_BASE: https://data.unpackfund.com
+        run: |
+          set -o pipefail
+          python3 scripts/verify-live.py | tee verify-live.txt
+          # pipefail makes a failing check fail this step, which fails the run; the
+          # summary step below still runs (if: always()).
+
+      - name: Write the job summary
+        if: always()
+        run: |
+          {
+            echo "## verify-live"
+            echo ""
+            echo "Site vs live data version, and the \`promote\` → \`deploy-site\` hand-off."
+            echo ""
+            echo '```'
+            cat verify-live.txt 2>/dev/null || echo "(the verifier produced no output)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
