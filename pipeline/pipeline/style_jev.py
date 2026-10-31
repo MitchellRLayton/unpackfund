@@ -47,6 +47,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
 
+from .r2 import PublicReader, R2Error
 from .style import Style, classify, normalise
 
 #: Environment variable names, in the order they are tried. The operator's `.env` uses
@@ -632,13 +633,22 @@ def load_catalogue(release: Path | None, url: str | None) -> tuple[dict, str]:
         document = json.loads((release / "catalogue.json").read_text())
         return document["funds"], release.name
     if url:
-        base = url.rstrip("/")
-        with urllib.request.urlopen(f"{base}/latest/release.json", timeout=60) as response:
-            descriptor = json.loads(response.read().decode())
-        path = descriptor["objects"]["catalogue"]["path"]
-        with urllib.request.urlopen(f"{base}/{path}", timeout=120) as response:
-            document = json.loads(response.read().decode())
-        return document["funds"], str(descriptor.get("as_of") or "latest")
+        # Read the data host the way every other consumer does. Cloudflare answers 403 to
+        # the default `Python-urllib/3.x` identity (see `r2.PUBLIC_USER_AGENT`), which is
+        # exactly what a bare `urlopen` sends — so the scheduled job died on its first
+        # network call while every curl and every browser got 200.
+        reader = PublicReader(url, timeout=120.0)
+        try:
+            descriptor = reader.fetch_json("latest/release.json")
+            release_id = str(descriptor.get("as_of") or "latest")
+            # `objects[*].path` is relative to the release prefix, not to the origin — the
+            # same idiom `live.py` uses to sample a published file.
+            document = reader.fetch_json(
+                f"releases/{release_id}/{descriptor['objects']['catalogue']['path']}"
+            )
+        except R2Error as error:
+            raise JevError(f"the catalogue is unreachable at {url}: {error}") from error
+        return document["funds"], release_id
     raise JevError("pass --release DIR or --from-url URL")
 
 
