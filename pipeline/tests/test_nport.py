@@ -81,3 +81,35 @@ def test_parses_without_namespace():
     stripped = xml.replace(b' xmlns="http://www.sec.gov/edgar/nport"', b"")
     filing = parse(stripped)
     assert len(filing.holdings) == 7
+
+
+def test_a_placeholder_name_falls_back_to_the_title():
+    """Measured 2026-10-30: one filer writes ``<name>Default</name>`` for every row.
+
+    ``title`` carries the real security, and "Default" published as a company name is
+    both wrong and visible on a fund page and in the company directory.
+    """
+    xml = b"""<edgarSubmission xmlns="http://www.sec.gov/edgar/nport">
+  <headerData><filerInfo><seriesClassInfo><classId>C000000021</classId></seriesClassInfo>
+    </filerInfo></headerData>
+  <formData>
+    <genInfo><regCik>0001396092</regCik><seriesId>S000000002</seriesId>
+      <repPdDate>2026-09-30</repPdDate></genInfo>
+    <fundInfo><totAssets>1000000</totAssets><netAssets>1000000</netAssets></fundInfo>
+    <invstOrSecs>
+      <invstOrSec><name>Default</name><title>Marathon Petroleum Corp.</title>
+        <valUSD>500000</valUSD><pctVal>50.0</pctVal><assetCat>EC</assetCat></invstOrSec>
+      <invstOrSec><name>Default</name><title> N/A </title>
+        <valUSD>400000</valUSD><pctVal>40.0</pctVal><assetCat>EC</assetCat></invstOrSec>
+      <invstOrSec><name>Hasbro, Inc.</name><title>Hasbro, Inc.</title>
+        <valUSD>100000</valUSD><pctVal>10.0</pctVal><assetCat>EC</assetCat></invstOrSec>
+    </invstOrSecs>
+  </formData>
+</edgarSubmission>"""
+    filing = parse(xml)
+    assert [h.name for h in filing.holdings] == [
+        "Marathon Petroleum Corp.",
+        "unknown",
+        "Hasbro, Inc.",
+    ]
+    assert filing.holdings[0].title == "Marathon Petroleum Corp."

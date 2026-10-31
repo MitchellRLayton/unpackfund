@@ -8,16 +8,18 @@
  * same release, and the company shard is built from the fund documents rather than
  * maintained beside them, so the two directions cannot disagree.
  *
- * The search is client-side over `companies/index.json` (5,179 rows, 106 KB
- * gzipped): the app is a static export, so there is no endpoint to query and no
- * request to log. Selecting a company writes its id to the fragment, which makes a
- * company page a link you can send.
+ * The search is client-side over `companies/index.json` — 5,241 rows (106 KB
+ * gzipped) before the foreign-issuer namespace, ~50 ms of work after it, and the
+ * list renders `ROW_PAGE` matches at a time. The app is a static export, so there is
+ * no endpoint to query and no request to log. Selecting a company writes its id to
+ * the fragment, which makes a company page a link you can send.
  */
 
 import { useEffect, useMemo, useState } from "react";
 
 import { Notice } from "@/components/Notice";
 import { formatCount, formatShare } from "@/lib/format";
+import { isCompanyId } from "@/lib/types";
 import type { CompanyIndexRow } from "@/lib/types";
 import { useCompany, useCompanyIndex, useRelease } from "@/lib/use-release";
 
@@ -30,7 +32,9 @@ function useSelectedCompany(): [string | null, (id: string | null) => void] {
   useEffect(() => {
     const read = () => {
       const raw = window.location.hash.replace(/^#/, "").trim();
-      setSelected(/^c_\d{10}$/.test(raw) ? raw : null);
+      // Both namespaces: a foreign issuer's page is `/c/#l_<hex>` and used to be
+      // silently dropped here, which made every one of those links dead.
+      setSelected(isCompanyId(raw) ? raw : null);
     };
     read();
     window.addEventListener("hashchange", read);

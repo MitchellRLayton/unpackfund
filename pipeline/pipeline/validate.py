@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from .identifiers import LICENSED_ID_RE, is_licensed
+from .gleif import is_issuer_id, is_sec_company_id, LEI_RE
 
 from . import paths
 from .artifact import LARGE_FUND_BYTES, MAX_FUND_BYTES, SCHEMA_VERSION
@@ -339,6 +340,43 @@ def _check_cusip(release_dir: Path, manifest: dict, report: Report) -> None:
         report.ok("cusip", "no CUSIP/ISIN keys or CUSIP-shaped tokens")
 
 
+def _check_lei(release_dir: Path, manifest: dict, report: Report) -> None:
+    """No LEI may leave the pipeline either, and every ``company_id`` must be shaped.
+
+    An LEI is CC0, so the licence is not the reason — the reason is the same one that
+    keeps CUSIPs out: a published artifact names a company, it does not hand out an
+    identifier a reader can use to re-derive one. The namespace exists so the LEI can
+    be the *internal* key; ``l_`` is a hash of it, and the hash is what ships.
+
+    LEIs are 20 alphanumeric characters with a check-digit tail, so they are invisible
+    to ``LICENSED_ID_RE`` (9 or 12 characters) and need their own scan. The same pass
+    checks the shape of every id: an id in neither namespace means something upstream
+    invented one.
+    """
+    offenders: list[str] = []
+    bad_ids: list[str] = []
+    for path in _published_files(release_dir, manifest):
+        document = json.loads(path.read_text())
+        for value in _strings(document):
+            if len(value) == 20 and LEI_RE.match(value.strip()):
+                offenders.append(f"{path.name}: LEI-shaped token")
+                break
+        for value in _strings(document):
+            if is_sec_company_id(value) or is_issuer_id(value):
+                continue
+            if value.startswith(("c_", "l_")) and len(value) > 2:
+                bad_ids.append(f"{path.name}: malformed company id {value!r}")
+                break
+    if offenders:
+        report.fail("lei", "; ".join(offenders))
+    else:
+        report.ok("lei", "no LEI-shaped token in any published string")
+    if bad_ids:
+        report.fail("company_id", "; ".join(bad_ids))
+    else:
+        report.ok("company_id", "every c_/l_ id matches its namespace's shape")
+
+
 def _check_budget(release_dir: Path, report: Report) -> None:
     funds = list((release_dir / "funds").glob("*.json"))
     total = sum(path.stat().st_size for path in release_dir.rglob("*") if path.is_file())
@@ -636,6 +674,7 @@ def validate(release_dir: Path) -> int:
         _check_fund(document, report)
     _check_catalogue(release_dir, manifest, funds, report)
     _check_cusip(release_dir, manifest, report)
+    _check_lei(release_dir, manifest, report)
     _check_budget(release_dir, report)
     print(
         f"\n{len(funds)} funds · {report.failures} failure(s) · "

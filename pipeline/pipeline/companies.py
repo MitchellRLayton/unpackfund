@@ -29,6 +29,30 @@ fired:
 Anything else stays ``unmapped``, is counted, and is never redistributed. The
 per-release rung counts go in the manifest so the confidence of a release is
 visible without reading code.
+
+Two more rungs exist for issuers that have no CIK at all — the foreign holdings
+that are 96.6% of this product's coverage gap (2026-10-30 measurement):
+
+3. ``lei_issuer`` — the row carries the issuer's LEI and GLEIF publishes that
+   entity, so the row resolves into the **``l_`` namespace** with GLEIF's legal
+   name. Direct evidence: the identifier is the filing's own statement about this
+   row.
+4. ``isin_lei_issuer`` — the row carries no LEI but its ISIN maps to exactly one
+   in GLEIF's ISIN-to-LEI file. Inferred from the security rather than the row, so
+   it is a separate rung and the manifest keeps the two apart.
+
+## The two namespaces, and why they never touch
+
+| prefix | id | describes | source |
+|---|---|---|---|
+| ``c_`` | ``c_`` + 10-digit CIK | an SEC operating company | EDGAR |
+| ``l_`` | ``l_`` + 16 hex of sha256(LEI) | a GLEIF-registered legal entity | GLEIF (CC0) |
+
+An ``l_`` id is never produced by the CIK ladder and a ``c_`` id is never produced
+by the LEI path: a fund-share holding must not become an operating company, and an
+issuer must not be looked up by a CIK-shaped guess. The LEI itself is internal —
+it is hashed into the id so that no entity identifier appears in an artifact or in
+HTML, the same rule that keeps CUSIP and ISIN out.
 """
 
 from __future__ import annotations
@@ -37,9 +61,42 @@ import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
-from . import sec
+from . import gleif, sec
 
 OPERATING_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
+
+# EDGAR writes the state of incorporation into the title, in every punctuation variant
+# it felt like: "BANK OF AMERICA CORP /DE/", "COSTCO WHOLESALE CORP /NEW",
+# "APPLIED MATERIALS INC /DE", "WELLS FARGO & COMPANY/MN". None of it is part of a
+# legal name, so no GLEIF name carries it and an exact comparison against those titles
+# fails for exactly the largest US companies. Kept separate from ``normalize_name`` on
+# purpose: changing that function would move every rung count in every release, and
+# this is only used to bridge an LEI to an SEC identity.
+#
+# The same slot carries the *listing line*, not just a jurisdiction: a depositary's
+# title is "SUMITOMO ELECTRIC INDUSTRIES LTD/ADR/", "ROCKWOOL A/S/CAN" (measured:
+# 548 of ~12,000 titles carry ``/ADR``). An ADR is the same issuer as its ordinary
+# shares, so the marker is stripped the same way — otherwise the bridge misses every
+# company whose only SEC presence is a sponsored ADR, which is most of the foreign
+# issuers this namespace exists to name. Two to five letters covers the state codes,
+# ``NEW``, ``ADR``, ``ADS`` and country codes like ``CAN``; a real legal name does not
+# end in a slash, and an ambiguous result is refused by the single-candidate rule.
+EDGAR_JURISDICTION_RE = re.compile(r"\s*/\s*(?:[A-Za-z]{2,5}|NEW)\s*/?\s*$")
+
+
+def strip_edgar_markers(title: str) -> str:
+    """``"SUMITOMO ELECTRIC INDUSTRIES LTD/ADR/"`` → ``"SUMITOMO ELECTRIC INDUSTRIES LTD"``.
+
+    Applied repeatedly because EDGAR stacks them (``"FOO CORP /DE/ ADR"``), and a
+    single pass would leave a marker behind and turn a match into a miss.
+    """
+    stripped = title
+    for _ in range(3):
+        candidate = EDGAR_JURISDICTION_RE.sub(" ", stripped)
+        if candidate == stripped:
+            break
+        stripped = candidate
+    return stripped
 
 _LEGAL_SUFFIXES = re.compile(
     r"\b(incorporated|inc|corporation|corp|company|co|ltd|limited|plc|llc|lp|"
@@ -50,11 +107,23 @@ _RUNG_TICKER = "ticker"
 _RUNG_NAME = "name_exact"
 _RUNG_ISIN = "isin_corroborated"
 _RUNG_LEI = "lei_corroborated"
+_RUNG_LEI_ISSUER = gleif.RUNG_LEI
+_RUNG_ISIN_LEI_ISSUER = gleif.RUNG_ISIN_LEI
 _RUNG_NONE = "unmapped"
 #: Every rung a row can be counted under, in the order the ladder is walked. The
 #: manifest publishes counts per name, so adding a rung here is how it becomes
 #: visible instead of silently landing in ``unmapped``.
-ALL_RUNGS = (_RUNG_TICKER, _RUNG_NAME, _RUNG_ISIN, _RUNG_LEI, _RUNG_NONE)
+ALL_RUNGS = (
+    _RUNG_TICKER,
+    _RUNG_NAME,
+    _RUNG_ISIN,
+    _RUNG_LEI,
+    _RUNG_LEI_ISSUER,
+    _RUNG_ISIN_LEI_ISSUER,
+    _RUNG_NONE,
+)
+#: The rungs that resolve a row into the foreign-issuer namespace (``l_``).
+ISSUER_RUNGS = (_RUNG_LEI_ISSUER, _RUNG_ISIN_LEI_ISSUER)
 #: The rungs that come from the corroborated-identity table rather than from a
 #: direct identifier match on the row itself.
 IDENTITY_RUNGS = (_RUNG_ISIN, _RUNG_LEI)
@@ -167,10 +236,32 @@ class CompanyIndex:
     by_ticker: dict[str, str] = field(default_factory=dict)
     # normalized name -> company_id, only where the key is unique
     by_name: dict[str, str] = field(default_factory=dict)
+    # the same keys with EDGAR's jurisdiction suffix removed ("COSTCO WHOLESALE CORP
+    # /NEW/" -> "costco wholesale"); see resolve_gleif_name
+    by_name_stripped: dict[str, str] = field(default_factory=dict)
     # company_id -> a listed symbol for that CIK, used when the filer omits one
     primary_ticker: dict[str, str] = field(default_factory=dict)
     # company_id -> EDGAR's own title, used to corroborate a ticker match
     title_by_id: dict[str, str] = field(default_factory=dict)
+
+    def resolve_gleif_name(self, name: str) -> str | None:
+        """The SEC company a GLEIF legal name belongs to, when exactly one does.
+
+        Used only to keep one company in one namespace: the issuer namespace resolves
+        a holding by its LEI, and if that legal entity is also an SEC registrant the
+        row must carry the ``c_`` id, or the ledger — which merges on ``company_id`` —
+        would list the same company twice (once per spelling) and understate overlap.
+
+        The rule is the ladder's own: exact normalized equality, single candidate, and
+        a refusal rather than a guess when two CIKs share the name. EDGAR's title
+        markers — state of incorporation, and the ``/ADR/`` listing line that is the
+        only SEC presence most foreign issuers have — are stripped first, because
+        neither is part of a legal name and GLEIF carries neither.
+        """
+        cid, _ = self.resolve(None, name)
+        if cid is not None:
+            return cid
+        return self.by_name_stripped.get(normalize_name(name))
 
     @classmethod
     def load(cls) -> "CompanyIndex":
@@ -184,6 +275,7 @@ class CompanyIndex:
         primary_ticker: dict[str, str] = {}
         title_by_id: dict[str, str] = {}
         name_candidates: dict[str, set[str]] = {}
+        stripped_candidates: dict[str, set[str]] = {}
         for row in document.values():
             cik = row.get("cik_str")
             title = str(row.get("title") or "")
@@ -199,13 +291,20 @@ class CompanyIndex:
             key = normalize_name(title)
             if key:
                 name_candidates.setdefault(key, set()).add(cid)
+                stripped = normalize_name(strip_edgar_markers(title))
+                if stripped and stripped != key:
+                    stripped_candidates.setdefault(stripped, set()).add(cid)
         # Ambiguous keys are dropped rather than resolved to "most likely".
         by_name = {
             key: next(iter(ids)) for key, ids in name_candidates.items() if len(ids) == 1
         }
+        by_name_stripped = {
+            key: next(iter(ids)) for key, ids in stripped_candidates.items() if len(ids) == 1
+        }
         return cls(
             by_ticker=by_ticker,
             by_name=by_name,
+            by_name_stripped=by_name_stripped,
             primary_ticker=primary_ticker,
             title_by_id=title_by_id,
         )

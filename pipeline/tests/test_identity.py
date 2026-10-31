@@ -162,6 +162,12 @@ def test_rung_counts_name_every_identity_rung():
         "name_exact": 2,
         "isin_corroborated": 3,
         "lei_corroborated": 4,
+        # The two foreign-issuer rungs are part of the ladder's vocabulary even in a
+        # build that does not run them: a zero says "the rung exists and matched
+        # nothing", which is what lets a control build and a lever build be compared
+        # key for key.
+        "lei_issuer": 0,
+        "isin_lei_issuer": 0,
         "unmapped": 5,
     }
 

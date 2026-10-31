@@ -48,6 +48,7 @@ from . import (
     weights,
 )
 from .companies import CompanyIndex, IdentityEvidence, IdentityTable
+from . import gleif
 from .nport import NportFiling, NportParseError
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -163,6 +164,7 @@ def build_fund(
     *,
     identity: IdentityTable | None = None,
     collect_evidence: bool = False,
+    issuers: gleif.IssuerIndex | None = None,
 ) -> FundBuild:
     started = time.monotonic()
     found = filings.latest(ref)
@@ -185,6 +187,7 @@ def build_fund(
         lag_days=lag_days,
         identity=identity,
         evidence=evidence,
+        issuers=issuers,
     )
 
     # Gate 1 — the *investable* schedule reconciles to the fund's own NAV.
@@ -290,6 +293,7 @@ def _attempt(
     *,
     identity: IdentityTable | None = None,
     collect_evidence: bool = False,
+    issuers: gleif.IssuerIndex | None = None,
 ) -> tuple[FundBuild | None, str | None]:
     try:
         return (
@@ -298,6 +302,7 @@ def _attempt(
                 index,
                 identity=identity,
                 collect_evidence=collect_evidence,
+                issuers=issuers,
             ),
             None,
         )
@@ -363,6 +368,7 @@ def _walk(
     on_error: str,
     started: float,
     merge_evidence: IdentityEvidence | None = None,
+    issuers: gleif.IssuerIndex | None = None,
 ) -> tuple[list[FundBuild], list[dict[str, str]]]:
     """Build every fund once, collecting the artifacts and the failures.
 
@@ -400,7 +406,14 @@ def _walk(
     if workers <= 1:
         for ref in refs:
             record(
-                _attempt(ref, index, identity=identity, collect_evidence=collect), ref
+                _attempt(
+                    ref,
+                    index,
+                    identity=identity,
+                    collect_evidence=collect,
+                    issuers=issuers,
+                ),
+                ref,
             )
     else:
         with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -413,6 +426,7 @@ def _walk(
                         index,
                         identity=identity,
                         collect_evidence=collect,
+                        issuers=issuers,
                     ),
                 )
                 for ref in refs
@@ -420,6 +434,43 @@ def _walk(
             for ref, future in futures:
                 record(future.result(), ref)
     return builds, failures
+
+
+def _identity_namespaces(
+    issuers: "gleif.IssuerIndex | None", rung_totals: dict[str, int]
+) -> dict[str, dict]:
+    """The published contract for both id namespaces, and who was in each.
+
+    ``company_id`` is one field with two kinds of value, and a consumer that reads
+    ``c_`` as "a CIK" and ``l_`` as "a CIK" would be wrong in a way no shape check
+    catches. The manifest therefore states both: what each prefix means, and — for
+    the namespace that needs it — which GLEIF file the release was resolved against.
+    """
+    namespaces: dict[str, dict] = {
+        "c_": {"kind": "sec_operating_company", "key": "cik", "source": "EDGAR"},
+    }
+    if issuers is not None:
+        namespaces["l_"] = {
+            "kind": "gleif_legal_entity",
+            "key": f"sha256(lei)[:{gleif.ID_HEX_DIGITS}]",
+            "source": issuers.source,
+            "cache_date": issuers.cache_date,
+            "entities": len(issuers.entities),
+            "isin_map": len(issuers.isin_to_lei),
+            "categories": sorted(weights.ISSUER_CATEGORIES),
+            "refusals": dict(sorted(issuers.refusals.items())),
+            # Rows whose LEI named an entity EDGAR already knows resolve to a
+            # ``c_`` id (see weights.build_vector), so they are counted apart from
+            # the rows that actually landed in this namespace.
+            "bridged_to_sec": dict(sorted(issuers.bridges.items())),
+            "rows": {
+                "lei_issuer": int(rung_totals.get(gleif.RUNG_LEI, 0))
+                - int(issuers.bridges.get(gleif.RUNG_LEI, 0)),
+                "isin_lei_issuer": int(rung_totals.get(gleif.RUNG_ISIN_LEI, 0))
+                - int(issuers.bridges.get(gleif.RUNG_ISIN_LEI, 0)),
+            },
+        }
+    return namespaces
 
 
 def build_release(
@@ -433,10 +484,31 @@ def build_release(
     label: str = "tickers",
     progress_every: int = 0,
     identity: bool = True,
+    issuer_namespace: bool = True,
 ) -> Path:
     started = time.monotonic()
     index = CompanyIndex.load()
     _log(f"company index: {len(index.by_ticker):,} tickers, {len(index.by_name):,} unique names")
+
+    # The foreign-issuer namespace (``l_`` ids) is a second, parallel identity keyed
+    # by LEI. It is loaded before the walk and never mixed with the CIK index: a row
+    # the CIK ladder cannot name may resolve here, and a row it can name never does.
+    issuers: gleif.IssuerIndex | None = None
+    if issuer_namespace:
+        issuers = gleif.IssuerIndex.load()
+        if issuers is None:
+            raise GateError(
+                "the foreign-issuer namespace is on but data/cache/gleif is empty — "
+                "run `python -m pipeline.gleif --refresh` (GLEIF golden copy, CC0), "
+                "or build with --no-issuers to publish without it"
+            )
+        _log(
+            f"issuer namespace: {len(issuers.entities):,} GLEIF entities, "
+            f"{len(issuers.isin_to_lei):,} ISIN→LEI pairs "
+            f"(golden copy {issuers.cache_date})"
+        )
+    else:
+        _log("issuer namespace: disabled (--no-issuers)")
 
     release = release_id or time.strftime("%Y-%m-%d", time.gmtime()) + ".1"
     release_dir = out_dir / "releases" / release
@@ -497,6 +569,7 @@ def build_release(
         log=progress_every,
         on_error=on_error,
         started=started,
+        issuers=issuers,
     )
 
     if failures and on_error == "fail":
@@ -542,6 +615,7 @@ def build_release(
         files=files,
         rung_counts={name: int(rung_totals.get(name, 0)) for name in RUNG_NAMES},
         asset_cat_counts=dict(sorted(cat_totals.items())),
+        identity_namespaces=_identity_namespaces(issuers, rung_totals),
         generated_at=generated_at,
     )
     payload = artifact.canonical_bytes(document)
@@ -581,6 +655,7 @@ def build_release(
         "etf_count": document["etf_count"],
         "etf_classifier": document["etf_classifier"],
         "rungs": document["mapping_rungs"],
+        "identity_namespaces": document.get("identity_namespaces"),
         "coverage_histogram": document["coverage_histogram"],
         "manifest_bytes": len(payload),
         "manifest_sha256": artifact.sha256_hex(payload),
@@ -668,6 +743,12 @@ def main(argv: list[str] | None = None) -> int:
         "the control for measuring what the pass is worth",
     )
     parser.add_argument(
+        "--no-issuers",
+        action="store_true",
+        help="skip the foreign-issuer (GLEIF) namespace; the control build for "
+        "measuring what the namespace is worth, with identity frozen",
+    )
+    parser.add_argument(
         "--progress-every",
         type=int,
         default=0,
@@ -698,6 +779,7 @@ def main(argv: list[str] | None = None) -> int:
             label=label,
             progress_every=max(0, args.progress_every),
             identity=not args.no_identity,
+            issuer_namespace=not args.no_issuers,
         )
     except (GateError, NportParseError, LookupError, filings.NoFilingError) as error:
         _log(f"FAILED: {type(error).__name__}: {error}")

@@ -21,7 +21,7 @@ import math
 from collections import Counter
 from dataclasses import dataclass, field
 
-from . import classify, identifiers
+from . import classify, gleif, identifiers
 from .classify import Classification
 from .companies import CompanyIndex, IdentityEvidence, IdentityTable
 from .nport import Holding
@@ -29,6 +29,14 @@ from .nport import Holding
 BP_PER_UNIT = 10_000
 METRIC_CATEGORIES = classify.COMPANY_CATEGORIES
 STALE_LAG_DAYS = 90
+#: Asset categories the foreign-issuer namespace applies to. Equity only, and on
+#: purpose: the 2026-10-30 measurement that sized this change was of *equity*
+#: issuers (96.6% of the gap, 82.65% carrying an LEI), and a debt row is the
+#: issuer's obligation rather than a share of it. Extending the namespace to debt
+#: would move the site-wide coverage number by a reason nobody has measured, and a
+#: weight that looks better for an unmeasured reason is the failure mode this
+#: project keeps writing rules about.
+ISSUER_CATEGORIES = frozenset({"equity"})
 
 
 class WeightError(RuntimeError):
@@ -109,6 +117,24 @@ def allocate_bp(fractions: list[float]) -> list[int]:
     return floors
 
 
+def _label(as_filed: str | None, issuer_legal_name: str | None) -> str:
+    """The name a row ships with.
+
+    The filing's own label wins whenever it survives redaction: it is what the fund
+    called the security, it is already published for that row today, and keeping it
+    means the identity namespace changes a row's *id* and its *coverage*, not its
+    name. GLEIF's legal name fills in only when the filing's label was unusable —
+    a CUSIP where the name belongs, a Bloomberg string, nothing at all — so a row
+    resolved through the LEI namespace still ships a name instead of
+    ``UNNAMED_HOLDING``. ``artifact.holding_row`` redacts again; redaction is
+    idempotent.
+    """
+    cleaned = identifiers.public_name(as_filed)
+    if issuer_legal_name and cleaned == identifiers.UNNAMED_HOLDING:
+        return issuer_legal_name
+    return (as_filed or "unknown").strip()
+
+
 def build_vector(
     holdings: list[Holding],
     index: CompanyIndex,
@@ -117,6 +143,7 @@ def build_vector(
     lag_days: int | None,
     identity: IdentityTable | None = None,
     evidence: IdentityEvidence | None = None,
+    issuers: "gleif.IssuerIndex | None" = None,
 ) -> WeightVector:
     if not holdings:
         raise WeightError("filing reports no holdings")
@@ -141,6 +168,29 @@ def build_vector(
             evidence.observe(holding.isin, holding.lei, company_id)
         if company_id is None and identity is not None:
             company_id, rung = identity.resolve(holding.isin, holding.lei)
+        issuer_label: str | None = None
+        issuer_row = False
+        if company_id is None and issuers is not None:
+            if classification.category in ISSUER_CATEGORIES:
+                resolution = issuers.resolve(holding.lei, holding.isin)
+                if resolution is not None:
+                    company_id, rung = resolution.company_id, resolution.rung
+                    issuer_label = resolution.name
+                    issuer_row = True
+                    # The LEI names a legal entity; when that entity is also an SEC
+                    # registrant, the row belongs in the CIK namespace. Otherwise the
+                    # same company would sit under two ids — ``c_`` in the funds
+                    # whose filing spells the EDGAR name, ``l_`` in the funds whose
+                    # filing uses the new brand — and the ledger, which merges on
+                    # company_id, would stop merging it and understate overlap.
+                    # Measured 2026-10-30: 22,775 rows (GE Aerospace, ExxonMobil
+                    # Holdings, IBM). The test is the ladder's own exact, single-
+                    # candidate name rule applied to GLEIF's *registered* name, not
+                    # a fuzzy match: the evidence for the id is still the LEI.
+                    sec_id = index.resolve_gleif_name(resolution.name)
+                    if sec_id is not None:
+                        company_id = sec_id
+                        issuers.note_bridge(rung)
         rungs[rung] += 1
 
         # Unmapped rows merge on identity of their own, so a fund with 500 distinct
@@ -158,8 +208,17 @@ def build_vector(
         if group is None:
             group = {
                 "company_id": company_id,
-                "name": (holding.name or "unknown").strip(),
-                "ticker": holding.ticker or index.symbol(company_id),
+                "name": _label(holding.name, issuer_label),
+                # A foreign issuer's as-filed symbol is its *local* listing code
+                # (``PRU`` is Perseus Mining on the ASX, and Prudential in New
+                # York). Publishing it beside a GLEIF legal name would invite
+                # exactly the misreading this namespace exists to prevent, and the
+                # row's identity is the LEI, not a symbol — so an issuer-namespace
+                # row carries no ticker.
+                "ticker": (
+                    (index.symbol(company_id) if issuer_row else holding.ticker)
+                    or index.symbol(company_id)
+                ),
                 "category": classification.category,
                 "is_company_exposure": classification.is_company_exposure,
                 "fraction": 0.0,
@@ -173,7 +232,7 @@ def build_vector(
             group["largest"] = abs(fraction)
             group["category"] = classification.category
             group["is_company_exposure"] = classification.is_company_exposure
-            if holding.ticker:
+            if holding.ticker and not issuer_row:
                 group["ticker"] = holding.ticker
 
     # Allocate in fraction order (largest remainder depends on it), then sort the

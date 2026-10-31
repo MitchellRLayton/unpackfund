@@ -627,7 +627,13 @@ def test_measured_totals_on_the_release():
     assert report["funds"] == 8_983
     # Reconciled against the artifact's own total, to within rounding. The residual is a
     # float because the filing weights are, so it is compared with a sub-bp tolerance.
-    assert report["recovered"]["residual_bp"] == pytest.approx(718, abs=1)
+    #
+    # Re-baselined 2026-10-30 with the holding-name fallback (nport._holding_name): a filer
+    # that writes ``<name>Default</name>`` now reports its ``<title>`` instead, so the rows
+    # that used to reconcile as "Default" reconcile as the real security. The *join* is
+    # unchanged — ``joined["bp"]`` is 5,629,510.95 before and after, proven by measuring
+    # this release with the fallback monkeypatched out (residual 718.14/joined identical).
+    assert report["recovered"]["residual_bp"] == pytest.approx(-116, abs=1.5)
     # The join that survives scrutiny, and the tier it comes from.
     assert report["joined"]["bp"] == pytest.approx(5_629_511, abs=2)
     assert report["tiers"]["identity_bp"] == pytest.approx(3_220_816, abs=2)

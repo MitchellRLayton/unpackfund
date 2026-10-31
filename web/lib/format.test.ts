@@ -54,6 +54,10 @@ describe("coverage bands", () => {
     expect(coverageLabel(66.4)).toBe("partial (66.4% of weight)");
     expect(coverageLabel(41)).toBe("not covered");
     expect(coverageChip(66.4)).toBe("partial 66.4%");
+    // The cell carries the number in every band: AVDV sat at 17.0% and the column
+    // printed "not covered", which says nothing about how much *was* traced.
+    expect(coverageChip(17)).toBe("17.0% not covered");
+    expect(coverageChip(90.3)).toBe("90.3% covered");
   });
 
   it("never rounds across a boundary in the label", () => {

@@ -106,15 +106,23 @@ export function coverageLabel(coveragePct: number): string {
   }
 }
 
-/** Short form for a table cell: `covered`, `partial 66.4%`, `not covered`. */
+/**
+ * Short form for a table cell: `90.3% covered`, `partial 66.4%`, `17.0% not covered`.
+ *
+ * The percentage is in **every** band, including the one whose label is "not
+ * covered". A cell that printed only the band label left the coverage column saying
+ * nothing about how much of the fund was traced — the reviewer's line was "a name,
+ * not an identifier, is what ships", and the same logic applies to a number that
+ * exists in the data and is replaced by a word in the table.
+ */
 export function coverageChip(coveragePct: number): string {
   switch (coverageBand(coveragePct)) {
     case "full":
-      return "covered";
+      return `${formatCoveragePct(coveragePct)} covered`;
     case "partial":
       return `partial ${formatCoveragePct(coveragePct)}`;
     case "none":
-      return "not covered";
+      return `${formatCoveragePct(coveragePct)} not covered`;
   }
 }
 

@@ -63,6 +63,7 @@ def build_manifest(
     rung_counts: dict[str, int],
     asset_cat_counts: dict[str, int],
     etf_count: int | None = None,
+    identity_namespaces: dict[str, dict[str, Any]] | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     """Assemble the manifest for one release.
@@ -104,6 +105,10 @@ def build_manifest(
         # that looks authoritative because it is in a manifest.
         "etf_classifier": ETF_CLASSIFIER,
         "company_count": len(companies),
+        # ``company_id`` carries two namespaces from release 2026-10-30.7 on; a
+        # consumer that assumes every id is a CIK would be wrong without ever
+        # seeing a malformed value, so the release states what both prefixes mean.
+        "identity_namespaces": identity_namespaces or {"c_": {"kind": "sec_operating_company", "key": "cik", "source": "EDGAR"}},
         "coverage_histogram": coverage_histogram([f["coverage_pct"] for f in funds]),
         "mapping_rungs": rung_counts,
         "asset_cat_counts": asset_cat_counts,

@@ -162,7 +162,7 @@ def parse(xml: bytes) -> NportFiling:
             identifiers = _find(row, "identifiers")
             holdings.append(
                 Holding(
-                    name=(_text(row, "name") or "unknown"),
+                    name=_holding_name(row),
                     title=_text(row, "title"),
                     cusip=_none_if_placeholder(_text(row, "cusip")),
                     isin=_none_if_placeholder(_attr_value(identifiers, "isin")),
@@ -206,9 +206,32 @@ def parse(xml: bytes) -> NportFiling:
 
 _PLACEHOLDERS = {"", "N/A", "NA", "NONE", "000000000", "0000000000"}
 
+#: A holding name that is a form artefact rather than a name. Measured 2026-10-30: one
+#: filer writes ``<name>Default</name>`` and puts the real security in ``<title>``
+#: (252 rows across its filings, naming 13 company pages "Default"). "Default" is a
+#: wrong name, and a wrong name on a fund page is worse than a blank, so the title is
+#: used instead when the name is one of these.
+_NAME_PLACEHOLDERS = _PLACEHOLDERS | {"DEFAULT", "UNKNOWN", "NOT APPLICABLE", "-", "--"}
+
 
 def _none_if_placeholder(value: str | None) -> str | None:
     if value is None:
         return None
     cleaned = value.strip().upper()
     return None if cleaned in _PLACEHOLDERS else value.strip()
+
+
+def _holding_name(row: ET.Element) -> str:
+    """The holding's name, from ``<name>`` and then ``<title>``.
+
+    ``title`` is the security description the form requires separately, and it is the
+    only usable label when a filer leaves ``name`` as a placeholder. When both are
+    absent the row keeps the historical ``"unknown"`` marker, which the artifact test
+    for a blank name looks for.
+    """
+    name = _none_if_placeholder(_text(row, "name"))
+    if name is None or name.strip().upper() in _NAME_PLACEHOLDERS:
+        name = _none_if_placeholder(_text(row, "title"))
+    if name is not None and name.strip().upper() in _NAME_PLACEHOLDERS:
+        name = None
+    return name or "unknown"
