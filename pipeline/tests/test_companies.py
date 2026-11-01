@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
-from pipeline.companies import CompanyIndex, company_id, name_tokens, names_agree, normalize_name
+from pipeline.companies import (
+    MATCH_DISTINCTIVE,
+    MATCH_EXACT,
+    MATCH_WEAK,
+    CompanyIndex,
+    company_id,
+    name_corroboration,
+    name_tokens,
+    names_agree,
+    normalize_name,
+)
 
 
 def test_normalize_ignores_case_punctuation_and_legal_suffix():
@@ -111,3 +121,76 @@ def test_names_agree_is_loose_about_form_and_strict_about_identity():
     assert not names_agree("ALLIANZ SE", "AUTOLIV INC")
     assert not names_agree("VINCI SA", "DOLLAR GENERAL CORP")
     assert not names_agree("LVMH MOET HENNESSY LOUIS VUITTON SE", "Moelis & Co")
+
+
+def test_a_three_character_stem_is_not_an_identity():
+    """The live release 2026-10-31.3 mapped an Italian issuer to DANA INC on ``dan``.
+
+    ``DANIELI & C OFFICINE MECCANICHE SPA`` and ``DANA INC`` share three letters and
+    nothing else; the old rule ended on ``reported_key[:3] == title_key[:3]`` and
+    accepted it. The filed name is not corroboration for the US auto-parts company,
+    and the row has a LEI that says who it really is.
+    """
+    assert not names_agree("Danieli & C Officine Meccaniche SpA", "DANA INC")
+    assert not names_agree("DANIELI & C OFFICINE MECCANICHE SPA", "DANA INC")
+    assert name_corroboration("Danieli & C Officine Meccaniche SpA", "DANA INC") is None
+
+
+def test_the_refused_ticker_falls_through_to_the_identifiers():
+    """Refusing the name is what lets the row reach its LEI — and the US symbol still maps."""
+    document = {"0": {"cik_str": 26780, "ticker": "DAN", "title": "DANA INC"}}
+    index = CompanyIndex.from_document(document)
+    assert index.resolve("DAN", "Danieli & C Officine Meccaniche SpA") == (None, "unmapped")
+    assert index.resolve("DAN", "Dana Inc") == (company_id(26780), "ticker")
+
+
+def test_an_initialism_is_one_word_rather_than_a_shared_stem():
+    """``F.N.B.`` is ``FNB``: that shared word keeps the pair agreeing, not ``fnb``/``fn``."""
+    assert name_tokens("F.N.B. CORP (PENNSYLVANIA)") == ["fnb", "pennsylvania"]
+    assert names_agree("F.N.B. CORP (PENNSYLVANIA)", "FNB CORP/PA/")
+    assert (
+        name_corroboration("F.N.B. CORP (PENNSYLVANIA)", "FNB CORP/PA/")
+        == MATCH_DISTINCTIVE
+    )
+
+
+def test_a_generic_corporate_word_is_not_corroboration():
+    """Two different companies that agree only on ``FIRST`` (or ``UNITED``) are not one.
+
+    These words open thousands of unrelated names, so a match that shares nothing
+    else is a coincidence. The rule removes only the generic word from the evidence:
+    a distinctive word, an identical name, or a full prefix still agrees.
+    """
+    assert not names_agree("FIRST BANCORP INC", "FIRST CAPITAL CORP")
+    assert not names_agree("UNITED RENTALS INC", "UNITED AIRLINES HOLDINGS INC")
+    assert not names_agree("AMERICAN WATER WORKS CO", "AMERICAN ELECTRIC POWER CO")
+    assert name_corroboration("FIRST BANCORP INC", "FIRST CAPITAL CORP") is None
+    assert names_agree("FIRST HORIZON NATIONAL CORP", "FIRST HORIZON CORP")
+    assert names_agree("UNITED AIRLINES HOLDINGS INC", "United Airlines")
+
+
+def test_edgar_jurisdiction_markers_do_not_hide_a_match():
+    """``FIRST BANCORP /PR/`` is ``First BanCorp``: ``/PR/`` is not part of the name.
+
+    The pair shares only generic words, so without the marker-stripped comparison it
+    is refused and 41 bp of AVUV goes unmapped for a punctuation reason.
+    """
+    assert names_agree("First BanCorp/Puerto Rico", "FIRST BANCORP /PR/")
+    assert names_agree("First BanCorp", "FIRST BANCORP /PR/")
+    # The marker does not rescue a different company: stripping it leaves a name that
+    # still has to corroborate.
+    assert not names_agree("First Bancorp of Indiana", "FIRST CAPITAL CORP")
+
+
+def test_corroboration_is_graded_because_a_weak_yes_cannot_hold_a_row():
+    """``build_vector`` needs the degree: only a weak match yields to an identifier."""
+    assert name_corroboration("Apple Inc.", "APPLE INC") == MATCH_EXACT
+    assert name_corroboration("Exxon Mobil Corp", "ExxonMobil Holdings Corp") == MATCH_EXACT
+    assert (
+        name_corroboration("Lowe's Cos Inc", "LOWES COMPANIES INC") == MATCH_DISTINCTIVE
+    )
+    assert name_corroboration("DAN", "DANA INC") == MATCH_WEAK
+    assert (
+        name_corroboration("IBM", "INTERNATIONAL BUSINESS MACHINES CORP") == MATCH_WEAK
+    )
+    assert name_corroboration("", "APPLE INC") == MATCH_WEAK

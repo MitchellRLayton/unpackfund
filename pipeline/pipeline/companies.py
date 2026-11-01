@@ -110,6 +110,9 @@ _RUNG_LEI = "lei_corroborated"
 _RUNG_LEI_ISSUER = gleif.RUNG_LEI
 _RUNG_ISIN_LEI_ISSUER = gleif.RUNG_ISIN_LEI
 _RUNG_NONE = "unmapped"
+#: The rung a row is counted under when it resolves to nothing. Public because a
+#: caller's own refusal rule (``weights.build_vector``) has to name it as well.
+RUNG_UNMAPPED = _RUNG_NONE
 #: Every rung a row can be counted under, in the order the ladder is walked. The
 #: manifest publishes counts per name, so adding a rung here is how it becomes
 #: visible instead of silently landing in ``unmapped``.
@@ -180,9 +183,188 @@ _NAME_NOISE = frozenset(
 )
 
 
+#: Words that are not identity *by themselves*: "bank" is not the word BANK, and
+#: "American", "United", "First" and "Capital" open thousands of unrelated names. A
+#: name match that shares only one of these is a coincidence, not corroboration.
+#:
+#: Kept apart from ``_NAME_NOISE`` on purpose. Noise is legal form (``Inc``, ``S.A.``)
+#: and is *deleted*; this set is meaningful vocabulary that cannot distinguish two
+#: companies and is only *disqualified* as a shared token. An exact or prefix match
+#: still stands, so ``UNITED AIRLINES HOLDINGS INC`` / ``United Airlines`` resolves on
+#: the words they do not share.
+#:
+#: (``mapping_report._STOPWORDS`` is the diagnostic's own list for its near-miss
+#: measurement. The two answer different questions and drift apart on purpose; this
+#: one decides identity, so it is the stricter of the two.)
+_GENERIC_NAME_WORDS = frozenset(
+    {
+        "united",
+        "general",
+        "american",
+        "national",
+        "first",
+        "global",
+        "international",
+        "worldwide",
+        "capital",
+        "financial",
+        "industries",
+        "industrial",
+        "systems",
+        "technologies",
+        "technology",
+        "resources",
+        "energy",
+        "group",
+        "holdings",
+        "holding",
+        "partners",
+        "associates",
+        "services",
+        "solutions",
+        "products",
+        "ventures",
+        "investment",
+        "investments",
+        "management",
+        "bancorp",
+        "bankshares",
+        "bank",
+        "banking",
+        "insurance",
+        "companies",
+        "company",
+        "trust",
+        "fund",
+        "index",
+        "growth",
+        "value",
+        "income",
+        "dividend",
+        "large",
+        "small",
+        "mid",
+        "cap",
+        "emerging",
+        "developed",
+        "asia",
+        "europe",
+        "pacific",
+        "japan",
+        "china",
+        "india",
+    }
+)
+
+#: The shortest concatenated key that may corroborate a ticker through the prefix
+#: rule. Below this a "prefix" is a letter stem rather than a name: ``dan`` is a
+#: prefix of both ``danieli…`` and ``dana``, which is exactly the Danieli→DANA
+#: defect — a three-character stem was the old rule's last resort and it is gone.
+_MIN_PREFIX_CHARS = 4
+
+#: How much a name match is worth, weakest to strongest. ``names_agree`` reads this
+#: as a yes/no; ``weights.build_vector`` reads the degree, because a weak yes cannot
+#: hold a row against an LEI that names a different entity.
+MATCH_WEAK = "weak"
+MATCH_DISTINCTIVE = "distinctive"
+MATCH_EXACT = "exact"
+_STRENGTH = {None: 0, MATCH_WEAK: 1, MATCH_DISTINCTIVE: 2, MATCH_EXACT: 3}
+
+
 def name_tokens(name: str) -> list[str]:
-    """The identity-bearing words of a company name, lowercased."""
-    return [token for token in normalize_name(name).split() if token not in _NAME_NOISE]
+    """The identity-bearing words of a company name, lowercased.
+
+    A run of one-letter words is joined into one token, because that is what it is:
+    ``F.N.B. CORP`` is ``FNB``. The joining is what lets the shared-word rule accept
+    ``F.N.B. CORP (PENNSYLVANIA)`` / ``FNB CORP/PA/`` — ``fnb`` is the same word in
+    both — without the three-character stem the old rule used to accept them (and
+    accept ``DANIELI`` as ``DANA``). Concatenating the tokens is unaffected, since
+    joining only moves the boundaries, so the prefix and initials rules see exactly
+    the concatenation they saw before.
+    """
+    tokens: list[str] = []
+    initials: list[str] = []
+    for token in normalize_name(name).split():
+        if token in _NAME_NOISE:
+            continue
+        if len(token) == 1:
+            initials.append(token)
+            continue
+        if initials:
+            tokens.append("".join(initials))
+            initials = []
+        tokens.append(token)
+    if initials:
+        tokens.append("".join(initials))
+    return tokens
+
+
+def name_corroboration(reported: str, title: str) -> str | None:
+    """How strongly ``reported`` corroborates ``title``, or ``None`` for "no".
+
+    Loose about *form* and strict about *identity*:
+
+    - ``MATCH_EXACT`` — the identity words are the same;
+    - ``MATCH_DISTINCTIVE`` — a shared word that is not one every second company
+      uses (``AAR``, ``Lowes``, and ``FNB`` once ``F.N.B.`` is read as the initialism
+      it is), or one name being a prefix of the other with at least
+      ``_MIN_PREFIX_CHARS`` characters of agreement (``Exxon Mobil`` /
+      ``ExxonMobil Holdings``);
+    - ``MATCH_WEAK`` — initials (``IBM`` / ``International Business Machines``), a
+      short prefix of fewer than ``_MIN_PREFIX_CHARS`` characters (``DAN`` /
+      ``DANA``), or a name that is silent on one side. A shared *generic* word only
+      (``FIRST BANCORP`` / ``FIRST CAPITAL``) is not weak, it is no corroboration at
+      all and ``None`` is returned.
+
+    The three-character stem the old rule ended on is not in this list: it accepted
+    ``DANIELI & C OFFICINE MECCANICHE SPA`` as ``DANA INC`` in the live release.
+    A weak match is still a match for the ladder — but ``weights.build_vector`` lets
+    the row's own LEI/ISIN overrule it, so the degree has to be visible.
+
+    EDGAR writes the jurisdiction or listing line into its titles
+    (``FIRST BANCORP /PR/``, ``SUMITOMO ELECTRIC INDUSTRIES LTD/ADR/``). It is not
+    part of the legal name, so a title carrying one is compared a second time with
+    the marker removed — the stripped variant the name rung already looks up — and
+    the stronger of the two answers stands. It can only help: without it,
+    ``First BanCorp/Puerto Rico`` stops corroborating ``FIRST BANCORP /PR/`` and
+    41 bp of AVUV goes unmapped for a punctuation reason.
+    """
+    strength = _name_match(reported, title)
+    stripped = strip_edgar_markers(title)
+    if stripped != title:
+        stripped_strength = _name_match(reported, stripped)
+        if _STRENGTH[stripped_strength] > _STRENGTH[strength]:
+            strength = stripped_strength
+    return strength
+
+
+def _name_match(reported: str, title: str) -> str | None:
+    """One comparison of two names: ``name_corroboration`` with a single title."""
+    reported_tokens = name_tokens(reported)
+    title_tokens = name_tokens(title)
+    if not reported_tokens or not title_tokens:
+        # Nothing to contradict the ticker: the name is silent, which is the weakest
+        # corroboration there is — an identifier may speak instead.
+        return MATCH_WEAK
+    if reported_tokens == title_tokens:
+        return MATCH_EXACT
+    if (set(reported_tokens) & set(title_tokens)) - _GENERIC_NAME_WORDS:
+        return MATCH_DISTINCTIVE
+
+    reported_key = "".join(reported_tokens)
+    title_key = "".join(title_tokens)
+    if reported_key == title_key:
+        # Same identity words in a different split: Exxon Mobil / ExxonMobil.
+        return MATCH_EXACT
+    if reported_key.startswith(title_key) or title_key.startswith(reported_key):
+        shorter = min(len(reported_key), len(title_key))
+        return MATCH_DISTINCTIVE if shorter >= _MIN_PREFIX_CHARS else MATCH_WEAK
+    initials = "".join(token[0] for token in title_tokens)
+    if len(initials) >= 2 and (
+        reported_key.startswith(initials) or initials.startswith(reported_key)
+    ):
+        return MATCH_WEAK
+    return None
 
 
 def names_agree(reported: str, title: str) -> bool:
@@ -195,40 +377,18 @@ def names_agree(reported: str, title: str) -> bool:
     Autoliv, ``VINCI SA`` to Dollar General, ``LVMH`` to Moelis. Each is a plausible
     row in a ledger and a wrong answer about what the visitor owns.
 
-    So a ticker match now has to be corroborated by the name. The test is
-    deliberately loose about *form* and strict about *identity*:
+    So a ticker match now has to be corroborated by the name, and the degrees are
+    ``name_corroboration``'s: a shared identity-bearing word, a full prefix, exact
+    identity words, or initials. Two cases are refused that used to pass — a name
+    that agrees only on a generic corporate word, and a bare three-character stem —
+    because the first is not evidence and the second mapped the Italian issuer
+    ``DANIELI & C OFFICINE MECCANICHE SPA`` to ``DANA INC``.
 
-    - a shared word is enough (``AAR CORP.`` / ``AAR Corp``);
-    - so is one name being a prefix of the other once concatenated
-      (``Exxon Mobil`` / ``ExxonMobil Holdings Corp``);
-    - so are initials (``IBM`` / ``International Business Machines``, ``TSMC`` /
-      ``Taiwan Semiconductor Manufacturing``);
-    - so is a shared three-character stem (``F.N.B.`` / ``FNB Corp``).
-
-    It is not loose about a name that names a different company. A rejected ticker
-    match falls through to the name rung and, if that fails too, to ``unmapped`` —
-    which is disclosed and counted, where a misattribution is neither.
+    A rejected ticker match falls through to the name rung and then to the row's
+    LEI/ISIN; if neither resolves it, the row is ``unmapped`` — which is disclosed
+    and counted, where a misattribution is neither.
     """
-    reported_tokens = name_tokens(reported)
-    if not reported_tokens:
-        # Nothing to contradict the ticker; it is the only signal there is.
-        return True
-    title_tokens = name_tokens(title)
-    if not title_tokens:
-        return True
-    if set(reported_tokens) & set(title_tokens):
-        return True
-
-    reported_key = "".join(reported_tokens)
-    title_key = "".join(title_tokens)
-    if reported_key.startswith(title_key) or title_key.startswith(reported_key):
-        return True
-    initials = "".join(token[0] for token in title_tokens)
-    if len(initials) >= 2 and (
-        reported_key.startswith(initials) or initials.startswith(reported_key)
-    ):
-        return True
-    return reported_key[:3] == title_key[:3]
+    return name_corroboration(reported, title) is not None
 
 
 @dataclass
@@ -351,6 +511,26 @@ class CompanyIndex:
             if hit:
                 return hit, _RUNG_NAME
         return None, _RUNG_NONE
+
+    def corroboration(
+        self, company_id: str | None, rung: str, name: str | None
+    ) -> str | None:
+        """How strongly the filing's name supports an answer ``resolve`` returned.
+
+        ``resolve`` says *which* company and *which rung*; this says *how much the
+        name is worth*, which is the input ``weights.build_vector`` needs to decide
+        whether a row's own LEI/ISIN may overrule the answer. The name rung is exact
+        by construction (that is its lookup key); the ticker rung carries whatever
+        ``name_corroboration`` graded it; every other rung rests on an identifier
+        rather than on the name.
+        """
+        if company_id is None:
+            return None
+        if rung == _RUNG_NAME:
+            return MATCH_EXACT
+        if rung == _RUNG_TICKER:
+            return name_corroboration(name or "", self.title_by_id.get(company_id, ""))
+        return None
 
 
 def company_id(cik: str | int) -> str:

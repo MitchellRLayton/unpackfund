@@ -23,7 +23,13 @@ from dataclasses import dataclass, field
 
 from . import classify, gleif, identifiers
 from .classify import Classification
-from .companies import CompanyIndex, IdentityEvidence, IdentityTable
+from .companies import (
+    MATCH_WEAK,
+    RUNG_UNMAPPED,
+    CompanyIndex,
+    IdentityEvidence,
+    IdentityTable,
+)
 from .nport import Holding
 
 BP_PER_UNIT = 10_000
@@ -135,6 +141,54 @@ def _label(as_filed: str | None, issuer_legal_name: str | None) -> str:
     return (as_filed or "unknown").strip()
 
 
+def _stronger_identity(
+    holding: Holding,
+    index: CompanyIndex,
+    identity: IdentityTable | None,
+    issuers: "gleif.IssuerIndex | None",
+    category: str,
+) -> tuple[str | None, str, str | None, bool] | None:
+    """The entity a row's own identifiers name, when its name is too weak to hold it.
+
+    Returns ``(company_id, rung, issuer_label, is_issuer_row)``; ``(None,
+    "unmapped", None, False)`` when the identifiers contradict *each other*; ``None``
+    when they say nothing, in which case the weak name match keeps the row — there is
+    nothing better on offer, and dropping a real holding is not an improvement.
+
+    The LEI/ISIN namespace is asked first, because the filing's own identifier is
+    evidence about *this row* while ``IdentityTable`` is agreement observed across
+    other funds. A row carrying an LEI and an ISIN that GLEIF resolves to two
+    different issuers is refused rather than guessed — the same rule
+    ``IdentityTable.resolve`` applies to its own two keys.
+    """
+    if issuers is not None and category in ISSUER_CATEGORIES:
+        lei = holding.lei.strip().upper() if holding.lei else None
+        isin_lei = (
+            issuers.isin_to_lei.get(holding.isin.strip().upper())
+            if holding.isin
+            else None
+        )
+        if lei and isin_lei and lei != isin_lei:
+            return None, RUNG_UNMAPPED, None, False
+        resolution = issuers.resolve(holding.lei, holding.isin)
+        if resolution is not None:
+            rung = resolution.rung
+            company_id = resolution.company_id
+            # Same bridge as the ordinary issuer rung: an entity that is also an SEC
+            # registrant belongs in the ``c_`` namespace, or the ledger would list one
+            # company twice and understate overlap.
+            sec_id = index.resolve_gleif_name(resolution.name)
+            if sec_id is not None:
+                company_id = sec_id
+                issuers.note_bridge(rung)
+            return company_id, rung, resolution.name, True
+    if identity is not None:
+        table_id, table_rung = identity.resolve(holding.isin, holding.lei)
+        if table_id is not None:
+            return table_id, table_rung, None, False
+    return None
+
+
 def build_vector(
     holdings: list[Holding],
     index: CompanyIndex,
@@ -162,16 +216,38 @@ def build_vector(
         )
         asset_cats[classification.category] += 1
         company_id, rung = index.resolve(holding.ticker, holding.name)
-        # Observed *before* the identity table is consulted, so the table can only
-        # ever learn from rows the ladder resolved on their own evidence.
-        if evidence is not None:
-            evidence.observe(holding.isin, holding.lei, company_id)
-        if company_id is None and identity is not None:
-            company_id, rung = identity.resolve(holding.isin, holding.lei)
+        # How much the filing's name is worth. The ticker rung is the one rung that can
+        # be confidently wrong, and a *weak* corroboration — initials, a short stem, a
+        # shared generic word, no name at all — cannot hold the row against the
+        # identifiers it carries (see the Danieli→DANA case in ``companies.names_agree``).
+        weak = index.corroboration(company_id, rung, holding.name) == MATCH_WEAK
+        ladder_answer = (company_id, rung)
         issuer_label: str | None = None
         issuer_row = False
-        if company_id is None and issuers is not None:
-            if classification.category in ISSUER_CATEGORIES:
+        if weak:
+            # The row's own identifiers decide; when they say nothing the ladder's
+            # weak answer stands, because nothing better is on offer.
+            stronger = _stronger_identity(
+                holding, index, identity, issuers, classification.category
+            )
+            if stronger is not None:
+                strong_id, strong_rung, strong_label, strong_is_issuer = stronger
+                # An identifier that agrees with the ladder changes nothing: the rung
+                # and the name the ladder produced stay exactly as they were.
+                if strong_id != company_id:
+                    company_id, rung = strong_id, strong_rung
+                    issuer_label, issuer_row = strong_label, strong_is_issuer
+                    weak = False
+        else:
+            # The ladder found nothing: the corroborated identity table first, then
+            # the GLEIF issuer namespace.
+            if company_id is None and identity is not None:
+                company_id, rung = identity.resolve(holding.isin, holding.lei)
+            if (
+                company_id is None
+                and issuers is not None
+                and classification.category in ISSUER_CATEGORIES
+            ):
                 resolution = issuers.resolve(holding.lei, holding.isin)
                 if resolution is not None:
                     company_id, rung = resolution.company_id, resolution.rung
@@ -192,6 +268,16 @@ def build_vector(
                         company_id = sec_id
                         issuers.note_bridge(rung)
         rungs[rung] += 1
+        # Observed only for the ladder's own, well-corroborated answer: the table may
+        # never learn from its own inferences, and a weak match repeated across two
+        # funds must not become "corroborated" agreement that then spreads.
+        if (
+            evidence is not None
+            and company_id is not None
+            and not weak
+            and (company_id, rung) == ladder_answer
+        ):
+            evidence.observe(holding.isin, holding.lei, company_id)
 
         # Unmapped rows merge on identity of their own, so a fund with 500 distinct
         # unknown issuers does not collapse into one line called "unmapped".
