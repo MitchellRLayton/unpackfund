@@ -27,6 +27,8 @@ from .gleif import is_issuer_id, is_sec_company_id, LEI_RE
 
 from . import paths
 from .artifact import LARGE_FUND_BYTES, MAX_FUND_BYTES, SCHEMA_VERSION
+from .fund_lookthrough import MAX_DEPTH, RUNG_LEI, RUNG_SYMBOL
+from .fund_lookthrough import MIN_UNRESOLVED_WARNING_BP
 
 REPO_ROOT = paths.REPO_ROOT
 
@@ -61,6 +63,7 @@ WARNING_ENUM = {
     "duplicate_company",
     "negative_weight",
     "fund_of_funds",
+    "fund_of_funds_unresolved",
 }
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RELEASE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(\.\d+)?$")
@@ -73,6 +76,12 @@ CUSIP_RE = LICENSED_ID_RE
 
 MIN_TOTAL_BP = 9_000
 MAX_TOTAL_BP = 10_500
+#: A composed vector is a weighted sum of the sleeves' vectors, so it inherits their
+#: over-sum: each sleeve is itself allowed up to ``MAX_TOTAL_BP``, and a chain of
+#: ``MAX_DEPTH`` hops multiplies that factor that many times. 10,500 × 1.05² ≈ 11,576,
+#: which is why the bound is derived rather than chosen — and why it still catches the
+#: failure this gate exists for, a weight accidentally multiplied by 10,000.
+MAX_COMPOSED_TOTAL_BP = round(MAX_TOTAL_BP * (MAX_TOTAL_BP / 10_000) ** (MAX_DEPTH - 1))
 CONTRACT_WINDOW = (9_900, 10_000)
 
 HHI_TOLERANCE = 1e-6
@@ -182,6 +191,18 @@ def _check_manifest(manifest: dict, funds: list[dict], report: Report, release_d
         report.fail("manifest.unique_tickers", "duplicate ticker in release")
 
 
+def _total_ceiling(document: dict) -> int:
+    """The band a fund's published weights must sum into.
+
+    A composed vector is a weighted sum of its sleeves' vectors, so it inherits their
+    over-sum: 10,587 bp is SSAJX, whose eleven sleeves average 10,380 bp and are then
+    weighted by a parent that is itself 10,200 bp. The ceiling is derived from that
+    (``MAX_COMPOSED_TOTAL_BP``), not chosen, and it still catches the failure this gate
+    exists for — a weight accidentally multiplied by 10,000.
+    """
+    return MAX_COMPOSED_TOTAL_BP if document.get("lookthrough") else MAX_TOTAL_BP
+
+
 def _check_fund(document: dict, report: Report) -> None:
     ticker = document.get("ticker", "?")
     missing = [field for field in REQUIRED_FIELDS if field not in document]
@@ -239,8 +260,9 @@ def _check_fund(document: dict, report: Report) -> None:
     # as-filed vectors legitimately exceed it when derivatives sit outside NAV, so
     # the hard gate is the wider band and the contract window is a WARN.
     total_bp = sum(row["weight_bp"] for row in holdings)
-    if not MIN_TOTAL_BP <= total_bp <= MAX_TOTAL_BP:
-        report.fail(f"{ticker}.weight_sum", f"{total_bp} bp outside [{MIN_TOTAL_BP}, {MAX_TOTAL_BP}]")
+    ceiling = _total_ceiling(document)
+    if not MIN_TOTAL_BP <= total_bp <= ceiling:
+        report.fail(f"{ticker}.weight_sum", f"{total_bp} bp outside [{MIN_TOTAL_BP}, {ceiling}]")
     elif not CONTRACT_WINDOW[0] <= total_bp <= CONTRACT_WINDOW[1]:
         report.warn(
             f"{ticker}.weight_sum",
@@ -280,6 +302,147 @@ def _check_fund(document: dict, report: Report) -> None:
         report.fail(f"{ticker}.metrics.effective_n", f"{metrics['effective_n']!r} != {1 / hhi!r}")
     if abs(metrics["top10_pct"] - sum(weights[:10]) * 100) > PERCENT_TOLERANCE:
         report.fail(f"{ticker}.metrics.top10_pct", str(metrics["top10_pct"]))
+
+    _check_fund_of_funds(document, report)
+
+
+
+def _check_fund_of_funds(document: dict, report: Report) -> None:
+    """A flattened fund's own bookkeeping: the two fields that explain the vector.
+
+    The gate exists because a flattened wrapper is the one place where ``holdings`` is
+    not what the filer wrote. If the provenance is wrong, nothing downstream can tell
+    a composed weight from a filed one — so the numbers that describe the composition
+    are recomputed here from the vector itself, the same way the metrics are.
+    """
+    ticker = document.get("ticker", "?")
+    lookthrough = document.get("lookthrough")
+    components = document.get("components")
+    warnings = set(document.get("warnings") or [])
+
+    if lookthrough is None and components is None:
+        return
+    if components is None:
+        report.fail(f"{ticker}.components", "lookthrough without components")
+        return
+
+    # --- components: the sleeve view
+    seen: set[str] = set()
+    order = [(-row["weight_bp"], row["name"].upper()) for row in components]
+    if order != sorted(order):
+        report.fail(f"{ticker}.components.order", "not sorted by (-weight_bp, name)")
+    total_components = 0
+    for row in components:
+        for field in ("ticker", "name", "weight_bp", "coverage_pct", "resolved_by"):
+            if field not in row:
+                report.fail(f"{ticker}.components.fields", f"missing {field}")
+                return
+        # A negative sleeve is a short position in a fund (BRMSX is long 1,398 bp of
+        # ETFs and short 688 bp of SPY); it is published, not filtered, because the
+        # sleeve view has to explain the vector it came from.
+        if not isinstance(row["weight_bp"], int) or row["weight_bp"] == 0:
+            report.fail(f"{ticker}.components.weight_bp", f"{row['weight_bp']!r}")
+            return
+        if row["resolved_by"] not in (RUNG_LEI, RUNG_SYMBOL, None):
+            report.fail(f"{ticker}.components.resolved_by", str(row["resolved_by"]))
+        total_components += row["weight_bp"]
+        if row["ticker"]:
+            if row["ticker"] in seen:
+                report.fail(f"{ticker}.components.duplicate", str(row["ticker"]))
+            seen.add(row["ticker"])
+            if not TICKER_RE.match(str(row["ticker"])):
+                report.fail(f"{ticker}.components.ticker", str(row["ticker"]))
+        elif row["resolved_by"]:
+            report.fail(f"{ticker}.components.resolved_by", "resolved but no ticker")
+
+    # --- lookthrough: how the vector was produced
+    if lookthrough is not None:
+        for field in (
+            "depth",
+            "fund_bp",
+            "resolved_fund_bp",
+            "unresolved_fund_bp",
+            "as_of_skew_days",
+            "holdings_bp",
+            "refused",
+        ):
+            if field not in lookthrough:
+                report.fail(f"{ticker}.lookthrough.fields", f"missing {field}")
+                return
+        if not 1 <= lookthrough["depth"] <= MAX_DEPTH:
+            report.fail(f"{ticker}.lookthrough.depth", str(lookthrough["depth"]))
+        if not 0 <= lookthrough["resolved_fund_bp"] <= lookthrough["fund_bp"]:
+            report.fail(
+                f"{ticker}.lookthrough.resolved_fund_bp",
+                f"{lookthrough['resolved_fund_bp']} > fund_bp {lookthrough['fund_bp']}",
+            )
+        if lookthrough["unresolved_fund_bp"] < 0:
+            report.fail(f"{ticker}.lookthrough.unresolved_fund_bp", "negative")
+        # The vector is the authority: ``holdings_bp`` must be its own sum, or the
+        # provenance describes a different vector than the one published.
+        published = sum(row["weight_bp"] for row in document["holdings"])
+        if published != lookthrough["holdings_bp"]:
+            report.fail(
+                f"{ticker}.lookthrough.holdings_bp",
+                f"{lookthrough['holdings_bp']} != Σ holdings {published}",
+            )
+        # And the sleeves the provenance claims to have expanded are the sleeves the
+        # flatten was given: a component sum that disagrees with fund_bp means one of
+        # the two was filtered differently.
+        if total_components != lookthrough["fund_bp"]:
+            report.fail(
+                f"{ticker}.lookthrough.fund_bp",
+                f"components sum {total_components} != fund_bp {lookthrough['fund_bp']}",
+            )
+        # Coverage is recomputed from the flattened vector, not trusted.
+        gross = sum(abs(row["weight_bp"]) for row in document["holdings"])
+        mapped = sum(
+            abs(row["weight_bp"]) for row in document["holdings"] if row["company_id"]
+        )
+        expected = round(100 * mapped / gross, 1) if gross else 0.0
+        if abs(document["coverage_pct"] - expected) > 0.05:
+            report.fail(
+                f"{ticker}.lookthrough.coverage",
+                f"{document['coverage_pct']} != {expected} recomputed from the vector",
+            )
+        if "fund_of_funds" not in warnings:
+            report.fail(f"{ticker}.warnings", "flattened but not labelled fund_of_funds")
+        residual = lookthrough["unresolved_fund_bp"]
+        labelled = "fund_of_funds_unresolved" in warnings
+        if residual >= MIN_UNRESOLVED_WARNING_BP and not labelled:
+            report.fail(
+                f"{ticker}.warnings",
+                f"{residual} bp unresolved but fund_of_funds_unresolved is missing",
+            )
+        if labelled and residual < MIN_UNRESOLVED_WARNING_BP:
+            report.fail(
+                f"{ticker}.warnings",
+                f"fund_of_funds_unresolved with only {residual} bp unresolved",
+            )
+
+
+def _check_fund_of_funds_release(funds: list[dict], report: Report) -> None:
+    """Release-level: every sleeve a fund names must be a fund the release publishes."""
+    published = {str(fund.get("ticker")) for fund in funds}
+    flattened = 0
+    components = 0
+    for document in funds:
+        if "lookthrough" in document:
+            flattened += 1
+        for row in document.get("components") or []:
+            components += 1
+            if row.get("ticker") and row["ticker"] not in published:
+                report.fail(
+                    f"{document.get('ticker')}.components",
+                    f"sleeve {row['ticker']} is not a published fund",
+                )
+    if components and not flattened:
+        report.warn(
+            "fund_of_funds",
+            f"{components} sleeves named but no fund was flattened — the flatten is off",
+        )
+    if flattened:
+        report.ok("fund_of_funds", f"{flattened} funds flattened, {components} sleeves named")
 
 
 def _published_files(release_dir: Path, manifest: dict) -> list[Path]:
@@ -672,6 +835,7 @@ def validate(release_dir: Path) -> int:
     _check_manifest(manifest, funds, report, release_dir)
     for document in funds:
         _check_fund(document, report)
+    _check_fund_of_funds_release(funds, report)
     _check_catalogue(release_dir, manifest, funds, report)
     _check_cusip(release_dir, manifest, report)
     _check_lei(release_dir, manifest, report)

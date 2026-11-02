@@ -129,6 +129,13 @@ class NportFiling:
     total_liabilities: float | None
     net_assets: float | None
     holdings: list[Holding] = field(default_factory=list)
+    #: The series' own GLEIF legal-entity identifier, filed in ``genInfo/seriesLei``.
+    #: Present in 30,757 of 30,757 cached filings (measured 2026-11-01) and the only
+    #: identifier that is *equal*, not inferred, on both sides of a fund-of-funds
+    #: edge: a parent's holding row carries the sleeve's LEI in ``<lei>``. Trailing
+    #: and defaulted so every existing constructor keeps working — the field is
+    #: additive to a dataclass that tests build by hand.
+    series_lei: str | None = None
 
 
 def parse(xml: bytes) -> NportFiling:
@@ -194,6 +201,7 @@ def parse(xml: bytes) -> NportFiling:
         registrant_name=_none_if_placeholder(_text(gen, "regName")),
         series_name=_none_if_placeholder(_text(gen, "seriesName")),
         series_id=_none_if_placeholder(_text(gen, "seriesId")),
+        series_lei=_none_if_placeholder(_text(gen, "seriesLei")),
         class_ids=class_ids,
         report_date=report_date,
         fiscal_year_end=_text(gen, "repPdEnd"),

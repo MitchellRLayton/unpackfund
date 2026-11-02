@@ -51,9 +51,24 @@ def classify(asset_cat: str | None, issuer_cat: str | None, is_derivative: bool)
         category = DERIVATIVE
     else:
         category = _ASSET_CAT.get((asset_cat or "").strip().upper(), OTHER)
-        # A registered fund held as a position (issuerCat RF, assetCat equity) is a
-        # fund-of-funds relationship, and look-through is one level deep only.
-        if category == EQUITY and (issuer_cat or "").strip().upper() == "RF":
+        # A registered fund held as a position is a fund-of-funds edge (ADR-0013).
+        #
+        # **``issuerCat=RF`` is the whole test, not ``RF`` *and* ``assetCat=EC``.**
+        # Measured 2026-11-01 over 30,758 real filings: 15,173 of 92,208 registered-
+        # fund rows (16.5%) file **no ``assetCat`` at all** — iShares' entire Core
+        # Allocation range is in that stratum (AOA holds `iShares Core S&P 500 ETF`
+        # at 45.72%), so requiring ``EC`` classified a fund-of-funds as ``other``,
+        # which is neither a company nor a fund and produced no warning at all. A
+        # bond fund held as a position (``DBT`` + ``RF``) is equally a fund edge.
+        #
+        # Money-market and lending vehicles are the exception: ``STIV``/``CASH`` +
+        # ``RF`` is the fund's cash sweep, and a sweep is not a look-through target —
+        # it has no portfolio to look through, and calling it a fund edge would make
+        # every fund with a sweep look like a fund-of-funds.
+        if (
+            (issuer_cat or "").strip().upper() == "RF"
+            and category not in (CASH, DERIVATIVE)
+        ):
             category = FUND
     return Classification(
         category=category,

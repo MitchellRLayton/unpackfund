@@ -43,6 +43,7 @@ from . import (
     classify,
     companies,
     filings,
+    fund_lookthrough,
     manifest as manifest_mod,
     universe,
     weights,
@@ -62,6 +63,8 @@ NAV_RESIDUAL_LIMIT = 0.05
 #: number for "these are the same amount", used in one place.
 COLLATERAL_BAND = 0.05
 DEFAULT_WORKERS = 8
+#: One owner for the warning threshold: the module that defines what "unresolved" means.
+MIN_UNRESOLVED_BP = fund_lookthrough.MIN_UNRESOLVED_WARNING_BP
 #: One owner for the rung names: companies.py walks the ladder, so it names the
 #: rungs. The manifest publishes a count per name, and a rung missing here would
 #: make its rows look like a mapping failure.
@@ -109,6 +112,13 @@ class FundBuild:
     #: What this fund's ladder-resolved rows said about ISIN/LEI identity. Only the
     #: first pass fills it; the second pass reads the table it produced.
     evidence: IdentityEvidence | None = None
+    #: The vector the document was built from. Kept because a fund-of-funds is
+    #: flattened *after* every fund in the release exists, and the flatten needs each
+    #: sleeve's rows plus the fund edges' own identifiers, neither of which the
+    #: published document carries.
+    vector: weights.WeightVector | None = None
+    #: The fund's own ``genInfo/seriesLei`` — the key a parent's holding row uses.
+    series_lei: str | None = None
 
 
 @dataclass(frozen=True)
@@ -284,6 +294,8 @@ def build_fund(
         stats=stats,
         ref_symbols=ref.symbols,
         evidence=evidence,
+        vector=vector,
+        series_lei=filing.series_lei,
     )
 
 
@@ -473,6 +485,118 @@ def _identity_namespaces(
     return namespaces
 
 
+def _flatten_fund_of_funds(
+    builds: list["FundBuild"], aliases: dict[str, str]
+) -> dict:
+    """Replace every wrapper's filed vector with the companies it ultimately owns.
+
+    Runs after the walk, never inside it: a parent's sleeves must all exist before any
+    parent can be flattened, and the walk builds funds in an arbitrary order. No filing
+    is re-read — this is a join over vectors the run already holds (ADR-0013).
+
+    Two things are published per fund and they are different questions:
+
+    * ``components`` — the sleeves, with weight and each sleeve's own coverage. A small
+      fund-of-funds gets this even when its vector is not flattened: "what funds does
+      this hold" is answerable from the filing and costs a handful of rows.
+    * ``lookthrough`` + a flattened ``holdings`` — for a fund that is materially a
+      wrapper, the weighted sum itself, so the one ``holdings`` field every consumer
+      reads is already the answer and no second implementation of the weight exists.
+    """
+    inputs = {
+        build.ticker: fund_lookthrough.FundInput(
+            ticker=build.ticker,
+            as_of=build.document["as_of"],
+            holdings=tuple(build.vector.holdings) if build.vector else (),
+            series_lei=build.series_lei,
+            name=build.document["name"],
+        )
+        for build in builds
+    }
+    composer = fund_lookthrough.Composer(
+        inputs, fund_lookthrough.EdgeIndex.build(inputs, aliases)
+    )
+    stats: dict = {
+        "fund_of_funds": 0,
+        "flattened": 0,
+        "components_only": 0,
+        "skipped_immaterial": 0,
+        "skipped_too_large": 0,
+        "edges": 0,
+        "edges_resolved": 0,
+        "edges_by_series_lei": 0,
+        "edges_by_symbol": 0,
+        "refusals": {},
+        "flattened_bytes": 0,
+        "filed_bytes": 0,
+    }
+    for build in builds:
+        composed = composer.compose(build.ticker)
+        if not composed.fund_bp:
+            continue
+        stats["fund_of_funds"] += 1
+        for _edge, target, rung in composer.edges(build.ticker):
+            stats["edges"] += 1
+            if target is None:
+                continue
+            stats["edges_resolved"] += 1
+            if rung == fund_lookthrough.RUNG_LEI:
+                stats["edges_by_series_lei"] += 1
+            elif rung == fund_lookthrough.RUNG_SYMBOL:
+                stats["edges_by_symbol"] += 1
+        stats["filed_bytes"] += len(build.payload)
+
+        warnings = set(build.document["warnings"])
+        if composed.unresolved_fund_bp >= MIN_UNRESOLVED_BP:
+            warnings.add("fund_of_funds_unresolved")
+
+        skip = composer.skip_reason(composed)
+        if skip is None:
+            stats["flattened"] += 1
+            document = artifact.attach_fund_of_funds(
+                build.document,
+                holdings=composed.holdings,
+                coverage_pct=composed.coverage_pct,
+                metrics=composed.metrics,
+                components=composed.components,
+                lookthrough=composed.as_lookthrough(),
+                warnings=sorted(warnings),
+            )
+        else:
+            stats["components_only"] += 1
+            stats["skipped_" + skip] = stats.get("skipped_" + skip, 0) + 1
+            document = artifact.attach_fund_of_funds(
+                build.document,
+                holdings=build.document["holdings"],
+                coverage_pct=build.document["coverage_pct"],
+                metrics=build.document["metrics"],
+                components=composed.components,
+                warnings=sorted(warnings),
+            )
+
+        payload = artifact.canonical_bytes(document)
+        if len(payload) > MAX_FUND_BYTES:
+            raise GateError(
+                f"{build.ticker}: flattened artifact is {len(payload):,} bytes, over the "
+                f"{MAX_FUND_BYTES:,}-byte budget"
+            )
+        build.document = document
+        build.payload = payload
+        # The catalogue and the manifest histogram read the document, but the build
+        # summary reads the stats — one number, updated where it lives.
+        build.stats["coverage_pct"] = document["coverage_pct"]
+        build.stats["flattened"] = "lookthrough" in document
+        stats["flattened_bytes"] += len(payload)
+
+    for name, count in composer.counts.items():
+        stats["refusals"][name] = int(count)
+    # Every edge that reached the cap or a cycle is a sleeve a reader cannot see
+    # through, and the release says how many there were instead of leaving it to be
+    # inferred from a coverage number that moved.
+    stats["flattened_bytes"] -= stats["filed_bytes"]
+    return stats
+
+
 def build_release(
     refs: list[universe.FundRef],
     *,
@@ -580,6 +704,21 @@ def build_release(
         )
 
     builds.sort(key=lambda build: build.ticker)
+    aliases = _alias_map(builds)
+    if builds:
+        started_flatten = time.monotonic()
+        lookthrough_stats = _flatten_fund_of_funds(builds, aliases)
+        _log(
+            f"fund-of-funds: {lookthrough_stats['fund_of_funds']:,} funds hold funds, "
+            f"{lookthrough_stats['flattened']:,} flattened "
+            f"({lookthrough_stats['components_only']:,} sleeves-only), "
+            f"{lookthrough_stats['edges_resolved']:,}/{lookthrough_stats['edges']:,} edges "
+            f"resolved ({lookthrough_stats['edges_by_series_lei']:,} by series LEI), "
+            f"refusals={lookthrough_stats['refusals'] or '{}'} in "
+            f"{time.monotonic() - started_flatten:.1f}s"
+        )
+    else:
+        lookthrough_stats = {}
     files: list[dict] = []
     rung_totals: dict[str, int] = {}
     cat_totals: dict[str, int] = {}
@@ -624,7 +763,7 @@ def build_release(
     # What a browser actually reads. The manifest above is the inventory (8,533
     # entries at day-4 scale, 0.42 MB gzipped, on nobody's critical path); these
     # are the catalogue, the per-letter hash shards, and the reverse X-Ray shards.
-    new_aliases = _alias_map(builds)
+    new_aliases = aliases
     browser_objects = catalogue.write_release_objects(
         release_dir,
         release=release,
@@ -657,6 +796,7 @@ def build_release(
         "rungs": document["mapping_rungs"],
         "identity_namespaces": document.get("identity_namespaces"),
         "coverage_histogram": document["coverage_histogram"],
+        "lookthrough": lookthrough_stats,
         "manifest_bytes": len(payload),
         "manifest_sha256": artifact.sha256_hex(payload),
         "release_object_bytes": browser_objects["release_bytes"],
