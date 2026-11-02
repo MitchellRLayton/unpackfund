@@ -222,7 +222,8 @@ export type WarningCode =
   | "stale_filing"
   | "duplicate_company"
   | "negative_weight"
-  | "fund_of_funds";
+  | "fund_of_funds"
+  | "fund_of_funds_unresolved";
 
 /** `releases/{as_of}/funds/{TICKER}.json`. */
 export interface FundDocument {
@@ -242,6 +243,50 @@ export interface FundDocument {
   holdings: Holding[];
   metrics: FundMetrics;
   warnings: WarningCode[];
+  /**
+   * The sleeve view of a fund-of-funds: the registered funds it holds, at their
+   * weights. Present on any fund that holds funds, whether or not its own vector
+   * could be flattened — a `ticker` of `null` means the position could not be
+   * matched to a fund we publish, so it stays named but unexplained.
+   */
+  components?: FundComponent[];
+  /**
+   * Present only when `holdings`, `coverage_pct` and `metrics` are the *composed*
+   * vector rather than the as-filed one. Presence is the marker: there is no
+   * separate flag, and a reader that ignores this field still reads one coherent
+   * portfolio, because the composed vector replaces `holdings` instead of sitting
+   * beside it.
+   */
+  lookthrough?: FundLookthrough;
+}
+
+/** One sleeve of a fund-of-funds, as filed and as resolved. */
+export interface FundComponent {
+  /** The fund we publish for this sleeve, or `null` when it could not be matched. */
+  ticker: string | null;
+  name: string;
+  weight_bp: number;
+  /** The sleeve's own coverage, so a composed weight carries its uncertainty. */
+  coverage_pct: number | null;
+  resolved_by: "series_lei" | "share_class_symbol" | null;
+}
+
+/** Provenance for a composed vector: every weight in `holdings` follows from it. */
+export interface FundLookthrough {
+  /** Hops to the terminal companies; 1 is a plain fund-of-funds. */
+  depth: number;
+  /** Weight in registered funds, in this fund's basis points. */
+  fund_bp: number;
+  /** Of that, the part that was expanded into the sleeves' own holdings. */
+  resolved_fund_bp: number;
+  /** The rest: an unresolved sleeve, a cycle, or a sleeve past the hop cap. */
+  unresolved_fund_bp: number;
+  /** Largest difference between a sleeve's period end and this fund's, in days. */
+  as_of_skew_days: number;
+  /** Sum of the published vector, so a reader can check it closes to NAV. */
+  holdings_bp: number;
+  /** Sleeves that could not be expanded, counted by cause. */
+  refused: Record<string, number>;
 }
 
 /**
