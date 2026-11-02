@@ -64,8 +64,45 @@ export interface ReleaseDescriptor {
      * the switch — that is what lets the bundle ship before the data does.
      */
     benchmarks?: { prefix: string; files: Record<string, ObjectDescriptor> };
+    /**
+     * The typed-symbol object (ADR-0014), optional for the same reason `aliases` is:
+     * a release built before it existed stays loadable, and the builder then
+     * refuses a stock ticker with "not in this release" rather than breaking.
+     */
+    securities?: {
+      prefix: string;
+      /** Shard letter → the object it names, so the fetched bytes are verified. */
+      shards: Record<string, ObjectDescriptor>;
+      count: number;
+      /** How many symbols carry each status, so a refusal rate is visible. */
+      statuses: Record<string, number>;
+    };
   };
 }
+
+/**
+ * `releases/{as_of}/securities/{L}.json` — a typed stock ticker's identity.
+ *
+ * Four fields per symbol, positional: `[company_id, name, exchange, status]`. The
+ * status is the acceptance verdict computed at build time; `"ok"` is the only one
+ * the app may add to a portfolio, and every other value carries the reason the
+ * refusal names (`pipeline/securities.py`).
+ */
+export interface SecuritiesShard {
+  as_of: string;
+  source_url: string;
+  securities: Record<string, SecuritiesRow>;
+}
+
+export type SecuritiesRow = [
+  companyId: string,
+  name: string,
+  exchange: string | null,
+  status: SecurityStatus,
+];
+
+/** `ok` is accepted; the rest are refusals with a reason the UI turns into words. */
+export type SecurityStatus = "ok" | "fund" | "pfd" | "wnt" | "unit" | "rgt" | "twin";
 
 /** `releases/{as_of}/tickers.json` — the builder's whole catalogue need. */
 export interface TickerList {
@@ -149,6 +186,25 @@ export interface CompanyShard {
 }
 
 export type AssetCategory = "equity" | "debt" | "cash" | "derivative" | "fund" | "other";
+
+/**
+ * A position the visitor holds directly, resolved to the company the funds already
+ * use and weighted as a fraction of the whole portfolio.
+ *
+ * It is not a `Holding`: a holding is a *filing's* row with its own basis points of
+ * that fund's NAV, and pretending a typed symbol were one is what the rejected
+ * "degenerate fund document" encoding did — it fabricates a filing date and a
+ * coverage percentage that no filing asserted (ADR-0014).
+ */
+export interface DirectHolding {
+  company_id: string;
+  /** The registered SEC title, as the confirmation step showed it. */
+  name: string;
+  /** The symbol the visitor typed, normalised (`BRK.B` → `BRK-B`). */
+  ticker: string;
+  /** Fraction of the whole portfolio. */
+  weight: number;
+}
 
 /** One N-PORT line, after mapping. `company_id` is `null` when unresolved. */
 export interface Holding {
@@ -241,15 +297,62 @@ export interface FundLookthrough {
   refused: Record<string, number>;
 }
 
-/** A portfolio entry: the user's allocation to one fund, in basis points. */
+/**
+ * What a portfolio entry is: a fund, a stock the visitor holds directly, or cash.
+ *
+ * The three are one type because they are one list — a portfolio is a set of
+ * allocations, and the ledger has to see all of them to answer "what do I own".
+ * They are not interchangeable downstream: a fund contributes its filing's
+ * holdings, a security contributes itself, and cash contributes nothing but is
+ * still part of the visitor's money (`lookthrough-math-and-qa` §3).
+ */
+export type EntryKind = "fund" | "security" | "cash";
+
+/**
+ * How the visitor typed their amounts.
+ *
+ * `bp` = percentages, stored as integer basis points, and the entries must total
+ * exactly 10,000 to be a portfolio at all — an unallocated remainder is refused,
+ * not guessed at. `usd` = dollars, stored as integer **cents**, and the total is
+ * whatever their amounts add up to: the weights are `cents / Σ cents`.
+ *
+ * The mode is part of the URL because a shared link must reproduce the numbers the
+ * visitor typed, not a re-normalised version of them.
+ */
+export type EntryMode = "bp" | "usd";
+
+/**
+ * One portfolio entry.
+ *
+ * `amount` is basis points in `bp` mode and cents in `usd` mode — never both, and
+ * never a fraction. The conversion to a fraction happens once, at the edge, in
+ * `portfolio-weights.ts`; everything downstream (the ledger, the metrics) works in
+ * fractions of the whole portfolio.
+ */
 export interface PortfolioEntry {
-  ticker: string;
-  weight_bp: number;
+  kind: EntryKind;
+  /** Fund ticker, security symbol, or `CASH`. */
+  key: string;
+  amount: number;
 }
 
 /** The complete portfolio state, which is what the URL fragment encodes. */
 export interface Portfolio {
+  mode: EntryMode;
   entries: PortfolioEntry[];
+}
+
+/** The key a cash entry uses; not a ticker, so it can never collide with one. */
+export const CASH_KEY = "CASH";
+
+/**
+ * A fund and a basis-point weight — the shape `/compare` has always used, and still
+ * does. The comparison surface is funds-only by design: overlap between two
+ * *stock* positions is either 100% (same company) or 0%, which needs no chart.
+ */
+export interface FundWeight {
+  ticker: string;
+  weight_bp: number;
 }
 
 /** `Σ weight_bp` for a portfolio whose weights are fully allocated. */
@@ -314,6 +417,19 @@ export interface BenchmarkRollup {
 export type BenchmarkFacts = Omit<BenchmarkComparison, "weights">;
 
 /**
+ * One contribution to a company line: a fund's look-through weight in it, or the
+ * visitor's own direct position.
+ *
+ * The distinction is not cosmetic. A fund's weight is the fund's *filing* times the
+ * visitor's allocation, aged by up to 150 days; a direct position is the visitor's
+ * own entry, current by definition. A single "sources" list that called both a fund
+ * ticker would make a stock masquerade as a fund (ADR-0014).
+ */
+export type LedgerSource =
+  | { kind: "fund"; ref: string; weight: number }
+  | { kind: "security"; ref: string; weight: number };
+
+/**
  * One company line in the ledger: the portfolio-level look-through weight.
  *
  * `weight` is a fraction of the portfolio, not of any fund, and not basis points
@@ -332,10 +448,13 @@ export interface LedgerRow {
    * compare with, and the ledger must not print a zero in its place.
    */
   benchmark_weight: number | null;
-  /** How many of the portfolio's funds hold it. */
-  fund_count: number;
-  /** Per-fund contribution, largest first, for the ledger's second line. */
-  sources: Array<{ ticker: string; weight: number }>;
+
+  /** How many funds hold it — funds only, so a direct position is never counted. */
+  holder_count: number;
+  /** True when the visitor holds this company directly, whatever the funds do. */
+  held_directly: boolean;
+  /** Per-source contribution, largest first, for the ledger's second line. */
+  sources: LedgerSource[];
 }
 
 /** Portfolio-level aggregates. A null metric is "not computable", never zero. */
@@ -345,12 +464,29 @@ export interface LedgerMetrics {
   effective_n: number | null;
   /** Fraction of portfolio weight in the ten largest companies. */
   top10: number | null;
-  /** Weight-weighted mean of each fund's `coverage_pct`. */
+  /**
+   * Share of the **invested** weight whose company is known, as a percentage.
+   *
+   * `100 · (1 − U/T)` where `T` is invested weight (funds + direct, cash excluded)
+   * and `U = Σ_k W_k · (1 − c_k)` over funds only. A direct position is fully
+   * covered by construction: the visitor named the company. Cash is outside both
+   * terms, so adding cash can never raise this number — that is the property that
+   * stops the denominator being gamed (`lookthrough-math-and-qa` §5).
+   */
   covered_weight_pct: number;
-  /** Portfolio weight that resolved to a company, as a fraction. */
+  /** Fraction of the portfolio that resolved to a company. */
   resolved_weight: number;
   /** Portfolio weight in funds whose coverage band suppresses metrics. */
   suppressed_weight: number;
+  /** Funds + direct holdings: the denominator of coverage. Cash is not in it. */
+  invested_weight: number;
+  /** Cash entries, as a fraction of the portfolio. */
+  cash_weight: number;
+  /**
+   * Percentage-mode only: the part of 100% that has no entry at all. Non-zero means
+   * the portfolio is incomplete, and the view refuses to render numbers for it.
+   */
+  unallocated_weight: number;
 }
 
 /**

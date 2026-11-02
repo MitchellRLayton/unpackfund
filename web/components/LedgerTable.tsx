@@ -17,15 +17,15 @@ import { useMemo, useState } from "react";
 import { formatCount, formatShare } from "@/lib/format";
 import type { BenchmarkFacts, LedgerRow } from "@/lib/types";
 
-type SortKey = "weight" | "benchmark" | "name" | "fund_count";
+type SortKey = "weight" | "benchmark" | "name" | "holder_count";
 type Direction = "ascending" | "descending";
 
 function compare(a: LedgerRow, b: LedgerRow, key: SortKey): number {
   switch (key) {
     case "name":
       return a.name.localeCompare(b.name, "en");
-    case "fund_count":
-      return a.fund_count - b.fund_count;
+    case "holder_count":
+      return a.holder_count - b.holder_count;
     case "benchmark":
       return (a.benchmark_weight ?? 0) - (b.benchmark_weight ?? 0);
     case "weight":
@@ -37,7 +37,7 @@ const DEFAULTS: Record<SortKey, Direction> = {
   weight: "descending",
   benchmark: "descending",
   name: "ascending",
-  fund_count: "descending",
+  holder_count: "descending",
 };
 
 /** What each sort is called in the caption, in words a reader already knows. */
@@ -45,7 +45,7 @@ const SORT_LABEL: Record<SortKey, string> = {
   name: "company name",
   weight: "portfolio weight",
   benchmark: "benchmark weight",
-  fund_count: "number of funds",
+  holder_count: "number of funds",
 };
 
 export function LedgerTable({
@@ -151,11 +151,11 @@ export function LedgerTable({
                 </button>
               </th>
             ) : null}
-            <th scope="col" className="numeric" aria-sort={ariaSort("fund_count")}>
+            <th scope="col" className="numeric" aria-sort={ariaSort("holder_count")}>
               <button
                 type="button"
                 className="sort-button"
-                onClick={() => toggle("fund_count")}
+                onClick={() => toggle("holder_count")}
               >
                 Funds
               </button>
@@ -186,8 +186,15 @@ export function LedgerTable({
                   {row.ticker ? `${row.ticker} · ` : ""}
                   <span className="fund-attrib">
                     {row.sources.map((source) => (
-                      <span className="fund-attrib__item" key={source.ticker}>
-                        <span className="fund-attrib__ticker">{source.ticker}</span>{" "}
+                      <span
+                        className="fund-attrib__item"
+                        key={`${source.kind}-${source.ref}`}
+                      >
+                        <span className="fund-attrib__ticker">
+                          {source.kind === "security"
+                            ? `You · ${source.ref}`
+                            : source.ref}
+                        </span>{" "}
                         <span className="fund-attrib__weight">
                           {formatShare(source.weight)}
                         </span>
@@ -207,7 +214,15 @@ export function LedgerTable({
                     : formatShare(row.benchmark_weight)}
                 </td>
               ) : null}
-              <td className="numeric">{row.fund_count}</td>
+              <td className="numeric">
+                {row.holder_count === 0 && row.held_directly ? (
+                  // A company you own outright is not held by any fund, and "0"
+                  // beside it would read as an error rather than as the fact.
+                  <span className="muted">direct</span>
+                ) : (
+                  row.holder_count
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

@@ -22,8 +22,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { buildLedger } from "./aggregate";
 import type { AggregateRequest, AggregateResponse } from "./ledger-protocol";
-import type { BenchmarkComparison, FundDocument, Ledger } from "./types";
-
+import type { BenchmarkComparison, DirectHolding, FundDocument, Ledger } from "./types";
 export interface LedgerState {
   ledger: Ledger | null;
   error: string | null;
@@ -45,7 +44,9 @@ function createWorker(): Worker | null {
 
 export function useLedger(
   funds: FundDocument[],
-  weightsBp: Record<string, number>,
+  weights: Record<string, number>,
+  direct: DirectHolding[] = [],
+  cash = 0,
   benchmark: BenchmarkComparison | null = null,
 ): LedgerState {
   const [state, setState] = useState<LedgerState>({
@@ -58,13 +59,14 @@ export function useLedger(
   const [generation, setGeneration] = useState(0);
   const workerRef = useRef<Worker | null>(null);
   const requestIdRef = useRef(0);
-  const weightsKey = JSON.stringify(weightsBp);
+  const weightsKey = JSON.stringify(weights);
   const fundKey = funds.map((fund) => fund.ticker).join(",");
-  // The comparison rides on the same request, so its identity is part of what the
-  // effect depends on: a late-arriving benchmark must re-aggregate, and a benchmark
-  // from another release must not be mixed into a ledger that has already painted.
+  // Direct holdings, cash and the benchmark are all part of the request, so all
+  // three are part of the key: a stock added without a fund changing must still
+  // re-aggregate, and a late-arriving benchmark must re-aggregate rather than be
+  // mixed into a ledger that has already painted.
+  const directKey = JSON.stringify(direct);
   const benchmarkKey = benchmark === null ? "" : `${benchmark.ticker}@${benchmark.as_of}`;
-
   useEffect(() => {
     const worker = createWorker();
     workerRef.current = worker;
@@ -104,7 +106,7 @@ export function useLedger(
   }, []);
 
   useEffect(() => {
-    if (funds.length === 0) {
+    if (funds.length === 0 && direct.length === 0) {
       setState((previous) => ({
         ...previous,
         ledger: null,
@@ -123,7 +125,9 @@ export function useLedger(
         type: "aggregate",
         requestId,
         funds,
-        weightsBp,
+        weights,
+        direct,
+        cash,
         benchmark,
       };
       worker.postMessage(request);
@@ -132,7 +136,7 @@ export function useLedger(
 
     const started = performance.now();
     try {
-      const ledger = buildLedger({ funds, weightsBp, benchmark });
+      const ledger = buildLedger({ funds, weights, direct, cash, benchmark });
       setState({
         ledger,
         error: null,
@@ -146,9 +150,19 @@ export function useLedger(
         mode: "main-thread",
       }));
     }
-    // `weightsKey`/`fundKey`/`benchmarkKey` pin the effect to the data actually
-    // used, so a new object with identical contents does not re-aggregate.
-  }, [fundKey, weightsKey, benchmarkKey, generation, funds, weightsBp, benchmark]);
-
+    // `weightsKey`/`fundKey`/`directKey`/`benchmarkKey` pin the effect to the data
+    // actually used, so a new object with identical contents does not re-aggregate.
+  }, [
+    fundKey,
+    weightsKey,
+    directKey,
+    benchmarkKey,
+    generation,
+    funds,
+    weights,
+    direct,
+    cash,
+    benchmark,
+  ]);
   return state;
 }

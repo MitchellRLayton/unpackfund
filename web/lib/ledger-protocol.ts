@@ -8,13 +8,18 @@
  * rendered.
  */
 
-import type { BenchmarkComparison, FundDocument, Ledger } from "./types";
+import type { BenchmarkComparison, DirectHolding, FundDocument, Ledger } from "./types";
 
 export interface AggregateRequest {
   type: "aggregate";
   requestId: number;
   funds: FundDocument[];
-  weightsBp: Record<string, number>;
+  /** Fund ticker → fraction of the whole portfolio. */
+  weights: Record<string, number>;
+  /** Positions held directly, already resolved and weighted. */
+  direct: DirectHolding[];
+  /** Cash as a fraction of the whole portfolio. */
+  cash: number;
   /**
    * The fixed benchmark, already reduced to `company_id → share of its own NAV`.
    *

@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import { buildLedger } from "./aggregate";
 import { BENCHMARK_TICKER, benchmarkFor } from "./benchmark";
-import type { FundDocument, Holding } from "./types";
+import type { DirectHolding, FundDocument, Holding } from "./types";
+
+/** Basis points per fund → the fractions the aggregate takes. */
+function fractions(weightsBp: Record<string, number>): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(weightsBp).map(([ticker, bp]) => [ticker, bp / 10_000]),
+  );
+}
 
 /**
  * The fixture numbers are worked out by hand in the comments, per
@@ -67,29 +74,38 @@ describe("buildLedger", () => {
   });
 
   it("computes the look-through weights by hand", () => {
-    const ledger = buildLedger({ funds: [a, b], weightsBp: { A: 5000, B: 5000 } });
+    const ledger = buildLedger({
+      funds: [a, b],
+      weights: fractions({ A: 5000, B: 5000 }),
+    });
     const byId = Object.fromEntries(ledger.rows.map((row) => [row.company_id, row]));
 
     expect(ledger.rows).toHaveLength(3);
     expect(byId.c_x?.weight).toBeCloseTo(0.35, 12);
     expect(byId.c_y?.weight).toBeCloseTo(0.15, 12);
     expect(byId.c_z?.weight).toBeCloseTo(0.4, 12);
-    expect(byId.c_x?.fund_count).toBe(2);
+    expect(byId.c_x?.holder_count).toBe(2);
     expect(byId.c_x?.sources).toEqual([
-      { ticker: "A", weight: 0.25 },
-      { ticker: "B", weight: 0.1 },
+      { kind: "fund", ref: "A", weight: 0.25 },
+      { kind: "fund", ref: "B", weight: 0.1 },
     ]);
   });
 
   it("derives concentration from the summed weights, never fund by fund", () => {
-    const ledger = buildLedger({ funds: [a, b], weightsBp: { A: 5000, B: 5000 } });
+    const ledger = buildLedger({
+      funds: [a, b],
+      weights: fractions({ A: 5000, B: 5000 }),
+    });
     expect(ledger.metrics.hhi).toBeCloseTo(0.305, 12);
     expect(ledger.metrics.effective_n).toBeCloseTo(1 / 0.305, 10);
     expect(ledger.metrics.top10).toBeCloseTo(0.9, 12);
   });
 
   it("counts the unmapped holding and never redistributes it", () => {
-    const ledger = buildLedger({ funds: [a, b], weightsBp: { A: 5000, B: 5000 } });
+    const ledger = buildLedger({
+      funds: [a, b],
+      weights: fractions({ A: 5000, B: 5000 }),
+    });
     expect(ledger.unmapped.positions).toBe(1);
     // 100% weight resolved: A's 2000bp cash row is unmapped but A reports 100%
     // coverage in this fixture, so the disclosed number is used as filed.
@@ -112,7 +128,10 @@ describe("buildLedger", () => {
       ],
     });
     const g = fund({ ticker: "G", holdings: [holding("c_z", 10000, "Z")] });
-    const ledger = buildLedger({ funds: [f, g], weightsBp: { F: 5000, G: 5000 } });
+    const ledger = buildLedger({
+      funds: [f, g],
+      weights: fractions({ F: 5000, G: 5000 }),
+    });
 
     expect(ledger.unmapped.positions).toBe(3);
     expect(ledger.unmapped.positions_with_weight).toBe(2);
@@ -136,10 +155,13 @@ describe("buildLedger", () => {
         holding("c_y", 500, "Y"),
       ],
     });
-    const ledger = buildLedger({ funds: [withShareClasses], weightsBp: { C: 10000 } });
+    const ledger = buildLedger({
+      funds: [withShareClasses],
+      weights: fractions({ C: 10000 }),
+    });
     const x = ledger.rows.find((row) => row.company_id === "c_x");
     expect(x?.weight).toBeCloseTo(0.15, 12);
-    expect(x?.fund_count).toBe(1);
+    expect(x?.holder_count).toBe(1);
     expect(ledger.rows).toHaveLength(2);
   });
 
@@ -148,7 +170,7 @@ describe("buildLedger", () => {
       ticker: "D",
       holdings: [holding("c_x", 0), holding("c_y", 10000)],
     });
-    const ledger = buildLedger({ funds: [zero], weightsBp: { D: 10000 } });
+    const ledger = buildLedger({ funds: [zero], weights: fractions({ D: 10000 }) });
     expect(ledger.rows.map((row) => row.company_id)).toEqual(["c_y"]);
   });
 
@@ -157,7 +179,7 @@ describe("buildLedger", () => {
       ticker: "E",
       holdings: [holding("c_x", 6000), holding("c_y", 4000), holding("c_short", -1000)],
     });
-    const ledger = buildLedger({ funds: [shorted], weightsBp: { E: 10000 } });
+    const ledger = buildLedger({ funds: [shorted], weights: fractions({ E: 10000 }) });
     expect(ledger.rows.find((row) => row.company_id === "c_short")?.weight).toBeCloseTo(
       -0.1,
       12,
@@ -166,13 +188,14 @@ describe("buildLedger", () => {
   });
 
   it("normalises coverage by the funds actually present", () => {
-    // One fund at 5000bp with 70% coverage: the mean coverage is 70, not 35.
+    // One fund holding 50% of the portfolio with 70% coverage: the uncovered weight
+    // is 0.5 × 0.30 = 0.15 against 0.5 invested, so coverage is 70%, not 35%.
     const partial = fund({
       ticker: "F",
       coverage_pct: 70,
       holdings: [holding("c_x", 10000)],
     });
-    const ledger = buildLedger({ funds: [partial], weightsBp: { F: 5000 } });
+    const ledger = buildLedger({ funds: [partial], weights: fractions({ F: 5000 }) });
     expect(ledger.metrics.covered_weight_pct).toBeCloseTo(70, 10);
     expect(ledger.metrics.resolved_weight).toBeCloseTo(0.5, 12);
   });
@@ -190,15 +213,18 @@ describe("buildLedger", () => {
       filed_at: "2026-08-28",
       lag_days: 59,
     });
-    const ledger = buildLedger({ funds: [old, newer], weightsBp: { G: 5000, H: 5000 } });
+    const ledger = buildLedger({
+      funds: [old, newer],
+      weights: fractions({ G: 5000, H: 5000 }),
+    });
     expect(ledger.oldest_as_of).toBe("2026-03-31");
     expect(ledger.max_lag_days).toBe(59);
   });
 
   it("skips a fund with no allocation instead of zero-weighting it", () => {
-    const ledger = buildLedger({ funds: [a, b], weightsBp: { A: 10000, B: 0 } });
+    const ledger = buildLedger({ funds: [a, b], weights: fractions({ A: 10000, B: 0 }) });
     expect(ledger.funds.map((entry) => entry.ticker)).toEqual(["A"]);
-    expect(ledger.rows.every((row) => row.fund_count === 1)).toBe(true);
+    expect(ledger.rows.every((row) => row.holder_count === 1)).toBe(true);
   });
 
   it("is deterministic: same input, same order, tie broken by company id", () => {
@@ -206,15 +232,15 @@ describe("buildLedger", () => {
       ticker: "I",
       holdings: [holding("c_b", 5000), holding("c_a", 5000)],
     });
-    const first = buildLedger({ funds: [tied], weightsBp: { I: 10000 } });
-    const second = buildLedger({ funds: [tied], weightsBp: { I: 10000 } });
+    const first = buildLedger({ funds: [tied], weights: fractions({ I: 10000 }) });
+    const second = buildLedger({ funds: [tied], weights: fractions({ I: 10000 }) });
     expect(first.rows.map((row) => row.company_id)).toEqual(["c_a", "c_b"]);
     expect(second.rows).toEqual(first.rows);
   });
 
   it("says not computable rather than zero when there is nothing to measure", () => {
     const empty = fund({ ticker: "J", holdings: [] });
-    const ledger = buildLedger({ funds: [empty], weightsBp: { J: 10000 } });
+    const ledger = buildLedger({ funds: [empty], weights: fractions({ J: 10000 }) });
     expect(ledger.rows).toEqual([]);
     expect(ledger.metrics.hhi).toBeNull();
     expect(ledger.metrics.effective_n).toBeNull();
@@ -227,7 +253,7 @@ describe("buildLedger", () => {
       coverage_pct: 41,
       holdings: [holding("c_x", 10000)],
     });
-    const ledger = buildLedger({ funds: [thin], weightsBp: { K: 10000 } });
+    const ledger = buildLedger({ funds: [thin], weights: fractions({ K: 10000 }) });
     expect(ledger.metrics.suppressed_weight).toBeCloseTo(1, 12);
   });
 });
@@ -264,7 +290,7 @@ describe("the benchmark column", () => {
   it("puts each company's benchmark weight beside its portfolio weight", () => {
     const ledger = buildLedger({
       funds: [p1, p2],
-      weightsBp: { A: 5000, B: 5000 },
+      weights: fractions({ A: 5000, B: 5000 }),
       benchmark,
     });
     const byId = Object.fromEntries(ledger.rows.map((row) => [row.company_id, row]));
@@ -282,7 +308,7 @@ describe("the benchmark column", () => {
     // benchmark's filing, not a missing value — see the next test for that.
     const ledger = buildLedger({
       funds: [p1, p2],
-      weightsBp: { A: 5000, B: 5000 },
+      weights: fractions({ A: 5000, B: 5000 }),
       benchmark,
     });
     const z = ledger.rows.find((row) => row.company_id === "c_z");
@@ -290,7 +316,10 @@ describe("the benchmark column", () => {
   });
 
   it("never turns a missing benchmark into a column of zeros", () => {
-    const ledger = buildLedger({ funds: [p1, p2], weightsBp: { A: 5000, B: 5000 } });
+    const ledger = buildLedger({
+      funds: [p1, p2],
+      weights: fractions({ A: 5000, B: 5000 }),
+    });
     expect(ledger.benchmark).toBeNull();
     expect(ledger.rows.every((row) => row.benchmark_weight === null)).toBe(true);
   });
@@ -298,7 +327,7 @@ describe("the benchmark column", () => {
   it("keeps the benchmark's provenance and leaves its weights behind", () => {
     const ledger = buildLedger({
       funds: [p1, p2],
-      weightsBp: { A: 5000, B: 5000 },
+      weights: fractions({ A: 5000, B: 5000 }),
       benchmark,
     });
     expect(ledger.benchmark).toEqual({
@@ -312,5 +341,106 @@ describe("the benchmark column", () => {
     });
     // The rows carry the per-company value; the map (≈2,400 entries live) must not ride along.
     expect(ledger.benchmark).not.toHaveProperty("weights");
+  });
+});
+
+describe("direct holdings and cash", () => {
+  // The operator's own example: 90% VT, 10% Amazon held directly. VT files Amazon at
+  // 228 bp of its NAV and 97.8% coverage, so the filed contribution is
+  // 0.9 × 0.0228 = 0.02052 and the direct position adds 0.10:
+  //     AMZN = 0.10 + 0.02052 = 0.120520
+  // Coverage is over invested money: 0.9 × (1 − 0.978) = 0.0198 uncovered against
+  // 1.0 invested → 98.02%, which is *higher* than VT's own 97.8% because a direct
+  // holding is fully known by construction.
+  const vt = fund({
+    ticker: "VT",
+    coverage_pct: 97.8,
+    holdings: [holding("c_0001018724", 228, "AMZN"), holding("c_other", 9520, "OTHR")],
+  });
+
+  const amazon: DirectHolding = {
+    company_id: "c_0001018724",
+    name: "AMAZON COM INC",
+    ticker: "AMZN",
+    weight: 0.1,
+  };
+
+  it("merges a direct position into the company the fund already reports", () => {
+    const ledger = buildLedger({
+      funds: [vt],
+      weights: fractions({ VT: 9000 }),
+      direct: [amazon],
+    });
+    const amzn = ledger.rows.find((row) => row.company_id === "c_0001018724");
+    expect(ledger.rows).toHaveLength(2);
+    expect(amzn?.weight).toBeCloseTo(0.12052, 12);
+    expect(amzn?.held_directly).toBe(true);
+    // One fund holds it; the direct position is the visitor's, not a second fund.
+    expect(amzn?.holder_count).toBe(1);
+    expect(amzn?.sources).toEqual([
+      { kind: "security", ref: "AMZN", weight: 0.1 },
+      { kind: "fund", ref: "VT", weight: 0.02052 },
+    ]);
+    // The company the visitor owns outright keeps the registered SEC title.
+    expect(amzn?.name).toBe("AMAZON COM INC");
+  });
+
+  it("raises portfolio coverage above the fund's own, because a direct name resolves", () => {
+    const ledger = buildLedger({
+      funds: [vt],
+      weights: fractions({ VT: 9000 }),
+      direct: [amazon],
+    });
+    expect(ledger.metrics.covered_weight_pct).toBeCloseTo(98.02, 10);
+    expect(ledger.metrics.invested_weight).toBeCloseTo(1, 12);
+    expect(ledger.metrics.cash_weight).toBe(0);
+    expect(ledger.metrics.unallocated_weight).toBe(0);
+  });
+
+  it("counts a company held only directly, with no fund behind it", () => {
+    const ledger = buildLedger({ funds: [], weights: {}, direct: [amazon] });
+    expect(ledger.rows).toHaveLength(1);
+    const only = ledger.rows.find((row) => row.company_id === "c_0001018724");
+    expect(only?.holder_count).toBe(0);
+    expect(only?.held_directly).toBe(true);
+    // Nothing was missing, because the visitor named the company.
+    expect(ledger.metrics.covered_weight_pct).toBeCloseTo(100, 12);
+  });
+
+  it("leaves cash out of the coverage denominator and in the concentration", () => {
+    // 10% cash, 90% VT. Uncovered stays 0.9 × 0.022 = 0.0198, but it is now measured
+    // against 0.9 invested → 97.8%, exactly the fund's own coverage. Cash cannot
+    // raise a percentage it is not part of.
+    const withCash = buildLedger({
+      funds: [vt],
+      weights: fractions({ VT: 9000 }),
+      cash: 0.1,
+    });
+    expect(withCash.metrics.cash_weight).toBeCloseTo(0.1, 12);
+    expect(withCash.metrics.invested_weight).toBeCloseTo(0.9, 12);
+    expect(withCash.metrics.covered_weight_pct).toBeCloseTo(97.8, 10);
+    // Concentration is a share of the whole portfolio, so cash dilutes it: the same
+    // fund at 100% is more concentrated than at 90% with 10% cash, because the
+    // companies' weights shrink from 1.0 of the portfolio to 0.9 of it.
+    const allIn = buildLedger({ funds: [vt], weights: fractions({ VT: 10000 }) });
+    expect(allIn.metrics.hhi ?? 0).toBeGreaterThan(withCash.metrics.hhi ?? 0);
+    // The resolved rows are 97.48% of VT's NAV (228 + 9,520 bp), at 90% weight.
+    expect(withCash.rows.reduce((sum, row) => sum + row.weight, 0)).toBeCloseTo(
+      0.9 * 0.9748,
+      12,
+    );
+    // …while coverage is the fund's own either way: cash is in neither term.
+    expect(allIn.metrics.covered_weight_pct).toBeCloseTo(97.8, 10);
+  });
+
+  it("reports an unallocated remainder instead of inventing a holding", () => {
+    // Percent mode with 60% of the portfolio allocated and no cash entry.
+    const partial = buildLedger({
+      funds: [vt],
+      weights: fractions({ VT: 6000 }),
+    });
+    expect(partial.metrics.unallocated_weight).toBeCloseTo(0.4, 12);
+    // Coverage is unaffected: the missing 40% is neither invested nor uncovered.
+    expect(partial.metrics.covered_weight_pct).toBeCloseTo(97.8, 10);
   });
 });

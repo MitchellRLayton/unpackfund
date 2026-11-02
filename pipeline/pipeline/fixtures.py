@@ -81,14 +81,18 @@ def write_release(
     root: Path,
     documents: list[dict],
     release_id: str = FIXTURE_RELEASE_ID,
+    *,
     benchmarks: tuple[str, ...] = (),
+    securities_source: dict | None = None,
 ) -> Path:
     """Write ``documents`` as a release directory, the way ``build.py`` does.
 
     ``benchmarks`` names the tickers to pre-roll into ``benchmarks/{T}.json``. The
     sample release pre-rolls its own fund, which is not the production benchmark
     (``benchmarks.BENCHMARK_TICKERS``): the point is the code path, and a fixture
-    that hard-coded VT could only run if the fixture were VT.
+    that hard-coded VT could only run if the fixture were VT. ``securities_source``
+    carries the typed-symbol input ADR-0014 added; ``None`` publishes no
+    ``securities/`` family, which is the dual-read shape a release without it has.
     """
     release_dir = root / "releases" / release_id
     (release_dir / "funds").mkdir(parents=True, exist_ok=True)
@@ -123,6 +127,7 @@ def write_release(
         aliases={"TESTX": documents[0]["ticker"]} if documents else {},
         etf_classifier=classify.ETF_CLASSIFIER,
         benchmarks=benchmarks,
+        securities_source=securities_source,
     )
     return release_dir
 

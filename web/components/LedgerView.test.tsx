@@ -161,8 +161,9 @@ function ledgerRow(company_id: string, name: string, weight: number): LedgerRow 
     ticker: name.slice(0, 4).toUpperCase(),
     weight,
     benchmark_weight: null,
-    fund_count: 1,
-    sources: [{ ticker: "VOO", weight }],
+    holder_count: 1,
+    held_directly: false,
+    sources: [{ kind: "fund", ref: "VOO", weight }],
   };
 }
 
@@ -179,6 +180,9 @@ const ledger: Ledger = {
     covered_weight_pct: 90.3,
     resolved_weight: 0.903,
     suppressed_weight: 0,
+    invested_weight: 1,
+    cash_weight: 0,
+    unallocated_weight: 0,
   },
   funds: [
     {
@@ -210,12 +214,20 @@ beforeEach(() => {
   useBenchmark.mockReset();
   useLedger.mockReset();
   usePortfolio.mockReturnValue({
-    entries: [{ ticker: "VOO", weight_bp: 10_000 }],
-    totalBp: 10_000,
-    balanced: true,
-    equalise: () => {},
-    problem: null,
+    entries: [{ kind: "fund", key: "VOO", amount: 10_000 }],
+    mode: "bp",
     ready: true,
+    problem: null,
+    total: 10_000,
+    complete: true,
+    unallocatedBp: 0,
+    add: () => {},
+    remove: () => {},
+    setAmount: () => {},
+    equalise: () => {},
+    clear: () => {},
+    setMode: () => {},
+    replace: () => {},
   });
   useRelease.mockReturnValue({ status: "ready", data: release, error: null });
   // The default release below predates the compact object, so its benchmark comes
@@ -271,7 +283,7 @@ describe("the ledger when the benchmark cannot be read", () => {
     });
     useFunds.mockImplementation(() => ({ funds: [], pending: [], error: null }));
     useBenchmark.mockReturnValue({ status: "ready", data: vtRollup, error: null });
-    useLedger.mockImplementation((_funds, _weightsBp, benchmark) => ({
+    useLedger.mockImplementation((_funds, _weights, _direct, _cash, benchmark) => ({
       ledger: withBenchmarkWeights(benchmark),
       error: null,
       mode: "main",
@@ -298,7 +310,7 @@ describe("the ledger when the benchmark cannot be read", () => {
         ? { funds: [vtDocument], pending: [], error: null }
         : { funds: [], pending: [], error: null },
     );
-    useLedger.mockImplementation((_funds, _weightsBp, benchmark) => ({
+    useLedger.mockImplementation((_funds, _weights, _direct, _cash, benchmark) => ({
       ledger: withBenchmarkWeights(benchmark),
       error: null,
       mode: "main",

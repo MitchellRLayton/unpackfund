@@ -38,7 +38,7 @@ function row(
   company_id: string,
   name: string,
   weight: number,
-  fund_count = 1,
+  holder_count = 1,
   benchmark_weight: number | null = null,
 ): LedgerRow {
   return {
@@ -47,8 +47,9 @@ function row(
     ticker: name.slice(0, 4).toUpperCase(),
     weight,
     benchmark_weight,
-    fund_count,
-    sources: [{ ticker: "VOO", weight }],
+    holder_count,
+    held_directly: false,
+    sources: [{ kind: "fund", ref: "VOO", weight }],
   };
 }
 
@@ -72,6 +73,9 @@ const ledger: Ledger = {
     covered_weight_pct: 90.3,
     resolved_weight: 0.903,
     suppressed_weight: 0,
+    invested_weight: 0.903,
+    cash_weight: 0,
+    unallocated_weight: 0,
   },
   funds: [
     {
@@ -103,11 +107,15 @@ describe("FreshnessStrip", () => {
     expect(screen.getByText("2026-06-30")).toBeTruthy();
     expect(screen.getByText("59 days")).toBeTruthy();
     expect(screen.getByText("90.3%")).toBeTruthy();
-    expect(screen.getByText("90.3% of weight covered")).toBeTruthy();
-    // Coverage is money, so its complement is money: 9.7% of the portfolio is not
-    // traced. The count of unmapped *positions* is a disclosure below the table,
-    // not a headline number that reads as 3,126 failures.
-    expect(screen.getByText("9.70%")).toBeTruthy();
+    // Coverage is a percentage of invested money, and the cell says so rather than
+    // leaving a reader to guess whether cash is in the denominator.
+    expect(screen.getByText("90.3%")).toBeTruthy();
+    expect(screen.getByText("of the money you have invested")).toBeTruthy();
+    // Coverage is money, so its complement is money: 9.7% of the *invested* part —
+    // 0.903 × 0.097 = 0.0876 of the portfolio — is not traced. The count of unmapped
+    // positions is a disclosure below the table, not a headline number that reads as
+    // 3,126 failures.
+    expect(screen.getByText("8.76%")).toBeTruthy();
     expect(screen.getByText("of your money, incl. cash and derivatives")).toBeTruthy();
     expect(screen.getByText("each company counted once")).toBeTruthy();
     expect(screen.queryByText(/holdings unmapped/)).toBeNull();
@@ -174,11 +182,11 @@ describe("LedgerTable", () => {
     const fiveFunds: LedgerRow = {
       ...row("c_5", "Five Fund Co", 0.05, 5),
       sources: [
-        { ticker: "QQQ", weight: 0.02 },
-        { ticker: "VTI", weight: 0.01 },
-        { ticker: "VTV", weight: 0.008 },
-        { ticker: "VEA", weight: 0.007 },
-        { ticker: "VWO", weight: 0.005 },
+        { kind: "fund", ref: "QQQ", weight: 0.02 },
+        { kind: "fund", ref: "VTI", weight: 0.01 },
+        { kind: "fund", ref: "VTV", weight: 0.008 },
+        { kind: "fund", ref: "VEA", weight: 0.007 },
+        { kind: "fund", ref: "VWO", weight: 0.005 },
       ],
     };
     const { container } = render(<LedgerTable rows={[fiveFunds]} />);

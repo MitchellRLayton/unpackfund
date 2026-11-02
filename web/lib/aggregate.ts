@@ -1,19 +1,24 @@
 /**
  * Look-through aggregation. This is the product's arithmetic, so it follows
- * `lookthrough-math-and-qa` §1–§4 rather than convenience:
+ * `lookthrough-math-and-qa` §1–§5 rather than convenience:
  *
- *   total(i) = Σ_k W_k · w_{i,k}
+ *   total(i) = w_direct(i) + Σ_k W_k · w_{i,k}
  *
- * with `W_k` the portfolio's weight in fund k and `w_{i,k}` company i's weight
- * inside fund k. Rollup is by `company_id`, never by ticker — two share classes
- * of one issuer are one company line (math §3), and a ticker is not identity.
+ * with `W_k` the portfolio's weight in fund k, `w_{i,k}` company i's weight inside
+ * fund k, and `w_direct(i)` the visitor's own position in company i when they hold
+ * it directly (ADR-0014; the skill's §1 predates direct holdings).
+ *
+ * Rollup is by `company_id`, never by ticker — two share classes of one issuer are
+ * one company line (math §3), and a ticker is not identity. That is also why a
+ * direct Amazon position and VT's filed Amazon row add up to one line instead of
+ * two: both carry `c_0001018724`.
  *
  * Deliberate exclusions, each one a rule rather than a shortcut:
  * - holdings with no `company_id` stay unmapped: counted and disclosed, never
- *   redistributed across resolved companies (that is how a low-coverage fund
- *   would look average);
- * - cash and derivatives have no company identity and are excluded from company
- *   metrics but remain part of NAV, which is why the weights need not sum to 1;
+ *   redistributed across resolved companies (that is how a low-coverage fund would
+ *   look average);
+ * - cash has no company identity and is excluded from coverage, but it is part of
+ *   the visitor's money, so it dilutes concentration rather than being ignored;
  * - a negative (short) weight is a real exposure but is excluded from
  *   concentration math, where `Σ wᵢ²` would otherwise reward the short;
  * - a holding of zero weight cannot affect a sum and only inflates counts.
@@ -24,16 +29,22 @@ import {
   FULL_ALLOCATION_BP,
   type BenchmarkComparison,
   type BenchmarkFacts,
+  type DirectHolding,
   type FundDocument,
   type Ledger,
   type LedgerMetrics,
   type LedgerRow,
+  type LedgerSource,
 } from "./types";
 
 export interface AggregateInput {
   funds: FundDocument[];
-  /** Ticker → portfolio weight in basis points. */
-  weightsBp: Record<string, number>;
+  /** Fund ticker → portfolio weight, as a **fraction** of the whole portfolio. */
+  weights: Record<string, number>;
+  /** Positions the visitor holds directly, each already weighted as a fraction. */
+  direct?: DirectHolding[];
+  /** Cash as a fraction of the whole portfolio; never a coverage candidate. */
+  cash?: number;
   /**
    * The fixed benchmark's per-company weights ([ADR-0015](../../../docs/04-decisions/ADR-0015-vt-benchmark.md)).
    * Absent means the release publishes no benchmark, and every row reports
@@ -48,7 +59,9 @@ const MAX_TOP = 10;
 
 export function buildLedger({
   funds,
-  weightsBp,
+  weights,
+  direct = [],
+  cash = 0,
   benchmark = null,
 }: AggregateInput): Ledger {
   interface Accumulator {
@@ -56,33 +69,41 @@ export function buildLedger({
     nameWeight: number;
     ticker: string | null;
     weight: number;
-    sources: Map<string, number>;
+    /** Distinct funds holding it: two share classes in one fund are one holder. */
+    fundTickers: Set<string>;
+    heldDirectly: boolean;
+    sources: LedgerSource[];
   }
 
   const companies = new Map<string, Accumulator>();
-  // The four quantities the "not traced" disclosure needs, counted once here so
-  // the UI cannot disagree with the weights it is describing (math §7a).
+  // The quantities the "not traced" disclosure needs, counted once here so the UI
+  // cannot disagree with the weights it is describing (math §7a).
   let unmappedPositions = 0;
   let unmappedWithWeight = 0;
   let securitiesWithWeight = 0;
   let securitiesWeight = 0;
   let cashAndDerivativesWithWeight = 0;
   let cashAndDerivativesWeight = 0;
-  let portfolioWeightFraction = 0;
-  let coveredWeightPct = 0;
+  /** `Σ W_k` over funds — the fund part of the invested denominator. */
+  let fundWeightFraction = 0;
+  /** `Σ W_k · (1 − c_k)`: the weight inside funds we could not name. */
+  let fundUncoveredWeight = 0;
   let suppressedWeight = 0;
+  let directWeight = 0;
 
   const contributingFunds: Ledger["funds"] = [];
   let oldestAsOf: string | null = null;
   let maxLagDays: number | null = null;
 
   for (const fund of funds) {
-    const weightBp = weightsBp[fund.ticker] ?? 0;
-    if (weightBp <= 0) continue;
+    const fundWeight = weights[fund.ticker] ?? 0;
+    if (fundWeight <= 0) continue;
 
-    const fundWeight = weightBp / FULL_ALLOCATION_BP;
-    portfolioWeightFraction += fundWeight;
-    coveredWeightPct += fundWeight * fund.coverage_pct;
+    fundWeightFraction += fundWeight;
+    // Coverage is a statement about money that resolved, so the missing share is
+    // accumulated as weight rather than averaged as a percentage: a fund at 40%
+    // coverage must not be able to look better by being small.
+    fundUncoveredWeight += fundWeight * (1 - fund.coverage_pct / 100);
     if (coverageBand(fund.coverage_pct) === "none") suppressedWeight += fundWeight;
 
     contributingFunds.push({
@@ -106,7 +127,7 @@ export function buildLedger({
         // reason "3,126 holdings unmapped" was misleading.
         if (holding.weight_bp !== 0) {
           unmappedWithWeight += 1;
-          const contribution = fundWeight * (holding.weight_bp / FULL_ALLOCATION_BP);
+          const contribution = fundWeight * (holding.weight_bp / 10_000);
           // Cash and derivatives have no company by definition (math §3); they
           // are part of the gap in coverage but never a mapping failure.
           if (holding.asset_cat === "cash" || holding.asset_cat === "derivative") {
@@ -121,15 +142,17 @@ export function buildLedger({
       }
       if (holding.weight_bp === 0) continue;
 
-      const contribution = fundWeight * (holding.weight_bp / FULL_ALLOCATION_BP);
+      const contribution = fundWeight * (holding.weight_bp / 10_000);
       const existing = companies.get(holding.company_id);
       if (existing) {
         existing.weight += contribution;
-        existing.sources.set(
-          fund.ticker,
-          (existing.sources.get(fund.ticker) ?? 0) + contribution,
-        );
-        // Keep the name of the fund that contributes most, so the label does not
+        existing.fundTickers.add(fund.ticker);
+        existing.sources.push({
+          kind: "fund",
+          ref: fund.ticker,
+          weight: contribution,
+        });
+        // Keep the name of the source that contributes most, so the label does not
         // depend on iteration order.
         if (holding.weight_bp > existing.nameWeight) {
           existing.nameWeight = holding.weight_bp;
@@ -144,9 +167,43 @@ export function buildLedger({
           nameWeight: holding.weight_bp,
           ticker: holding.ticker,
           weight: contribution,
-          sources: new Map([[fund.ticker, contribution]]),
+          fundTickers: new Set([fund.ticker]),
+          heldDirectly: false,
+          sources: [{ kind: "fund", ref: fund.ticker, weight: contribution }],
         });
       }
+    }
+  }
+
+  // The visitor's own positions, merged into the same accumulator as the funds.
+  // `holder_count` is deliberately not incremented: it counts funds, so a company
+  // that is only a direct holding reads "0 funds", which is the truth.
+  for (const holding of direct) {
+    if (holding.weight <= 0) continue;
+    directWeight += holding.weight;
+    const existing = companies.get(holding.company_id);
+    if (existing) {
+      existing.weight += holding.weight;
+      existing.heldDirectly = true;
+      existing.sources.push({
+        kind: "security",
+        ref: holding.ticker,
+        weight: holding.weight,
+      });
+      // The registered SEC title wins for a company the visitor owns outright: it
+      // is the name the confirmation step showed them.
+      existing.name = holding.name;
+      existing.ticker = holding.ticker;
+    } else {
+      companies.set(holding.company_id, {
+        name: holding.name,
+        nameWeight: 0,
+        ticker: holding.ticker,
+        weight: holding.weight,
+        fundTickers: new Set<string>(),
+        heldDirectly: true,
+        sources: [{ kind: "security", ref: holding.ticker, weight: holding.weight }],
+      });
     }
   }
 
@@ -161,17 +218,29 @@ export function buildLedger({
       // company"), never a stand-in for "not loaded" — that is `null`, and it only
       // happens when the release publishes no benchmark at all.
       benchmark_weight: benchmark === null ? null : (benchmark.weights[companyId] ?? 0),
-      fund_count: company.sources.size,
-      sources: [...company.sources.entries()]
-        .map(([ticker, weight]) => ({ ticker, weight }))
-        .sort((a, b) => b.weight - a.weight || (a.ticker < b.ticker ? -1 : 1)),
+      holder_count: company.fundTickers.size,
+      held_directly: company.heldDirectly,
+      sources: company.sources
+        .slice()
+        .sort(
+          (a, b) =>
+            b.weight - a.weight ||
+            (a.kind === b.kind ? 0 : a.kind < b.kind ? -1 : 1) ||
+            (a.ref < b.ref ? -1 : 1),
+        ),
     }))
     .sort((a, b) => b.weight - a.weight || (a.company_id < b.company_id ? -1 : 1));
 
+  const investedWeight = fundWeightFraction + directWeight;
   const metrics = computeMetrics(rows, {
-    portfolioWeightFraction,
-    coveredWeightPct,
+    investedWeight,
+    // Coverage counts named money over invested money, with cash outside both
+    // terms — so adding cash can never raise it (math §5).
+    coveredWeightPct:
+      investedWeight > 0 ? 100 * (1 - fundUncoveredWeight / investedWeight) : 0,
     suppressedWeight,
+    cashWeight: Math.max(0, cash),
+    unallocatedWeight: Math.max(0, 1 - cash - investedWeight),
   });
 
   // The weights map is ~2,400 entries on the live release and is not part of the
@@ -211,9 +280,11 @@ export function buildLedger({
 function computeMetrics(
   rows: LedgerRow[],
   context: {
-    portfolioWeightFraction: number;
+    investedWeight: number;
     coveredWeightPct: number;
     suppressedWeight: number;
+    cashWeight: number;
+    unallocatedWeight: number;
   },
 ): LedgerMetrics {
   const positive = rows.filter((row) => row.weight > 0);
@@ -240,15 +311,15 @@ function computeMetrics(
       .reduce((sum, row) => sum + row.weight, 0);
   }
 
-  const denominator =
-    context.portfolioWeightFraction > 0 ? context.portfolioWeightFraction : 1;
-
   return {
     hhi,
     effective_n: effectiveN,
     top10,
-    covered_weight_pct: context.coveredWeightPct / denominator,
+    covered_weight_pct: context.coveredWeightPct,
     resolved_weight: resolvedWeight,
     suppressed_weight: context.suppressedWeight,
+    invested_weight: context.investedWeight,
+    cash_weight: context.cashWeight,
+    unallocated_weight: context.unallocatedWeight,
   };
 }

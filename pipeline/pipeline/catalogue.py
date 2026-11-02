@@ -232,6 +232,7 @@ def write_release_objects(
     aliases: dict[str, str] | None = None,
     etf_classifier: str = "",
     benchmarks: Iterable[str] = benchmarks_mod.BENCHMARK_TICKERS,
+    securities_source: dict | None = None,
 ) -> dict:
     """Write the objects a browser reads and describe them in ``release.json``.
 
@@ -298,6 +299,28 @@ def write_release_objects(
         sizes[relative] = len(body)
         benchmark_entries[ticker] = object_entry(relative, body)
 
+    # The typed-symbol object (ADR-0014). Built here rather than in build.py because
+    # the ``l_``-twin refusal needs the release's own company index, which exists
+    # only at this point — and a twin is exactly the case where one company would
+    # otherwise be listed twice in the ledger.
+    securities_entry: dict | None = None
+    securities_sizes: dict[str, int] = {}
+    if securities_source is not None:
+        from . import securities as securities_module
+
+        built_securities = securities_module.build(
+            securities_source,
+            fund_tickers=[document["ticker"] for document in documents],
+            alias_tickers=list(alias_entries),
+            twins=securities_module.twin_names(company_index["companies"]),
+        )
+        written = securities_module.write_release_objects(
+            release_dir, release=release, securities=built_securities
+        )
+        securities_sizes = written["sizes"]
+        sizes.update(securities_sizes)
+        securities_entry = written["objects"]
+
     release_document = release_object(
         header={
             key: value
@@ -322,19 +345,14 @@ def write_release_objects(
                 "object": alias_entry,
                 "count": len(alias_entries),
             },
-            # Optional by presence: a release that pre-rolls no benchmark simply
-            # omits the family, and the app falls back to the fund document it can
-            # always fetch (the contract's dual-read rule, skill §8).
-            **(
-                {
-                    "benchmarks": {
-                        "prefix": "benchmarks/",
-                        "files": benchmark_entries,
-                    }
-                }
-                if benchmark_entries
-                else {}
-            ),
+            # Both families are optional by presence: a release that pre-rolls no
+            # benchmark, or ships no typed symbols, simply omits them, and the app
+            # falls back to what it can always fetch (the contract's dual-read rule,
+            # skill §8).
+            **({"benchmarks": {"prefix": "benchmarks/", "files": benchmark_entries}}
+               if benchmark_entries else {}),
+            **({"securities": securities_entry}
+               if securities_entry is not None else {}),
         },
     )
     release_payload = encode(release_document)
@@ -351,6 +369,12 @@ def write_release_objects(
         + "".join(
             f"benchmark {ticker} {sizes[f'benchmarks/{ticker}.json'] / 1e3:.0f} kB, "
             for ticker in benchmark_entries
+        )
+        + (
+            f"{securities_entry['count']:,} symbol(s) in {len(securities_sizes)} "
+            f"securities shard(s) ({securities_entry['bytes'] / 1e3:.0f} kB), "
+            if securities_entry is not None
+            else ""
         )
         + f"pointer {len(release_payload) / 1e3:.1f} kB"
     )

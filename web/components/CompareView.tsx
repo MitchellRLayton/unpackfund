@@ -18,13 +18,13 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { Notice } from "@/components/Notice";
-import { WeightInput } from "@/components/WeightInput";
+import { AmountInput } from "@/components/AmountInput";
 import { encodeComparison } from "@/lib/fragment";
 import { formatCount, formatShare } from "@/lib/format";
 import { buildOverlap } from "@/lib/overlap";
 import { useComparison, type Side } from "@/lib/use-comparison";
 import { useFunds, useRelease, useTickers } from "@/lib/use-release";
-import type { FundDocument, PortfolioEntry } from "@/lib/types";
+import type { FundDocument, FundWeight } from "@/lib/types";
 
 /** Rows rendered before the table asks to be told to render the rest. */
 const ROW_PAGE = 200;
@@ -44,7 +44,7 @@ function SideColumn({
 }: {
   label: string;
   side: Side;
-  entries: PortfolioEntry[];
+  entries: FundWeight[];
   totalBp: number;
   balanced: boolean;
   catalog: string[];
@@ -114,9 +114,10 @@ function SideColumn({
             {entries.map((entry) => (
               <li key={entry.ticker}>
                 <span className="ticker">{entry.ticker}</span>
-                <WeightInput
-                  ticker={entry.ticker}
-                  weightBp={entry.weight_bp}
+                <AmountInput
+                  label={`Portfolio weight for ${entry.ticker}`}
+                  mode="bp"
+                  amount={entry.weight_bp}
                   onChange={(weightBp) => onWeight(side, entry.ticker, weightBp)}
                 />
                 <button
@@ -187,11 +188,11 @@ export function CompareView() {
 
   const overlap = useMemo(() => {
     if (!bothSidesReady) return null;
-    const sideFunds = (entries: PortfolioEntry[]) =>
+    const sideFunds = (entries: FundWeight[]) =>
       entries
         .map((entry) => fundsByTicker.get(entry.ticker))
         .filter((fund): fund is FundDocument => Boolean(fund));
-    const sideWeights = (entries: PortfolioEntry[]) =>
+    const sideWeights = (entries: FundWeight[]) =>
       Object.fromEntries(entries.map((entry) => [entry.ticker, entry.weight_bp]));
     return buildOverlap({
       a: { funds: sideFunds(comparison.a), weightsBp: sideWeights(comparison.a) },
