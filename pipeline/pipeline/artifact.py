@@ -136,3 +136,52 @@ def holding_row(
         "asset_cat": asset_cat,
         "weight_bp": weight_bp,
     }
+
+#: Fields a flattened fund adds to the document, in contract order, between ``metrics``
+#: and ``warnings``. ``components`` is the sleeve view a reader wants ("this fund holds
+#: these funds at these weights"); ``lookthrough`` is the provenance of the vector in
+#: ``holdings`` — how deep the walk went, how much of NAV arrived through fund edges,
+#: and what is left unresolved. **Their presence is the signal**: a document with
+#: ``lookthrough`` has a flattened ``holdings``; one without has the filed vector. There
+#: is no flag to disagree with the data.
+FUND_OF_FUNDS_FIELDS = ("components", "lookthrough")
+
+
+def attach_fund_of_funds(
+    document: dict[str, Any],
+    *,
+    holdings: list[dict[str, Any]],
+    coverage_pct: float,
+    metrics: dict[str, float | None],
+    components: list[dict[str, Any]] | None = None,
+    lookthrough: dict[str, Any] | None = None,
+    warnings: list[str] | None = None,
+) -> dict[str, Any]:
+    """Rebuild a fund document with a flattened vector, or with its sleeves only.
+
+    Rebuilt rather than mutated so the key order stays the contract's: ``canonical_bytes``
+    hashes exactly what this returns, and a document whose keys moved because a dict was
+    updated in place is a hash that changes for no reason.
+    """
+    rebuilt: dict[str, Any] = {
+        "schema_version": document["schema_version"],
+        "ticker": document["ticker"],
+        "fund_id": document["fund_id"],
+        "name": document["name"],
+        "issuer": document["issuer"],
+        "etf": document["etf"],
+        "as_of": document["as_of"],
+        "filed_at": document["filed_at"],
+        "lag_days": document["lag_days"],
+        "source": document["source"],
+        "source_url": document["source_url"],
+        "coverage_pct": coverage_pct,
+        "holdings": holdings,
+        "metrics": metrics,
+    }
+    if components:
+        rebuilt["components"] = components
+    if lookthrough is not None:
+        rebuilt["lookthrough"] = lookthrough
+    rebuilt["warnings"] = warnings if warnings is not None else document["warnings"]
+    return rebuilt
