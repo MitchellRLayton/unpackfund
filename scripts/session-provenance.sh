@@ -52,13 +52,9 @@ US="$(printf '\037')"   # field separator for parsed git output; not IFS whitesp
 # `check` prints a warning when they disagree.
 DEPLOY_PATHS='^(web/|pipeline/)|^package\.json$|^pnpm-lock\.yaml$|^pnpm-workspace\.yaml$|^\.nvmrc$|^wrangler\.prod\.jsonc$|^\.github/workflows/deploy-site\.yml$'
 
-# Print every path in .github/workflows/deploy-site.yml's `on.push.paths` that DEPLOY_PATHS
-# does not classify as a deploy. Empty output means the copy is still in step with the
-# workflow; anything printed is a path that could publish production while the PR rule
-# calls it safe.
-deploy_drift() {
-  _wf="$1/.github/workflows/deploy-site.yml"
-  [ -f "$_wf" ] || return 0
+# The `on.push.paths` list from the workflow, one path per line. Empty output means the
+# file could not be read — callers treat that as a failed check, not a pass.
+deploy_paths_of() {
   awk '
     /^[[:space:]]*paths:[[:space:]]*$/ { inp = 1; next }
     inp && /^[[:space:]]*-[[:space:]]*"/ {
@@ -71,7 +67,17 @@ deploy_drift() {
     inp && /^[[:space:]]*#/ { next }
     inp && NF == 0 { next }
     inp { inp = 0 }
-  ' "$_wf" | while IFS= read -r _p; do
+  ' "$1"
+}
+
+# Print every path in .github/workflows/deploy-site.yml's `on.push.paths` that DEPLOY_PATHS
+# does not classify as a deploy. Empty output means the copy is still in step with the
+# workflow; anything printed is a path that could publish production while the PR rule
+# calls it safe.
+deploy_drift() {
+  _wf="$1/.github/workflows/deploy-site.yml"
+  [ -f "$_wf" ] || return 0
+  deploy_paths_of "$_wf" | while IFS= read -r _p; do
     [ -n "$_p" ] || continue
     printf '%s' "$_p" | grep -Eq "$DEPLOY_PATHS" || printf '%s\n' "$_p"
   done
@@ -245,6 +251,13 @@ registered_names() {
 }
 
 trailer_block() {
+  # A newline in a value would forge extra trailers ("Agent: x" + "Session: y"), so the
+  # block is the choke point: nothing with a control character gets written.
+  for _tv in "$ID_SESSION" "$ID_WORKTREE" "$ID_AGENT" "${ID_TASK:-}"; do
+    case "$_tv" in
+      *[[:cntrl:]]*) die "a provenance value contains a control character (newline, tab): refusing to write it as a trailer" ;;
+    esac
+  done
   printf 'Session: %s\n' "$ID_SESSION"
   printf 'Worktree: %s\n' "$ID_WORKTREE"
   printf 'Agent: %s\n' "$ID_AGENT"
@@ -262,7 +275,7 @@ cmd_register() {
       *) _session="$1"; shift ;;
     esac
   fi
-  _wt=""; _branch=""; _agent=""; _task=""; _status="active"
+  _wt=""; _branch=""; _agent=""; _task=""; _status="active"; _move=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --session) [ "$#" -ge 2 ] || die "--session needs a value"; _session="$2"; shift 2 ;;
@@ -271,6 +284,7 @@ cmd_register() {
       --agent) [ "$#" -ge 2 ] || die "--agent needs a value"; _agent="$2"; shift 2 ;;
       --task) [ "$#" -ge 2 ] || die "--task needs a value"; _task="$2"; shift 2 ;;
       --end) _status="ended"; shift ;;
+      --move) _move=1; shift ;;
       *) die "unknown option for register: $1" ;;
     esac
   done
@@ -289,6 +303,7 @@ cmd_register() {
   # Accept both an absolute worktree path and the short name.
   case "$_wt" in
     /*) : ;;
+    .work/*|./*) _wt="$WORKSPACE/${_wt#./}" ;;
     *) _wt="$WORK_ROOT/wt-${_wt#wt-}" ;;
   esac
   require_boundary "$_wt"
@@ -301,6 +316,25 @@ cmd_register() {
   _existing="$(session_for_worktree "$_wt")"
   if [ -n "$_existing" ] && [ "$_existing" != "$_session" ]; then
     die "worktree $_wt is already registered to session '$_existing'. One worktree, one session."
+  fi
+
+  # The other direction. commit-msg derives the session from the directory name, so a
+  # record naming a different session makes every commit in that worktree fail.
+  case "${_wt##*/}" in
+    wt-*)
+      _dir_session="${_wt##*/wt-}"
+      if [ "$_dir_session" != "$_session" ] && [ "$_move" != "1" ]; then
+        die "worktree ${_wt#"$WORKSPACE"/} is named for session '$_dir_session', not '$_session'.
+    The commit-msg hook derives the session from the directory, so every commit there
+    would be refused. Register it as '$_dir_session', or pass --move if you really mean it."
+      fi ;;
+  esac
+
+  # And the same for the session: one session, one worktree.
+  _curwt="$(conf_get "$(session_file "$_session")" SESSION_WORKTREE)"
+  if [ -n "$_curwt" ] && [ "$_curwt" != "$_wt" ] && [ -d "$_curwt" ] && [ "$_move" != "1" ]; then
+    die "session '$_session' is already registered to ${_curwt#"$WORKSPACE"/}, which still exists.
+    One session, one worktree. Pass --move to rebind it deliberately."
   fi
 
   conf_write "$(session_file "$_session")" "$_session" "$_wt" "$_branch" "$_agent" "$_task" "$_status"
@@ -341,6 +375,7 @@ cmd_commit() {
       --session) [ "$#" -ge 2 ] || die "--session needs a value"; OPT_SESSION="$2"; shift 2 ;;
       --agent) [ "$#" -ge 2 ] || die "--agent needs a value"; OPT_AGENT="$2"; shift 2 ;;
       --task) [ "$#" -ge 2 ] || die "--task needs a value"; OPT_TASK="$2"; shift 2 ;;
+      --force-identity) OPT_FORCE_IDENTITY=1; shift ;;
       --no-verify)
         die "--no-verify is forbidden: the hooks are the record (AGENTS.md, Hard rules)." ;;
       -h|--help) usage; return 0 ;;
@@ -394,6 +429,10 @@ cmd_check() {
 
   # The deploy-path list is a copy of the workflow's. Say so when the copy has drifted:
   # a path that deploys production but reads as "safe" defeats the whole landing rule.
+  _wfp="$GIT_ROOT/.github/workflows/deploy-site.yml"
+  if [ -f "$_wfp" ] && [ -z "$(deploy_paths_of "$_wfp")" ]; then
+    warn "could not read on.push.paths from .github/workflows/deploy-site.yml — the deploy-path drift check did not run"
+  fi
   _drift="$(deploy_drift "$GIT_ROOT")"
   if [ -n "$_drift" ]; then
     warn "deploy-site.yml deploys on paths DEPLOY_PATHS does not treat as deploys — fix the constant in this script:"
@@ -408,13 +447,21 @@ cmd_check() {
     fi
   fi
 
+  # A typo'd range must not read as "nothing to check": rev-list would fail quietly and
+  # the gate would report success.
+  if ! _revs="$(git -C "$GIT_ROOT" rev-list --reverse "$_range" 2>&1)"; then
+    die "cannot read range '$_range': $(printf '%s' "$_revs" | head -1)"
+  fi
+
   _bad=0; _n=0; _ok=0; _skipped=0
   _rows=""
-  for _c in $(git -C "$GIT_ROOT" rev-list --reverse "$_range" 2>/dev/null); do
+  for _c in $_revs; do
     _n=$((_n + 1))
     _subj="$(git -C "$GIT_ROOT" log -1 --format='%s' "$_c")"
-    case "$_subj" in
-      "Merge "*) _skipped=$((_skipped + 1)); continue ;;
+    # A merge commit has two or more parents. Never decide it from the subject, which the
+    # author controls: "Merge the two resolvers" is an ordinary commit.
+    case "$(git -C "$GIT_ROOT" log -1 --format='%P' "$_c")" in
+      *" "*) _skipped=$((_skipped + 1)); continue ;;
     esac
     _missing=""
     for _k in $REQUIRED_TRAILERS; do
@@ -442,39 +489,22 @@ cmd_check() {
     say ""
     say "$_n commit(s): $_ok with provenance, $_bad without, $_skipped merge commit(s) skipped"
   else
-    [ "$_bad" -eq 0 ] || printf '%s' "$_rows" | grep 'missing:' >&2 || true
+    [ "$_bad" -eq 0 ] || printf '%s' "$_rows" | grep 'missing:' | tr "$US" ' ' >&2 || true
   fi
 
-  # The deploy-path list here and in the workflow are two copies of one rule. Drift means
-  # a path that publishes production is not counted as one by `check` and `pr`.
-  _wf="$REPO_ROOT/.github/workflows/deploy-site.yml"
-  if [ -f "$_wf" ]; then
-    _wfpaths="$(sed -n '/^  push:/,/^  [a-z_]*:$/p' "$_wf" | grep -E '^[[:space:]]+- "' | sed -e 's/^[[:space:]]*-[[:space:]]*//' -e 's/"//g')"
-    if [ -z "$_wfpaths" ]; then
-      warn "could not read the deploy paths from .github/workflows/deploy-site.yml"
-    else
-      set -f
-      for _p in $_wfpaths; do
-        printf '%s' "$_p" | grep -Eq "$DEPLOY_PATHS" ||
-          warn "deploy path '$_p' in deploy-site.yml is not matched by DEPLOY_PATHS in this script — update both"
-      done
-      set +f
-    fi
-  fi
 
   [ "$_bad" -eq 0 ] || exit 1
 }
 
 cmd_log() {
   GIT_ROOT="$(toplevel)"
-  _count=20; _since=""; _branch=""; _all=""; _wide=0
+  _count=20; _since=""; _branch=""; _all=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --count|-n) [ "$#" -ge 2 ] || die "--count needs a value"; _count="$2"; shift 2 ;;
       --since) [ "$#" -ge 2 ] || die "--since needs a value"; _since="$2"; shift 2 ;;
       --branch) [ "$#" -ge 2 ] || die "--branch needs a value"; _branch="$2"; shift 2 ;;
       --all) _all="--all"; shift ;;
-      --wide) _wide=1; shift ;;
       *) die "unknown option for log: $1" ;;
     esac
   done
@@ -490,7 +520,6 @@ cmd_log() {
     [ -n "${_sha:-}" ] || continue
     [ -n "$_ssn" ] || _ssn="-"
     [ -n "$_wt" ] || _wt="-"
-    [ "$_wide" -eq 0 ] || _subj="$_subj"
     printf '%-9s %-14s %-22s %-11s %s\n' "$_sha" "$_ssn" "$_wt" "$_date" "$_subj"
   done
 
@@ -578,11 +607,16 @@ $(git -C "$GIT_ROOT" for-each-ref --format='%(refname:short)' refs/remotes/origi
     fi
     _state=""
     _wtabs="$WORKSPACE/$_wt"
-    if [ -d "$_wtabs" ]; then
+    if [ "$_wt" = "-" ]; then
+      _state="no session record"
+    elif [ -d "$_wtabs" ]; then
       _dirty="$(git -C "$_wtabs" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
       [ "$_dirty" = "0" ] || _state="${_dirty} uncommitted"
+      [ -n "$_state" ] || _state="clean"
+    else
+      _state="worktree missing"
     fi
-    [ -n "$_state" ] || _state="clean"
+    [ "$(conf_get "$(session_file "$_ssn")" SESSION_STATUS)" != "ended" ] || _state="$_state (ended)"
     [ "$_ahead" = "0" ] || [ "$_b" = "main" ] || _state="$_state; not merged"
     printf '%-30s %-13s %-22s %5s %6s %-10s %-9s %s\n' "$_b" "$_ssn" "$_wt" "$_ahead" "$_behind" "$_last" "$_pr" "$_state"
   done
@@ -637,7 +671,15 @@ cmd_blame() {
     esac
   done
   require_repo
-  [ -e "$REPO_ROOT/$_path" ] || [ -e "$_path" ] || die "no such path: $_path"
+  case "$_path" in
+    /*) _bp="$_path" ;;
+    *) _bp="$GIT_ROOT/$_path" ;;
+  esac
+  case "$_bp" in
+    "$BOUNDARY"/*) : ;;
+    *) die "path is outside the workspace: $_path (nothing outside $BOUNDARY is read)" ;;
+  esac
+  [ -e "$_bp" ] || die "no such path: $_path"
 
   say "session history for $_path"
   printf '%-9s %-14s %-11s %s\n' "COMMIT" "SESSION" "DATE" "SUBJECT"
@@ -676,13 +718,17 @@ cmd_pr() {
   [ "$_branch" != "HEAD" ] || die "detached HEAD — a PR needs a branch"
   [ "$_branch" != "$_base" ] || die "you are on $_base; a PR needs a feature branch"
 
-  _up="$(git -C "$_top" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
-  if [ -z "$_up" ]; then
-    die "branch $_branch has no upstream. Push it first:
+  # A dry run previews the body before the branch exists on the remote; only a real
+  # `gh pr create` needs the upstream.
+  if [ "$_dry" -eq 0 ]; then
+    _up="$(git -C "$_top" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+    if [ -z "$_up" ]; then
+      die "branch $_branch has no upstream. Push it first:
     GIT_TERMINAL_PROMPT=0 perl -e 'alarm 90; exec @ARGV' git push -u origin $_branch"
+    fi
+    _ahead="$(git -C "$_top" rev-list --count "$_up..HEAD")"
+    [ "$_ahead" = "0" ] || die "$_ahead commit(s) are not pushed — push $_branch before opening the PR"
   fi
-  _ahead="$(git -C "$_top" rev-list --count "$_up..HEAD")"
-  [ "$_ahead" = "0" ] || die "$_ahead commit(s) are not pushed — push $_branch before opening the PR"
 
   _base_ref="origin/$_base"
   git -C "$_top" rev-parse --verify --quiet "$_base_ref" >/dev/null || _base_ref="$_base"
@@ -704,7 +750,7 @@ cmd_pr() {
   if [ -n "$_deploy" ]; then
     _impact="- [x] **Touches a deploy path — merging to \`$_base\` runs \`deploy-site\` and publishes \`unpackfund.com\`.**"
     _impact="$_impact
-$(printf '%s\n' "$_deploy" | sed 's/^/  - `&`/')"
+$(printf '%s\n' "$_deploy" | sed 's/.*/  - `&`/')"
     _impact="$_impact
 
   A merge to \`main\` is a production deploy. Confirm the evidence below before merging."
@@ -731,9 +777,14 @@ $(printf '%s\n' "$_deploy" | sed 's/^/  - `&`/')"
     printf '%s\n\n' "${_evidence:-_Command, exit code, and the line it printed. A claim without one is not evidence._}"
     printf '## Production impact\n\n%s\n\n' "$_impact"
     printf '## Rollback\n\n'
-    printf '`git revert <merge-sha>` on `%s`, or `gh pr revert` if the branch is gone.\n\n' "$_base"
+    printf 'Revert on `%s` with `git revert -n -m 1 <merge-sha>` then `scripts/session-provenance.sh commit -m "Revert …"`' "$_base"
+    printf '\n(a plain `git revert` writes a commit with no trailers, which `pre-push` refuses), or `gh pr revert` if the branch is gone.\n\n' 
     printf -- '---\n'
-    printf '_Files changed (%s):_\n\n' "$_nfiles"
+    if [ "$_nfiles" -gt 40 ]; then
+      printf '_Files changed (%s, first 40 listed):_\n\n' "$_nfiles"
+    else
+      printf '_Files changed (%s):_\n\n' "$_nfiles"
+    fi
     printf '%s\n' "$_files" | sed 's/^/- `/; s/$/`/'
     printf '\n_Opened with `scripts/session-provenance.sh pr` — session `%s`._\n' "$ID_SESSION"
   } >"$_f"

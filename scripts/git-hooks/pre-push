@@ -18,6 +18,13 @@ zero="0000000000000000000000000000000000000000"
 status=0
 checked=0
 
+# The worktree doing the pushing, when it is a session worktree.
+push_top=$(git rev-parse --show-toplevel 2>/dev/null || true)
+case "${push_top##*/}" in
+  wt-*) push_session="${push_top##*/wt-}" ;;
+  *) push_session="" ;;
+esac
+
 while read -r local_ref local_sha remote_ref remote_sha; do
   [ "$local_sha" = "$zero" ] && continue          # branch deletion
   case "$remote_ref" in
@@ -33,8 +40,10 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   fi
   [ -n "$range" ] || continue
 
-  # Only commits authored after the rule took effect are enforced.
-  recent=$(git rev-list --since="$PROVENANCE_SINCE" $range 2>/dev/null || true)
+  # Only commits committed after the rule took effect are enforced. --no-walk matters:
+  # $range is already the exact set, and without it --since re-walks ancestors and can
+  # refuse a one-commit push for an ancestor the remote already has.
+  recent=$(git rev-list --no-walk --since="$PROVENANCE_SINCE" $range 2>/dev/null || true)
 
   for c in $recent; do
     checked=$((checked + 1))
@@ -48,11 +57,29 @@ while read -r local_ref local_sha remote_ref remote_sha; do
       value=$(git log -1 --format="%(trailers:key=$key,valueonly,separator=,)" "$c")
       [ -n "$value" ] || missing="$missing $key"
     done
+    short=$(git log -1 --format='%h %s' "$c")
     if [ -n "$missing" ]; then
-      short=$(git log -1 --format=%h "$c")
-      echo "pre-push: $short does not say which session made it (missing:$missing)" >&2
-      echo "          $subject" >&2
+      echo "pre-push: $short" >&2
+      echo "          does not say which session made it (missing:$missing)" >&2
       status=1
+      continue
+    fi
+
+    _ssn=$(git log -1 --format="%(trailers:key=Session,valueonly,separator=,)" "$c")
+    _wt=$(git log -1 --format="%(trailers:key=Worktree,valueonly,separator=,)" "$c")
+    case "$_wt" in
+      .work/wt-*)
+        if [ "$_ssn" != "${_wt#.work/wt-}" ]; then
+          echo "pre-push: $short" >&2
+          echo "          says Session: $_ssn but Worktree: $_wt — one of the two is wrong" >&2
+          status=1
+          continue
+        fi ;;
+    esac
+    # Cherry-picking another session's commit is legitimate, so this is a warning only.
+    if [ -n "$push_session" ] && [ "$_wt" != ".work/wt-$push_session" ] && [ "$_wt" != "unpackfund" ]; then
+      echo "pre-push: note — $short" >&2
+      echo "          was written in $_wt but is being pushed from .work/wt-$push_session" >&2
     fi
   done
 done
@@ -60,8 +87,8 @@ done
 if [ "$status" -ne 0 ]; then
   {
     echo ""
-    echo "pre-push: refusing to push unattributed commits."
-    echo "  Every commit authored after $PROVENANCE_SINCE needs Session:, Worktree: and Agent:"
+    echo "pre-push: refusing to push unattributed commits ($checked checked)."
+    echo "  Every commit committed after $PROVENANCE_SINCE needs Session:, Worktree: and Agent:"
     echo "  trailers (AGENTS.md, \"Commit provenance\")."
     echo ""
     echo "  Fix the branch — it is unpushed, so rewriting it is safe:"
