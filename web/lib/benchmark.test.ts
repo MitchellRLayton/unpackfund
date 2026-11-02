@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { BENCHMARK_TICKER, benchmarkFor } from "./benchmark";
-import type { FundDocument, Holding } from "./types";
+import { BENCHMARK_TICKER, benchmarkFor, benchmarkFromRollup } from "./benchmark";
+import type { BenchmarkRollup, FundDocument, Holding } from "./types";
 
 /**
  * The benchmark payload is a displayed number's only input, so its rules are
@@ -85,5 +85,58 @@ describe("benchmarkFor", () => {
     expect(benchmark.lag_days).toBe(59);
     expect(benchmark.coverage_pct).toBe(97.8);
     expect(benchmark.source_url).toContain("sec.gov");
+  });
+});
+
+/**
+ * Two producers, one payload.
+ *
+ * Since ADR-0015 §7 the page normally reads the compact object the release pre-rolled
+ * instead of the benchmark's 1.58 MB fund document. That makes `benchmarkFromRollup`
+ * a second path to a displayed number, and the risk is drift: the release validator
+ * recomputes the rollup from the document, and this test recomputes the payload from
+ * the rollup — so a reader gets the same column whichever object answered.
+ */
+describe("the compact object and the fund document agree", () => {
+  function rollupOf(document: FundDocument): BenchmarkRollup {
+    // The builder's rule, restated in the object's own units: integer basis points,
+    // no unmapped rows, no zero rows, one entry per company.
+    const weights: Record<string, number> = {};
+    for (const holding of document.holdings) {
+      if (!holding.company_id || holding.weight_bp === 0) continue;
+      weights[holding.company_id] =
+        (weights[holding.company_id] ?? 0) + holding.weight_bp;
+    }
+    return {
+      schema_version: 1,
+      kind: "benchmark",
+      ticker: document.ticker,
+      fund_id: document.fund_id,
+      name: document.name,
+      as_of: document.as_of,
+      filed_at: document.filed_at,
+      lag_days: document.lag_days,
+      coverage_pct: document.coverage_pct,
+      source_url: document.source_url,
+      weights,
+    };
+  }
+
+  it("produces the same weights and provenance from either object", () => {
+    const filing = document([
+      holding("c_a", 700),
+      holding("c_a", 300),
+      holding("c_b", 1),
+      holding(null, 900),
+      holding("c_zero", 0),
+    ]);
+    expect(benchmarkFromRollup(rollupOf(filing))).toEqual(benchmarkFor(filing));
+  });
+
+  it("divides by gross weight once, in basis points", () => {
+    const filing = document([holding("c_a", 406)]);
+    const payload = benchmarkFromRollup(rollupOf(filing));
+    // 406 bp of a 10,000 bp allocation: 4.06%, the number the table shows.
+    expect(payload.weights.c_a).toBeCloseTo(0.0406, 10);
   });
 });

@@ -13,7 +13,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
-import { BENCHMARK_TICKER, benchmarkFor } from "@/lib/benchmark";
+import { BENCHMARK_TICKER, benchmarkFor, benchmarkFromRollup } from "@/lib/benchmark";
 import { CompanyDrawer } from "@/components/CompanyDrawer";
 import { FreshnessStrip, MetricsList } from "@/components/FreshnessStrip";
 import { LedgerTable } from "@/components/LedgerTable";
@@ -29,7 +29,7 @@ import {
 import { FULL_ALLOCATION_BP } from "@/lib/types";
 import { useLedger } from "@/lib/use-ledger";
 import { usePortfolio } from "@/lib/use-portfolio";
-import { useFunds, useRelease } from "@/lib/use-release";
+import { useBenchmark, useFunds, useRelease } from "@/lib/use-release";
 import type { LedgerRow } from "@/lib/types";
 
 /**
@@ -54,29 +54,32 @@ export function LedgerView() {
   const releaseData = release.status === "ready" ? release.data : null;
   const { funds, pending, error } = useFunds(releaseData, tickers);
 
-  // The benchmark (ADR-0015) is one more fund document, loaded the same way and
-  // for the same reason: the comparison is a number from a filing, so it is
-  // hash-checked like every other number on the page. It is fetched separately
-  // from the portfolio so that a missing benchmark removes a column instead of
-  // failing the ledger — and skipped entirely when the portfolio already owns it,
-  // because then the document is already in memory and a second copy would be
-  // 193 KB of the same bytes.
+  // The benchmark (ADR-0015) is read from one of three places, in order of what the
+  // page already has: the fund document in memory (the portfolio holds it), the
+  // compact rollup the release pre-rolled for it (~43 kB, the normal path), or —
+  // for a release that predates the compact object — the benchmark's full fund
+  // document (~1.58 MB), which every release has published since 2026-10-30. All
+  // three are hash-checked against the release, and all three produce the same
+  // payload, so the table cannot tell which one answered.
   const holdsBenchmark = portfolio.entries.some(
     (entry) => entry.ticker === BENCHMARK_TICKER,
   );
   const wantsBenchmark = !holdsBenchmark && portfolio.entries.length > 0;
-  const benchmarkLoad = useFunds(releaseData, wantsBenchmark ? [BENCHMARK_TICKER] : []);
-  const benchmarkDocument = useMemo(
-    () =>
-      funds.find((fund) => fund.ticker === BENCHMARK_TICKER) ??
-      benchmarkLoad.funds[0] ??
-      null,
-    [funds, benchmarkLoad.funds],
+  const compactEntry = releaseData?.objects.benchmarks?.files?.[BENCHMARK_TICKER];
+  const wantsCompact = wantsBenchmark && compactEntry !== undefined;
+  const wantsFundDocument = wantsBenchmark && compactEntry === undefined;
+  const compactLoad = useBenchmark(releaseData, wantsCompact ? BENCHMARK_TICKER : null);
+  const benchmarkLoad = useFunds(
+    releaseData,
+    wantsFundDocument ? [BENCHMARK_TICKER] : [],
   );
-  const benchmark = useMemo(
-    () => (benchmarkDocument ? benchmarkFor(benchmarkDocument) : null),
-    [benchmarkDocument],
-  );
+  const benchmark = useMemo(() => {
+    const inMemory = funds.find((fund) => fund.ticker === BENCHMARK_TICKER);
+    if (inMemory) return benchmarkFor(inMemory);
+    if (compactLoad.data) return benchmarkFromRollup(compactLoad.data);
+    const document = benchmarkLoad.funds[0];
+    return document ? benchmarkFor(document) : null;
+  }, [funds, compactLoad.data, benchmarkLoad.funds]);
 
   const weightsBp = useMemo(
     () =>
@@ -97,10 +100,13 @@ export function LedgerView() {
   // `pending` only ever lists tickers that have not loaded, so a *failed* load would
   // stay in it forever and hold the ledger in "Loading" — which would make the
   // column-less fallback below unreachable. A benchmark that errored is answered by
-  // the notice, not waited for.
+  // the notice, not waited for. The compact object has the same rule, one status
+  // earlier: it is waited for while loading, and not after it fails.
+  const compactPending = wantsCompact && compactLoad.status === "loading";
   const pendingNames = [
     ...pending,
-    ...(wantsBenchmark && !benchmarkLoad.error ? benchmarkLoad.pending : []),
+    ...(compactPending ? [BENCHMARK_TICKER] : []),
+    ...(wantsFundDocument && !benchmarkLoad.error ? benchmarkLoad.pending : []),
   ];
 
   if (!portfolio.ready) {

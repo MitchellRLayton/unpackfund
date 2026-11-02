@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   DataError,
+  loadBenchmark,
   loadCatalogue,
   loadCompany,
   loadCompanyIndex,
@@ -21,6 +22,7 @@ import {
   loadTickers,
 } from "./data";
 import type {
+  BenchmarkRollup,
   Catalogue,
   CompanyIndex,
   CompanyShard,
@@ -256,6 +258,52 @@ export function useCatalogue(release: ReleaseDescriptor | null): LoadState<Catal
 }
 
 /** The company search index: every company in the release, by name and ticker. */
+/**
+ * The compact benchmark for `ticker`, or `null` when the release pre-rolled none.
+ *
+ * `null` is a state, not a failure: an older release has no `benchmarks/` family, and
+ * the page then reads the benchmark's fund document the way it did before the compact
+ * object existed. That dual read is what lets this bundle ship ahead of a release
+ * (`data-contract-and-release` §8) without ever showing an empty column.
+ */
+export function useBenchmark(
+  release: ReleaseDescriptor | null,
+  ticker: string | null,
+): LoadState<BenchmarkRollup | null> {
+  // The answer is stored *with the key it answers*, and the returned state is derived
+  // from whether that key is still the current one. The obvious version — setState to
+  // "loading" at the top of the effect — fires a cascading render on every fetch and
+  // is what `react-hooks/set-state-in-effect` exists to catch. Deriving makes the
+  // loading state free: a new key simply does not match the stored answer yet.
+  const key = release && ticker ? `${release.as_of}:${ticker}` : null;
+  const [answer, setAnswer] = useState<{
+    key: string;
+    state: LoadState<BenchmarkRollup | null>;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!release || !ticker || !key) return;
+    let cancelled = false;
+    loadBenchmark(release, ticker)
+      .then((document) => {
+        if (cancelled) return;
+        setAnswer({ key, state: { status: "ready", data: document, error: null } });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setAnswer({ key, state: { status: "error", data: null, error: toError(error) } });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [release, ticker, key]);
+
+  if (!key || answer?.key !== key) {
+    return { status: "loading", data: null, error: null };
+  }
+  return answer.state;
+}
+
 export function useCompanyIndex(
   release: ReleaseDescriptor | null,
 ): LoadState<CompanyIndex> {

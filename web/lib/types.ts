@@ -56,6 +56,14 @@ export interface ReleaseDescriptor {
      * rather than refusing to open.
      */
     aliases?: { object: ObjectDescriptor; count: number };
+    /**
+     * The compact benchmark rollups this release pre-rolled (`benchmarks/{T}.json`).
+     * Optional for the same reason as `aliases`, and load-bearing here: a release
+     * that predates the object makes the app fall back to the benchmark's full fund
+     * document, which is slower but identical. Presence, not a version number, is
+     * the switch — that is what lets the bundle ship before the data does.
+     */
+    benchmarks?: { prefix: string; files: Record<string, ObjectDescriptor> };
   };
 }
 
@@ -271,6 +279,34 @@ export interface BenchmarkComparison {
   coverage_pct: number;
   source_url: string;
   /** `company_id` → share of the benchmark's NAV, as a fraction. */
+  weights: Record<string, number>;
+}
+
+/**
+ * `releases/{as_of}/benchmarks/{TICKER}.json` — one benchmark's weights, pre-rolled.
+ *
+ * The fund document is 1.58 MB and the ledger reads one number per company from it;
+ * this object is the same filing rolled up to companies, ~43 kB, published once per
+ * release. `weights` is `company_id → integer basis points`, so the contract's unit
+ * survives the round trip and the single conversion to fractions stays in
+ * `benchmarkFromRollup`. It is derived, so the release validator recomputes it from
+ * the fund document beside it and refuses a release where the two disagree.
+ *
+ * `as_of` is the **filing period end**, not the release id: the benchmark is compared
+ * against a portfolio whose funds were filed at various dates, and its own lag is
+ * part of what the caption discloses.
+ */
+export interface BenchmarkRollup {
+  schema_version: number;
+  kind: "benchmark";
+  ticker: string;
+  fund_id: string;
+  name: string;
+  as_of: string;
+  filed_at: string;
+  lag_days: number;
+  coverage_pct: number;
+  source_url: string;
   weights: Record<string, number>;
 }
 

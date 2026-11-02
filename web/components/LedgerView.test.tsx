@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   BenchmarkFacts,
+  BenchmarkRollup,
   FundDocument,
   Ledger,
   LedgerRow,
@@ -20,12 +21,14 @@ import type {
 const usePortfolio = vi.fn();
 const useRelease = vi.fn();
 const useFunds = vi.fn();
+const useBenchmark = vi.fn();
 const useLedger = vi.fn();
 
 vi.mock("@/lib/use-portfolio", () => ({ usePortfolio: () => usePortfolio() }));
 vi.mock("@/lib/use-release", () => ({
   useRelease: () => useRelease(),
   useFunds: (...args: unknown[]) => useFunds(...args),
+  useBenchmark: (...args: unknown[]) => useBenchmark(...args),
   // The drawer is closed in these tests; it still calls its hook.
   useCompany: () => ({ status: "loading", data: null, error: null }),
 }));
@@ -74,6 +77,35 @@ const vtFacts: BenchmarkFacts = {
 };
 
 /** A real document, so the page rolls it up with the shipped code rather than a stub. */
+/** The compact object the release now publishes for VT (ADR-0015 §7). */
+const vtRollup: BenchmarkRollup = {
+  schema_version: 1,
+  kind: "benchmark",
+  ticker: "VT",
+  fund_id: "S000022482",
+  name: vtFacts.name,
+  as_of: vtFacts.as_of,
+  filed_at: vtFacts.filed_at,
+  lag_days: vtFacts.lag_days,
+  coverage_pct: vtFacts.coverage_pct,
+  source_url: vtFacts.source_url,
+  weights: { c_nvda: 406, c_aapl: 387 },
+};
+
+/** The same release, with the compact family a build since this change publishes. */
+const releaseWithBenchmark: ReleaseDescriptor = {
+  ...release,
+  objects: {
+    ...release.objects,
+    benchmarks: {
+      prefix: "benchmarks/",
+      files: {
+        VT: { path: "benchmarks/VT.json", bytes: 320, sha256: "e".repeat(64) },
+      },
+    },
+  },
+};
+
 const vtDocument: FundDocument = {
   schema_version: 1,
   ticker: "VT",
@@ -172,6 +204,11 @@ const ledger: Ledger = {
 };
 
 beforeEach(() => {
+  // Calls accumulate across tests otherwise, and one of the assertions below is
+  // about a call that must *not* happen.
+  useFunds.mockReset();
+  useBenchmark.mockReset();
+  useLedger.mockReset();
   usePortfolio.mockReturnValue({
     entries: [{ ticker: "VOO", weight_bp: 10_000 }],
     totalBp: 10_000,
@@ -181,7 +218,25 @@ beforeEach(() => {
     ready: true,
   });
   useRelease.mockReturnValue({ status: "ready", data: release, error: null });
+  // The default release below predates the compact object, so its benchmark comes
+  // from the fund document; `releaseWithBenchmark` is the newer shape.
+  useBenchmark.mockReturnValue({ status: "loading", data: null, error: null });
 });
+
+/** The ledger the page would build, given whichever benchmark source answered. */
+function withBenchmarkWeights(
+  benchmark: { weights: Record<string, number> } | null,
+): Ledger {
+  return {
+    ...ledger,
+    rows: ledger.rows.map((row) => ({
+      ...row,
+      benchmark_weight:
+        benchmark === null ? null : (benchmark.weights[row.company_id] ?? 0),
+    })),
+    benchmark: vtFacts,
+  };
+}
 
 describe("the ledger when the benchmark cannot be read", () => {
   it("renders the portfolio table instead of waiting for it forever", () => {
@@ -206,22 +261,18 @@ describe("the ledger when the benchmark cannot be read", () => {
     expect(screen.queryByRole("columnheader", { name: /In VT/ })).toBeNull();
   });
 
-  it("keeps the column, and explains both kinds of 0.00%, when it can", () => {
-    useFunds.mockImplementation((_data: unknown, tickers: string[]) =>
-      tickers.includes("VT")
-        ? { funds: [vtDocument], pending: [], error: null }
-        : { funds: [], pending: [], error: null },
-    );
+  it("reads the compact rollup when the release pre-rolled one", () => {
+    // The normal path since ADR-0015 §7: one 43 kB object instead of VT's 1.58 MB
+    // fund document, which is the whole reason the object exists.
+    useRelease.mockReturnValue({
+      status: "ready",
+      data: releaseWithBenchmark,
+      error: null,
+    });
+    useFunds.mockImplementation(() => ({ funds: [], pending: [], error: null }));
+    useBenchmark.mockReturnValue({ status: "ready", data: vtRollup, error: null });
     useLedger.mockImplementation((_funds, _weightsBp, benchmark) => ({
-      ledger: {
-        ...ledger,
-        rows: ledger.rows.map((row) => ({
-          ...row,
-          benchmark_weight:
-            benchmark === null ? null : (benchmark.weights[row.company_id] ?? 0),
-        })),
-        benchmark: vtFacts,
-      },
+      ledger: withBenchmarkWeights(benchmark),
       error: null,
       mode: "main",
       durationMs: 3,
@@ -229,13 +280,76 @@ describe("the ledger when the benchmark cannot be read", () => {
 
     render(<LedgerView />);
 
+    expect(useBenchmark).toHaveBeenCalledWith(expect.anything(), "VT");
+    // VT's fund document is never requested: no fallback fetch happens behind the
+    // compact one, which is what keeps the saving real.
+    expect(
+      useFunds.mock.calls.some(([, tickers]) => (tickers as string[]).includes("VT")),
+    ).toBe(false);
     expect(screen.getByRole("columnheader", { name: /In VT/ })).toBeTruthy();
-    // 406 bp of VT against a 7.51% portfolio weight, side by side and not summed.
     expect(screen.getByText("4.06%")).toBeTruthy();
-    expect(screen.getAllByText("7.51%").length).toBeGreaterThan(0);
+  });
+
+  it("falls back to the fund document on a release that has no compact object", () => {
+    // The older release, which is what the live site reads until the next one is
+    // published: same column, one much larger fetch.
+    useFunds.mockImplementation((_data: unknown, tickers: string[]) =>
+      tickers.includes("VT")
+        ? { funds: [vtDocument], pending: [], error: null }
+        : { funds: [], pending: [], error: null },
+    );
+    useLedger.mockImplementation((_funds, _weightsBp, benchmark) => ({
+      ledger: withBenchmarkWeights(benchmark),
+      error: null,
+      mode: "main",
+      durationMs: 3,
+    }));
+
+    render(<LedgerView />);
+
+    expect(useBenchmark).toHaveBeenCalledWith(expect.anything(), null);
+    expect(screen.getByRole("columnheader", { name: /In VT/ })).toBeTruthy();
+    expect(screen.getByText("4.06%")).toBeTruthy();
     // The zero the caption must not call "not traced": Matson is a filed VT row
     // rounded to nothing, not a missing company.
     expect(screen.getByText(/filed at under 0\.01%/)).toBeTruthy();
     expect(screen.getByText(/of its gross\s+weight to companies/)).toBeTruthy();
+  });
+
+  it("waits for the compact object rather than reflowing the table", () => {
+    useRelease.mockReturnValue({
+      status: "ready",
+      data: releaseWithBenchmark,
+      error: null,
+    });
+    useFunds.mockImplementation(() => ({ funds: [], pending: [], error: null }));
+    useBenchmark.mockReturnValue({ status: "loading", data: null, error: null });
+    useLedger.mockReturnValue({ ledger, error: null, mode: "main", durationMs: 3 });
+
+    render(<LedgerView />);
+
+    expect(screen.getByRole("status").textContent).toContain("VT");
+    expect(screen.queryByRole("columnheader", { name: /In VT/ })).toBeNull();
+  });
+
+  it("drops the column when the compact object fails, like any other benchmark failure", () => {
+    useRelease.mockReturnValue({
+      status: "ready",
+      data: releaseWithBenchmark,
+      error: null,
+    });
+    useFunds.mockImplementation(() => ({ funds: [], pending: [], error: null }));
+    useBenchmark.mockReturnValue({
+      status: "error",
+      data: null,
+      error: { message: "hash mismatch", detail: "e".repeat(12), kind: "hash" },
+    });
+    useLedger.mockReturnValue({ ledger, error: null, mode: "main", durationMs: 3 });
+
+    render(<LedgerView />);
+
+    expect(screen.queryByText(/Loading/)).toBeNull();
+    expect(screen.getByText(/No benchmark comparison on this page/)).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: /In VT/ })).toBeNull();
   });
 });

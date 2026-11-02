@@ -16,7 +16,12 @@
  * portfolio the visitor holds in the benchmark (usually zero).
  */
 
-import { FULL_ALLOCATION_BP, type BenchmarkComparison, type FundDocument } from "./types";
+import {
+  FULL_ALLOCATION_BP,
+  type BenchmarkComparison,
+  type BenchmarkRollup,
+  type FundDocument,
+} from "./types";
 
 /** The one benchmark. Changing this is an ADR, not an edit. */
 export const BENCHMARK_TICKER = "VT";
@@ -57,6 +62,33 @@ export function benchmarkFor(document: FundDocument): BenchmarkComparison {
     lag_days: document.lag_days,
     coverage_pct: document.coverage_pct,
     source_url: document.source_url,
+    weights,
+  };
+}
+
+/**
+ * The same payload, from the pre-rolled object instead of the fund document.
+ *
+ * The two producers must agree — a release validates its compact object against the
+ * fund document it was rolled from, and `benchmark.test.ts` pins the two functions
+ * here to the same answer — so this is an optimisation, not a second definition.
+ * The one conversion from integer basis points to fractions happens here and
+ * nowhere else, exactly as `benchmarkFor` does it (math §2).
+ */
+export function benchmarkFromRollup(rollup: BenchmarkRollup): BenchmarkComparison {
+  const weights: Record<string, number> = {};
+  for (const [companyId, weightBp] of Object.entries(rollup.weights)) {
+    weights[companyId] = weightBp / FULL_ALLOCATION_BP;
+  }
+
+  return {
+    ticker: rollup.ticker,
+    name: rollup.name,
+    as_of: rollup.as_of,
+    filed_at: rollup.filed_at,
+    lag_days: rollup.lag_days,
+    coverage_pct: rollup.coverage_pct,
+    source_url: rollup.source_url,
     weights,
   };
 }

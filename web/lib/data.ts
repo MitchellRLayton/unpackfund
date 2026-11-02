@@ -28,6 +28,7 @@ import {
   type Catalogue,
   type CatalogueRow,
   type FundAliases,
+  type BenchmarkRollup,
   type CompanyIndex,
   type CompanyShard,
   type FundDocument,
@@ -328,6 +329,45 @@ export async function loadFund(
 }
 
 /** Load several funds, keeping the portfolio's order. */
+/**
+ * One benchmark's compact rollup, hash-checked like every other object.
+ *
+ * `undefined` when this release pre-rolled none: the descriptor's absence of the
+ * ticker is a fact about the release, not an error, and the caller falls back to the
+ * benchmark's fund document. A release that *does* describe it and then serves bytes
+ * matching neither the hash nor the shape is an error — the comparison column would
+ * otherwise be built from a file nobody verified.
+ */
+export async function loadBenchmark(
+  release: ReleaseDescriptor,
+  ticker: string,
+  fetchImpl: FetchImpl = fetch,
+): Promise<BenchmarkRollup | null> {
+  const entry = release.objects.benchmarks?.files?.[ticker];
+  if (!entry) return null;
+  const document = await loadDescribed<BenchmarkRollup>(
+    release,
+    entry,
+    "benchmark",
+    fetchImpl,
+  );
+  if (
+    !document ||
+    document.kind !== "benchmark" ||
+    document.ticker !== ticker ||
+    !document.weights ||
+    typeof document.weights !== "object" ||
+    Array.isArray(document.weights)
+  ) {
+    throw new DataError(
+      "schema",
+      "That benchmark record does not belong to this release.",
+      `${entry.path}: kind ${document?.kind ?? "missing"}, ticker ${document?.ticker ?? "missing"}, release asks for ${ticker}.`,
+    );
+  }
+  return document;
+}
+
 export async function loadFunds(
   release: ReleaseDescriptor,
   tickers: string[],
