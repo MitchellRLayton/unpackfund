@@ -265,6 +265,32 @@ describe("PortfolioBuilder — adding a holding never re-weights the ones alread
     expect(screen.getByDisplayValue("30.00")).toBeTruthy();
   });
 
+  it("keeps the resolved company in the title when a stock arrives at 0.00%", async () => {
+    render(<PortfolioBuilder />);
+    fireEvent.click(screen.getByRole("button", { name: "Add QQQ" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add VTI" }));
+    fireEvent.change(screen.getByLabelText("Amount for QQQ, in percent"), {
+      target: { value: "60" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount for VTI, in percent"), {
+      target: { value: "40" },
+    });
+    fireEvent.blur(screen.getByLabelText("Amount for QQQ, in percent"));
+    fireEvent.blur(screen.getByLabelText("Amount for VTI, in percent"));
+
+    fireEvent.change(screen.getByLabelText("Fund ticker or stock symbol"), {
+      target: { value: "AMZN" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    // A symbol is a label, and this is the one path where the title carries the whole
+    // confirmation — so the company name survives it (2026-11-02).
+    expect(await screen.findByText("Added AMZN — AMAZON COM INC at 0.00%")).toBeTruthy();
+    expect(screen.getByDisplayValue("60.00")).toBeTruthy();
+    expect(screen.getByDisplayValue("40.00")).toBeTruthy();
+    expect(screen.getByDisplayValue("0.00")).toBeTruthy();
+  });
+
   it("still splits a portfolio the app itself spread, so the default survives", () => {
     render(<PortfolioBuilder />);
     fireEvent.click(screen.getByRole("button", { name: "Add QQQ" }));

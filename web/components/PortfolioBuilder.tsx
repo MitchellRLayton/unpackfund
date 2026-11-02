@@ -131,14 +131,22 @@ export function PortfolioBuilder() {
    * exactly this (adding a fund must not move the weights they typed), and an add that
    * silently contributes nothing otherwise reads as an add that failed.
    */
-  function addEntry(kind: EntryKind, key: string, body?: string): AddOutcome {
+  function addEntry(
+    kind: EntryKind,
+    key: string,
+    body?: string,
+    label?: string,
+  ): AddOutcome {
     setCleared(null);
     setConverted(null);
     const outcome = portfolio.add(kind, key);
     if (outcome === "kept") {
+      // `label` is what the reader should see the row called — a symbol resolved to its
+      // company name keeps that promise here too, because this is the one path where the
+      // add writes no amount and the title is carrying the whole confirmation.
       setMessage({
         tone: "info",
-        title: `Added ${kind === "cash" ? "cash" : key} at 0.00%`,
+        title: `Added ${label ?? (kind === "cash" ? "cash" : key)} at 0.00%`,
         body: [
           body,
           "Your other rows kept the amounts you gave them. Set this row's amount to give it weight.",
@@ -281,7 +289,9 @@ export function PortfolioBuilder() {
         // The confirmation step: a symbol is a label, and the reader should see the
         // company the release resolved it to before it enters their portfolio.
         const detail = `Held directly. ${row[2] ?? "Exchange not filed"} · company ${row[0]}. Its weight is yours, not a fund's.`;
-        if (addEntry("security", ticker, detail) !== "kept") {
+        // The same title in both outcomes: whichever branch writes the message, the
+        // reader sees the company the release resolved the symbol to.
+        if (addEntry("security", ticker, detail, `${ticker} — ${row[1]}`) !== "kept") {
           setMessage({
             tone: "info",
             title: `Added ${ticker} — ${row[1]}`,
