@@ -36,6 +36,13 @@
   /* The same edge for any other domicile. */
   --country-intl: #8d9fe0;
 
+  /* The current section's pill: `--surface` mixed 20% darker, per the operator's
+   * instruction of 2026-11-02 ("20% darker pill"). It is a token rather than a
+   * `color-mix()` at the use site so the theme test can check its contrast: #f6f8f9 at
+   * 80% is #c5c6c7, and body text on it is still over 10:1. `--surface` stays as it is —
+   * table headers and notices want the quiet version, the location wants a block. */
+  --pill-bg: #c5c6c7;
+
   /* The shadow under the current section's pill. Soft and small: it separates the
    * pill from the bar, not from the page. A black 8% shadow is invisible on the dark
    * scheme's #0d1117, so the dark value is deeper rather than the same. */
@@ -72,6 +79,11 @@
      * text, and the code beside it uses `--muted`. */
     --country-us: #2b4a6d;
     --country-intl: #2f3a6e;
+    /* 20% in the opposite direction, and deliberately: on a #0d1117 page a darker pill
+     * moves *toward* the page and erases the block the light scheme just gained, so the
+     * dark scheme gets the same 20% step away from `--surface` instead. #151b22 at 120%
+     * is #192028. */
+    --pill-bg: #192028;
     --pill-shadow: 0 1px 2px rgb(0 0 0 / 45%);
   }
 }
@@ -183,14 +195,15 @@ a:hover {
   background: var(--surface);
 }
 
-/* The section you are on: bold, and a light grey rounded block with a soft shadow, so
- * it reads as a place rather than as a word someone bolded (operator's instruction,
- * 2026-11-02). `aria-current` carries the same fact to a screen reader, so the colour
- * is reinforcement and never the only carrier (§8). */
+/* The section you are on: bold, and a grey rounded block with a soft shadow, so it reads
+ * as a place rather than as a word someone bolded (operator's instruction, 2026-11-02).
+ * `--pill-bg` is the darker step of `--surface` the operator asked for, so the block
+ * separates from the bar even at a glance. `aria-current` carries the same fact to a
+ * screen reader, so the colour is reinforcement and never the only carrier (§8). */
 .site-nav a[aria-current="page"] {
   color: var(--fg);
   font-weight: 600;
-  background: var(--surface);
+  background: var(--pill-bg);
   box-shadow: var(--pill-shadow);
 }
 
