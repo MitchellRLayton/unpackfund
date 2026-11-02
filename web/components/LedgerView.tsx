@@ -29,6 +29,7 @@ import {
   formatDays,
   formatShare,
 } from "@/lib/format";
+import { ledgerCsv, ledgerCsvName, saveCsv } from "@/lib/export";
 import { splitPortfolio } from "@/lib/portfolio-weights";
 import { refusal } from "@/lib/securities";
 import { FULL_ALLOCATION_BP } from "@/lib/types";
@@ -53,6 +54,9 @@ export function LedgerView() {
   const [selected, setSelected] = useState<LedgerRow | null>(null);
   const [showAll, setShowAll] = useState(false);
   const release = useRelease();
+  // The CSV names the release it came from, so it needs the release's stamp rather
+  // than whatever the page happens to be showing.
+  const releaseAsOf = release.status === "ready" ? release.data.as_of : null;
 
   const tickers = useMemo(
     () =>
@@ -337,6 +341,24 @@ export function LedgerView() {
       ) : null}
 
       <h2 id="ledger-start">Companies</h2>
+      {releaseAsOf ? (
+        <p className="table-more">
+          <button
+            type="button"
+            onClick={() =>
+              saveCsv(
+                ledgerCsv(ledger, { as_of: releaseAsOf }),
+                ledgerCsvName(new Date(), releaseAsOf),
+              )
+            }
+          >
+            Download {formatCount(ledger.rows.length)} companies as CSV
+          </button>
+          <span className="row-note">
+            Every row carries the release it came from, so the file can be checked later.
+          </span>
+        </p>
+      ) : null}
       <p className="sr-only" role="status">
         {showAll
           ? `All ${formatCount(ledger.rows.length)} companies shown`
