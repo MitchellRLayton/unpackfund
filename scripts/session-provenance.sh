@@ -650,7 +650,16 @@ $(git -C "$GIT_ROOT" for-each-ref --format='%(refname:short)' refs/remotes/origi
         say "live: origin/main ($_origin) is the deployed commit"
       else
         _since="$(git -C "$GIT_ROOT" rev-list --count "${_dsha}..origin/main" 2>/dev/null || printf '?')"
-        say "live: origin/main has $_since commit(s) after the last deploy-site run"
+        # "9 commits after the last deploy" sounds like the site is stale. Most landings are
+        # docs or scripts, which cannot deploy — say which case this is, or the line becomes
+        # noise and stops being read.
+        _unshipped="$(git -C "$GIT_ROOT" diff --name-only "${_dsha}..origin/main" 2>/dev/null | grep -E "$DEPLOY_PATHS" || true)"
+        if [ -n "$_unshipped" ]; then
+          say "live: origin/main has $_since commit(s) after the last deploy-site run, and they touch a deploy path — the site is behind:"
+          printf '%s\n' "$_unshipped" | sed 's/^/       /'
+        else
+          say "live: origin/main has $_since commit(s) after the last deploy-site run; none touch a deploy path, so the site is current"
+        fi
       fi
     else
       say "last deploy-site: unknown (gh unavailable or offline)"
