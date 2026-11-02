@@ -22,7 +22,12 @@
 import { useEffect, useRef } from "react";
 
 import { formatCount, formatShare } from "@/lib/format";
-import type { CompanyShard, LedgerRow, ReleaseDescriptor } from "@/lib/types";
+import type {
+  CompanyShard,
+  LedgerRow,
+  LedgerSource,
+  ReleaseDescriptor,
+} from "@/lib/types";
 import { useCompany } from "@/lib/use-release";
 
 export function CompanyDrawer({
@@ -47,10 +52,13 @@ export function CompanyDrawer({
 
   // Only a fund's contribution is a "the fund holds this much" number; the
   // visitor's own position is theirs, and labelling it as a fund would be wrong.
+  // They are split here rather than in the table so the two never mix: the table
+  // lists funds, and the direct line above it states the visitor's own weight.
+  const fundSources = (row?.sources ?? []).filter((source) => source.kind === "fund");
+  const directSource: LedgerSource | null =
+    (row?.sources ?? []).find((source) => source.kind === "security") ?? null;
   const portfolioWeight = new Map(
-    (row?.sources ?? [])
-      .filter((source) => source.kind === "fund")
-      .map((source) => [source.ref, source.weight]),
+    fundSources.map((source) => [source.ref, source.weight]),
   );
 
   return (
@@ -82,6 +90,14 @@ export function CompanyDrawer({
             {row.held_directly ? ", part of it held directly" : ""}, across{" "}
             {row.holder_count} {row.holder_count === 1 ? "fund" : "funds"}.
           </p>
+
+          {directSource ? (
+            <p className="drawer__direct">
+              <strong>{formatShare(directSource.weight)}</strong> of that is your own
+              position in {directSource.ref}. It is added to what the funds report, not
+              subtracted from it, so the funds table below does not include it.
+            </p>
+          ) : null}
 
           {company.status === "error" ? (
             <p className="notice notice--error" role="alert">
