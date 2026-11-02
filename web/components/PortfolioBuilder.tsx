@@ -22,7 +22,7 @@ import { useMemo, useState } from "react";
 
 import { AmountInput } from "@/components/AmountInput";
 import { Notice } from "@/components/Notice";
-import { loadSecurities, resolveAlias } from "@/lib/data";
+import { loadSecurities, publishesSecurities, resolveAlias } from "@/lib/data";
 import { encodePortfolio } from "@/lib/fragment";
 import { formatCents, formatFundList, formatWeightBp } from "@/lib/format";
 import { POPULAR_ORDER } from "@/lib/popular";
@@ -230,6 +230,19 @@ export function PortfolioBuilder() {
           body: `Held directly. ${row[2] ?? "Exchange not filed"} · company ${row[0]}. Its weight is yours, not a fund's.`,
         });
         addEntry("security", ticker);
+        return;
+      }
+
+      // Nothing published for this symbol, and the release does not carry the
+      // symbols object at all: it was built before stocks were published, so it has
+      // not been asked the question. Saying "AMZN is not in release X" would be a
+      // false claim about the symbol, and the visitor cannot act on it.
+      if (!publishesSecurities(release.data)) {
+        setMessage({
+          tone: "warn",
+          title: "This release does not list stock symbols yet",
+          body: `Release ${release.data.as_of} was built before stocks were published, so it can answer for funds but not for a stock you hold directly.`,
+        });
         return;
       }
 

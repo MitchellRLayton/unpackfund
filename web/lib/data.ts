@@ -173,6 +173,18 @@ export function releaseUrl(release: ReleaseDescriptor, path: string): string {
   return `${DATA_BASE}/releases/${encodeURIComponent(release.as_of)}/${path}`;
 }
 
+/**
+ * Whether this release carries the symbol object at all.
+ *
+ * A release built before stocks were published can answer every question about funds
+ * and none about stocks. The distinction matters in the builder: "AMZN is not in
+ * release X" is a claim about the symbol, and a release that never included a symbols
+ * file has not been asked the question.
+ */
+export function publishesSecurities(release: ReleaseDescriptor): boolean {
+  return Boolean(release.objects.securities);
+}
+
 /** The shard a ticker is verified against: its first character, or `_`. */
 export function shardFor(ticker: string): string {
   const first = ticker.slice(0, 1).toUpperCase();

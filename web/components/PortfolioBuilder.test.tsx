@@ -13,7 +13,10 @@ import type { ReleaseDescriptor } from "@/lib/types";
  */
 
 const { release } = vi.hoisted(() => ({
-  release: { as_of: "2026-10-30.8", objects: {} } as unknown as ReleaseDescriptor,
+  release: {
+    as_of: "2026-10-30.8",
+    objects: { securities: { shards: { A: {}, B: {}, S: {}, Z: {} } } },
+  } as unknown as ReleaseDescriptor,
 }));
 
 /**
@@ -24,7 +27,10 @@ const { release } = vi.hoisted(() => ({
 vi.mock("@/lib/data", () => ({
   // `SPY` is a fund in the real release and `BRK-B` a real share class; the mock
   // keeps both so the refusal sentence and the share-class hop are exercised.
-  loadSecurities: async (_release: unknown, symbols: string[]) => {
+  loadSecurities: async (value: ReleaseDescriptor, symbols: string[]) => {
+    // The real loader throws when the release has no symbols object, and the builder
+    // treats that as "no row". Mirrored here so the fallback sentence is reachable.
+    if (!value.objects.securities) return new Map();
     const table: Record<string, [string, string, string | null, string]> = {
       AMZN: ["c_0001018724", "AMAZON COM INC", "Nasdaq", "ok"],
       SPY: ["c_0000884394", "SPDR S&P 500 ETF TRUST", "NYSE Arca", "fund"],
@@ -39,6 +45,9 @@ vi.mock("@/lib/data", () => ({
   },
   resolveAlias: async (_release: unknown, ticker: string) =>
     ticker === "VFIAX" ? "VOO" : null,
+  // The real rule, against the mocked release: a release either carries the object
+  // or it does not, and the builder's sentence depends on which.
+  publishesSecurities: (value: ReleaseDescriptor) => Boolean(value.objects.securities),
 }));
 
 vi.mock("@/lib/use-release", () => ({
@@ -203,5 +212,32 @@ describe("PortfolioBuilder — the 100% ceiling", () => {
     expect(screen.getByText("100.00%")).toBeTruthy();
     // The link still opens: a build that wrote 140% would emit a dead fragment.
     expect(window.location.hash).not.toBe("");
+  });
+});
+
+describe("PortfolioBuilder — a release that predates stocks", () => {
+  it("says the release does not carry symbols instead of blaming the symbol", async () => {
+    // The live release before the first stock-ready one has no `objects.securities`.
+    // "AMZN is not in release X" is then a false claim about Amazon, and the visitor
+    // cannot act on it: the release has not been asked the question at all.
+    const objects = release.objects;
+    delete (objects as { securities?: unknown }).securities;
+    try {
+      render(<PortfolioBuilder />);
+      fireEvent.change(screen.getByLabelText("Fund ticker or stock symbol"), {
+        target: { value: "AMZN" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+      expect(
+        await screen.findByText("This release does not list stock symbols yet"),
+      ).toBeTruthy();
+      expect(screen.queryByText(/AMZN is not in release/)).toBeNull();
+      expect(window.location.hash).toBe("");
+    } finally {
+      (objects as { securities?: unknown }).securities = {
+        shards: { A: {}, B: {}, S: {}, Z: {} },
+      };
+    }
   });
 });
