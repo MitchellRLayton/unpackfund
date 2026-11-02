@@ -14,7 +14,8 @@
 
 import { useMemo, useState } from "react";
 
-import { formatCount, formatShare } from "@/lib/format";
+import { benchmarkDelta } from "@/lib/benchmark";
+import { formatCount, formatShare, formatSignedShare } from "@/lib/format";
 import type { BenchmarkFacts, LedgerRow } from "@/lib/types";
 
 type SortKey = "weight" | "benchmark" | "name" | "holder_count";
@@ -117,7 +118,13 @@ export function LedgerTable({
               benchmark.ticker +
               " column is this company's share of " +
               benchmark.ticker +
-              "'s own portfolio — the benchmark's holding, not yours."
+              "'s own portfolio — the benchmark's holding, not yours. The figure in" +
+              " brackets is your weight minus " +
+              benchmark.ticker +
+              "'s, in percentage points: negative means you hold less of the company" +
+              " than " +
+              benchmark.ticker +
+              " does, positive more."
             : ""}
         </caption>
         <thead>
@@ -163,68 +170,80 @@ export function LedgerTable({
           </tr>
         </thead>
         <tbody>
-          {visible.map((row) => (
-            <tr key={row.company_id}>
-              <th scope="row">
-                {onSelect ? (
-                  <button
-                    type="button"
-                    className="row-button"
-                    onClick={() => onSelect(row)}
-                  >
-                    {row.name}
-                  </button>
-                ) : (
-                  row.name
-                )}
-                {/* Every fund, never a "+N more": an attribution a reader has to
+          {visible.map((row) => {
+            const benchmarkWeight = row.benchmark_weight;
+            const delta = benchmarkDelta(row.weight, benchmarkWeight);
+            return (
+              <tr key={row.company_id}>
+                <th scope="row">
+                  {onSelect ? (
+                    <button
+                      type="button"
+                      className="row-button"
+                      onClick={() => onSelect(row)}
+                    >
+                      {row.name}
+                    </button>
+                  ) : (
+                    row.name
+                  )}
+                  {/* Every fund, never a "+N more": an attribution a reader has to
                     expand a tooltip to see is an attribution the row does not show
                     (static-xray-frontend §6, "no meaning behind hover"). The chips
                     wrap, so a 12-fund portfolio grows the row rather than clipping
                     it. */}
-                <span className="row-note">
-                  {row.ticker ? `${row.ticker} · ` : ""}
-                  <span className="fund-attrib">
-                    {row.sources.map((source) => (
-                      <span
-                        className="fund-attrib__item"
-                        key={`${source.kind}-${source.ref}`}
-                      >
-                        <span className="fund-attrib__ticker">
-                          {source.kind === "security"
-                            ? `You · ${source.ref}`
-                            : source.ref}
-                        </span>{" "}
-                        <span className="fund-attrib__weight">
-                          {formatShare(source.weight)}
+                  <span className="row-note">
+                    {row.ticker ? `${row.ticker} · ` : ""}
+                    <span className="fund-attrib">
+                      {row.sources.map((source) => (
+                        <span
+                          className="fund-attrib__item"
+                          key={`${source.kind}-${source.ref}`}
+                        >
+                          <span className="fund-attrib__ticker">
+                            {source.kind === "security"
+                              ? `You · ${source.ref}`
+                              : source.ref}
+                          </span>{" "}
+                          <span className="fund-attrib__weight">
+                            {formatShare(source.weight)}
+                          </span>
                         </span>
-                      </span>
-                    ))}
+                      ))}
+                    </span>
                   </span>
-                </span>
-              </th>
-              <td className="numeric">{formatShare(row.weight)}</td>
-              {benchmark ? (
-                <td className="numeric">
-                  {row.benchmark_weight === null
-                    ? // No value is not a zero: a missing number prints as missing
-                      // (`static-xray-frontend` §6), and this cell is only reachable
-                      // if the ledger and the table disagree about having a benchmark.
+                </th>
+                <td className="numeric">{formatShare(row.weight)}</td>
+                {benchmark ? (
+                  <td className="numeric">
+                    {/* Your weight minus the benchmark's, in percentage points. The
+                      sign is rendered, never implied, and the caption says which way
+                      round it is — a bracket with no stated direction is a number a
+                      reader has to guess at (`static-xray-frontend` §4a, ADR-0015
+                      amendment 2026-11-02). `delta === null` is a missing benchmark
+                      value, not a zero (`static-xray-frontend` §6). */}
+                    {benchmarkWeight === null || delta === null ? (
                       "—"
-                    : formatShare(row.benchmark_weight)}
+                    ) : (
+                      <>
+                        {formatShare(benchmarkWeight)}{" "}
+                        <span className="muted">{formatSignedShare(delta)}</span>
+                      </>
+                    )}
+                  </td>
+                ) : null}
+                <td className="numeric">
+                  {row.holder_count === 0 && row.held_directly ? (
+                    // A company you own outright is not held by any fund, and "0"
+                    // beside it would read as an error rather than as the fact.
+                    <span className="muted">direct</span>
+                  ) : (
+                    row.holder_count
+                  )}
                 </td>
-              ) : null}
-              <td className="numeric">
-                {row.holder_count === 0 && row.held_directly ? (
-                  // A company you own outright is not held by any fund, and "0"
-                  // beside it would read as an error rather than as the fact.
-                  <span className="muted">direct</span>
-                ) : (
-                  row.holder_count
-                )}
-              </td>
-            </tr>
-          ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

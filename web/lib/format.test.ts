@@ -9,6 +9,7 @@ import {
   formatFreshness,
   formatRatio,
   formatShare,
+  formatSignedShare,
   formatWeightBp,
   formatFundList,
 } from "./format";
@@ -38,6 +39,26 @@ describe("formatShare", () => {
 
   it("prints a true zero as zero", () => {
     expect(formatShare(0)).toBe("0.00%");
+  });
+});
+
+describe("formatSignedShare", () => {
+  it("states the direction of a difference, in brackets", () => {
+    // The operator's example: hold 1.52%, VT holds 4.06% -> you hold 2.54 points less.
+    expect(formatSignedShare(0.0152 - 0.0406)).toBe("(-2.54%)");
+    expect(formatSignedShare(0.0406 - 0.0152)).toBe("(+2.54%)");
+  });
+
+  it("prints an exact zero without a sign, because there is no side to be on", () => {
+    expect(formatSignedShare(0)).toBe("(0.00%)");
+    // `-0` is zero too: Intl would otherwise print `-0.00%`, a direction that
+    // does not exist.
+    expect(formatSignedShare(-0)).toBe("(0.00%)");
+  });
+
+  it("never rounds a real difference to zero", () => {
+    expect(formatSignedShare(0.00004)).toBe("(<0.01%)");
+    expect(formatSignedShare(-0.00004)).toBe("(>-0.01%)");
   });
 });
 

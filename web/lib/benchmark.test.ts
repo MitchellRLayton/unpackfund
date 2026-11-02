@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { BENCHMARK_TICKER, benchmarkFor, benchmarkFromRollup } from "./benchmark";
+import {
+  BENCHMARK_TICKER,
+  benchmarkDelta,
+  benchmarkFor,
+  benchmarkFromRollup,
+} from "./benchmark";
 import type { BenchmarkRollup, FundDocument, Holding } from "./types";
 
 /**
@@ -138,5 +143,26 @@ describe("the compact object and the fund document agree", () => {
     const payload = benchmarkFromRollup(rollupOf(filing));
     // 406 bp of a 10,000 bp allocation: 4.06%, the number the table shows.
     expect(payload.weights.c_a).toBeCloseTo(0.0406, 10);
+  });
+});
+
+describe("benchmarkDelta", () => {
+  it("is your weight minus the benchmark's, on the operator's worked example", () => {
+    // NVIDIA in the screenshot: 1.52% of the portfolio, 4.06% of VT.
+    expect(benchmarkDelta(0.0152, 0.0406)).toBeCloseTo(-0.0254, 12);
+  });
+
+  it("is positive when you hold more of the company than the benchmark does", () => {
+    expect(benchmarkDelta(0.06, 0.0406)).toBeCloseTo(0.0194, 12);
+  });
+
+  it("is the whole of your weight when the benchmark holds none of it", () => {
+    // AVUV's small caps: absent from VT's traced holdings reads 0.00%, and the
+    // difference is therefore your own weight rather than a comparison.
+    expect(benchmarkDelta(0.003, 0)).toBeCloseTo(0.003, 12);
+  });
+
+  it("has no value without a benchmark, because there is nothing to difference", () => {
+    expect(benchmarkDelta(0.0152, null)).toBeNull();
   });
 });
