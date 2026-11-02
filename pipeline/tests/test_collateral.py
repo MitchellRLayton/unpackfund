@@ -93,3 +93,34 @@ def test_no_liabilities_means_no_collateral():
         filing([holding("Apple Inc", 170.0), cash], assets=200.0, liabilities=0.0, net=200.0)
     )
     assert result.rows == frozenset()
+
+
+def test_collateral_beside_the_funds_own_sweep_is_found():
+    """A repo program's collateral is one repo row next to the fund's own liquidity.
+
+    Transamerica's IIBAX/IIBPX file $1.73B of borrowings, a repo row that matches them
+    and a sweep of their own. Summing every cash row overshoots the liability, so the
+    old "all cash" test saw leverage where the filing shows a lending program — and the
+    funds dropped out of the release the moment repo rows were classified as cash.
+    """
+    equities = [holding("Apple Inc", 1_000.0)]
+    repo = holding("Fixed Income Clearing Corp.", 173.0, asset_cat="RA", issuer_cat="CORP")
+    sweep = holding("Mount Vernon Liquid Assets Portfolio", 12.0, asset_cat="STIV", issuer_cat="PF")
+    result = build.lending_collateral(
+        filing([*equities, repo, sweep], assets=1_185.0, liabilities=173.0, net=1_012.0)
+    )
+    assert result.usd == 173.0
+    assert result.rows == frozenset({id(repo)})
+
+
+def test_collateral_split_across_two_rows_is_found():
+    """Two repo tranches against one liability: the complement of the sweep."""
+    equities = [holding("Apple Inc", 1_000.0)]
+    first = holding("Societe Generale 3.53 8/03/2026", 100.0, asset_cat="RA", issuer_cat="CORP")
+    second = holding("HSBC Securities (USA) Inc.", 73.0, asset_cat="RA", issuer_cat="CORP")
+    sweep = holding("Cash", 12.0, asset_cat="STIV", issuer_cat="RF")
+    result = build.lending_collateral(
+        filing([*equities, first, second, sweep], assets=1_185.0, liabilities=173.0, net=1_012.0)
+    )
+    assert result.usd == 173.0
+    assert result.rows == frozenset({id(first), id(second)})

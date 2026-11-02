@@ -30,9 +30,11 @@ behaviour, and publishing uses it: a release must be clean.
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import sys
 import time
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -145,6 +147,35 @@ class Collateral:
     usd: float
 
 
+#: How many cash rows a fund may have before the collateral search stops enumerating
+#: subsets of them. Funds hold one to five cash instruments; the cap exists so a pathological
+#: schedule cannot turn a gate into a combinatorial search.
+COLLATERAL_SUBSET_CAP = 10
+
+
+def _collateral_shapes(cash: list[Holding]) -> list[list[Holding]]:
+    """The cash subsets that could be the lending collateral, simplest first.
+
+    A fund that lends securities receives cash collateral and invests it, and the filing
+    shows that investment beside the fund's own liquidity. "Every cash row" is therefore
+    only one of the shapes a collateral position takes: a repo program's collateral is one
+    repo row next to a money-market sweep, and a fund that splits collateral across two
+    tranches has two. Every subset is tried, smallest first, and the caller still requires
+    both bands to pass — a wrong shape cannot be accepted by being tried, only by
+    reconciling. The measured case is Transamerica's IIBAX/IIBPX: $1.73B of borrowings, a
+    repo row that matches them, and a sweep of their own, which summed every cash row and
+    saw leverage where the filing shows a lending program.
+    """
+    ordered = sorted(cash, key=lambda row: (-(row.val_usd or 0.0), row.name))
+    if len(ordered) > COLLATERAL_SUBSET_CAP:
+        return [ordered, ordered[:1], ordered[1:]]
+    return [
+        list(shape)
+        for size in range(1, len(ordered) + 1)
+        for shape in itertools.combinations(ordered, size)
+    ]
+
+
 def lending_collateral(filing: NportFiling) -> Collateral:
     net = filing.net_assets or 0.0
     liabilities = filing.total_liabilities or 0.0
@@ -161,13 +192,15 @@ def lending_collateral(filing: NportFiling) -> Collateral:
     ]
     if not cash:
         return Collateral(frozenset(), 0.0)
-    cash_usd = sum(holding.val_usd or 0.0 for holding in cash)
     filed_total = sum(holding.val_usd or 0.0 for holding in filing.holdings)
-    if abs(cash_usd - liabilities) / liabilities > COLLATERAL_BAND:
-        return Collateral(frozenset(), 0.0)
-    if abs((filed_total - cash_usd) - net) / net > COLLATERAL_BAND:
-        return Collateral(frozenset(), 0.0)
-    return Collateral(frozenset(id(holding) for holding in cash), cash_usd)
+    for shape in _collateral_shapes(cash):
+        cash_usd = sum(holding.val_usd or 0.0 for holding in shape)
+        if abs(cash_usd - liabilities) / liabilities > COLLATERAL_BAND:
+            continue
+        if abs((filed_total - cash_usd) - net) / net > COLLATERAL_BAND:
+            continue
+        return Collateral(frozenset(id(holding) for holding in shape), cash_usd)
+    return Collateral(frozenset(), 0.0)
 
 
 def build_fund(
@@ -177,6 +210,7 @@ def build_fund(
     identity: IdentityTable | None = None,
     collect_evidence: bool = False,
     issuers: gleif.IssuerIndex | None = None,
+    fund_leis: Mapping[str, str] | None = None,
 ) -> FundBuild:
     started = time.monotonic()
     found = filings.latest(ref)
@@ -200,6 +234,7 @@ def build_fund(
         identity=identity,
         evidence=evidence,
         issuers=issuers,
+        fund_leis=fund_leis,
     )
 
     # Gate 1 — the *investable* schedule reconciles to the fund's own NAV.
@@ -308,6 +343,7 @@ def _attempt(
     identity: IdentityTable | None = None,
     collect_evidence: bool = False,
     issuers: gleif.IssuerIndex | None = None,
+    fund_leis: Mapping[str, str] | None = None,
 ) -> tuple[FundBuild | None, str | None]:
     try:
         return (
@@ -317,6 +353,7 @@ def _attempt(
                 identity=identity,
                 collect_evidence=collect_evidence,
                 issuers=issuers,
+                fund_leis=fund_leis,
             ),
             None,
         )
@@ -383,6 +420,8 @@ def _walk(
     started: float,
     merge_evidence: IdentityEvidence | None = None,
     issuers: gleif.IssuerIndex | None = None,
+    fund_leis: Mapping[str, str] | None = None,
+    series_out: dict[str, str] | None = None,
 ) -> tuple[list[FundBuild], list[dict[str, str]]]:
     """Build every fund once, collecting the artifacts and the failures.
 
@@ -390,6 +429,11 @@ def _walk(
     folded into the caller's collector as it lands (the fold runs on the consumer
     thread, so the counter updates are not racing), and no artifact is kept — pass
     1 would otherwise hold two releases' worth of bytes at once.
+
+    ``series_out`` is how ADR-0016 gets its fund-position key set for free: the
+    evidence pass already parses every filing, so it also records ``seriesLei`` →
+    ticker there, and pass 2 receives it as ``fund_leis``. A second indexing pass
+    would re-read the whole corpus to learn something pass 1 had in hand.
     """
     builds: list[FundBuild] = []
     failures: list[dict[str, str]] = []
@@ -406,6 +450,8 @@ def _walk(
         elif merge_evidence is not None:
             if build.evidence is not None:
                 merge_evidence.merge(build.evidence)
+            if series_out is not None and build.series_lei:
+                series_out[build.series_lei] = build.ticker
         else:
             builds.append(build)
         if log and done % log == 0:
@@ -426,6 +472,7 @@ def _walk(
                     identity=identity,
                     collect_evidence=collect,
                     issuers=issuers,
+                    fund_leis=fund_leis,
                 ),
                 ref,
             )
@@ -441,6 +488,7 @@ def _walk(
                         identity=identity,
                         collect_evidence=collect,
                         issuers=issuers,
+                        fund_leis=fund_leis,
                     ),
                 )
                 for ref in refs
@@ -664,6 +712,10 @@ def build_release(
     # collect evidence — so a fund that fails here is reported by pass 2, with the
     # same error, exactly once.
     table = IdentityTable.empty()
+    # ADR-0016: the evidence pass also yields the set of series LEIs this release
+    # publishes, which is what makes a filed row a *fund position* by identity rather
+    # than by the filer's label. Free here — the pass already parses every filing.
+    fund_leis: dict[str, str] = {}
     if identity:
         started_evidence = time.monotonic()
         evidence = IdentityEvidence()
@@ -676,6 +728,7 @@ def build_release(
             on_error="skip",
             started=started,
             merge_evidence=evidence,
+            series_out=fund_leis,
         )
         table = evidence.table()
         _log(
@@ -688,6 +741,17 @@ def build_release(
     else:
         _log("identity pass: disabled (--no-identity)")
 
+    if fund_leis:
+        _log(
+            f"fund-position model: {len(fund_leis):,} series LEIs identify a fund "
+            "position in any filing, whatever the filer labelled it (ADR-0016)"
+        )
+    else:
+        _log(
+            "fund-position model: off — a --no-identity build has no series-LEI set, "
+            "so a row is a fund position only when its filer says so"
+        )
+
     builds, failures = _walk(
         refs,
         index,
@@ -697,6 +761,7 @@ def build_release(
         on_error=on_error,
         started=started,
         issuers=issuers,
+        fund_leis=fund_leis or None,
     )
 
     if failures and on_error == "fail":

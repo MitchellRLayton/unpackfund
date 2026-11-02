@@ -17,6 +17,7 @@ from pipeline.fund_lookthrough import MAX_DEPTH, MIN_UNRESOLVED_WARNING_BP
 from pipeline.validate import (
     MAX_TOTAL_BP,
     Report,
+    _check_categories,
     _check_fund_of_funds,
     _check_fund_of_funds_release,
     _total_ceiling,
@@ -38,7 +39,7 @@ def document(**overrides) -> dict:
                     "top10_pct": 60.0},
         "components": [
             {"ticker": "CHILD", "name": "Child Fund", "weight_bp": 10_000,
-             "coverage_pct": 60.0, "resolved_by": "series_lei"},
+             "coverage_pct": 60.0, "asset_cat": "equity", "resolved_by": "series_lei"},
         ],
         "lookthrough": {
             "depth": 1,
@@ -145,9 +146,9 @@ def test_a_short_sleeve_is_allowed_in_components():
     doc = document()
     doc["components"] = [
         {"ticker": "LONG", "name": "Long Fund", "weight_bp": 1_400,
-         "coverage_pct": 90.0, "resolved_by": "series_lei"},
+         "coverage_pct": 90.0, "asset_cat": "equity", "resolved_by": "series_lei"},
         {"ticker": "SHORT", "name": "Short Fund", "weight_bp": -400,
-         "coverage_pct": 90.0, "resolved_by": "series_lei"},
+         "coverage_pct": 90.0, "asset_cat": "equity", "resolved_by": "series_lei"},
     ]
     doc["lookthrough"]["fund_bp"] = 1_000
     doc["lookthrough"]["resolved_fund_bp"] = 1_000
@@ -170,9 +171,9 @@ def test_components_must_be_sorted():
     doc = document()
     doc["components"] = [
         {"ticker": "SMALL", "name": "Small Fund", "weight_bp": 2_000,
-         "coverage_pct": 90.0, "resolved_by": "series_lei"},
+         "coverage_pct": 90.0, "asset_cat": "equity", "resolved_by": "series_lei"},
         {"ticker": "BIG", "name": "Big Fund", "weight_bp": 8_000,
-         "coverage_pct": 90.0, "resolved_by": "series_lei"},
+         "coverage_pct": 90.0, "asset_cat": "equity", "resolved_by": "series_lei"},
     ]
     assert "PARENT.components.order" in failures(doc)
 
@@ -181,9 +182,9 @@ def test_a_duplicate_sleeve_is_a_failure():
     doc = document()
     doc["components"] = [
         {"ticker": "CHILD", "name": "Child Fund", "weight_bp": 5_000,
-         "coverage_pct": 90.0, "resolved_by": "series_lei"},
+         "coverage_pct": 90.0, "asset_cat": "equity", "resolved_by": "series_lei"},
         {"ticker": "CHILD", "name": "Child Fund Again", "weight_bp": 5_000,
-         "coverage_pct": 90.0, "resolved_by": "series_lei"},
+         "coverage_pct": 90.0, "asset_cat": "equity", "resolved_by": "series_lei"},
     ]
     assert "PARENT.components.duplicate" in failures(doc)
 
@@ -243,11 +244,17 @@ def test_attach_keeps_the_contract_key_order_and_omits_what_is_absent():
         coverage_pct=0.0,
         metrics=original["metrics"],
         components=[{"ticker": "C", "name": "C", "weight_bp": 10_000,
-                     "coverage_pct": 99.0, "resolved_by": "series_lei"}],
+                     "coverage_pct": 99.0, "asset_cat": "equity", "resolved_by": "series_lei"}],
     )
     assert "lookthrough" not in plain
     assert plain["components"][0]["ticker"] == "C"
-    assert list(plain) == [*list(original)[:14], "components", "warnings"]
+    # ``categories`` and ``coverage_by_cat`` are re-derived from whatever vector the
+    # rebuilt document publishes (ADR-0016), so they sit right after ``coverage_pct``
+    # and are never copied from the parent's filed vector.
+    assert list(plain) == [
+        *list(original)[:12], "categories", "coverage_by_cat",
+        "holdings", "metrics", "components", "warnings",
+    ]
 
     flattened = artifact.attach_fund_of_funds(
         original,
@@ -262,6 +269,151 @@ def test_attach_keeps_the_contract_key_order_and_omits_what_is_absent():
                      "holdings_bp": 9_000, "refused": {}},
         warnings=["fund_of_funds"],
     )
-    assert list(flattened) == [*list(original)[:14], "components", "lookthrough", "warnings"]
+    assert list(flattened) == [
+        *list(original)[:12], "categories", "coverage_by_cat",
+        "holdings", "metrics", "components", "lookthrough", "warnings",
+    ]
+    assert flattened["categories"]["equity"] == 9_000
+    assert flattened["categories"]["fund"] == 0, "the composed vector has no fund rows left"
     assert flattened["holdings"][0]["weight_bp"] == 9_000
     assert original["coverage_pct"] == 0.0, "the builder must not mutate its input"
+
+
+# --- ADR-0016 §5: the split, the labels, and the fund-row tripwire -----------
+
+
+def _with_categories(**overrides) -> dict:
+    """A document whose split agrees with its vector, plus a label on its sleeve."""
+    doc = document(**overrides)
+    doc["categories"] = {"equity": 6_000, "debt": 0, "cash": 0, "derivative": 0,
+                         "fund": 4_000, "other": 0}
+    doc["coverage_by_cat"] = {"equity": 100.0, "debt": None, "cash": None,
+                              "derivative": None, "fund": 0.0, "other": None}
+    return doc
+
+
+def test_a_split_that_disagrees_with_the_vector_fails():
+    doc = _with_categories()
+    doc["categories"]["equity"] = 5_000
+    assert "PARENT.categories" in failures(doc, _check_categories)
+
+
+def test_a_missing_split_fails():
+    """Absence is not "unknown"; ADR-0016 makes both objects required."""
+    doc = document()
+    assert "PARENT.categories" in failures(doc, _check_categories)
+
+
+def test_a_class_with_no_weight_cannot_claim_a_percentage():
+    doc = _with_categories()
+    doc["coverage_by_cat"]["cash"] = 0.0
+    assert "PARENT.coverage_by_cat.cash" in failures(doc, _check_categories)
+
+
+def test_a_coverage_by_cat_that_disagrees_with_the_vector_fails():
+    doc = _with_categories()
+    doc["coverage_by_cat"]["fund"] = 50.0
+    assert "PARENT.coverage_by_cat.fund" in failures(doc, _check_categories)
+
+
+def test_a_split_missing_a_category_key_fails():
+    doc = _with_categories()
+    del doc["categories"]["other"]
+    assert "PARENT.categories.keys" in failures(doc, _check_categories)
+
+
+def test_five_percent_in_funds_without_sleeves_fails():
+    """The state ADR-0013 was written to end: a composition nobody can read."""
+    doc = _with_categories()
+    del doc["components"]
+    doc["holdings"] = doc["holdings"]
+    assert "PARENT.components" in failures(doc, _check_categories)
+
+
+def test_a_sleeve_label_outside_the_enum_fails():
+    doc = document()
+    doc["components"][0]["asset_cat"] = "growth"
+    assert "PARENT.components.asset_cat" in failures(doc)
+
+
+def test_a_resolved_sleeve_without_a_label_fails():
+    doc = document()
+    del doc["components"][0]["asset_cat"]
+    assert "PARENT.components.asset_cat" in failures(doc)
+
+
+def test_an_unresolved_sleeve_may_carry_no_label():
+    doc = document()
+    doc["components"][0].update({"ticker": None, "resolved_by": None, "asset_cat": None})
+    assert failures(doc) == []
+
+
+def _tripwire_report() -> tuple[Report, list[str], list[str]]:
+    report = Report()
+    fails: list[str] = []
+    warns: list[str] = []
+    report.fail = lambda name, detail="": fails.append(name)  # type: ignore[method-assign]
+    report.warn = lambda name, detail="": warns.append(name)  # type: ignore[method-assign]
+    return report, fails, warns
+
+
+def _fund_holding_a_named_fund(ticker: str, name: str, bp: int, asset_cat: str = "equity") -> dict:
+    return {
+        "ticker": ticker, "name": f"{ticker} Portfolio", "coverage_pct": 99.0, "warnings": [],
+        "holdings": [{"company_id": "c_x", "name": name, "ticker": None,
+                      "asset_cat": asset_cat, "weight_bp": bp}],
+    }
+
+
+def test_a_fund_published_as_a_company_is_visible_by_name():
+    """The Vanguard defect, as the release-level tripwire sees it.
+
+    Sixty Target Retirement share classes filed their sleeves as ``EC``/``CORP`` and
+    published 99.5% "coverage" that was entirely fund positions. No arithmetic gate can
+    see that; the release's own name list can. One fund is a filer omission and warns;
+    sixty is systematic and fails (see the ceiling test below).
+    """
+    child = {"ticker": "CHILD", "name": "Vanguard Total Stock Market Index Fund",
+             "holdings": [], "coverage_pct": 99.0, "warnings": []}
+    parent = _fund_holding_a_named_fund("PARENT", "Vanguard Total Stock Market Index Fund",
+                                        5_369)
+    report, fails, warns = _tripwire_report()
+    _check_fund_of_funds_release([parent, child], report)
+    assert "PARENT.fund_row" in warns
+    assert fails == []
+
+
+def test_sixty_funds_with_fund_named_rows_refuse_the_release():
+    """The Vanguard shape at scale is not a filer omission, and it fails the release."""
+    child = {"ticker": "CHILD", "name": "Vanguard Total Stock Market Index Fund",
+             "holdings": [], "coverage_pct": 99.0, "warnings": []}
+    parents = [
+        _fund_holding_a_named_fund(f"P{i:03d}", "Vanguard Total Stock Market Index Fund",
+                                   5_369)
+        for i in range(60)
+    ]
+    report, fails, warns = _tripwire_report()
+    _check_fund_of_funds_release([*parents, child], report)
+    assert "fund_rows" in fails
+    assert len(warns) == 20, "the ceiling bounds how much of the log one defect can fill"
+
+
+def test_an_option_naming_an_etf_is_not_a_tripwire_hit():
+    """HEDG holds options on IVV: a contract is not a share, so the label is right."""
+    child = {"ticker": "IVV", "name": "iShares Core S&P 500 ETF", "holdings": [],
+             "coverage_pct": 99.0, "warnings": []}
+    parent = _fund_holding_a_named_fund("HEDG", "iShares Core S&P 500 ETF", -180,
+                                        asset_cat="derivative")
+    report, fails, warns = _tripwire_report()
+    _check_fund_of_funds_release([parent, child], report)
+    assert (fails, warns) == ([], [])
+
+
+def test_a_row_below_the_materiality_floor_is_not_a_tripwire_hit():
+    """A 0.4% name collision is noise; the gate fires on material rows only."""
+    child = {"ticker": "CHILD", "name": "Some Other Fund", "holdings": [],
+             "coverage_pct": 99.0, "warnings": []}
+    parent = _fund_holding_a_named_fund("PARENT", "Some Other Fund", 40)
+    report, fails, warns = _tripwire_report()
+    _check_fund_of_funds_release([parent, child], report)
+    assert (fails, warns) == ([], [])

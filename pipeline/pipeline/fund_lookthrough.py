@@ -80,6 +80,8 @@ MIN_UNRESOLVED_WARNING_BP = 100
 
 RUNG_LEI = "series_lei"
 RUNG_SYMBOL = "share_class_symbol"
+#: The one label ``components[].asset_cat`` carries that is not an N-PORT category.
+SLEEVE_MIXED = "mixed"
 RUNG_NONE = ""
 
 
@@ -477,6 +479,11 @@ class Composer:
                     "name": self.index.names.get(target or "") or edge.name,
                     "weight_bp": edge.weight_bp,
                     "coverage_pct": _coverage(tuple(child.holdings)) if child else None,
+                    # What the sleeve *is*, from its own published split (ADR-0016 §4):
+                    # a page can then group 60% equity sleeves / 39% bond sleeves instead
+                    # of making a reader add seven rows up. `None` for a sleeve we could
+                    # not resolve — we do not know what it holds, so we do not label it.
+                    "asset_cat": _sleeve_label(tuple(child.holdings)) if child else None,
                     "resolved_by": rung or None,
                 }
                 largest[key] = abs(edge.weight_bp)
@@ -524,6 +531,35 @@ class Composer:
             total_bp=total,
             refusals=refusals,
         )
+
+
+#: A sleeve is ``mixed`` when both equity and debt are at least this share of it.
+#: 20% is the same threshold the release uses to call a fund balanced, so "mixed" and
+#: "balanced fund" mean the same thing rather than two things a reader must reconcile.
+MIXED_FLOOR_BP = 2_000
+
+
+def _sleeve_label(holdings: Sequence[weights.FundHolding]) -> str | None:
+    """One word for what a sleeve holds, from its own published split.
+
+    The rule is stated once here and gated in ``validate``: equity and debt both at or
+    above :data:`MIXED_FLOOR_BP` of the sleeve's gross makes it ``mixed``; otherwise the
+    sleeve is its largest class. Nothing is inferred from the sleeve's name or from its
+    own category label — its vector already says it exactly.
+    """
+    if not holdings:
+        return None
+    rows = [(row.asset_cat, row.weight_bp, False) for row in holdings]
+    totals = weights.category_totals(rows)
+    gross = sum(abs(weight) for weight in totals.values())
+    if gross <= 0:
+        return None
+    equity = abs(totals.get(classify.EQUITY, 0))
+    debt = abs(totals.get(classify.DEBT, 0))
+    if equity >= MIXED_FLOOR_BP and debt >= MIXED_FLOOR_BP:
+        return SLEEVE_MIXED
+    dominant = max(totals.items(), key=lambda item: abs(item[1]))
+    return dominant[0] if dominant[1] else None
 
 
 def _coverage(holdings: Sequence[weights.FundHolding]) -> float:

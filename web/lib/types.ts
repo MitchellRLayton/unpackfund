@@ -248,6 +248,23 @@ export interface FundDocument {
   source_url: string;
   /** Weight-based resolution percentage; the same number as the 60/70 bands. */
   coverage_pct: number;
+  /**
+   * What the fund is made of, in integer basis points, always all six keys and always
+   * summing to the holding total. This is the "60/40" fact: AOR publishes
+   * `{equity: 6054, debt: 3709, …}` before any question about coverage (ADR-0016).
+   * Optional because the field is additive: a document from a release before
+   * `2026-11-02.3` does not carry it, and a reader must not assume otherwise.
+   */
+  categories?: Record<AssetCategory, number>;
+  /**
+   * Coverage measured *inside* each asset class — the only coverage number that can be
+   * compared to another fund's. The headline `coverage_pct` blends populations with
+   * different ceilings (a debt row only maps when its issuer is a corporate issuer,
+   * cash never), so a 30/70 fund reads 49.5% while its equity sleeve is 99.7% mapped.
+   * `null` for a class the fund does not hold: a percentage of nothing is undefined.
+   * Optional for the same reason as `categories`.
+   */
+  coverage_by_cat?: Record<AssetCategory, number | null>;
   holdings: Holding[];
   metrics: FundMetrics;
   warnings: WarningCode[];
@@ -276,6 +293,13 @@ export interface FundComponent {
   weight_bp: number;
   /** The sleeve's own coverage, so a composed weight carries its uncertainty. */
   coverage_pct: number | null;
+  /**
+   * What the sleeve holds, from its own published split: its largest class, or `mixed`
+   * when equity and debt are each at least 20% of it. `null` when the sleeve could not
+   * be matched to a fund we publish — we do not know what it holds, so a label would be
+   * a guess (ADR-0016 §4).
+   */
+  asset_cat?: AssetCategory | "mixed" | null;
   resolved_by: "series_lei" | "share_class_symbol" | null;
 }
 

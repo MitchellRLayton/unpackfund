@@ -43,3 +43,52 @@ def test_only_company_categories_are_exposures():
     assert classify("DBT", "CORP", False).is_company_exposure is True
     assert classify("STIV", "RF", False).is_company_exposure is False
     assert classify("DE", None, True).is_company_exposure is False
+
+
+# --- ADR-0016: identity outranks the filer's label ---------------------------
+
+
+def test_a_published_series_lei_makes_a_row_a_fund_position():
+    """Vanguard's Target Retirement funds file their sleeves as EC/CORP.
+
+    The label says "a corporate equity"; the row's LEI says it is a fund this release
+    publishes. Identity wins, or 60 share classes publish 99.5% "coverage" that is
+    entirely other funds (VFIFX listed *Vanguard Total Stock Market Index Fund* as its
+    largest "company" at 53.69%).
+    """
+    assert classify("EC", "CORP", False, published_fund=True).category == "fund"
+    assert classify("EC", "CORP", False, published_fund=False).category == "equity"
+
+
+def test_identity_does_not_promote_cash_or_a_derivative():
+    """A sweep's LEI can name a money-market series; it is still the fund's cash."""
+    assert classify("STIV", "RF", False, published_fund=True).category == "cash"
+    assert classify("DE", None, True, published_fund=True).category == "derivative"
+    assert classify(None, None, False, published_fund=True).category == "fund"
+
+
+def test_a_promoted_row_is_a_company_exposure_and_a_fund_position():
+    promoted = classify("EC", "CORP", False, published_fund=True)
+    assert promoted.is_fund_position is True
+    assert promoted.is_company_exposure is True
+    assert promoted.is_cash_or_derivative is False
+
+
+@pytest.mark.parametrize(
+    ("asset_cat", "issuer_cat", "expected"),
+    [
+        # TIPS filed as SN: VTIP published `other: 9900` before this mapping existed.
+        ("SN", "UST", "debt"),
+        ("LON", "CORP", "debt"),
+        ("ABS-O", "CORP", "debt"),
+        ("ABS-CBDO", "CORP", "debt"),
+        ("ABS-APCP", "CORP", "debt"),
+        # Repo is collateralised short-term lending, not a company exposure.
+        ("RA", "CORP", "cash"),
+        # The filing does not say what these are, so the mapper does not guess.
+        (None, "CORP", "other"),
+        ("RE", "CORP", "other"),
+    ],
+)
+def test_the_rest_of_the_schema_is_mapped(asset_cat, issuer_cat, expected):
+    assert classify(asset_cat, issuer_cat, False).category == expected

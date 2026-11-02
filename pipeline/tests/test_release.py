@@ -21,7 +21,9 @@ from .conftest import corrupt_release, fund_document, write_release
 # 2026-10-30: + the additive ``etf`` label (was absent, so every catalogue row
 # read "not an ETF"). The hash changed because the document gained a field, not
 # because a number moved — the fixture's weights, metrics and order are the same.
-GOLDEN_SHA256 = "11305e2c632a2e4b3c51af9f0ccb0d2547505b27adc5ba5c91509ad27cd0aba8"
+# 2026-11-02: + ``categories``, ``coverage_by_cat`` and the sample's ``components``
+# (ADR-0016). Additive again: no weight, metric or ordering changed.
+GOLDEN_SHA256 = "dcd727f3f064b77e2058b7c2d3db289e9ba10f8c2afb9b0994e0b39d86310e2e"
 
 
 def test_artifact_shape(document):
@@ -38,8 +40,13 @@ def test_artifact_shape(document):
         "source",
         "source_url",
         "coverage_pct",
+        "categories",
+        "coverage_by_cat",
         "holdings",
         "metrics",
+        # The sample filing holds a fund position, so the published fixture carries its
+        # sleeves (ADR-0016 §5): a document that is 15% funds must name them.
+        "components",
         "warnings",
     ]
     assert document["as_of"] == "2026-06-30"

@@ -19,10 +19,11 @@ from __future__ import annotations
 
 import math
 from collections import Counter
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
 from . import classify, gleif, identifiers
-from .classify import Classification
+from .classify import CATEGORY_ORDER, Classification
 from .companies import (
     MATCH_WEAK,
     RUNG_UNMAPPED,
@@ -65,6 +66,56 @@ class FundHolding:
     isin: str | None = None
 
 
+#: One row reduced to what the category split and the per-class coverage need:
+#: the class, the signed weight, and whether a company was named for it. Both the
+#: filed vector and the *composed* one reduce to this shape, so the arithmetic
+#: exists once — a second implementation of it is a number that can disagree with
+#: itself (``lookthrough-math-and-qa`` §7).
+CategoryRow = tuple[str, int, bool]
+
+
+def _rows(holdings: "list[FundHolding]") -> "list[CategoryRow]":
+    return [(row.asset_cat, row.weight_bp, bool(row.company_id)) for row in holdings]
+
+
+def category_totals(rows: "Iterable[CategoryRow]") -> dict[str, int]:
+    """Signed weight per class, all six keys, in publication order.
+
+    Signed and not absolute, because this object's job is to account for the vector the
+    reader sees: ``sum(categories.values()) == sum(holdings.weight_bp)`` is the gate, and
+    a fund that is long 1,398 bp and short 688 bp of one sleeve must show the −688
+    somewhere rather than hiding it in an absolute-value total.
+    """
+    totals = {name: 0 for name in CATEGORY_ORDER}
+    for name, weight_bp, _mapped in rows:
+        totals[name] = totals.get(name, 0) + weight_bp
+    return {name: totals.get(name, 0) for name in CATEGORY_ORDER}
+
+
+def category_coverage(rows: "Iterable[CategoryRow]") -> dict[str, float | None]:
+    """Coverage inside each class: mapped weight over that class's gross weight.
+
+    The headline ``coverage_pct`` blends populations with different ceilings — an equity
+    row maps when its issuer is a listed company, a debt row only when the issuer is a
+    *corporate* issuer, cash never — so a 30/70 balanced fund reads 49.5% while its
+    equity sleeve is 99.7% mapped. This is the number that can be compared to another
+    fund's: same class, same denominator. ``None`` when the class has no weight, because
+    a percentage of nothing is not zero, it is undefined.
+    """
+    gross: dict[str, int] = {}
+    mapped: dict[str, int] = {}
+    for name, weight_bp, has_company in rows:
+        size = abs(weight_bp)
+        gross[name] = gross.get(name, 0) + size
+        if has_company:
+            mapped[name] = mapped.get(name, 0) + size
+    answer: dict[str, float | None] = {}
+    for name in CATEGORY_ORDER:
+        total = gross.get(name, 0)
+        answer[name] = round(100 * mapped.get(name, 0) / total, 1) if total else None
+    return answer
+
+
 @dataclass
 class WeightVector:
     holdings: list[FundHolding] = field(default_factory=list)
@@ -89,6 +140,16 @@ class WeightVector:
             return 0.0
         mapped = sum(abs(row.weight_bp) for row in self.holdings if row.company_id)
         return round(100 * mapped / gross, 1)
+
+    @property
+    def categories(self) -> dict[str, int]:
+        """Weight by asset class, in basis points (ADR-0016 §2)."""
+        return category_totals(_rows(self.holdings))
+
+    @property
+    def coverage_by_cat(self) -> dict[str, float | None]:
+        """Coverage measured *inside* each asset class (ADR-0016 §3)."""
+        return category_coverage(_rows(self.holdings))
 
 
 def _fraction(holding: Holding, net_assets: float | None) -> float | None:
@@ -218,6 +279,7 @@ def build_vector(
     identity: IdentityTable | None = None,
     evidence: IdentityEvidence | None = None,
     issuers: "gleif.IssuerIndex | None" = None,
+    fund_leis: "Mapping[str, str] | None" = None,
 ) -> WeightVector:
     if not holdings:
         raise WeightError("filing reports no holdings")
@@ -232,7 +294,14 @@ def build_vector(
         if fraction is None:
             continue
         classification = classify.classify(
-            holding.asset_cat, holding.issuer_cat, holding.is_derivative
+            holding.asset_cat,
+            holding.issuer_cat,
+            holding.is_derivative,
+            # ADR-0016 decision 1: a row whose LEI is a series we publish *is* a fund
+            # position, whatever the filer labelled it. Vanguard files its Target
+            # Retirement sleeves as EC/CORP, and trusting the label made 60 share
+            # classes publish 99.5% "coverage" that was entirely other funds.
+            published_fund=bool(fund_leis and holding.lei and holding.lei in fund_leis),
         )
         asset_cats[classification.category] += 1
         company_id, rung = index.resolve(holding.ticker, holding.name)
