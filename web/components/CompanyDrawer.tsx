@@ -45,8 +45,12 @@ export function CompanyDrawer({
     if (!open && dialog.open) dialog.close();
   }, [open]);
 
+  // Only a fund's contribution is a "the fund holds this much" number; the
+  // visitor's own position is theirs, and labelling it as a fund would be wrong.
   const portfolioWeight = new Map(
-    (row?.sources ?? []).map((source) => [source.ticker, source.weight]),
+    (row?.sources ?? [])
+      .filter((source) => source.kind === "fund")
+      .map((source) => [source.ref, source.weight]),
   );
 
   return (
@@ -74,8 +78,9 @@ export function CompanyDrawer({
           </header>
 
           <p className="muted">
-            {formatShare(row.weight)} of your portfolio, across {row.fund_count}{" "}
-            {row.fund_count === 1 ? "fund" : "funds"}.
+            {formatShare(row.weight)} of your portfolio
+            {row.held_directly ? ", part of it held directly" : ""}, across{" "}
+            {row.holder_count} {row.holder_count === 1 ? "fund" : "funds"}.
           </p>
 
           {company.status === "error" ? (

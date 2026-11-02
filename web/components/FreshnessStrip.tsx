@@ -1,5 +1,5 @@
 import {
-  coverageLabel,
+  coverageBand,
   formatCount,
   formatCoveragePct,
   formatDays,
@@ -33,10 +33,15 @@ export function FreshnessStrip({
             .map((fund) => fund.as_of)
             .sort()
             .at(-1)}`;
-  // Coverage is weight-weighted, so its complement is the share of money not tied
-  // to a company. Clamped because a filed coverage over 100% is a data warning,
-  // not a negative amount of money.
-  const notTraced = Math.max(0, 1 - ledger.metrics.covered_weight_pct / 100);
+  // Coverage is weight-weighted over **invested** money — funds plus direct
+  // holdings, with cash outside both terms — so its complement is the share of the
+  // invested part that is not tied to a company. Clamped because a filed coverage
+  // over 100% is a data warning, not a negative amount of money.
+  const notTraced =
+    Math.max(0, 1 - ledger.metrics.covered_weight_pct / 100) *
+    ledger.metrics.invested_weight;
+  const cash = ledger.metrics.cash_weight;
+  const unallocated = ledger.metrics.unallocated_weight;
 
   return (
     <section aria-labelledby="freshness-heading">
@@ -73,15 +78,27 @@ export function FreshnessStrip({
           <span className="strip__value">
             {formatCoveragePct(ledger.metrics.covered_weight_pct)}
           </span>
-          <span className="strip__note">
-            {coverageLabel(ledger.metrics.covered_weight_pct)}
-          </span>
+          <span className="strip__note">of the money you have invested</span>
         </div>
         <div className="strip__cell">
           <span className="strip__label">Not traced</span>
           <span className="strip__value">{formatShare(notTraced)}</span>
           <span className="strip__note">of your money, incl. cash and derivatives</span>
         </div>
+        {cash > 0 ? (
+          <div className="strip__cell">
+            <span className="strip__label">Cash</span>
+            <span className="strip__value">{formatShare(cash)}</span>
+            <span className="strip__note">your money, not invested in a company</span>
+          </div>
+        ) : null}
+        {unallocated > 0 ? (
+          <div className="strip__cell">
+            <span className="strip__label">Unallocated</span>
+            <span className="strip__value">{formatShare(unallocated)}</span>
+            <span className="strip__note">no entry accounts for this part</span>
+          </div>
+        ) : null}
         <div className="strip__cell">
           <span className="strip__label">Companies</span>
           <span className="strip__value">{formatCount(ledger.rows.length)}</span>
@@ -104,6 +121,38 @@ export function FreshnessStrip({
  */
 export function MetricsList({ ledger }: { ledger: Ledger }) {
   const { hhi, effective_n: effectiveN, top10 } = ledger.metrics;
+
+  // The coverage band decides whether concentration is reported at all
+  // (`lookthrough-math-and-qa` §5): below 60% of weight the fund's own HHI would
+  // describe the part that resolved, not the fund, and a portfolio metric computed
+  // over that is a number about a different portfolio. Suppressing it is the
+  // honest answer, and naming the fund is what makes the suppression legible.
+  const uncovered = ledger.funds.filter(
+    (fund) => coverageBand(fund.coverage_pct) === "none",
+  );
+  if (uncovered.length > 0) {
+    return (
+      <ul className="metrics">
+        <li>
+          <dt>Concentration</dt>
+          <dd>
+            <strong>not shown</strong>
+          </dd>
+          <p className="metric-note">
+            {uncovered.map((fund) => fund.ticker).join(", ")}{" "}
+            {uncovered.length === 1 ? "covers" : "cover"} less than 60% of its own weight,
+            so a concentration figure for this portfolio would describe the part that
+            resolved rather than the part you own.
+          </p>
+        </li>
+      </ul>
+    );
+  }
+
+  const partial = ledger.funds.some(
+    (fund) => coverageBand(fund.coverage_pct) === "partial",
+  );
+
   return (
     <ul className="metrics">
       <li>
@@ -131,6 +180,18 @@ export function MetricsList({ ledger }: { ledger: Ledger }) {
         </dd>
         <p className="metric-note">Their share of your money.</p>
       </li>
+      {partial ? (
+        <li>
+          <dt>Reading these</dt>
+          <dd>
+            <strong>approximate</strong>
+          </dd>
+          <p className="metric-note">
+            A fund here resolved 60–70% of its weight. These figures cover what resolved,
+            and cash is outside them.
+          </p>
+        </li>
+      ) : null}
     </ul>
   );
 }

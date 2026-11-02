@@ -312,6 +312,15 @@ button.quiet:hover {
   font-weight: 600;
 }
 
+/* The name and its note share the first grid cell: a fourth child would land in an
+   implicit second row and push Remove onto its own line. */
+.portfolio-list__name {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
 .weight-input {
   display: flex;
   align-items: center;
