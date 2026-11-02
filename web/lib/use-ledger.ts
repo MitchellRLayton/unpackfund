@@ -22,7 +22,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { buildLedger } from "./aggregate";
 import type { AggregateRequest, AggregateResponse } from "./ledger-protocol";
-import type { FundDocument, Ledger } from "./types";
+import type { BenchmarkComparison, FundDocument, Ledger } from "./types";
 
 export interface LedgerState {
   ledger: Ledger | null;
@@ -46,6 +46,7 @@ function createWorker(): Worker | null {
 export function useLedger(
   funds: FundDocument[],
   weightsBp: Record<string, number>,
+  benchmark: BenchmarkComparison | null = null,
 ): LedgerState {
   const [state, setState] = useState<LedgerState>({
     ledger: null,
@@ -59,6 +60,10 @@ export function useLedger(
   const requestIdRef = useRef(0);
   const weightsKey = JSON.stringify(weightsBp);
   const fundKey = funds.map((fund) => fund.ticker).join(",");
+  // The comparison rides on the same request, so its identity is part of what the
+  // effect depends on: a late-arriving benchmark must re-aggregate, and a benchmark
+  // from another release must not be mixed into a ledger that has already painted.
+  const benchmarkKey = benchmark === null ? "" : `${benchmark.ticker}@${benchmark.as_of}`;
 
   useEffect(() => {
     const worker = createWorker();
@@ -119,6 +124,7 @@ export function useLedger(
         requestId,
         funds,
         weightsBp,
+        benchmark,
       };
       worker.postMessage(request);
       return;
@@ -126,7 +132,7 @@ export function useLedger(
 
     const started = performance.now();
     try {
-      const ledger = buildLedger({ funds, weightsBp });
+      const ledger = buildLedger({ funds, weightsBp, benchmark });
       setState({
         ledger,
         error: null,
@@ -140,9 +146,9 @@ export function useLedger(
         mode: "main-thread",
       }));
     }
-    // `weightsKey`/`fundKey` pin the effect to the data actually used, so a new
-    // object with identical contents does not re-aggregate.
-  }, [fundKey, weightsKey, generation, funds, weightsBp]);
+    // `weightsKey`/`fundKey`/`benchmarkKey` pin the effect to the data actually
+    // used, so a new object with identical contents does not re-aggregate.
+  }, [fundKey, weightsKey, benchmarkKey, generation, funds, weightsBp, benchmark]);
 
   return state;
 }

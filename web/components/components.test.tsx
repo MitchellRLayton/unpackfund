@@ -1,10 +1,10 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { FreshnessStrip, MetricsList } from "@/components/FreshnessStrip";
 import { LedgerTable } from "@/components/LedgerTable";
 import { Notice } from "@/components/Notice";
-import type { Ledger, LedgerRow, ReleaseDescriptor } from "@/lib/types";
+import type { BenchmarkFacts, Ledger, LedgerRow, ReleaseDescriptor } from "@/lib/types";
 
 afterEach(cleanup);
 
@@ -39,19 +39,32 @@ function row(
   name: string,
   weight: number,
   fund_count = 1,
+  benchmark_weight: number | null = null,
 ): LedgerRow {
   return {
     company_id,
     name,
     ticker: name.slice(0, 4).toUpperCase(),
     weight,
+    benchmark_weight,
     fund_count,
     sources: [{ ticker: "VOO", weight }],
   };
 }
 
+const vt: BenchmarkFacts = {
+  ticker: "VT",
+  name: "VANGUARD TOTAL WORLD STOCK INDEX FUND",
+  as_of: "2026-07-31",
+  filed_at: "2026-09-28",
+  lag_days: 59,
+  coverage_pct: 97.8,
+  source_url: "https://www.sec.gov/example-vt",
+};
+
 const ledger: Ledger = {
   rows: [row("c_1", "NVIDIA Corp", 0.0751), row("c_2", "Apple Inc", 0.0659)],
+  benchmark: null,
   metrics: {
     hhi: 0.305,
     effective_n: 3.2787,
@@ -192,6 +205,58 @@ describe("LedgerTable", () => {
     expect(screen.getAllByText("7.51%")).toHaveLength(2);
     // Weight is a share of the portfolio, and the row note names the source.
     expect(container.querySelector(".row-note")?.textContent).toContain("VOO 7.51%");
+  });
+});
+
+describe("the benchmark column", () => {
+  it("sits beside the portfolio weight and names the fund it compares with", () => {
+    // Two quantities, two columns (`static-xray-frontend` §4a): 15% of the
+    // visitor's money in NVIDIA, 4.06% of VT's. The benchmark weight is a share
+    // of the benchmark's NAV and is never added to, subtracted from, or averaged
+    // with the portfolio weight.
+    const rows = [
+      row("c_1", "NVIDIA Corp", 0.15, 1, 0.0406),
+      row("c_2", "Bridgeway Omni Small-Cap Value", 0.02, 1, 0),
+    ];
+    const { container } = render(<LedgerTable rows={rows} benchmark={vt} />);
+    const headers = [...container.querySelectorAll('thead th[scope="col"]')].map(
+      (header) => header.textContent,
+    );
+    expect(headers).toEqual(["Company", "Portfolio weight", "In VT", "Funds"]);
+    // 15.00% twice: the weight column and the fund chip that explains it.
+    expect(screen.getAllByText("15.00%")).toHaveLength(2);
+    expect(screen.getByText("4.06%")).toBeTruthy();
+    // A company the benchmark's traced holdings exclude is a true zero, printed
+    // as a zero rather than left blank.
+    expect(screen.getByText("0.00%")).toBeTruthy();
+    expect(container.querySelector("caption")?.textContent).toContain(
+      "share of VT's own portfolio",
+    );
+  });
+
+  it("sorts by the benchmark weight like every other numeric column", () => {
+    const rows = [
+      row("c_1", "Portfolio Heavy", 0.5, 1, 0),
+      row("c_2", "Benchmark Heavy", 0.01, 1, 0.2),
+    ];
+    const { container } = render(<LedgerTable rows={rows} benchmark={vt} />);
+    const sortByBenchmark =
+      container.querySelectorAll<HTMLButtonElement>("thead .sort-button")[2];
+    expect(sortByBenchmark?.textContent).toContain("In VT");
+    if (sortByBenchmark) fireEvent.click(sortByBenchmark);
+    const first = container.querySelector("tbody tr th")?.textContent;
+    expect(first).toContain("Benchmark Heavy");
+    expect(container.querySelector('th[aria-sort="descending"]')?.textContent).toContain(
+      "In VT",
+    );
+  });
+
+  it("draws no comparison column when the release publishes no benchmark", () => {
+    // Without a benchmark there is nothing to compare against, so the column is
+    // absent — a column of zeros would claim the benchmark holds nothing.
+    const { container } = render(<LedgerTable rows={ledger.rows} />);
+    expect(container.querySelectorAll('thead th[scope="col"]')).toHaveLength(3);
+    expect(container.querySelector("caption")?.textContent).not.toContain("In VT");
   });
 });
 

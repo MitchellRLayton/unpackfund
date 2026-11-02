@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildLedger } from "./aggregate";
+import { BENCHMARK_TICKER, benchmarkFor } from "./benchmark";
 import type { FundDocument, Holding } from "./types";
 
 /**
@@ -228,5 +229,88 @@ describe("buildLedger", () => {
     });
     const ledger = buildLedger({ funds: [thin], weightsBp: { K: 10000 } });
     expect(ledger.metrics.suppressed_weight).toBeCloseTo(1, 12);
+  });
+});
+
+describe("the benchmark column", () => {
+  // Portfolio: A at 50% holds X 2000bp and Y 3000bp; B at 50% holds X 1000bp and
+  // Z 5000bp.
+  //   X = 0.5·0.20 + 0.5·0.10 = 0.10 + 0.05 = 0.15
+  //   Y = 0.5·0.30 = 0.15
+  //   Z = 0.5·0.50 = 0.25
+  // Benchmark: X 406bp = 0.0406, Y 100bp = 0.01, and W 900bp — a company the
+  // portfolio holds no part of, so W must not appear as a ledger row.
+  const p1 = fund({
+    ticker: "A",
+    holdings: [holding("c_x", 2000, "X"), holding("c_y", 3000, "Y")],
+  });
+  const p2 = fund({
+    ticker: "B",
+    holdings: [holding("c_x", 1000, "X"), holding("c_z", 5000, "Z")],
+  });
+  const benchmark = benchmarkFor(
+    fund({
+      ticker: BENCHMARK_TICKER,
+      as_of: "2026-07-31",
+      coverage_pct: 97.8,
+      holdings: [
+        holding("c_x", 406, "X"),
+        holding("c_y", 100, "Y"),
+        holding("c_w", 900, "W"),
+      ],
+    }),
+  );
+
+  it("puts each company's benchmark weight beside its portfolio weight", () => {
+    const ledger = buildLedger({
+      funds: [p1, p2],
+      weightsBp: { A: 5000, B: 5000 },
+      benchmark,
+    });
+    const byId = Object.fromEntries(ledger.rows.map((row) => [row.company_id, row]));
+
+    expect(byId.c_x?.benchmark_weight).toBeCloseTo(0.0406, 12);
+    expect(byId.c_y?.benchmark_weight).toBeCloseTo(0.01, 12);
+    // The portfolio's own arithmetic is untouched by the comparison.
+    expect(byId.c_x?.weight).toBeCloseTo(0.15, 12);
+    expect(byId.c_y?.weight).toBeCloseTo(0.15, 12);
+    expect(byId.c_z?.weight).toBeCloseTo(0.25, 12);
+  });
+
+  it("reports a company the benchmark does not hold as a true zero", () => {
+    // Z is 25% of this portfolio and 0 bp of VT. A zero here is a fact about the
+    // benchmark's filing, not a missing value — see the next test for that.
+    const ledger = buildLedger({
+      funds: [p1, p2],
+      weightsBp: { A: 5000, B: 5000 },
+      benchmark,
+    });
+    const z = ledger.rows.find((row) => row.company_id === "c_z");
+    expect(z?.benchmark_weight).toBe(0);
+  });
+
+  it("never turns a missing benchmark into a column of zeros", () => {
+    const ledger = buildLedger({ funds: [p1, p2], weightsBp: { A: 5000, B: 5000 } });
+    expect(ledger.benchmark).toBeNull();
+    expect(ledger.rows.every((row) => row.benchmark_weight === null)).toBe(true);
+  });
+
+  it("keeps the benchmark's provenance and leaves its weights behind", () => {
+    const ledger = buildLedger({
+      funds: [p1, p2],
+      weightsBp: { A: 5000, B: 5000 },
+      benchmark,
+    });
+    expect(ledger.benchmark).toEqual({
+      ticker: "VT",
+      name: `${BENCHMARK_TICKER} Fund`,
+      as_of: "2026-07-31",
+      filed_at: "2026-08-28",
+      lag_days: 59,
+      coverage_pct: 97.8,
+      source_url: `https://www.sec.gov/${BENCHMARK_TICKER}`,
+    });
+    // The rows carry the per-company value; ~6,900 weights must not ride along.
+    expect(ledger.benchmark).not.toHaveProperty("weights");
   });
 });

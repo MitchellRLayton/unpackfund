@@ -22,6 +22,8 @@
 import { coverageBand } from "./format";
 import {
   FULL_ALLOCATION_BP,
+  type BenchmarkComparison,
+  type BenchmarkFacts,
   type FundDocument,
   type Ledger,
   type LedgerMetrics,
@@ -32,12 +34,23 @@ export interface AggregateInput {
   funds: FundDocument[];
   /** Ticker → portfolio weight in basis points. */
   weightsBp: Record<string, number>;
+  /**
+   * The fixed benchmark's per-company weights ([ADR-0015](../../../docs/04-decisions/ADR-0015-vt-benchmark.md)).
+   * Absent means the release publishes no benchmark, and every row reports
+   * `benchmark_weight: null` rather than a zero that would claim the benchmark
+   * holds nothing.
+   */
+  benchmark?: BenchmarkComparison | null;
 }
 
 /** Companies rarely exceed this many in one portfolio; the guard is for sanity. */
 const MAX_TOP = 10;
 
-export function buildLedger({ funds, weightsBp }: AggregateInput): Ledger {
+export function buildLedger({
+  funds,
+  weightsBp,
+  benchmark = null,
+}: AggregateInput): Ledger {
   interface Accumulator {
     name: string;
     nameWeight: number;
@@ -143,6 +156,11 @@ export function buildLedger({ funds, weightsBp }: AggregateInput): Ledger {
       name: company.name,
       ticker: company.ticker,
       weight: company.weight,
+      // A share of the benchmark's NAV, read straight from the benchmark's own
+      // filing. Zero is a fact here ("its traced holdings do not include this
+      // company"), never a stand-in for "not loaded" — that is `null`, and it only
+      // happens when the release publishes no benchmark at all.
+      benchmark_weight: benchmark === null ? null : (benchmark.weights[companyId] ?? 0),
       fund_count: company.sources.size,
       sources: [...company.sources.entries()]
         .map(([ticker, weight]) => ({ ticker, weight }))
@@ -156,9 +174,26 @@ export function buildLedger({ funds, weightsBp }: AggregateInput): Ledger {
     suppressedWeight,
   });
 
+  // The weights map is ~6,900 entries and is not part of the answer: the rows
+  // carry the per-company value, and the ledger keeps only the provenance the
+  // caption has to state (`static-xray-frontend` §6, conventions I4).
+  const benchmarkFacts: BenchmarkFacts | null =
+    benchmark === null
+      ? null
+      : {
+          ticker: benchmark.ticker,
+          name: benchmark.name,
+          as_of: benchmark.as_of,
+          filed_at: benchmark.filed_at,
+          lag_days: benchmark.lag_days,
+          coverage_pct: benchmark.coverage_pct,
+          source_url: benchmark.source_url,
+        };
+
   return {
     rows,
     metrics,
+    benchmark: benchmarkFacts,
     funds: contributingFunds,
     oldest_as_of: oldestAsOf,
     max_lag_days: maxLagDays,
