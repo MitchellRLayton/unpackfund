@@ -488,7 +488,11 @@ class Composer:
             if abs(edge.weight_bp) > largest[key]:
                 largest[key] = abs(edge.weight_bp)
                 row["resolved_by"] = rung or None
-        components = list(merged.values())
+        # A sleeve whose as-filed weight rounds to 0 bp contributes nothing to the sum, so
+        # dropping it keeps the identity `Σ components == fund_bp` exactly. 98 funds in
+        # the first full build held a 0 bp sleeve, and a 0.00% row is noise beside the
+        # real sleeves it sits between.
+        components = [row for row in merged.values() if row["weight_bp"]]
         components.sort(key=lambda row: (-row["weight_bp"], row["name"].upper()))
 
         # Fund weight still unexpanded, in this fund's own basis points. Read from the

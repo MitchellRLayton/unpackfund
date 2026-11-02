@@ -352,6 +352,26 @@ def test_two_share_classes_of_one_sleeve_are_one_component():
     assert sum(row["weight_bp"] for row in composed.components) == composed.fund_bp
 
 
+def test_a_sleeve_that_rounds_to_nothing_is_not_a_component():
+    """A 0 bp sleeve adds nothing to the identity, and a 0.00% row is noise.
+
+    98 funds in the first full build carried one; the gate rejects a 0-weight component,
+    and dropping it is exact rather than approximate because it contributes 0.
+    """
+    parent = fund(
+        [fund_row("Real ETF", 8_000, lei="R"), fund_row("Dust ETF", 0, lei="D")],
+        ticker="PARENT",
+    )
+    children = [
+        fund([company("A Corp", 10_000)], ticker="REAL", series_lei="R"),
+        fund([company("B Corp", 10_000)], ticker="DUST", series_lei="D"),
+    ]
+    composed = compose(parent, children)
+
+    assert [row["ticker"] for row in composed.components] == ["REAL"]
+    assert sum(row["weight_bp"] for row in composed.components) == composed.fund_bp
+
+
 def test_published_rows_are_sorted_and_carry_no_identifiers():
     parent = fund([fund_row("Alpha ETF", 5_000, lei="AAA", isin="US1234567890")], ticker="PARENT")
     alpha = fund(
