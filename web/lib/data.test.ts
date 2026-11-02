@@ -7,6 +7,7 @@ import {
   POINTER_URL,
   clearShardCache,
   loadAliases,
+  loadBenchmark,
   loadCompany,
   loadFund,
   loadRelease,
@@ -290,6 +291,74 @@ describe("loadFund", () => {
     await expect(loadFund(RELEASE, "VOO", flaky)).resolves.toMatchObject({
       ticker: "VOO",
     });
+  });
+});
+
+describe("loadBenchmark", () => {
+  const rollup = {
+    schema_version: 1,
+    kind: "benchmark",
+    ticker: "VT",
+    fund_id: "S000022482",
+    name: "VANGUARD TOTAL WORLD STOCK INDEX FUND",
+    as_of: "2026-07-31",
+    filed_at: "2026-09-28",
+    lag_days: 59,
+    coverage_pct: 97.8,
+    source_url: "https://www.sec.gov/example",
+    weights: { c_0001045810: 406 },
+  };
+
+  async function withBenchmark(document: unknown): Promise<ReleaseDescriptor> {
+    const bytes = new TextEncoder().encode(JSON.stringify(document));
+    return {
+      ...RELEASE,
+      objects: {
+        ...RELEASE.objects,
+        benchmarks: {
+          prefix: "benchmarks/",
+          files: {
+            VT: {
+              path: "benchmarks/VT.json",
+              bytes: bytes.byteLength,
+              sha256: await sha256Hex(bytes),
+            },
+          },
+        },
+      },
+    };
+  }
+
+  it("reads the pre-rolled weights, hash-checked", async () => {
+    const release = await withBenchmark(rollup);
+    const document = await loadBenchmark(
+      release,
+      "VT",
+      releaseHost({ "benchmarks/VT.json": rollup }),
+    );
+    expect(document?.weights).toEqual({ c_0001045810: 406 });
+  });
+
+  it("returns null when the release pre-rolled nothing for that ticker", async () => {
+    // The state every release published before this object was added is in: a fact
+    // about the release, not an error, and the caller falls back to the fund document.
+    expect(await loadBenchmark(RELEASE, "VT", releaseHost({}))).toBeNull();
+  });
+
+  it("refuses bytes that do not match the described hash", async () => {
+    const release = await withBenchmark(rollup);
+    const other = { ...rollup, weights: { c_0001045810: 1 } };
+    await expect(
+      loadBenchmark(release, "VT", releaseHost({ "benchmarks/VT.json": other })),
+    ).rejects.toMatchObject({ kind: "hash" });
+  });
+
+  it("refuses a benchmark for a different ticker", async () => {
+    const wrong = { ...rollup, ticker: "SPY" };
+    const release = await withBenchmark(wrong);
+    await expect(
+      loadBenchmark(release, "VT", releaseHost({ "benchmarks/VT.json": wrong })),
+    ).rejects.toMatchObject({ kind: "schema" });
   });
 });
 

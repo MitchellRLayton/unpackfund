@@ -25,13 +25,16 @@
  */
 
 import { coverageBand } from "./format";
-import type {
-  DirectHolding,
-  FundDocument,
-  Ledger,
-  LedgerMetrics,
-  LedgerRow,
-  LedgerSource,
+import {
+  FULL_ALLOCATION_BP,
+  type BenchmarkComparison,
+  type BenchmarkFacts,
+  type DirectHolding,
+  type FundDocument,
+  type Ledger,
+  type LedgerMetrics,
+  type LedgerRow,
+  type LedgerSource,
 } from "./types";
 
 export interface AggregateInput {
@@ -42,6 +45,13 @@ export interface AggregateInput {
   direct?: DirectHolding[];
   /** Cash as a fraction of the whole portfolio; never a coverage candidate. */
   cash?: number;
+  /**
+   * The fixed benchmark's per-company weights ([ADR-0015](../../../docs/04-decisions/ADR-0015-vt-benchmark.md)).
+   * Absent means the release publishes no benchmark, and every row reports
+   * `benchmark_weight: null` rather than a zero that would claim the benchmark
+   * holds nothing.
+   */
+  benchmark?: BenchmarkComparison | null;
 }
 
 /** Companies rarely exceed this many in one portfolio; the guard is for sanity. */
@@ -52,6 +62,7 @@ export function buildLedger({
   weights,
   direct = [],
   cash = 0,
+  benchmark = null,
 }: AggregateInput): Ledger {
   interface Accumulator {
     name: string;
@@ -202,6 +213,11 @@ export function buildLedger({
       name: company.name,
       ticker: company.ticker,
       weight: company.weight,
+      // A share of the benchmark's NAV, read straight from the benchmark's own
+      // filing. Zero is a fact here ("its traced holdings do not include this
+      // company"), never a stand-in for "not loaded" — that is `null`, and it only
+      // happens when the release publishes no benchmark at all.
+      benchmark_weight: benchmark === null ? null : (benchmark.weights[companyId] ?? 0),
       holder_count: company.fundTickers.size,
       held_directly: company.heldDirectly,
       sources: company.sources
@@ -227,9 +243,26 @@ export function buildLedger({
     unallocatedWeight: Math.max(0, 1 - cash - investedWeight),
   });
 
+  // The weights map is ~2,400 entries on the live release and is not part of the
+  // answer: the rows carry the per-company value, and the ledger keeps only the
+  // provenance the caption has to state (`static-xray-frontend` §6, conventions I4).
+  const benchmarkFacts: BenchmarkFacts | null =
+    benchmark === null
+      ? null
+      : {
+          ticker: benchmark.ticker,
+          name: benchmark.name,
+          as_of: benchmark.as_of,
+          filed_at: benchmark.filed_at,
+          lag_days: benchmark.lag_days,
+          coverage_pct: benchmark.coverage_pct,
+          source_url: benchmark.source_url,
+        };
+
   return {
     rows,
     metrics,
+    benchmark: benchmarkFacts,
     funds: contributingFunds,
     oldest_as_of: oldestAsOf,
     max_lag_days: maxLagDays,

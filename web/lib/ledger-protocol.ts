@@ -8,7 +8,7 @@
  * rendered.
  */
 
-import type { DirectHolding, FundDocument, Ledger } from "./types";
+import type { BenchmarkComparison, DirectHolding, FundDocument, Ledger } from "./types";
 
 export interface AggregateRequest {
   type: "aggregate";
@@ -20,6 +20,14 @@ export interface AggregateRequest {
   direct: DirectHolding[];
   /** Cash as a fraction of the whole portfolio. */
   cash: number;
+  /**
+   * The fixed benchmark, already reduced to `company_id → share of its own NAV`.
+   *
+   * The whole fund document would be 1.5 MB of holdings to clone to the worker on
+   * every weight change; the comparison needs the weights and its provenance, not
+   * the filed rows ([ADR-0015](../../../docs/04-decisions/ADR-0015-vt-benchmark.md)).
+   */
+  benchmark: BenchmarkComparison | null;
 }
 
 export interface AggregateSuccess {

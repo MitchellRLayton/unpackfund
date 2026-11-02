@@ -15,9 +15,9 @@
 import { useMemo, useState } from "react";
 
 import { formatCount, formatShare } from "@/lib/format";
-import type { LedgerRow } from "@/lib/types";
+import type { BenchmarkFacts, LedgerRow } from "@/lib/types";
 
-type SortKey = "weight" | "name" | "holder_count";
+type SortKey = "weight" | "benchmark" | "name" | "holder_count";
 type Direction = "ascending" | "descending";
 
 function compare(a: LedgerRow, b: LedgerRow, key: SortKey): number {
@@ -26,6 +26,8 @@ function compare(a: LedgerRow, b: LedgerRow, key: SortKey): number {
       return a.name.localeCompare(b.name, "en");
     case "holder_count":
       return a.holder_count - b.holder_count;
+    case "benchmark":
+      return (a.benchmark_weight ?? 0) - (b.benchmark_weight ?? 0);
     case "weight":
       return a.weight - b.weight;
   }
@@ -33,6 +35,7 @@ function compare(a: LedgerRow, b: LedgerRow, key: SortKey): number {
 
 const DEFAULTS: Record<SortKey, Direction> = {
   weight: "descending",
+  benchmark: "descending",
   name: "ascending",
   holder_count: "descending",
 };
@@ -41,18 +44,26 @@ const DEFAULTS: Record<SortKey, Direction> = {
 const SORT_LABEL: Record<SortKey, string> = {
   name: "company name",
   weight: "portfolio weight",
+  benchmark: "benchmark weight",
   holder_count: "number of funds",
 };
 
 export function LedgerTable({
   rows,
   limit,
+  benchmark,
   onSelect,
 }: {
   /** Every company in the ledger. Sorting applies to all of them, not to a page. */
   rows: LedgerRow[];
   /** Render at most this many, after sorting. Absent means all of them. */
   limit?: number;
+  /**
+   * The fixed benchmark ([ADR-0015](../../../docs/04-decisions/ADR-0015-vt-benchmark.md)).
+   * Its presence is what draws the comparison column: without a benchmark there is
+   * nothing to compare, and the table says nothing rather than printing zeros.
+   */
+  benchmark?: BenchmarkFacts | null;
   /** Opens the company drawer. Without it the name is plain text. */
   onSelect?: (row: LedgerRow) => void;
 }) {
@@ -101,6 +112,13 @@ export function LedgerTable({
             : `${formatCount(total)} ${total === 1 ? "company" : "companies"}, after look-through, sorted by ${SORT_LABEL[sort.key]}.`}{" "}
           Each company is counted once. Weight is this company&apos;s share of the whole
           portfolio, not of any one fund.
+          {benchmark
+            ? " The " +
+              benchmark.ticker +
+              " column is this company's share of " +
+              benchmark.ticker +
+              "'s own portfolio — the benchmark's holding, not yours."
+            : ""}
         </caption>
         <thead>
           <tr>
@@ -122,6 +140,17 @@ export function LedgerTable({
                 Portfolio weight
               </button>
             </th>
+            {benchmark ? (
+              <th scope="col" className="numeric" aria-sort={ariaSort("benchmark")}>
+                <button
+                  type="button"
+                  className="sort-button"
+                  onClick={() => toggle("benchmark")}
+                >
+                  In {benchmark.ticker}
+                </button>
+              </th>
+            ) : null}
             <th scope="col" className="numeric" aria-sort={ariaSort("holder_count")}>
               <button
                 type="button"
@@ -175,6 +204,16 @@ export function LedgerTable({
                 </span>
               </th>
               <td className="numeric">{formatShare(row.weight)}</td>
+              {benchmark ? (
+                <td className="numeric">
+                  {row.benchmark_weight === null
+                    ? // No value is not a zero: a missing number prints as missing
+                      // (`static-xray-frontend` §6), and this cell is only reachable
+                      // if the ledger and the table disagree about having a benchmark.
+                      "—"
+                    : formatShare(row.benchmark_weight)}
+                </td>
+              ) : null}
               <td className="numeric">
                 {row.holder_count === 0 && row.held_directly ? (
                   // A company you own outright is not held by any fund, and "0"

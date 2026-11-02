@@ -17,6 +17,9 @@ function row(over: Partial<LedgerRow> & Pick<LedgerRow, "name" | "weight">): Led
   return {
     company_id: "c_0001018724",
     ticker: "AMZN",
+    // The benchmark comparison is required on a row: `null` is "no benchmark in this
+    // release", which is a different statement from a zero (ADR-0015).
+    benchmark_weight: null,
     holder_count: 1,
     held_directly: false,
     sources: [],
@@ -39,6 +42,7 @@ function ledgerOf(rows: LedgerRow[]): Ledger {
       unallocated_weight: 0,
     },
     funds: [],
+    benchmark: null,
     oldest_as_of: "2026-06-30",
     max_lag_days: 120,
     unmapped: {

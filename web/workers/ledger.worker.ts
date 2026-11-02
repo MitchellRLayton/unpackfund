@@ -34,6 +34,7 @@ scope.addEventListener("message", (event) => {
       weights: request.weights,
       direct: request.direct,
       cash: request.cash,
+      benchmark: request.benchmark,
     });
     scope.postMessage({
       type: "result",

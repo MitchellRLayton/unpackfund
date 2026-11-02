@@ -57,6 +57,14 @@ export interface ReleaseDescriptor {
      */
     aliases?: { object: ObjectDescriptor; count: number };
     /**
+     * The compact benchmark rollups this release pre-rolled (`benchmarks/{T}.json`).
+     * Optional for the same reason as `aliases`, and load-bearing here: a release
+     * that predates the object makes the app fall back to the benchmark's full fund
+     * document, which is slower but identical. Presence, not a version number, is
+     * the switch — that is what lets the bundle ship before the data does.
+     */
+    benchmarks?: { prefix: string; files: Record<string, ObjectDescriptor> };
+    /**
      * The typed-symbol object (ADR-0014), optional for the same reason `aliases` is:
      * a release built before it existed stays loadable, and the builder then
      * refuses a stock ticker with "not in this release" rather than breaking.
@@ -351,6 +359,64 @@ export interface FundWeight {
 export const FULL_ALLOCATION_BP = 10_000;
 
 /**
+ * The benchmark's per-company weights, and everything needed to label them.
+ *
+ * There is one benchmark and it is fixed ([ADR-0015](../../../docs/04-decisions/ADR-0015-vt-benchmark.md)):
+ * VT is the reference every portfolio is read against, and no surface offers a
+ * choice of it. The payload is built once per release by `benchmarkFor` and
+ * travels to the worker in place of the fund document, because the aggregation
+ * needs the weights and the caption needs the provenance — not 9,700 holdings.
+ *
+ * `weights` is keyed by `company_id` and holds **fractions of the benchmark's own
+ * NAV**: the fund's weight in that company, never the visitor's. A company absent
+ * from the map is one the benchmark's traced holdings do not include — which the
+ * column renders as `0.00%` and the caption qualifies with `coverage_pct`.
+ */
+export interface BenchmarkComparison {
+  ticker: string;
+  name: string;
+  as_of: string;
+  filed_at: string;
+  lag_days: number;
+  /** Share of the benchmark's NAV its own filing attributes to a company. */
+  coverage_pct: number;
+  source_url: string;
+  /** `company_id` → share of the benchmark's NAV, as a fraction. */
+  weights: Record<string, number>;
+}
+
+/**
+ * `releases/{as_of}/benchmarks/{TICKER}.json` — one benchmark's weights, pre-rolled.
+ *
+ * The fund document is 1.58 MB and the ledger reads one number per company from it;
+ * this object is the same filing rolled up to companies, ~43 kB, published once per
+ * release. `weights` is `company_id → integer basis points`, so the contract's unit
+ * survives the round trip and the single conversion to fractions stays in
+ * `benchmarkFromRollup`. It is derived, so the release validator recomputes it from
+ * the fund document beside it and refuses a release where the two disagree.
+ *
+ * `as_of` is the **filing period end**, not the release id: the benchmark is compared
+ * against a portfolio whose funds were filed at various dates, and its own lag is
+ * part of what the caption discloses.
+ */
+export interface BenchmarkRollup {
+  schema_version: number;
+  kind: "benchmark";
+  ticker: string;
+  fund_id: string;
+  name: string;
+  as_of: string;
+  filed_at: string;
+  lag_days: number;
+  coverage_pct: number;
+  source_url: string;
+  weights: Record<string, number>;
+}
+
+/** The benchmark as it appears in the ledger: its provenance, without the weights. */
+export type BenchmarkFacts = Omit<BenchmarkComparison, "weights">;
+
+/**
  * One contribution to a company line: a fund's look-through weight in it, or the
  * visitor's own direct position.
  *
@@ -375,6 +441,14 @@ export interface LedgerRow {
   ticker: string | null;
   /** Fraction of the whole portfolio. */
   weight: number;
+  /**
+   * The company's weight **inside the benchmark fund** — a share of the
+   * benchmark's NAV, not of the portfolio. `0` means the benchmark's traced
+   * holdings do not include the company; `null` means there is no benchmark to
+   * compare with, and the ledger must not print a zero in its place.
+   */
+  benchmark_weight: number | null;
+
   /** How many funds hold it — funds only, so a direct position is never counted. */
   holder_count: number;
   /** True when the visitor holds this company directly, whatever the funds do. */
@@ -444,6 +518,12 @@ export interface UnmappedBreakdown {
 export interface Ledger {
   rows: LedgerRow[];
   metrics: LedgerMetrics;
+  /**
+   * The benchmark this ledger was compared against, or `null` when the release
+   * publishes none. Never a placeholder: without it the comparison column is
+   * absent, not a column of zeros.
+   */
+  benchmark: BenchmarkFacts | null;
   /** Funds that contributed, in the order the portfolio lists them. */
   funds: Array<
     Pick<

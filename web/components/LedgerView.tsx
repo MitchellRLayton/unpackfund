@@ -18,6 +18,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { BENCHMARK_TICKER, benchmarkFor, benchmarkFromRollup } from "@/lib/benchmark";
 import { CompanyDrawer } from "@/components/CompanyDrawer";
 import { FreshnessStrip, MetricsList } from "@/components/FreshnessStrip";
 import { LedgerTable } from "@/components/LedgerTable";
@@ -26,7 +27,9 @@ import {
   coverageBand,
   coverageChip,
   formatCount,
+  formatCoveragePct,
   formatDays,
+  formatIsoDate,
   formatShare,
 } from "@/lib/format";
 import { ledgerCsv, ledgerCsvName, saveCsv } from "@/lib/export";
@@ -35,10 +38,9 @@ import { refusal } from "@/lib/securities";
 import { FULL_ALLOCATION_BP } from "@/lib/types";
 import { useLedger } from "@/lib/use-ledger";
 import { usePortfolio } from "@/lib/use-portfolio";
-import { useFunds, useRelease } from "@/lib/use-release";
+import { useBenchmark, useFunds, useRelease } from "@/lib/use-release";
 import { useSecurities } from "@/lib/use-securities";
 import type { DirectHolding, LedgerRow } from "@/lib/types";
-
 /**
  * How many companies the ledger renders before the visitor asks for the rest.
  *
@@ -72,17 +74,11 @@ export function LedgerView() {
         .map((entry) => entry.key),
     [portfolio.entries],
   );
-
-  const { funds, pending, error } = useFunds(
-    release.status === "ready" ? release.data : null,
-    tickers,
-  );
+  const releaseData = release.status === "ready" ? release.data : null;
+  const { funds, pending, error } = useFunds(releaseData, tickers);
   // Only the shards the portfolio's letters need are fetched, and a symbol that the
   // release does not carry comes back as missing rather than as an error.
-  const securities = useSecurities(
-    release.status === "ready" ? release.data : null,
-    symbols,
-  );
+  const securities = useSecurities(releaseData, symbols);
 
   const split = useMemo(
     () => splitPortfolio(portfolio.mode, portfolio.entries),
@@ -106,13 +102,54 @@ export function LedgerView() {
     return holdings;
   }, [split.direct, securities.rows]);
 
+  // The benchmark (ADR-0015) is read from one of three places, in order of what the
+  // page already has: the fund document in memory (the portfolio holds it), the
+  // compact rollup the release pre-rolled for it (~17 kB gzipped, the normal path),
+  // or — for a release that predates the compact object — the benchmark's full fund
+  // document (~193 kB gzipped), which every release has published since 2026-10-30.
+  // All three are hash-checked against the release, and all three produce the same
+  // payload, so the table cannot tell which one answered. Nothing is fetched for a
+  // portfolio with no company rows to compare.
+  const holdsBenchmark = portfolio.entries.some(
+    (entry) => entry.kind === "fund" && entry.key === BENCHMARK_TICKER,
+  );
+  const hasHoldings = tickers.length > 0 || symbols.length > 0;
+  const wantsBenchmark = !holdsBenchmark && hasHoldings;
+  const compactEntry = releaseData?.objects.benchmarks?.files?.[BENCHMARK_TICKER];
+  const wantsCompact = wantsBenchmark && compactEntry !== undefined;
+  const wantsFundDocument = wantsBenchmark && compactEntry === undefined;
+  const compactLoad = useBenchmark(releaseData, wantsCompact ? BENCHMARK_TICKER : null);
+  const benchmarkLoad = useFunds(
+    releaseData,
+    wantsFundDocument ? [BENCHMARK_TICKER] : [],
+  );
+  const benchmark = useMemo(() => {
+    const inMemory = funds.find((fund) => fund.ticker === BENCHMARK_TICKER);
+    if (inMemory) return benchmarkFor(inMemory);
+    if (compactLoad.data) return benchmarkFromRollup(compactLoad.data);
+    const document = benchmarkLoad.funds[0];
+    return document ? benchmarkFor(document) : null;
+  }, [funds, compactLoad.data, benchmarkLoad.funds]);
   const {
     ledger,
     error: aggregateError,
     mode,
     durationMs,
-  } = useLedger(funds, split.fundWeights, direct, split.cash);
-
+  } = useLedger(funds, split.fundWeights, direct, split.cash, benchmark);
+  // Named, so the loading state is a statement about which filings are still
+  // arriving rather than a spinner. The comparison column is part of the table's
+  // shape, so the table waits for it rather than reflowing under a reader.
+  // `pending` only ever lists tickers that have not loaded, so a *failed* load would
+  // stay in it forever and hold the ledger in "Loading" — which would make the
+  // column-less fallback below unreachable. A benchmark that errored is answered by
+  // the notice, not waited for. The compact object has the same rule, one status
+  // earlier: it is waited for while loading, and not after it fails.
+  const compactPending = wantsCompact && compactLoad.status === "loading";
+  const pendingNames = [
+    ...pending,
+    ...(compactPending ? [BENCHMARK_TICKER] : []),
+    ...(wantsFundDocument && !benchmarkLoad.error ? benchmarkLoad.pending : []),
+  ];
   if (!portfolio.ready) {
     return (
       <>
@@ -222,13 +259,19 @@ export function LedgerView() {
   }
 
   const waitingSymbols = symbols.length > 0 && securities.pending;
-  if (!ledger || waitingSymbols) {
+  if (!ledger || waitingSymbols || pendingNames.length > 0) {
     return (
       <>
         <h1>Your look-through</h1>
         <p className="muted" role="status">
           Loading{" "}
-          {[...pending, ...(waitingSymbols ? symbols : [])].join(", ") || "the release"}…
+          {[
+            ...pending,
+            ...(waitingSymbols ? symbols : []),
+            ...(compactPending ? [BENCHMARK_TICKER] : []),
+            ...(wantsFundDocument && !benchmarkLoad.error ? benchmarkLoad.pending : []),
+          ].join(", ") || "the release"}
+          …{" "}
         </p>
       </>
     );
@@ -341,6 +384,33 @@ export function LedgerView() {
       ) : null}
 
       <h2 id="ledger-start">Companies</h2>
+      {ledger.benchmark ? (
+        <p className="muted">
+          The <strong>{ledger.benchmark.ticker}</strong> column is each company&apos;s
+          share of {ledger.benchmark.ticker} — {ledger.benchmark.name}, filing period{" "}
+          {formatIsoDate(ledger.benchmark.as_of)} — not a share of your portfolio. It is
+          read from{" "}
+          <a href={ledger.benchmark.source_url} rel="noopener noreferrer" target="_blank">
+            {ledger.benchmark.ticker}&apos;s own SEC N-PORT filing
+            <span className="sr-only"> for {ledger.benchmark.ticker}</span>
+          </a>
+          , which traces {formatCoveragePct(ledger.benchmark.coverage_pct)} of its gross
+          weight to companies (filed weights slightly exceed 100% of net assets, so the
+          column sums to a little more than that). A 0.00% here means the company is
+          either absent from those traced holdings or filed at under 0.01% of{" "}
+          {ledger.benchmark.ticker}&apos;s NAV — the smallest weight this column can show.
+          Neither is the same as the fund not owning it.
+        </p>
+      ) : (
+        <Notice tone="info" title="No benchmark comparison on this page">
+          <p>
+            {BENCHMARK_TICKER} could not be read from this release, so the comparison
+            column is absent rather than filled with zeros — a zero would claim the
+            benchmark holds none of these companies. Everything above and below is the
+            portfolio&apos;s own arithmetic and is unaffected.
+          </p>
+        </Notice>
+      )}
       {releaseAsOf ? (
         <p className="table-more">
           <button
@@ -370,6 +440,7 @@ export function LedgerView() {
       <LedgerTable
         rows={ledger.rows}
         limit={showAll ? undefined : LEDGER_PAGE}
+        benchmark={ledger.benchmark}
         onSelect={setSelected}
       />
 
