@@ -397,6 +397,13 @@ class Composer:
         fund = self.funds.get(ticker)
         if fund is None:
             raise KeyError(ticker)
+        # The memo holds every flattened sleeve's rows. Across a release that is the
+        # whole corpus several times over — measured at 7.5M rows for the wrappers we
+        # compose, which is gigabytes of dicts — so it is cleared per root and only
+        # pays for a sleeve that appears twice *within* one fund (two share classes of
+        # the same fund, or the same child on two rungs of a chain). Re-flattening is
+        # ~10 s for the whole release, which is the cheaper half of that trade.
+        self._flat_cache.clear()
         flat = self._flat(ticker, MAX_DEPTH, frozenset())
         ordered = sorted(
             flat.rows.values(),
