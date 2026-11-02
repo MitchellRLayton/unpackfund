@@ -553,6 +553,20 @@ $(git -C "$GIT_ROOT" for-each-ref --format='%(refname:short)' refs/remotes/origi
     printf '%-30s %-13s %-22s %5s %6s %-10s %-9s %s\n' "$_b" "$_ssn" "$_wt" "$_ahead" "$_behind" "$_last" "$_pr" "$_state"
   done
 
+  # A detached worktree (the deploy case) has no branch, so its session never appears in
+  # the table above — and that is exactly the worktree a deploy lock is about. List the
+  # active sessions the table could not place.
+  for _f in "$SESSIONS_DIR"/*.conf; do
+    [ -f "$_f" ] || continue
+    [ "$(conf_get "$_f" SESSION_STATUS)" = "active" ] || continue
+    _br="$(conf_get "$_f" SESSION_BRANCH)"
+    printf '%s\n' "$_refs" | grep -qx -- "$_br" && continue
+    _nm="$(conf_get "$_f" SESSION_NAME)"
+    _w="$(conf_get "$_f" SESSION_WORKTREE)"
+    _w="${_w#"$WORKSPACE"/}"
+    printf 'off-branch: %-13s %-22s (branch %s) active\n' "$_nm" "$_w" "$_br"
+  done
+
   say ""
   _main="$(git -C "$GIT_ROOT" rev-parse --short main 2>/dev/null || printf '?')"
   _origin="$(git -C "$GIT_ROOT" rev-parse --short origin/main 2>/dev/null || printf '?')"
