@@ -369,3 +369,26 @@ jobs:
             node_modules/.wrangler/
           retention-days: 14
           if-no-files-found: ignore
+
+      # The other half of the nightly ledger: `refresh` records what was built, this records
+      # whether it reached production. A failed promote leaves the site on yesterday's release
+      # and looks like a green day in the Actions list unless someone reads this line.
+      - name: Record the promotion in the ledger
+        if: always()
+        continue-on-error: true      # telemetry can never be the reason a promotion is red
+        env:
+          STATUS: ${{ job.status == 'success' && 'ok' || 'failed' }}
+          RELEASE: ${{ steps.resolve.outputs.staged }}
+          ALREADY: ${{ steps.resolve.outputs.already_live }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          # Nothing to promote is a success, not a promotion — same distinction `refresh`
+          # makes between a night with no filings and a night that failed.
+          KIND=promote
+          if [ "$ALREADY" = "true" ]; then KIND=idle; fi
+          python -m pipeline.telemetry append --ledger nightly \
+            --kind "$KIND" --status "$STATUS" --release "$RELEASE" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

@@ -151,6 +151,42 @@ def test_a_run_that_wrote_no_artifact_still_produces_a_line(tmp_path):
     assert record["status"] == "ok"
 
 
+def test_a_promotion_line_carries_the_release_it_promoted(tmp_path):
+    """`promote` writes no artifacts, so the release comes from the pointer it moved."""
+    record = telemetry.nightly_record(
+        tmp_path, kind="promote", status="ok", release="2026-11-02.7", run_id="41532647157"
+    )
+    assert record["kind"] == "promote"
+    assert record["release"] == "2026-11-02.7"
+    assert record["status"] == "ok"
+    assert record["objects"] is None
+
+
+def test_an_explicit_release_wins_over_a_stale_artifact(tmp_path):
+    """A promote runs days after the build; the artifacts it can see are the old night's."""
+    root = write_artifacts(tmp_path)
+    record = telemetry.nightly_record(root, kind="promote", release="2026-11-02.7")
+    assert record["release"] == "2026-11-02.7"
+    assert telemetry.nightly_record(root)["release"] == "2026-11-02.7"
+
+
+def test_the_cli_accepts_a_promote_line(tmp_path, monkeypatch, capsys):
+    store = FakeStore()
+    monkeypatch.setattr(telemetry, "client_from_env", lambda: store)
+    code = telemetry.main(
+        [
+            "append", "--ledger", "nightly", "--kind", "promote", "--status", "ok",
+            "--release", "2026-11-02.7", "--artifacts", str(tmp_path), "--run-id", "41532647157",
+        ]
+    )
+    assert code == 0
+    written = telemetry.load(store, "nightly")
+    assert len(written) == 1
+    assert written[0]["kind"] == "promote"
+    assert written[0]["release"] == "2026-11-02.7"
+    assert written[0]["run_id"] == "41532647157"
+
+
 def test_render_calls_out_failures():
     table = telemetry.render(
         [
