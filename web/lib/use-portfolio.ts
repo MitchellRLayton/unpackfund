@@ -18,7 +18,11 @@ import { useSyncExternalStore } from "react";
 
 import { isComplete, totalAmount } from "./fragment";
 import { getServerSnapshot, getSnapshot, subscribe, write } from "./fragment-store";
-import { convertMode, equalise as equaliseEntries } from "./portfolio-weights";
+import {
+  convertMode,
+  equalise as equaliseEntries,
+  isEqualSplit,
+} from "./portfolio-weights";
 import { moveItem } from "./reorder";
 import {
   FULL_ALLOCATION_BP,
@@ -42,7 +46,13 @@ export interface PortfolioState {
   unallocatedBp: number;
   /** Percentage mode only: how far past 100% the entries are, in basis points. */
   overBp: number;
-  add: (kind: EntryKind, key: string) => void;
+  /**
+   * Append one entry, and say which of the three things happened to the amounts that
+   * were already there: `split` (the app spread every row evenly, because the list was
+   * still its own even split), `kept` (nothing moved; the new row arrived at 0), or
+   * `noop` (that holding is already in the portfolio).
+   */
+  add: (kind: EntryKind, key: string) => AddOutcome;
   remove: (kind: EntryKind, key: string) => void;
   /**
    * Move one entry to a 0-based position in the list.
@@ -72,6 +82,15 @@ function isSame(entry: PortfolioEntry, kind: EntryKind, key: string): boolean {
 }
 
 /**
+ * What `add` did to the amounts that were already in the portfolio.
+ *
+ * Three states rather than a boolean: "the rows were re-split" and "the rows were left
+ * alone" are both successful adds, and a caller that confuses them either announces a
+ * re-split that did not happen or stays silent about a 0.00% row that needs a number.
+ */
+export type AddOutcome = "split" | "kept" | "noop";
+
+/**
  * The largest amount an entry may carry in the current mode.
  *
  * Dollars are cents, and $1bn is far past any real portfolio; percentages cannot
@@ -88,18 +107,21 @@ export function usePortfolio(): PortfolioState {
   const mode = snapshot.portfolio.mode;
 
   const add = useCallback(
-    (kind: EntryKind, key: string) => {
-      if (entries.some((entry) => isSame(entry, kind, key))) return;
+    (kind: EntryKind, key: string): AddOutcome => {
+      if (entries.some((entry) => isSame(entry, kind, key))) return "noop";
       const next: PortfolioEntry[] = [...entries, { kind, key, amount: 0 }];
-      // Equal-weight is the default only when the portfolio was empty or already a
-      // clean split; re-splitting a portfolio the visitor weighted by hand would
-      // silently discard their input. Cash and stocks start at zero because the
-      // visitor has to say how much — guessing a dollar amount is guessing money.
-      const wasClean = mode === "bp" && totalAmount(entries) === FULL_ALLOCATION_BP;
-      write({
-        mode,
-        entries: entries.length === 0 || wasClean ? equaliseEntries(next) : next,
-      });
+      // The even split is the default only for a portfolio the app itself spread —
+      // empty, or still exactly the split `equalise` would produce. A set the visitor
+      // weighted by hand keeps every amount it has, because moving a number they typed
+      // is silent data loss: "I added a fund and my whole portfolio reset to equal
+      // weights" (operator, 2026-11-02). Whole is not the test — `60/40` is whole and
+      // is still the visitor's, which is why the check is `isEqualSplit`, not a total.
+      // Cash and stocks additionally start at zero: guessing a dollar amount is
+      // guessing money.
+      const followSplit =
+        entries.length === 0 || (mode === "bp" && isEqualSplit(entries));
+      write({ mode, entries: followSplit ? equaliseEntries(next) : next });
+      return followSplit ? "split" : "kept";
     },
     [entries, mode],
   );
