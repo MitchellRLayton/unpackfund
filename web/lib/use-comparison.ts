@@ -24,7 +24,7 @@ import {
   writeComparison,
 } from "./fragment-store";
 import { FULL_ALLOCATION_BP } from "./types";
-import type { PortfolioEntry } from "./types";
+import type { FundWeight } from "./types";
 
 /**
  * Two portfolios share one fragment, and the fragment has a 2,000-character budget
@@ -36,8 +36,8 @@ const MAX_ENTRIES = 40;
 export type Side = "a" | "b";
 
 export interface Comparison {
-  a: PortfolioEntry[];
-  b: PortfolioEntry[];
+  a: FundWeight[];
+  b: FundWeight[];
   ready: boolean;
   problem: string | null;
   totalBp: Record<Side, number>;
@@ -50,14 +50,14 @@ export interface Comparison {
   swap: () => void;
 }
 
-function balance(entries: PortfolioEntry[]): number {
+function balance(entries: FundWeight[]): number {
   return entries.reduce((total, entry) => total + entry.weight_bp, 0);
 }
 
 export function useComparison(): Comparison {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
-  const update = useCallback((a: PortfolioEntry[], b: PortfolioEntry[]) => {
+  const update = useCallback((a: FundWeight[], b: FundWeight[]) => {
     writeComparison(a, b);
   }, []);
 

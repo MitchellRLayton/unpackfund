@@ -10,6 +10,8 @@ import {
   loadCompany,
   loadFund,
   loadRelease,
+  loadSecurities,
+  loadSecuritiesShard,
   loadTickers,
   resolveAlias,
   releaseUrl,
@@ -21,6 +23,7 @@ import type {
   FundDocument,
   FundIndexShard,
   ReleaseDescriptor,
+  SecuritiesShard,
 } from "./types";
 
 const RELEASE: ReleaseDescriptor = {
@@ -406,5 +409,104 @@ describe("share-class aliases", () => {
         vi.fn(async () => new Response(body, { status: 200 })),
       ),
     ).rejects.toBeInstanceOf(DataError);
+  });
+});
+
+describe("the typed-symbol object", () => {
+  // The row is the one the live SEC file publishes for AMZN, so the fixture is the
+  // real thing rather than a convenient shape (`securities.py` pins the same row
+  // from the pipeline side).
+  const AMZN: SecuritiesShard["securities"][string] = [
+    "c_0001018724",
+    "AMAZON COM INC",
+    "Nasdaq",
+    "ok",
+  ];
+
+  async function withShard(securities: SecuritiesShard["securities"]) {
+    const body: SecuritiesShard = {
+      as_of: RELEASE.as_of,
+      source_url: "https://www.sec.gov/files/company_tickers_exchange.json",
+      securities,
+    };
+    const bytes = new TextEncoder().encode(JSON.stringify(body));
+    const release: ReleaseDescriptor = {
+      ...RELEASE,
+      objects: {
+        ...RELEASE.objects,
+        securities: {
+          prefix: "securities/",
+          shards: {
+            A: {
+              path: "securities/A.json",
+              bytes: bytes.byteLength,
+              sha256: await sha256Hex(bytes),
+            },
+          },
+          count: Object.keys(securities).length,
+          statuses: { ok: 1 },
+        },
+      },
+    };
+    return { release, host: releaseHost({ "securities/A.json": body }) };
+  }
+
+  it("resolves a symbol to the company id the funds already use", async () => {
+    const { release, host } = await withShard({ AMZN });
+    const rows = await loadSecurities(release, ["AMZN"], host);
+    expect(rows.get("AMZN")).toEqual(AMZN);
+    expect(rows.get("AMZN")?.[0]).toBe("c_0001018724");
+  });
+
+  it("fetches only the shards the symbols need", async () => {
+    const { release, host } = await withShard({ AMZN });
+    const spy = vi.fn(host);
+    await loadSecurities(release, ["AMZN", "AMZN"], spy);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a missing symbol as missing, not as a failure", async () => {
+    const { release, host } = await withShard({ AMZN });
+    const rows = await loadSecurities(release, ["ZZZZ"], host);
+    expect(rows.size).toBe(0);
+  });
+
+  it("refuses bytes that disagree with the published hash", async () => {
+    const { release } = await withShard({ AMZN });
+    const tampered: ReleaseDescriptor = {
+      ...release,
+      objects: {
+        ...release.objects,
+        securities: {
+          ...release.objects.securities!,
+          shards: {
+            A: {
+              path: "securities/A.json",
+              bytes: 10,
+              sha256: "0".repeat(64),
+            },
+          },
+        },
+      },
+    };
+    await expect(
+      loadSecuritiesShard(
+        tampered,
+        "A",
+        releaseHost({
+          "securities/A.json": {
+            as_of: RELEASE.as_of,
+            source_url: "x",
+            securities: { AMZN: AMZN },
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({ kind: "hash" });
+  });
+
+  it("says the release predates stock symbols rather than blaming the symbol", async () => {
+    await expect(loadSecuritiesShard(RELEASE, "A")).rejects.toMatchObject({
+      kind: "missing-fund",
+    });
   });
 });

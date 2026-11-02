@@ -22,7 +22,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { buildLedger } from "./aggregate";
 import type { AggregateRequest, AggregateResponse } from "./ledger-protocol";
-import type { FundDocument, Ledger } from "./types";
+import type { DirectHolding, FundDocument, Ledger } from "./types";
 
 export interface LedgerState {
   ledger: Ledger | null;
@@ -45,7 +45,9 @@ function createWorker(): Worker | null {
 
 export function useLedger(
   funds: FundDocument[],
-  weightsBp: Record<string, number>,
+  weights: Record<string, number>,
+  direct: DirectHolding[] = [],
+  cash = 0,
 ): LedgerState {
   const [state, setState] = useState<LedgerState>({
     ledger: null,
@@ -57,8 +59,11 @@ export function useLedger(
   const [generation, setGeneration] = useState(0);
   const workerRef = useRef<Worker | null>(null);
   const requestIdRef = useRef(0);
-  const weightsKey = JSON.stringify(weightsBp);
+  const weightsKey = JSON.stringify(weights);
   const fundKey = funds.map((fund) => fund.ticker).join(",");
+  // Direct holdings and cash are part of the request, so they are part of the key:
+  // a stock added without a fund changing must still re-aggregate.
+  const directKey = JSON.stringify(direct);
 
   useEffect(() => {
     const worker = createWorker();
@@ -99,7 +104,7 @@ export function useLedger(
   }, []);
 
   useEffect(() => {
-    if (funds.length === 0) {
+    if (funds.length === 0 && direct.length === 0) {
       setState((previous) => ({
         ...previous,
         ledger: null,
@@ -118,7 +123,9 @@ export function useLedger(
         type: "aggregate",
         requestId,
         funds,
-        weightsBp,
+        weights,
+        direct,
+        cash,
       };
       worker.postMessage(request);
       return;
@@ -126,7 +133,7 @@ export function useLedger(
 
     const started = performance.now();
     try {
-      const ledger = buildLedger({ funds, weightsBp });
+      const ledger = buildLedger({ funds, weights, direct, cash });
       setState({
         ledger,
         error: null,
@@ -142,7 +149,7 @@ export function useLedger(
     }
     // `weightsKey`/`fundKey` pin the effect to the data actually used, so a new
     // object with identical contents does not re-aggregate.
-  }, [fundKey, weightsKey, generation, funds, weightsBp]);
+  }, [fundKey, weightsKey, directKey, generation, funds, weights, direct, cash]);
 
   return state;
 }

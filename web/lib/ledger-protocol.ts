@@ -8,13 +8,18 @@
  * rendered.
  */
 
-import type { FundDocument, Ledger } from "./types";
+import type { DirectHolding, FundDocument, Ledger } from "./types";
 
 export interface AggregateRequest {
   type: "aggregate";
   requestId: number;
   funds: FundDocument[];
-  weightsBp: Record<string, number>;
+  /** Fund ticker → fraction of the whole portfolio. */
+  weights: Record<string, number>;
+  /** Positions held directly, already resolved and weighted. */
+  direct: DirectHolding[];
+  /** Cash as a fraction of the whole portfolio. */
+  cash: number;
 }
 
 export interface AggregateSuccess {

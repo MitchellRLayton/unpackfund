@@ -229,6 +229,7 @@ def write_release_objects(
     manifest_payload: bytes,
     aliases: dict[str, str] | None = None,
     etf_classifier: str = "",
+    securities_source: dict | None = None,
 ) -> dict:
     """Write the objects a browser reads and describe them in ``release.json``.
 
@@ -279,6 +280,28 @@ def write_release_objects(
     for company_id, document in company_shards.items():
         write(f"companies/{company_id}.json", document)
 
+    # The typed-symbol object (ADR-0014). Built here rather than in build.py because
+    # the ``l_``-twin refusal needs the release's own company index, which exists
+    # only at this point — and a twin is exactly the case where one company would
+    # otherwise be listed twice in the ledger.
+    securities_entry: dict | None = None
+    securities_sizes: dict[str, int] = {}
+    if securities_source is not None:
+        from . import securities as securities_module
+
+        built_securities = securities_module.build(
+            securities_source,
+            fund_tickers=[document["ticker"] for document in documents],
+            alias_tickers=list(alias_entries),
+            twins=securities_module.twin_names(company_index["companies"]),
+        )
+        written = securities_module.write_release_objects(
+            release_dir, release=release, securities=built_securities
+        )
+        securities_sizes = written["sizes"]
+        sizes.update(securities_sizes)
+        securities_entry = written["objects"]
+
     release_document = release_object(
         header={
             key: value
@@ -303,6 +326,11 @@ def write_release_objects(
                 "object": alias_entry,
                 "count": len(alias_entries),
             },
+            **(
+                {"securities": securities_entry}
+                if securities_entry is not None
+                else {}
+            ),
         },
     )
     release_payload = encode(release_document)
@@ -315,8 +343,14 @@ def write_release_objects(
         f"tickers {sizes['tickers.json'] / 1e3:.0f} kB, catalogue {sizes['catalogue.json'] / 1e3:.0f} kB, "
         f"{len(shard_entries)} index shard(s), {len(company_shards):,} company shard(s) "
         f"({sum(size for path, size in sizes.items() if path.startswith('companies/')) / 1e6:.1f} MB), "
-        f"{len(alias_entries):,} alias(es) ({sizes['aliases.json'] / 1e3:.0f} kB), "
-        f"pointer {len(release_payload) / 1e3:.1f} kB"
+        f"{len(alias_entries):,} alias(es) ({sizes['aliases.json'] / 1e3:.0f} kB)"
+        + (
+            f", {securities_entry['count']:,} symbol(s) in {len(securities_sizes)} "
+            f"securities shard(s) ({securities_entry['bytes'] / 1e3:.0f} kB)"
+            if securities_entry is not None
+            else ""
+        )
+        + f", pointer {len(release_payload) / 1e3:.1f} kB"
     )
     return {
         "summary": summary,

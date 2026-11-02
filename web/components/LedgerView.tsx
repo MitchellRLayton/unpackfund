@@ -3,11 +3,16 @@
 /**
  * `/x`: the look-through ledger for the portfolio in the URL fragment.
  *
- * The page does not decide what is true about the data; it renders the four
- * states the frontend skill requires — loading, empty, error, ready — plus the
- * one the data adds: a portfolio whose weights do not total 100%. That last one
- * is refused rather than scaled, because silently renormalising would answer a
- * question the user did not ask.
+ * The page does not decide what is true about the data; it renders the four states
+ * the frontend skill requires — loading, empty, error, ready — plus the one the data
+ * adds: a portfolio that does not account for all of itself. In percentage mode that
+ * is a total other than 100%, and it is refused rather than scaled, because silently
+ * renormalising would answer a question the user did not ask. In dollar mode the
+ * entries are the total, so the only incomplete portfolio is an empty one.
+ *
+ * Direct holdings join the ledger here, not in the aggregate: the portfolio knows
+ * symbols, the release knows which company each symbol is, and `aggregate.ts` takes
+ * resolved companies so it can stay a pure function of numbers (ADR-0014).
  */
 
 import Link from "next/link";
@@ -17,12 +22,21 @@ import { CompanyDrawer } from "@/components/CompanyDrawer";
 import { FreshnessStrip, MetricsList } from "@/components/FreshnessStrip";
 import { LedgerTable } from "@/components/LedgerTable";
 import { Notice } from "@/components/Notice";
-import { coverageBand, coverageChip, formatCount, formatDays } from "@/lib/format";
+import {
+  coverageBand,
+  coverageChip,
+  formatCount,
+  formatDays,
+  formatShare,
+} from "@/lib/format";
+import { splitPortfolio } from "@/lib/portfolio-weights";
+import { refusal } from "@/lib/securities";
 import { FULL_ALLOCATION_BP } from "@/lib/types";
 import { useLedger } from "@/lib/use-ledger";
 import { usePortfolio } from "@/lib/use-portfolio";
 import { useFunds, useRelease } from "@/lib/use-release";
-import type { LedgerRow } from "@/lib/types";
+import { useSecurities } from "@/lib/use-securities";
+import type { DirectHolding, LedgerRow } from "@/lib/types";
 
 /**
  * How many companies the ledger renders before the visitor asks for the rest.
@@ -39,22 +53,61 @@ export function LedgerView() {
   const [selected, setSelected] = useState<LedgerRow | null>(null);
   const [showAll, setShowAll] = useState(false);
   const release = useRelease();
+
   const tickers = useMemo(
-    () => portfolio.entries.map((entry) => entry.ticker),
+    () =>
+      portfolio.entries
+        .filter((entry) => entry.kind === "fund")
+        .map((entry) => entry.key),
     [portfolio.entries],
   );
+  const symbols = useMemo(
+    () =>
+      portfolio.entries
+        .filter((entry) => entry.kind === "security")
+        .map((entry) => entry.key),
+    [portfolio.entries],
+  );
+
   const { funds, pending, error } = useFunds(
     release.status === "ready" ? release.data : null,
     tickers,
   );
-  const weightsBp = useMemo(
-    () =>
-      Object.fromEntries(
-        portfolio.entries.map((entry) => [entry.ticker, entry.weight_bp]),
-      ),
-    [portfolio.entries],
+  // Only the shards the portfolio's letters need are fetched, and a symbol that the
+  // release does not carry comes back as missing rather than as an error.
+  const securities = useSecurities(
+    release.status === "ready" ? release.data : null,
+    symbols,
   );
-  const { ledger, error: aggregateError, mode, durationMs } = useLedger(funds, weightsBp);
+
+  const split = useMemo(
+    () => splitPortfolio(portfolio.mode, portfolio.entries),
+    [portfolio.mode, portfolio.entries],
+  );
+
+  const direct = useMemo<DirectHolding[]>(() => {
+    const holdings: DirectHolding[] = [];
+    for (const entry of split.direct) {
+      const row = securities.rows.get(entry.key);
+      // A symbol that is not in this release, or that is not a common stock, cannot
+      // become a company. It is reported below rather than silently dropped.
+      if (!row || row[3] !== "ok") continue;
+      holdings.push({
+        company_id: row[0],
+        name: row[1],
+        ticker: entry.key,
+        weight: entry.weight,
+      });
+    }
+    return holdings;
+  }, [split.direct, securities.rows]);
+
+  const {
+    ledger,
+    error: aggregateError,
+    mode,
+    durationMs,
+  } = useLedger(funds, split.fundWeights, direct, split.cash);
 
   if (!portfolio.ready) {
     return (
@@ -74,36 +127,38 @@ export function LedgerView() {
             {portfolio.problem}
           </Notice>
         ) : null}
-        <Notice tone="info" title="No funds in this portfolio yet">
+        <Notice tone="info" title="Nothing in this portfolio yet">
           <p>
-            Add a ticker on the <Link href="/">builder</Link> and the ledger appears here.
-            The portfolio is stored in this page&apos;s URL, so the link you copy is the
-            portfolio you see.
+            Add a fund, a stock, or cash on the <Link href="/">builder</Link> and the
+            ledger appears here. The portfolio is stored in this page&apos;s URL, so the
+            link you copy is the portfolio you see.
           </p>
         </Notice>
       </>
     );
   }
 
-  if (!portfolio.balanced) {
-    const unallocated = FULL_ALLOCATION_BP - portfolio.totalBp;
+  if (!portfolio.complete) {
+    // Percentage mode only: dollar entries are their own total.
+    const unallocated = FULL_ALLOCATION_BP - portfolio.total;
     return (
       <>
         <h1>Your look-through</h1>
-        <Notice tone="warn" title="These weights do not add up to 100%">
+        <Notice tone="warn" title="These percentages do not add up to 100%">
           <p>
-            The portfolio totals {(portfolio.totalBp / 100).toFixed(2)}%,{" "}
+            The portfolio totals {(portfolio.total / 100).toFixed(2)}%,{" "}
             {unallocated >= 0
               ? `${(unallocated / 100).toFixed(2)}% short of the full value of your holdings.`
               : `${(Math.abs(unallocated) / 100).toFixed(2)}% over.`}{" "}
             Look-through weights are a share of the whole portfolio, so they are only
-            meaningful once the total is 100%.
+            meaningful once the total is 100%. An unallocated remainder is shown as
+            unallocated — it is not treated as cash.
           </p>
           <p>
             <button type="button" onClick={() => portfolio.equalise()}>
               Split equally
             </button>{" "}
-            or <Link href="/">adjust the weights</Link>.
+            or <Link href="/">adjust the amounts</Link>.
           </p>
         </Notice>
       </>
@@ -144,12 +199,32 @@ export function LedgerView() {
     );
   }
 
-  if (!ledger) {
+  if (securities.error) {
+    return (
+      <>
+        <h1>Your look-through</h1>
+        <Notice
+          tone="error"
+          title="The stock symbols could not be read"
+          detail={securities.error}
+        >
+          <p>
+            Your portfolio is unchanged — this page only refuses to guess which company a
+            symbol belongs to.
+          </p>
+        </Notice>
+      </>
+    );
+  }
+
+  const waitingSymbols = symbols.length > 0 && securities.pending;
+  if (!ledger || waitingSymbols) {
     return (
       <>
         <h1>Your look-through</h1>
         <p className="muted" role="status">
-          Loading {pending.length > 0 ? pending.join(", ") : "the release"}…
+          Loading{" "}
+          {[...pending, ...(waitingSymbols ? symbols : [])].join(", ") || "the release"}…
         </p>
       </>
     );
@@ -166,19 +241,52 @@ export function LedgerView() {
   const partial = ledger.funds.filter(
     (fund) => coverageBand(fund.coverage_pct) === "partial",
   );
+  const refused = symbols
+    .map((symbol) => ({ symbol, row: securities.rows.get(symbol) }))
+    .filter((entry) => !entry.row || entry.row[3] !== "ok");
 
   return (
     <>
       <h1>Your look-through</h1>
       <p className="muted">
-        {formatCount(ledger.rows.length)} companies across {ledger.funds.length}{" "}
-        {ledger.funds.length === 1 ? "fund" : "funds"}. Every weight is a share of the
-        whole portfolio, so the column adds up to the covered part of your holdings, not
-        to 100%.
+        {formatCount(ledger.rows.length)} companies
+        {ledger.funds.length > 0
+          ? ` across ${ledger.funds.length} ${ledger.funds.length === 1 ? "fund" : "funds"}`
+          : ""}
+        {direct.length > 0
+          ? `${ledger.funds.length > 0 ? " and" : " in"} ${direct.length} ${
+              direct.length === 1 ? "company" : "companies"
+            } you hold directly`
+          : ""}
+        . Every weight is a share of the whole portfolio, so the column adds up to the
+        covered part of your holdings, not to 100%.
       </p>
 
       {release.status === "ready" ? (
         <FreshnessStrip release={release.data} ledger={ledger} />
+      ) : null}
+
+      {refused.length > 0 ? (
+        <Notice
+          tone="warn"
+          title={`${refused.map((entry) => entry.symbol).join(", ")} could not be counted`}
+        >
+          <p>
+            {refused.map((entry) => (
+              <span key={entry.symbol} className="row-note" style={{ display: "block" }}>
+                <strong>{entry.symbol}</strong>:{" "}
+                {entry.row
+                  ? (refusal(entry.row[3]) ??
+                    "this release lists it, but not as a common stock.")
+                  : "this release does not carry that symbol."}
+              </span>
+            ))}
+          </p>
+          <p>
+            The rest of the portfolio is unaffected: the ledger below does not include the
+            entries above, so its weights are shares of the portfolio you see.
+          </p>
+        </Notice>
       ) : null}
 
       {suppressed.length > 0 ? (
@@ -187,11 +295,10 @@ export function LedgerView() {
           title={`${suppressed.map((fund) => fund.ticker).join(", ")} ${suppressed.length === 1 ? "is" : "are"} not covered`}
         >
           <p>
-            Coverage is below 60% of weight, so{" "}
-            {suppressed.length === 1 ? "its holdings are" : "their holdings are"} left out
-            of the totals below rather than redistributed across the companies that did
-            resolve. Their share of the portfolio is shown, and the missing part is
-            missing — not averaged away.
+            Coverage is below 60% of weight, so the concentration figures are not shown
+            for this portfolio rather than computed over the part that resolved. Their
+            share of the portfolio is shown, and the missing part is missing — not
+            averaged away.
           </p>
         </Notice>
       ) : null}
@@ -210,6 +317,24 @@ export function LedgerView() {
       ) : null}
 
       <MetricsList ledger={ledger} />
+
+      {ledger.metrics.cash_weight > 0 || ledger.metrics.unallocated_weight > 0 ? (
+        <p className="muted">
+          {ledger.metrics.cash_weight > 0 ? (
+            <>
+              Cash is {formatShare(ledger.metrics.cash_weight)} of your money. It has no
+              company behind it, so it is left out of coverage — and counted in
+              concentration, because it is still your money.
+            </>
+          ) : null}{" "}
+          {ledger.metrics.unallocated_weight > 0 ? (
+            <>
+              {formatShare(ledger.metrics.unallocated_weight)} is unallocated: no entry
+              accounts for it.
+            </>
+          ) : null}
+        </p>
+      ) : null}
 
       <h2 id="ledger-start">Companies</h2>
       <p className="sr-only" role="status">
@@ -249,7 +374,7 @@ export function LedgerView() {
           positions — mostly small non-US holdings filed through an identifier this
           release could not resolve — and{" "}
           {formatCount(ledger.unmapped.cash_and_derivatives_with_weight)} cash or
-          derivative lines, which have no company by definition.
+          derivative lines inside the funds, which have no company by definition.
         </p>
         <p className="muted">
           Another{" "}
@@ -324,7 +449,8 @@ export function LedgerView() {
       <p className="muted" style={{ marginTop: "1.5rem", fontSize: "0.85rem" }}>
         Weights come from Form N-PORT, as filed. Funds report securities only, so
         positions outside the filing (cash, some derivatives) are absent, and weights that
-        do not sum to 100% are filed that way rather than corrected.
+        do not sum to 100% are filed that way rather than corrected. A stock you hold
+        directly is counted once, at the weight you gave it.
       </p>
     </>
   );
