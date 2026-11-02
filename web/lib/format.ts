@@ -61,6 +61,35 @@ export function formatShare(weight: number): string {
   return `${twoDp.format(pct)}%`;
 }
 
+/**
+ * A signed difference between two percents, in brackets: `-0.0254` → `(-2.54%)`.
+ *
+ * The one place the ledger subtracts two displayed weights (the operator's decision,
+ * ADR-0015, 2026-11-02 amendment): the bracket means *your weight minus the
+ * benchmark's*, in percentage points, so the sign is always explicit — a bare
+ * `2.54%` in that position would read as a level rather than as a difference. A real
+ * difference below one basis point keeps `formatShare`'s `<0.01%` / `>-0.01%` so it
+ * cannot print as zero, and exact zero prints `(0.00%)` with no sign because there is
+ * no side to be on.
+ *
+ * The value handed in is computed from unrounded fractions and rounded here once
+ * (math §6: a displayed total comes from exact values, never from summing rounded
+ * displays), so a reader who subtracts the two printed numbers can be 0.01 away at a
+ * rounding boundary. The caption says so rather than the formatter hiding it.
+ */
+export function formatSignedShare(delta: number): string {
+  // `-0` is zero: without this, Intl formats it `-0.00%` and the bracket would claim
+  // a direction that does not exist.
+  const inner = formatShare(delta === 0 ? 0 : delta);
+  const signed =
+    inner.startsWith("-") || inner.startsWith("<") || inner.startsWith(">")
+      ? inner
+      : inner === "0.00%"
+        ? inner
+        : `+${inner}`;
+  return `(${signed})`;
+}
+
 /** `90.3` → `90.3%`. Coverage is stored as a percentage, not a fraction. */
 export function formatCoveragePct(coveragePct: number): string {
   return `${oneDp.format(coveragePct)}%`;

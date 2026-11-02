@@ -326,6 +326,12 @@ describe("the ledger when the benchmark cannot be read", () => {
     // rounded to nothing, not a missing company.
     expect(screen.getByText(/filed at under 0\.01%/)).toBeTruthy();
     expect(screen.getByText(/of its gross\s+weight to companies/)).toBeTruthy();
+    // The bracket is explained twice, in the two places a reader meets it: the
+    // table's caption (announced with the table) and the paragraph above it. Both
+    // state which way round the subtraction is, so the sign cannot be guessed wrong.
+    const caption = document.querySelector("table caption")?.textContent ?? "";
+    expect(caption).toContain("your weight minus VT's, in percentage points");
+    expect(screen.getByText(/it is not a share of your portfolio/)).toBeTruthy();
   });
 
   it("waits for the compact object rather than reflowing the table", () => {

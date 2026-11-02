@@ -220,8 +220,8 @@ describe("the benchmark column", () => {
   it("sits beside the portfolio weight and names the fund it compares with", () => {
     // Two quantities, two columns (`static-xray-frontend` §4a): 15% of the
     // visitor's money in NVIDIA, 4.06% of VT's. The benchmark weight is a share
-    // of the benchmark's NAV and is never added to, subtracted from, or averaged
-    // with the portfolio weight.
+    // of the benchmark's NAV, so the bracket beside it is the difference of two
+    // shares of different wholes — the only arithmetic this column carries.
     const rows = [
       row("c_1", "NVIDIA Corp", 0.15, 1, 0.0406),
       row("c_2", "Bridgeway Omni Small-Cap Value", 0.02, 1, 0),
@@ -234,12 +234,49 @@ describe("the benchmark column", () => {
     // 15.00% twice: the weight column and the fund chip that explains it.
     expect(screen.getAllByText("15.00%")).toHaveLength(2);
     expect(screen.getByText("4.06%")).toBeTruthy();
+    // The bracket is your weight minus the benchmark's, signed: 15.00% - 4.06%.
+    expect(screen.getByText("(+10.94%)")).toBeTruthy();
     // A company the benchmark's traced holdings exclude is a true zero, printed
-    // as a zero rather than left blank.
+    // as a zero rather than left blank, and its bracket is the whole of your
+    // weight because there is nothing of the benchmark's to subtract.
     expect(screen.getByText("0.00%")).toBeTruthy();
+    expect(screen.getByText("(+2.00%)")).toBeTruthy();
     expect(container.querySelector("caption")?.textContent).toContain(
       "share of VT's own portfolio",
     );
+  });
+
+  it("puts the signed difference beside the benchmark weight, the operator's example", () => {
+    // Held 1.52% of NVIDIA while VT holds 4.06%: the column reads `4.06% (-2.54%)`,
+    // i.e. you hold 2.54 percentage points less than the benchmark does.
+    const rows = [row("c_1", "NVIDIA Corp", 0.0152, 1, 0.0406)];
+    const { container } = render(<LedgerTable rows={rows} benchmark={vt} />);
+    const cell = container.querySelectorAll<HTMLTableCellElement>("td.numeric")[1];
+    expect(cell?.textContent?.replace(/\s+/g, " ").trim()).toBe("4.06% (-2.54%)");
+    // The direction is stated in words as well as by the sign, so a reader does
+    // not have to infer which side is which from the minus.
+    expect(container.querySelector("caption")?.textContent).toContain(
+      "your weight minus VT's, in percentage points: negative means you hold less",
+    );
+  });
+
+  it("prints both numbers for a directly held stock the benchmark does not own", () => {
+    // "No matter what the portfolio is" (the operator's words): a stock entry, no
+    // fund behind it, and a company VT holds none of. The bracket is the whole of
+    // the visitor's weight, which is what a comparison against 0.00% means.
+    const direct = {
+      ...row("c_3", "Bridgeway Omni Small-Cap Value", 0.003, 0, 0),
+      held_directly: true,
+      sources: [{ kind: "security" as const, ref: "BSVO", weight: 0.003 }],
+    };
+    const { container } = render(<LedgerTable rows={[direct]} benchmark={vt} />);
+    const cells = [...container.querySelectorAll<HTMLTableCellElement>("td.numeric")].map(
+      (cell) => cell.textContent?.replace(/\s+/g, " ").trim(),
+    );
+    // Portfolio weight, In VT, then the Funds column's `direct`.
+    expect(cells[0]).toBe("0.30%");
+    expect(cells[1]).toBe("0.00% (+0.30%)");
+    expect(cells[2]).toBe("direct");
   });
 
   it("sorts by the benchmark weight like every other numeric column", () => {

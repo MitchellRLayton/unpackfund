@@ -399,7 +399,14 @@ export function LedgerView() {
           column sums to a little more than that). A 0.00% here means the company is
           either absent from those traced holdings or filed at under 0.01% of{" "}
           {ledger.benchmark.ticker}&apos;s NAV — the smallest weight this column can show.
-          Neither is the same as the fund not owning it.
+          Neither is the same as the fund not owning it. The figure in brackets is your
+          weight minus {ledger.benchmark.ticker}&apos;s, in percentage points — negative
+          means you hold less of the company than {ledger.benchmark.ticker} does, positive
+          more. The two are shares of different wholes (yours of your portfolio,{" "}
+          {ledger.benchmark.ticker}&apos;s of its own NAV), so the bracket compares two
+          holdings; it is not a share of your portfolio. It is computed from the unrounded
+          weights and rounded once, so subtracting the two printed numbers can be 0.01
+          away at a rounding boundary.
         </p>
       ) : (
         <Notice tone="info" title="No benchmark comparison on this page">
