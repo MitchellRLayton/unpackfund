@@ -139,7 +139,7 @@ export function LedgerTable({
           {anyCountry
             ? " The country beside a company is the domicile its holders' filings" +
               " agree on by value; the row's left edge repeats it in colour — blue for" +
-              " the United States, periwinkle elsewhere — and a company whose filings" +
+              " the United States, ochre elsewhere — and a company whose filings" +
               " do not agree carries no country."
             : ""}
         </caption>
