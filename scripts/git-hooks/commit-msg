@@ -1,0 +1,108 @@
+#!/bin/sh
+# commit-msg: every commit names the session and worktree that produced it.
+#
+# Why: several sessions run at once, each in its own worktree, and git records the
+# author but not the session. Without this block, "who changed this, and from where?"
+# cannot be answered from the history — see
+# docs/08-operations/2026-11-01-cross-session-provenance.md.
+#
+# The block (trailers, at the end of the message):
+#
+#     Session: alpha
+#     Worktree: .work/wt-alpha
+#     Agent: DSH deepseek-failover (lead)
+#
+# Exempt: merge commits, whose message git or GitHub writes.
+# Not exempt: --no-verify. The hooks are the record (AGENTS.md, Hard rules).
+#
+# Installed by scripts/git-setup.sh (core.hooksPath = scripts/git-hooks).
+
+set -eu
+
+msg_file="$1"
+subject=$(head -n 1 "$msg_file")
+
+# Exempt: a merge, whose message git or GitHub writes. Recognise the canonical forms,
+# and trust MERGE_HEAD when a merge is in progress — a subject that merely begins with
+# "Merge " ("Merge the two resolvers") is an ordinary commit and must carry the block.
+if [ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ]; then
+  exit 0
+fi
+case "$subject" in
+  "Merge branch "*|"Merge remote-tracking branch "*|"Merge tag "*|"Merge commit "*|"Merge pull request #"*) exit 0 ;;
+esac
+
+# ------------------------------------------------------------------ where am I
+top=$(git rev-parse --show-toplevel)
+common=$(git rev-parse --path-format=absolute --git-common-dir)
+repo=$(dirname "$common")
+workspace=$(dirname "$repo")
+rel=${top#"$workspace"/}
+
+case "$rel" in
+  .work/wt-*) session=${rel#.work/wt-} ;;
+  *) session="" ;;
+esac
+
+agent=""
+if [ -n "$session" ] && [ -f "$workspace/.work/sessions/$session.conf" ]; then
+  agent=$(sed -n 's/^SESSION_AGENT="\(.*\)"$/\1/p' "$workspace/.work/sessions/$session.conf" | head -1)
+fi
+[ -n "$agent" ] || agent="<your agent label>"
+
+# ------------------------------------------------------------------ the check
+trailers=$(git interpret-trailers --parse <"$msg_file")
+get_trailer() {
+  printf '%s\n' "$trailers" | sed -n "s/^$1: //p" | head -1
+}
+
+missing=""
+for key in Session Worktree Agent; do
+  [ -n "$(get_trailer "$key")" ] || missing="$missing $key"
+done
+
+if [ -n "$missing" ]; then
+  {
+    echo "commit-msg: this commit does not say which session made it."
+    echo ""
+    echo "  missing:$missing"
+    echo ""
+    echo "Every commit carries the provenance trailers (AGENTS.md, \"Commit provenance\"):"
+    echo ""
+    [ -n "$session" ] && echo "    Session: $session" || echo "    Session: <session name>"
+    echo "    Worktree: $rel"
+    echo "    Agent: $agent"
+    echo ""
+    echo "The easy path — it writes the block for you:"
+    echo ""
+    echo "    scripts/session-provenance.sh commit -m \"<your message>\""
+    echo ""
+    echo "Or add the block above to the end of the message. --no-verify is not an escape hatch."
+  } >&2
+  exit 1
+fi
+
+# The block must describe *this* worktree, not the one it was copied from.
+got_session=$(get_trailer Session)
+got_worktree=$(get_trailer Worktree)
+
+if [ -n "$session" ] && [ "$got_session" != "$session" ]; then
+  {
+    echo "commit-msg: Session: '$got_session' does not match this worktree ('$session')."
+    echo "  $top is the '$session' session; a commit made here cannot be attributed to another."
+    echo "  If the worktree was renamed, re-register it:"
+    echo "    scripts/session-provenance.sh register --session $session --worktree $top"
+  } >&2
+  exit 1
+fi
+
+if [ "$got_worktree" != "$rel" ]; then
+  {
+    echo "commit-msg: Worktree: '$got_worktree' does not match this worktree ('$rel')."
+    echo "  The trailer must name the tree the commit was written in, so the record is true."
+    echo "  Use: scripts/session-provenance.sh commit -m \"<your message>\""
+  } >&2
+  exit 1
+fi
+
+exit 0

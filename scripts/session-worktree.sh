@@ -9,7 +9,7 @@
 # .git (one history, one object store), its own index, its own web/out.
 #
 # Usage:
-#   session-worktree.sh create <name> [--branch <branch>|--at <commit>]
+#   session-worktree.sh create <name> [--branch <branch>|--at <commit>] [--agent <label>]
 #   session-worktree.sh list
 #   session-worktree.sh remove <name> [--force]
 #
@@ -42,7 +42,13 @@ set -euo pipefail
 BOUNDARY="/Users/mitchell.layton/Personal-AI-Sandbox"
 
 SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-REPO_ROOT="$(cd -P "$SCRIPT_DIR/.." && pwd -P)"
+# Derived from the *common* git dir, not from this script's own path: in a linked
+# worktree the script lives at .work/wt-<name>/scripts/, so "$SCRIPT_DIR/.." is not the
+# trunk. `--git-common-dir` names the trunk's .git from inside any worktree, which lets a
+# session run this from its own tree instead of having to cd to the trunk first.
+COMMON_DIR="$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+[ -n "$COMMON_DIR" ] || { printf 'session-worktree: %s is not inside a git repository\n' "$SCRIPT_DIR" >&2; exit 1; }
+REPO_ROOT="$(cd -P "$(dirname "$COMMON_DIR")" && pwd -P)"
 WORKSPACE="$(cd -P "$REPO_ROOT/.." && pwd -P)"
 WORK_ROOT="$WORKSPACE/.work"
 
@@ -86,7 +92,7 @@ usage() {
 session-worktree.sh — one git worktree per concurrent agent session
 
 Usage:
-  session-worktree.sh create <name> [--branch <branch>|--at <commit>]
+  session-worktree.sh create <name> [--branch <branch>|--at <commit>] [--agent <label>]
   session-worktree.sh list
   session-worktree.sh remove <name> [--force]
 
@@ -99,6 +105,9 @@ Usage:
                          checked out if it does
   --at <commit>          detached HEAD at <commit> — for building or promoting
                          a release from a known commit, never from a moving tree
+  --agent <label>        the agent/model label recorded in the session registry
+                         (e.g. "DSH deepseek-failover (lead)"); it becomes the
+                         Agent: trailer on every commit made here
   list                   name, HEAD, branch, dirty state, for every worktree
   remove <name>          delete the worktree; refuses if it has uncommitted
                          changes unless --force. The branch is kept.
@@ -146,6 +155,7 @@ cmd_create() {
 
   branch=""
   at=""
+  agent=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --branch)
@@ -154,6 +164,9 @@ cmd_create() {
       --at)
         [ "$#" -ge 2 ] || die "--at needs a value"
         at="$2"; shift 2 ;;
+      --agent)
+        [ "$#" -ge 2 ] || die "--agent needs a value"
+        agent="$2"; shift 2 ;;
       *) die "unknown option: $1" ;;
     esac
   done
@@ -230,6 +243,15 @@ cmd_create() {
 
   trap - ERR
 
+  # Register the session so every commit made here carries Session/Worktree/Agent
+  # trailers (scripts/git-hooks/commit-msg enforces them). Failure is not fatal: the
+  # worktree is usable, and `session-provenance.sh register` can be run by hand.
+  if [ -x "$SCRIPT_DIR/session-provenance.sh" ]; then
+    "$SCRIPT_DIR/session-provenance.sh" register \
+      --session "$ssn" --worktree "$WT" --branch "${branch:-HEAD}" --agent "$agent" >/dev/null ||
+      say "  warn  session registration failed — run: session-provenance.sh register --session $ssn"
+  fi
+
   # A sourceable snippet, kept OUTSIDE the worktree so the tree stays clean for
   # `git status` and for the "deploy from a clean worktree" rule.
   ENV_SNIPPET="$WORK_ROOT/wt-$ssn.sh"
@@ -266,6 +288,9 @@ notes
     .pnpm-store and detach it from the trunk. Add dependencies in the trunk.
   * Read published release bundles from the trunk by absolute path, e.g.
       pnpm pages:funds --release $REPO_ROOT/artifacts/universe-c/releases/<id>
+  * This session is registered as "$ssn": every commit made here carries
+    Session: $ssn / Worktree: .work/wt-$ssn / Agent: ... trailers, enforced by
+    scripts/git-hooks/commit-msg. Check with: scripts/session-provenance.sh whoami
   * Removing it later: session-worktree.sh remove $ssn
 EOF
 }
@@ -353,6 +378,12 @@ cmd_remove() {
       say "refusing: $WT has $n uncommitted change(s):" >&2
       git -C "$WT" status --short >&2 || true
       die "commit and push the work first, or pass --force to discard it"
+    fi
+    # The session record outlives the worktree: `board` still shows who owned this
+    # branch after the tree is gone, which is the point of a provenance record.
+    if [ -x "$SCRIPT_DIR/session-provenance.sh" ]; then
+      "$SCRIPT_DIR/session-provenance.sh" register --session "$ssn" --worktree "$WT" \
+        --branch "${wt_branch:-HEAD}" --end >/dev/null 2>&1 || true
     fi
     git -C "$REPO_ROOT" worktree remove --force "$WT" >/dev/null ||
       die "git worktree remove failed for $WT"

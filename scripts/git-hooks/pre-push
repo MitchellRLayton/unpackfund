@@ -1,0 +1,108 @@
+#!/bin/sh
+# pre-push: refuse to publish commits that cannot be attributed to a session.
+#
+# commit-msg already runs on every local commit; this is the second lock, for the
+# commits that never met it — made with --no-verify, made before the rule existed, or
+# made by a tool that wrote its own message.
+#
+# Commits authored before PROVENANCE_SINCE are exempt: work that was already in flight
+# when the rule landed must not be retroactively blocked. New commits are not.
+#
+# Installed by scripts/git-setup.sh (core.hooksPath = scripts/git-hooks).
+
+set -eu
+
+PROVENANCE_SINCE="2026-11-02T00:00:00Z"
+zero="0000000000000000000000000000000000000000"
+
+status=0
+checked=0
+
+# The worktree doing the pushing, when it is a session worktree.
+push_top=$(git rev-parse --show-toplevel 2>/dev/null || true)
+case "${push_top##*/}" in
+  wt-*) push_session="${push_top##*/wt-}" ;;
+  *) push_session="" ;;
+esac
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue          # branch deletion
+  case "$remote_ref" in
+    refs/heads/*) : ;;
+    *) continue ;;                                 # tags and anything else
+  esac
+
+  if [ "$remote_sha" = "$zero" ]; then
+    # New branch: everything not already reachable from a remote ref.
+    range=$(git rev-list "$local_sha" --not --remotes 2>/dev/null || true)
+  else
+    range=$(git rev-list "$remote_sha..$local_sha" 2>/dev/null || true)
+  fi
+  [ -n "$range" ] || continue
+
+  # Only commits committed after the rule took effect are enforced. --no-walk matters:
+  # $range is already the exact set, and without it --since re-walks ancestors and can
+  # refuse a one-commit push for an ancestor the remote already has.
+  recent=$(git rev-list --no-walk --since="$PROVENANCE_SINCE" $range 2>/dev/null || true)
+
+  for c in $recent; do
+    checked=$((checked + 1))
+    # A merge commit is exempt — but only if it really is one. Two or more parents, not
+    # a subject that happens to start with "Merge ".
+    case "$(git log -1 --format=%P "$c")" in
+      *" "*) continue ;;
+    esac
+    missing=""
+    for key in Session Worktree Agent; do
+      value=$(git log -1 --format="%(trailers:key=$key,valueonly,separator=,)" "$c")
+      [ -n "$value" ] || missing="$missing $key"
+    done
+    short=$(git log -1 --format='%h %s' "$c")
+    if [ -n "$missing" ]; then
+      echo "pre-push: $short" >&2
+      echo "          does not say which session made it (missing:$missing)" >&2
+      status=1
+      continue
+    fi
+
+    _ssn=$(git log -1 --format="%(trailers:key=Session,valueonly,separator=,)" "$c")
+    _wt=$(git log -1 --format="%(trailers:key=Worktree,valueonly,separator=,)" "$c")
+    case "$_wt" in
+      .work/wt-*)
+        if [ "$_ssn" != "${_wt#.work/wt-}" ]; then
+          echo "pre-push: $short" >&2
+          echo "          says Session: $_ssn but Worktree: $_wt — one of the two is wrong" >&2
+          status=1
+          continue
+        fi ;;
+    esac
+    # Cherry-picking another session's commit is legitimate, so this is a warning only.
+    if [ -n "$push_session" ] && [ "$_wt" != ".work/wt-$push_session" ] && [ "$_wt" != "unpackfund" ]; then
+      echo "pre-push: note — $short" >&2
+      echo "          was written in $_wt but is being pushed from .work/wt-$push_session" >&2
+    fi
+  done
+done
+
+if [ "$status" -ne 0 ]; then
+  {
+    echo ""
+    echo "pre-push: refusing to push unattributed commits ($checked checked)."
+    echo "  Every commit committed after $PROVENANCE_SINCE needs Session:, Worktree: and Agent:"
+    echo "  trailers (AGENTS.md, \"Commit provenance\")."
+    echo ""
+    echo "  Fix the branch — it is unpushed, so rewriting it is safe:"
+    echo "    scripts/session-provenance.sh check --range origin/main..HEAD   # what is missing"
+    echo "    git rebase -i origin/main        # mark those commits 'reword'"
+    echo "  and give each message the block:"
+    echo "    Session: <name>"
+    echo "    Worktree: <path relative to the workspace>"
+    echo "    Agent: <label>"
+    echo ""
+    echo "  For a single commit at the tip: git commit --amend  (add the block by hand)"
+    echo "  A new commit here would carry it automatically: scripts/session-provenance.sh commit"
+  } >&2
+  exit 1
+fi
+
+exit 0
