@@ -318,6 +318,40 @@ def test_components_carry_the_sleeve_view_and_stay_sorted():
     assert composed.resolved_fund_bp == 9_500
 
 
+def test_a_short_sleeve_is_a_component_and_the_sum_still_closes():
+    """BRMSX is long 1,398 bp of funds and short 688 bp of SPY; the short is a sleeve.
+
+    The first implementation dropped every row under 10 bp, which is every negative
+    row, so the sleeve list summed to 1,385 against a ``fund_bp`` of 710 — a
+    provenance that describes a different fund than the one published.
+    """
+    parent = fund(
+        [fund_row("Long ETF", 13_980, lei="LONG"), fund_row("Short ETF", -6_880, lei="SHORT")],
+        ticker="PARENT",
+    )
+    long_fund = fund([company("Alpha Corp", 10_000)], ticker="LONG", series_lei="LONG")
+    short_fund = fund([company("Beta Corp", 10_000)], ticker="SHORT", series_lei="SHORT")
+    composed = compose(parent, [long_fund, short_fund])
+
+    assert [row["weight_bp"] for row in composed.components] == [13_980, -6_880]
+    assert sum(row["weight_bp"] for row in composed.components) == composed.fund_bp == 7_100
+
+
+def test_two_share_classes_of_one_sleeve_are_one_component():
+    """A fund holding VOO and VFIAX holds one fund; the vector merges them, so must the list."""
+    parent = fund(
+        [fund_row("Vanguard S&P 500 ETF", 6_000, lei="AAA"),
+         fund_row("Vanguard 500 Index Admiral", 4_000, ticker="VFIAX")],
+        ticker="PARENT",
+    )
+    target = fund([company("X Corp", 10_000)], ticker="VOO", series_lei="AAA")
+    composed = compose(parent, [target], aliases={"VFIAX": "VOO"})
+
+    assert [row["ticker"] for row in composed.components] == ["VOO"]
+    assert composed.components[0]["weight_bp"] == 10_000
+    assert sum(row["weight_bp"] for row in composed.components) == composed.fund_bp
+
+
 def test_published_rows_are_sorted_and_carry_no_identifiers():
     parent = fund([fund_row("Alpha ETF", 5_000, lei="AAA", isin="US1234567890")], ticker="PARENT")
     alpha = fund(

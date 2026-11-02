@@ -78,11 +78,6 @@ MAX_LOOKTHROUGH_ROWS = 6_000
 #: fund teaches a reader to ignore warnings.
 MIN_UNRESOLVED_WARNING_BP = 100
 
-#: A sleeve position smaller than this is not published as a component: it is a
-#: rounding artefact or a cash sweep's cousin, and listing it invites the reader to
-#: treat a 0.02% position as a holding.
-MIN_COMPONENT_BP = 10
-
 RUNG_LEI = "series_lei"
 RUNG_SYMBOL = "share_class_symbol"
 RUNG_NONE = ""
@@ -459,20 +454,41 @@ class Composer:
         resolved_bp = sum(
             edge.weight_bp for edge, target, _ in edges if target in self.funds
         )
-        components: list[dict] = []
-        for edge, target, rung in edges:
-            if edge.weight_bp < MIN_COMPONENT_BP:
-                continue
-            child = self.funds.get(target) if target else None
-            components.append(
-                {
+        # Every sleeve, merged onto the fund it resolves to, because the sleeve view has
+        # to add up to ``fund_bp`` or the provenance describes a different fund than the
+        # one published. Three cases that a naive list gets wrong:
+        #
+        # * a fund that holds two share classes of one sleeve is one sleeve, and the
+        #   composition already merges them into one row, so the components merge too;
+        # * a **short** position in a fund is a real sleeve (BRMSX is long 1,398 bp of
+        #   ETFs and short 688 bp of SPY) and dropping it would make the sum disagree
+        #   with ``fund_bp`` by exactly the short;
+        # * an unresolved sleeve cannot be merged by ticker, so each row stands alone
+        #   and keeps the name the filing gave it.
+        merged: dict[str, dict] = {}
+        largest: dict[str, int] = {}
+        for position, (edge, target, rung) in enumerate(edges):
+            key = target or f"unresolved:{position}"
+            row = merged.get(key)
+            if row is None:
+                child = self.funds.get(target) if target else None
+                merged[key] = {
                     "ticker": target,
                     "name": self.index.names.get(target or "") or edge.name,
                     "weight_bp": edge.weight_bp,
                     "coverage_pct": _coverage(tuple(child.holdings)) if child else None,
                     "resolved_by": rung or None,
                 }
-            )
+                largest[key] = abs(edge.weight_bp)
+                continue
+            row["weight_bp"] += edge.weight_bp
+            # Two share classes of one sleeve can arrive by different rungs. The row
+            # names the rung that carried the larger position, which is the one a reader
+            # checking the match would have checked.
+            if abs(edge.weight_bp) > largest[key]:
+                largest[key] = abs(edge.weight_bp)
+                row["resolved_by"] = rung or None
+        components = list(merged.values())
         components.sort(key=lambda row: (-row["weight_bp"], row["name"].upper()))
 
         # Fund weight still unexpanded, in this fund's own basis points. Read from the

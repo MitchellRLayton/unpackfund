@@ -76,6 +76,12 @@ CUSIP_RE = LICENSED_ID_RE
 
 MIN_TOTAL_BP = 9_000
 MAX_TOTAL_BP = 10_500
+#: A composed vector is a weighted sum of the sleeves' vectors, so it inherits their
+#: over-sum: each sleeve is itself allowed up to ``MAX_TOTAL_BP``, and a chain of
+#: ``MAX_DEPTH`` hops multiplies that factor that many times. 10,500 × 1.05² ≈ 11,576,
+#: which is why the bound is derived rather than chosen — and why it still catches the
+#: failure this gate exists for, a weight accidentally multiplied by 10,000.
+MAX_COMPOSED_TOTAL_BP = round(MAX_TOTAL_BP * (MAX_TOTAL_BP / 10_000) ** (MAX_DEPTH - 1))
 CONTRACT_WINDOW = (9_900, 10_000)
 
 HHI_TOLERANCE = 1e-6
@@ -185,6 +191,18 @@ def _check_manifest(manifest: dict, funds: list[dict], report: Report, release_d
         report.fail("manifest.unique_tickers", "duplicate ticker in release")
 
 
+def _total_ceiling(document: dict) -> int:
+    """The band a fund's published weights must sum into.
+
+    A composed vector is a weighted sum of its sleeves' vectors, so it inherits their
+    over-sum: 10,587 bp is SSAJX, whose eleven sleeves average 10,380 bp and are then
+    weighted by a parent that is itself 10,200 bp. The ceiling is derived from that
+    (``MAX_COMPOSED_TOTAL_BP``), not chosen, and it still catches the failure this gate
+    exists for — a weight accidentally multiplied by 10,000.
+    """
+    return MAX_COMPOSED_TOTAL_BP if document.get("lookthrough") else MAX_TOTAL_BP
+
+
 def _check_fund(document: dict, report: Report) -> None:
     ticker = document.get("ticker", "?")
     missing = [field for field in REQUIRED_FIELDS if field not in document]
@@ -242,8 +260,9 @@ def _check_fund(document: dict, report: Report) -> None:
     # as-filed vectors legitimately exceed it when derivatives sit outside NAV, so
     # the hard gate is the wider band and the contract window is a WARN.
     total_bp = sum(row["weight_bp"] for row in holdings)
-    if not MIN_TOTAL_BP <= total_bp <= MAX_TOTAL_BP:
-        report.fail(f"{ticker}.weight_sum", f"{total_bp} bp outside [{MIN_TOTAL_BP}, {MAX_TOTAL_BP}]")
+    ceiling = _total_ceiling(document)
+    if not MIN_TOTAL_BP <= total_bp <= ceiling:
+        report.fail(f"{ticker}.weight_sum", f"{total_bp} bp outside [{MIN_TOTAL_BP}, {ceiling}]")
     elif not CONTRACT_WINDOW[0] <= total_bp <= CONTRACT_WINDOW[1]:
         report.warn(
             f"{ticker}.weight_sum",
@@ -318,7 +337,10 @@ def _check_fund_of_funds(document: dict, report: Report) -> None:
             if field not in row:
                 report.fail(f"{ticker}.components.fields", f"missing {field}")
                 return
-        if not isinstance(row["weight_bp"], int) or row["weight_bp"] <= 0:
+        # A negative sleeve is a short position in a fund (BRMSX is long 1,398 bp of
+        # ETFs and short 688 bp of SPY); it is published, not filtered, because the
+        # sleeve view has to explain the vector it came from.
+        if not isinstance(row["weight_bp"], int) or row["weight_bp"] == 0:
             report.fail(f"{ticker}.components.weight_bp", f"{row['weight_bp']!r}")
             return
         if row["resolved_by"] not in (RUNG_LEI, RUNG_SYMBOL, None):
@@ -367,10 +389,10 @@ def _check_fund_of_funds(document: dict, report: Report) -> None:
         # And the sleeves the provenance claims to have expanded are the sleeves the
         # flatten was given: a component sum that disagrees with fund_bp means one of
         # the two was filtered differently.
-        if total_components and total_components > lookthrough["fund_bp"]:
+        if total_components != lookthrough["fund_bp"]:
             report.fail(
                 f"{ticker}.lookthrough.fund_bp",
-                f"components sum {total_components} > fund_bp {lookthrough['fund_bp']}",
+                f"components sum {total_components} != fund_bp {lookthrough['fund_bp']}",
             )
         # Coverage is recomputed from the flattened vector, not trusted.
         gross = sum(abs(row["weight_bp"]) for row in document["holdings"])

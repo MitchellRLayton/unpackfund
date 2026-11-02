@@ -128,6 +128,21 @@ def allocate_bp(fractions: list[float]) -> list[int]:
     return floors
 
 
+def _publishable_ticker(value: str | None) -> str | None:
+    """The as-filed symbol, unless the filer put a licensed identifier in that field.
+
+    It happens: FXED's American Financial Group row files ``<ticker value="025932872"/>``,
+    which is the row's CUSIP, not a symbol. The release refuses to publish a CUSIP at
+    all (`identifiers.is_licensed` is the same predicate the validator uses), so the
+    field is dropped rather than passed through — the row keeps its identity in
+    ``company_id``, which is the thing the ledger sums on.
+    """
+    text = (value or "").strip().upper()
+    if not text or identifiers.is_licensed(text):
+        return None
+    return text
+
+
 def _label(as_filed: str | None, issuer_legal_name: str | None) -> str:
     """The name a row ships with.
 
@@ -324,9 +339,9 @@ def build_vector(
                 # row's identity is the LEI, not a symbol — so an issuer-namespace
                 # row carries no ticker.
                 "ticker": (
-                    (index.symbol(company_id) if issuer_row else holding.ticker)
-                    or index.symbol(company_id)
-                ),
+                    None if issuer_row else _publishable_ticker(holding.ticker)
+                )
+                or index.symbol(company_id),
                 "category": classification.category,
                 "is_company_exposure": classification.is_company_exposure,
                 "fraction": 0.0,
@@ -343,7 +358,7 @@ def build_vector(
             group["category"] = classification.category
             group["is_company_exposure"] = classification.is_company_exposure
             if holding.ticker and not issuer_row:
-                group["ticker"] = holding.ticker
+                group["ticker"] = _publishable_ticker(holding.ticker) or group["ticker"]
             if holding.lei:
                 group["lei"] = holding.lei.strip().upper()
             if holding.isin:

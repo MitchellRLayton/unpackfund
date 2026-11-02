@@ -14,7 +14,13 @@ import pytest
 
 from pipeline import artifact
 from pipeline.fund_lookthrough import MAX_DEPTH, MIN_UNRESOLVED_WARNING_BP
-from pipeline.validate import Report, _check_fund_of_funds, _check_fund_of_funds_release
+from pipeline.validate import (
+    MAX_TOTAL_BP,
+    Report,
+    _check_fund_of_funds,
+    _check_fund_of_funds_release,
+    _total_ceiling,
+)
 
 
 def document(**overrides) -> dict:
@@ -49,18 +55,18 @@ def document(**overrides) -> dict:
     return base
 
 
-def failures(doc: dict) -> list[str]:
-    """Run the per-fund gate and return the names of the checks that failed."""
+def failures(doc: dict, check=_check_fund_of_funds) -> list[str]:
+    """Run one per-fund gate and return the names of the checks that failed."""
     report = Report()
     printed: list[str] = []
     original_fail = report.fail
 
-    def capture(check: str, detail: str = "") -> None:
-        printed.append(check)
-        original_fail(check, detail)
+    def capture(name: str, detail: str = "") -> None:
+        printed.append(name)
+        original_fail(name, detail)
 
     report.fail = capture  # type: ignore[method-assign]
-    _check_fund_of_funds(doc, report)
+    check(doc, report)
     return printed
 
 
@@ -125,6 +131,39 @@ def test_resolved_weight_cannot_exceed_the_fund_weight():
     doc = document()
     doc["lookthrough"]["resolved_fund_bp"] = 10_001
     assert "PARENT.lookthrough.resolved_fund_bp" in failures(doc)
+
+
+def test_a_component_sum_that_disagrees_with_fund_bp_fails():
+    """The sleeve list *is* the fund's fund weight: if they disagree, one was filtered."""
+    doc = document()
+    doc["lookthrough"]["fund_bp"] = 9_000
+    assert "PARENT.lookthrough.fund_bp" in failures(doc)
+
+
+def test_a_short_sleeve_is_allowed_in_components():
+    """A negative sleeve is a real position, not a defect — the sum is what must hold."""
+    doc = document()
+    doc["components"] = [
+        {"ticker": "LONG", "name": "Long Fund", "weight_bp": 1_400,
+         "coverage_pct": 90.0, "resolved_by": "series_lei"},
+        {"ticker": "SHORT", "name": "Short Fund", "weight_bp": -400,
+         "coverage_pct": 90.0, "resolved_by": "series_lei"},
+    ]
+    doc["lookthrough"]["fund_bp"] = 1_000
+    doc["lookthrough"]["resolved_fund_bp"] = 1_000
+    assert failures(doc) == []
+
+
+def test_a_composed_vector_may_inherit_its_sleeves_over_sum():
+    """10,587 bp is SSAJX: eleven sleeves averaging 10,380 bp, weighted by a 10,200 bp parent.
+
+    An as-filed vector may not exceed 10,500 — that band is what catches a fund whose
+    weights were scaled — but a composition multiplies the sleeves' own over-sum by the
+    parent's, so the ceiling has to be derived rather than borrowed.
+    """
+    assert _total_ceiling(document()) > 10_587
+    assert _total_ceiling({"ticker": "PLAIN"}) == MAX_TOTAL_BP
+    assert _total_ceiling(document()) < 100_000, "a factor of ten is still a failure"
 
 
 def test_components_must_be_sorted():
