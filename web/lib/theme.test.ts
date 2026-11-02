@@ -153,6 +153,32 @@ function deltaE(a: string, b: string): number {
   ["muted", "tint-direct", "secondary text on a shaded row"],
   ["fg", "tint-direct-hover", "body text on a shaded row under the pointer"],
   ["muted", "tint-direct-hover", "secondary text on a shaded row under the pointer"],
+  // The bracketed difference in the `In VT` column, painted in the row's geography ink
+  // (operator's instruction, 2026-11-02). It is text, so it answers to 4.5:1 on every
+  // background a ledger row can have — the same four the edges are held to at 3:1. This
+  // is why the text inks are a step darker than the stripes; the stripe tokens
+  // (`country-us`, `country-intl`) would fail here on the tinted rows and are
+  // deliberately not listed.
+  ["country-us-ink", "bg", "the bracket on a US company's row"],
+  ["country-us-ink", "surface", "the bracket on a US company's row, hovered"],
+  ["country-us-ink", "tint-direct", "the bracket on a US company held directly"],
+  [
+    "country-us-ink",
+    "tint-direct-hover",
+    "the bracket on a US direct row under the pointer",
+  ],
+  ["country-intl-ink", "bg", "the bracket on an international company's row"],
+  [
+    "country-intl-ink",
+    "surface",
+    "the bracket on an international company's row, hovered",
+  ],
+  ["country-intl-ink", "tint-direct", "the bracket on an international direct row"],
+  [
+    "country-intl-ink",
+    "tint-direct-hover",
+    "the bracket on an international direct row under the pointer",
+  ],
 ];
 
 /**
@@ -239,42 +265,65 @@ describe("automatic light/dark", () => {
     });
 
     it(`keeps the two geography inks apart for colour-blind readers in ${name}`, () => {
-      const us = theme["country-us"];
-      const intl = theme["country-intl"];
       const background = theme["bg"];
-      if (!us || !intl || !background) throw new Error("missing geography tokens");
+      if (!background) throw new Error("missing geography tokens");
 
       // Below this the two domiciles read as one colour rather than two.
       const MIN_SEPARATION = 25;
       const failures: string[] = [];
-      const normal = deltaE(us, intl);
-      if (normal < 40) {
-        failures.push(`uncorrected vision: dE ${normal.toFixed(1)} (want >= 40)`);
-      }
-      for (const [kind, matrix] of Object.entries(CVD_MATRICES)) {
-        const simulatedUs = simulate(us, matrix);
-        const simulatedIntl = simulate(intl, matrix);
-        const separation = deltaE(simulatedUs, simulatedIntl);
-        if (separation < MIN_SEPARATION) {
+      // Both uses of the pair answer to the same question, so both are checked: the 6 px
+      // edge on the first cell, and the darker text ink the bracket wears.
+      const uses = [
+        ["edge", theme["country-us"], theme["country-intl"]],
+        ["bracket", theme["country-us-ink"], theme["country-intl-ink"]],
+      ] as const;
+      for (const [use, us, intl] of uses) {
+        if (!us || !intl) throw new Error(`missing geography ${use} tokens`);
+        const normal = deltaE(us, intl);
+        if (normal < 40) {
           failures.push(
-            `${kind}: dE ${separation.toFixed(1)} (want >= ${MIN_SEPARATION}) — ` +
-              `${us} -> ${simulatedUs} and ${intl} -> ${simulatedIntl}`,
+            `${use}, uncorrected vision: dE ${normal.toFixed(1)} (want >= 40)`,
           );
         }
-        for (const [ink, simulated] of [
-          [us, simulatedUs],
-          [intl, simulatedIntl],
-        ] as const) {
-          const simulatedBackground = simulate(background, matrix);
-          const ratio = contrast(simulated, simulatedBackground);
-          if (ratio < 3) {
+        for (const [kind, matrix] of Object.entries(CVD_MATRICES)) {
+          const simulatedUs = simulate(us, matrix);
+          const simulatedIntl = simulate(intl, matrix);
+          const separation = deltaE(simulatedUs, simulatedIntl);
+          if (separation < MIN_SEPARATION) {
             failures.push(
-              `${kind}: ${ink} -> ${simulated} is ${ratio.toFixed(2)}:1 on ${simulatedBackground}`,
+              `${use}, ${kind}: dE ${separation.toFixed(1)} (want >= ${MIN_SEPARATION}) — ` +
+                `${us} -> ${simulatedUs} and ${intl} -> ${simulatedIntl}`,
             );
+          }
+          for (const [ink, simulated] of [
+            [us, simulatedUs],
+            [intl, simulatedIntl],
+          ] as const) {
+            const simulatedBackground = simulate(background, matrix);
+            const ratio = contrast(simulated, simulatedBackground);
+            if (ratio < 3) {
+              failures.push(
+                `${use}, ${kind}: ${ink} -> ${simulated} is ${ratio.toFixed(2)}:1 on ${simulatedBackground}`,
+              );
+            }
           }
         }
       }
       expect(failures).toEqual([]);
     });
   }
+
+  it("paints the bracket from the row's geography attribute, not from a second class", () => {
+    // `LedgerTable` writes `span.delta` and the row's `data-country`; these three rules do
+    // the mapping, so the ink and the 6 px edge cannot disagree about what a row is. A
+    // rename on either side would drop the colour silently — the table would keep working
+    // and the operator would see a plain number again — which is what this holds.
+    expect(CSS).toMatch(/\.delta\s*\{[^}]*color:\s*var\(--muted\)/);
+    expect(CSS).toMatch(
+      /tr\[data-country="US"\]\s+\.delta\s*\{[^}]*color:\s*var\(--country-us-ink\)/,
+    );
+    expect(CSS).toMatch(
+      /tr\[data-country\]:not\(\[data-country="US"\]\)\s+\.delta\s*\{[^}]*color:\s*var\(--country-intl-ink\)/,
+    );
+  });
 });

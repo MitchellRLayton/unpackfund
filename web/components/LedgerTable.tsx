@@ -139,8 +139,15 @@ export function LedgerTable({
           {anyCountry
             ? " The country beside a company is the domicile its holders' filings" +
               " agree on by value; the row's left edge repeats it in colour — blue for" +
-              " the United States, ochre elsewhere — and a company whose filings" +
-              " do not agree carries no country."
+              " the United States, ochre elsewhere" +
+              // Only when there is a bracket to colour: the column is absent without a
+              // benchmark, and a sentence about an ink with nothing wearing it is noise.
+              (benchmark
+                ? "; the bracketed difference in the In " +
+                  benchmark.ticker +
+                  " column wears the same ink"
+                : "") +
+              "; a company whose filings do not agree carries no country."
             : ""}
         </caption>
         <thead>
@@ -264,7 +271,14 @@ export function LedgerTable({
                     ) : (
                       <>
                         {formatShare(benchmarkWeight)}{" "}
-                        <span className="muted">{formatSignedShare(delta)}</span>
+                        {/* The bracket wears the row's geography ink — blue for a US
+                          company, ochre for an international one — repeating the edge at
+                          the one cell where two numbers are compared (operator's
+                          instruction, 2026-11-02). The class carries no meaning of its
+                          own: the stylesheet keys it off `data-country` on the row, the
+                          sign is in the text, and the direction is a sentence in the
+                          caption (`static-xray-frontend` §4a, §8). */}
+                        <span className="delta">{formatSignedShare(delta)}</span>
                       </>
                     )}
                   </td>
