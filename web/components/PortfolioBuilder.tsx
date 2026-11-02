@@ -579,8 +579,18 @@ export function PortfolioBuilder() {
             >
               View the ledger
             </Link>
-            {ledgerOpen ? null : (
-              <span className="muted" id="ledger-gate">
+            {/* The sentence the operator asked to colour (2026-11-02): red while the
+             * portfolio is not whole, green once it is. Rendered in both states and in
+             * percent mode only — in dollars the link is always live, and a sentence
+             * about 100% would be describing a rule that does not apply. `muted` keeps
+             * the type; the state class overrides the ink. */}
+            {mode === "usd" ? null : (
+              <span
+                className={`muted tally__gate ${
+                  ledgerOpen ? "tally__gate--open" : "tally__gate--locked"
+                }`}
+                id="ledger-gate"
+              >
                 The ledger opens at exactly 100%.
               </span>
             )}
