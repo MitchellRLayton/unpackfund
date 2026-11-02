@@ -120,6 +120,7 @@ jobs:
       # do, the `stage` job records it instead, so every night produces exactly one line.
       - name: Record the night in the ledger
         if: always()
+        continue-on-error: true      # telemetry can never be the reason a night is red
         env:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -410,6 +411,7 @@ jobs:
       # (`monitoring/nightly.jsonl`, see docs/08-operations/2026-11-02-nightly-telemetry.md).
       - name: Record the night in the ledger
         if: always()
+        continue-on-error: true      # telemetry can never be the reason a night is red
         env:
           STATUS: ${{ job.status == 'success' && 'ok' || 'failed' }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}

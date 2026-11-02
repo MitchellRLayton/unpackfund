@@ -61,13 +61,25 @@ jobs:
           # pipefail makes a failing check fail this step, which fails the run; the
           # summary step below still runs (if: always()).
 
+      # `if: always()` on both of these for the same reason: the run that most needs a
+      # ledger line is the one that failed, and a default step would be skipped.
+      # `continue-on-error` keeps a telemetry problem from becoming a false alarm — the
+      # checks above own this run's verdict, nothing here is allowed to change it.
+      - uses: actions/setup-python@v5
+        if: always()
+        with:
+          python-version: "3.13"
+
       - name: Install the pipeline
+        if: always()
+        continue-on-error: true
         run: |
           python -m pip install --upgrade pip
           python -m pip install ./pipeline
 
       - name: Append the verdict to the ledger
         if: always()
+        continue-on-error: true
         env:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
