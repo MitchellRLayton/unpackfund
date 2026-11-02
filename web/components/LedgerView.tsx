@@ -94,7 +94,14 @@ export function LedgerView() {
   // Named, so the loading state is a statement about which filings are still
   // arriving rather than a spinner. The comparison column is part of the table's
   // shape, so the table waits for it rather than reflowing under a reader.
-  const pendingNames = [...pending, ...(wantsBenchmark ? benchmarkLoad.pending : [])];
+  // `pending` only ever lists tickers that have not loaded, so a *failed* load would
+  // stay in it forever and hold the ledger in "Loading" — which would make the
+  // column-less fallback below unreachable. A benchmark that errored is answered by
+  // the notice, not waited for.
+  const pendingNames = [
+    ...pending,
+    ...(wantsBenchmark && !benchmarkLoad.error ? benchmarkLoad.pending : []),
+  ];
 
   if (!portfolio.ready) {
     return (
@@ -262,9 +269,12 @@ export function LedgerView() {
             {ledger.benchmark.ticker}&apos;s own SEC N-PORT filing
             <span className="sr-only"> for {ledger.benchmark.ticker}</span>
           </a>
-          , which traces {formatCoveragePct(ledger.benchmark.coverage_pct)} of its weight
-          to companies. A company at 0.00% is not among those traced holdings, which is
-          not the same as the fund not owning it.
+          , which traces {formatCoveragePct(ledger.benchmark.coverage_pct)} of its gross
+          weight to companies (filed weights slightly exceed 100% of net assets, so the
+          column sums to a little more than that). A 0.00% here means the company is
+          either absent from those traced holdings or filed at under 0.01% of{" "}
+          {ledger.benchmark.ticker}&apos;s NAV — the smallest weight this column can show.
+          Neither is the same as the fund not owning it.
         </p>
       ) : (
         <Notice tone="info" title="No benchmark comparison on this page">

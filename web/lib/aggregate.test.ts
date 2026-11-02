@@ -310,7 +310,7 @@ describe("the benchmark column", () => {
       coverage_pct: 97.8,
       source_url: `https://www.sec.gov/${BENCHMARK_TICKER}`,
     });
-    // The rows carry the per-company value; ~6,900 weights must not ride along.
+    // The rows carry the per-company value; the map (≈2,400 entries live) must not ride along.
     expect(ledger.benchmark).not.toHaveProperty("weights");
   });
 });

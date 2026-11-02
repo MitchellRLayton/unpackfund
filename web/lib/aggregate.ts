@@ -174,9 +174,9 @@ export function buildLedger({
     suppressedWeight,
   });
 
-  // The weights map is ~6,900 entries and is not part of the answer: the rows
-  // carry the per-company value, and the ledger keeps only the provenance the
-  // caption has to state (`static-xray-frontend` §6, conventions I4).
+  // The weights map is ~2,400 entries on the live release and is not part of the
+  // answer: the rows carry the per-company value, and the ledger keeps only the
+  // provenance the caption has to state (`static-xray-frontend` §6, conventions I4).
   const benchmarkFacts: BenchmarkFacts | null =
     benchmark === null
       ? null
