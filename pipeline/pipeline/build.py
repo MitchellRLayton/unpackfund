@@ -33,6 +33,7 @@ import argparse
 import json
 import sys
 import time
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -175,6 +176,7 @@ def build_fund(
     identity: IdentityTable | None = None,
     collect_evidence: bool = False,
     issuers: gleif.IssuerIndex | None = None,
+    fund_leis: Mapping[str, str] | None = None,
 ) -> FundBuild:
     started = time.monotonic()
     found = filings.latest(ref)
@@ -198,6 +200,7 @@ def build_fund(
         identity=identity,
         evidence=evidence,
         issuers=issuers,
+        fund_leis=fund_leis,
     )
 
     # Gate 1 — the *investable* schedule reconciles to the fund's own NAV.
@@ -306,6 +309,7 @@ def _attempt(
     identity: IdentityTable | None = None,
     collect_evidence: bool = False,
     issuers: gleif.IssuerIndex | None = None,
+    fund_leis: Mapping[str, str] | None = None,
 ) -> tuple[FundBuild | None, str | None]:
     try:
         return (
@@ -315,6 +319,7 @@ def _attempt(
                 identity=identity,
                 collect_evidence=collect_evidence,
                 issuers=issuers,
+                fund_leis=fund_leis,
             ),
             None,
         )
@@ -381,6 +386,8 @@ def _walk(
     started: float,
     merge_evidence: IdentityEvidence | None = None,
     issuers: gleif.IssuerIndex | None = None,
+    fund_leis: Mapping[str, str] | None = None,
+    series_out: dict[str, str] | None = None,
 ) -> tuple[list[FundBuild], list[dict[str, str]]]:
     """Build every fund once, collecting the artifacts and the failures.
 
@@ -388,6 +395,11 @@ def _walk(
     folded into the caller's collector as it lands (the fold runs on the consumer
     thread, so the counter updates are not racing), and no artifact is kept — pass
     1 would otherwise hold two releases' worth of bytes at once.
+
+    ``series_out`` is how ADR-0016 gets its fund-position key set for free: the
+    evidence pass already parses every filing, so it also records ``seriesLei`` →
+    ticker there, and pass 2 receives it as ``fund_leis``. A second indexing pass
+    would re-read the whole corpus to learn something pass 1 had in hand.
     """
     builds: list[FundBuild] = []
     failures: list[dict[str, str]] = []
@@ -404,6 +416,8 @@ def _walk(
         elif merge_evidence is not None:
             if build.evidence is not None:
                 merge_evidence.merge(build.evidence)
+            if series_out is not None and build.series_lei:
+                series_out[build.series_lei] = build.ticker
         else:
             builds.append(build)
         if log and done % log == 0:
@@ -424,6 +438,7 @@ def _walk(
                     identity=identity,
                     collect_evidence=collect,
                     issuers=issuers,
+                    fund_leis=fund_leis,
                 ),
                 ref,
             )
@@ -439,6 +454,7 @@ def _walk(
                         identity=identity,
                         collect_evidence=collect,
                         issuers=issuers,
+                        fund_leis=fund_leis,
                     ),
                 )
                 for ref in refs
@@ -661,6 +677,10 @@ def build_release(
     # collect evidence — so a fund that fails here is reported by pass 2, with the
     # same error, exactly once.
     table = IdentityTable.empty()
+    # ADR-0016: the evidence pass also yields the set of series LEIs this release
+    # publishes, which is what makes a filed row a *fund position* by identity rather
+    # than by the filer's label. Free here — the pass already parses every filing.
+    fund_leis: dict[str, str] = {}
     if identity:
         started_evidence = time.monotonic()
         evidence = IdentityEvidence()
@@ -673,6 +693,7 @@ def build_release(
             on_error="skip",
             started=started,
             merge_evidence=evidence,
+            series_out=fund_leis,
         )
         table = evidence.table()
         _log(
@@ -685,6 +706,17 @@ def build_release(
     else:
         _log("identity pass: disabled (--no-identity)")
 
+    if fund_leis:
+        _log(
+            f"fund-position model: {len(fund_leis):,} series LEIs identify a fund "
+            "position in any filing, whatever the filer labelled it (ADR-0016)"
+        )
+    else:
+        _log(
+            "fund-position model: off — a --no-identity build has no series-LEI set, "
+            "so a row is a fund position only when its filer says so"
+        )
+
     builds, failures = _walk(
         refs,
         index,
@@ -694,6 +726,7 @@ def build_release(
         on_error=on_error,
         started=started,
         issuers=issuers,
+        fund_leis=fund_leis or None,
     )
 
     if failures and on_error == "fail":

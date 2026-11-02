@@ -367,3 +367,64 @@ def test_top10_caps_at_available_rows(index):
     rows = [_holding("Apple Inc", 1_000.0), _holding("Alphabet Inc", 1_000.0)]
     result = weights.metrics(weights.build_vector(rows, index, 2_000.0, lag_days=0).holdings)
     assert result["top10_pct"] == pytest.approx(100.0)
+
+
+# --- ADR-0016: the fund-position model and the per-class split ---------------
+
+
+def test_a_row_whose_lei_is_a_published_series_becomes_a_fund_edge():
+    """The identity test, end to end through ``build_vector``.
+
+    The row is filed as a plain corporate equity; the caller says its LEI is the
+    ``seriesLei`` of a fund in this release. It must come out as a fund position, keep
+    its LEI for the flatten to resolve, and stop being a company.
+    """
+    holdings = [
+        _holding("Apple Inc.", 6_000.0, ticker="AAPL"),
+        _holding(
+            "Vanguard Total Stock Market Index Fund",
+            4_000.0,
+            ticker=None,
+            lei="549300TESTFUNDLEI001",
+        ),
+    ]
+    index = companies.CompanyIndex.from_document(
+        {"0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."}}
+    )
+    plain = weights.build_vector(holdings, index, 10_000.0, lag_days=0)
+    promoted = weights.build_vector(
+        holdings,
+        index,
+        10_000.0,
+        lag_days=0,
+        fund_leis={"549300TESTFUNDLEI001": "VTSAX"},
+    )
+    assert [row.asset_cat for row in plain.holdings] == ["equity", "equity"]
+    sleeve = next(row for row in promoted.holdings if row.weight_bp == 4_000)
+    assert sleeve.asset_cat == "fund"
+    assert sleeve.company_id is None
+    assert sleeve.lei == "549300TESTFUNDLEI001", "the flatten resolves through this"
+    assert "fund_of_funds" in promoted.warnings
+
+
+def test_categories_sum_to_the_vector_and_carry_all_six_keys(vector):
+    categories = vector.categories
+    assert list(categories) == ["equity", "debt", "cash", "derivative", "fund", "other"]
+    assert sum(categories.values()) == sum(row.weight_bp for row in vector.holdings)
+    assert categories["fund"] > 0 and categories["cash"] > 0
+
+
+def test_coverage_by_cat_measures_inside_each_class(vector):
+    """A debt row that cannot resolve must not drag the equity number down."""
+    by_cat = vector.coverage_by_cat
+    assert by_cat["equity"] == pytest.approx(100.0)
+    assert by_cat["cash"] == 0.0, "cash is a real weight with no company behind it"
+    assert by_cat["other"] is None, "no weight is not 0% coverage, it is undefined"
+    assert by_cat["fund"] == 0.0, "the fund sleeve resolves to no operating company"
+
+
+def test_category_coverage_handles_a_class_with_no_weight():
+    rows = [("equity", 9_000, True), ("debt", 1_000, False)]
+    assert weights.category_coverage(rows)["equity"] == 100.0
+    assert weights.category_coverage(rows)["debt"] == 0.0
+    assert weights.category_coverage(rows)["cash"] is None

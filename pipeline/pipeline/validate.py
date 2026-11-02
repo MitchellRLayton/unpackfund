@@ -27,7 +27,8 @@ from .gleif import is_issuer_id, is_sec_company_id, LEI_RE
 
 from . import paths
 from .artifact import LARGE_FUND_BYTES, MAX_FUND_BYTES, SCHEMA_VERSION
-from .fund_lookthrough import MAX_DEPTH, RUNG_LEI, RUNG_SYMBOL
+from .classify import CATEGORY_ORDER
+from .fund_lookthrough import MAX_DEPTH, RUNG_LEI, RUNG_SYMBOL, SLEEVE_MIXED
 from .fund_lookthrough import MIN_UNRESOLVED_WARNING_BP
 
 REPO_ROOT = paths.REPO_ROOT
@@ -303,8 +304,73 @@ def _check_fund(document: dict, report: Report) -> None:
     if abs(metrics["top10_pct"] - sum(weights[:10]) * 100) > PERCENT_TOLERANCE:
         report.fail(f"{ticker}.metrics.top10_pct", str(metrics["top10_pct"]))
 
+    _check_categories(document, report)
     _check_fund_of_funds(document, report)
 
+
+#: A fund publishing at least this much in funds must name the sleeves it holds.
+#: It is the release's own threshold for "materially a wrapper" (``MIN_LOOKTHROUGH_BP``),
+#: restated as a gate rather than imported, because the two mean different things: one
+#: decides whether to flatten, this one decides whether a composition is unexplained.
+MIN_COMPONENT_BP = 500
+
+
+def _check_categories(document: dict, report: Report) -> None:
+    """ADR-0016 §2–§5: the split must account for the vector, and the labels must be real.
+
+    Recomputed from ``holdings``, never trusted: the whole point of publishing a split is
+    that a reader can check it, and a gate that reads the field it is checking cannot.
+    """
+    ticker = document.get("ticker", "?")
+    categories = document.get("categories")
+    coverage_by_cat = document.get("coverage_by_cat")
+    if categories is None or coverage_by_cat is None:
+        report.fail(f"{ticker}.categories", "missing; ADR-0016 requires both objects")
+        return
+    if set(categories) != set(CATEGORY_ORDER):
+        report.fail(f"{ticker}.categories.keys", f"{sorted(categories)}")
+    if set(coverage_by_cat) != set(CATEGORY_ORDER):
+        report.fail(f"{ticker}.coverage_by_cat.keys", f"{sorted(coverage_by_cat)}")
+
+    recomputed = {name: 0 for name in CATEGORY_ORDER}
+    gross = {name: 0 for name in CATEGORY_ORDER}
+    mapped = {name: 0 for name in CATEGORY_ORDER}
+    for row in document["holdings"]:
+        recomputed[row["asset_cat"]] = recomputed.get(row["asset_cat"], 0) + row["weight_bp"]
+        size = abs(row["weight_bp"])
+        gross[row["asset_cat"]] = gross.get(row["asset_cat"], 0) + size
+        if row["company_id"]:
+            mapped[row["asset_cat"]] = mapped.get(row["asset_cat"], 0) + size
+
+    if {name: categories.get(name) for name in CATEGORY_ORDER} != recomputed:
+        report.fail(
+            f"{ticker}.categories",
+            f"{categories} != {recomputed} recomputed from the vector",
+        )
+    for name in CATEGORY_ORDER:
+        published = coverage_by_cat.get(name)
+        total = gross[name]
+        if not total:
+            if published is not None:
+                report.fail(
+                    f"{ticker}.coverage_by_cat.{name}",
+                    f"{published!r} for a class with no weight",
+                )
+            continue
+        expected = round(100 * mapped[name] / total, 1)
+        if not isinstance(published, (int, float)) or abs(published - expected) > 0.05:
+            report.fail(
+                f"{ticker}.coverage_by_cat.{name}",
+                f"{published!r} != {expected} recomputed from the vector",
+            )
+
+    # If we publish ≥5% in funds, the sleeves have to be named — a composition nobody can
+    # read is the state ADR-0013 was written to end.
+    if abs(categories.get("fund", 0)) >= MIN_COMPONENT_BP and not document.get("components"):
+        report.fail(
+            f"{ticker}.components",
+            f"{categories.get('fund')} bp in funds but no components",
+        )
 
 
 def _check_fund_of_funds(document: dict, report: Report) -> None:
@@ -345,6 +411,14 @@ def _check_fund_of_funds(document: dict, report: Report) -> None:
             return
         if row["resolved_by"] not in (RUNG_LEI, RUNG_SYMBOL, None):
             report.fail(f"{ticker}.components.resolved_by", str(row["resolved_by"]))
+        # ADR-0016 §4. `None` is legal only for a sleeve we could not resolve: we do not
+        # know what it holds, so a label would be a guess.
+        if row.get("asset_cat") not in (*CATEGORY_ORDER, SLEEVE_MIXED, None):
+            report.fail(f"{ticker}.components.asset_cat", str(row.get("asset_cat")))
+        elif row.get("asset_cat") is None and row["resolved_by"]:
+            report.fail(
+                f"{ticker}.components.asset_cat", "resolved sleeve with no label"
+            )
         total_components += row["weight_bp"]
         if row["ticker"]:
             if row["ticker"] in seen:
@@ -443,6 +517,44 @@ def _check_fund_of_funds_release(funds: list[dict], report: Report) -> None:
         )
     if flattened:
         report.ok("fund_of_funds", f"{flattened} funds flattened, {components} sleeves named")
+    _check_fund_rows_by_name(funds, report)
+
+
+#: A row this heavy that carries a published fund's name is not a coincidence worth
+#: tolerating: it is a fund position the classifier did not see (ADR-0016 §5).
+FUND_NAME_ROW_BP = 100
+
+
+def _check_fund_rows_by_name(funds: list[dict], report: Report) -> None:
+    """The tripwire for a fund publishing another fund as a company.
+
+    The Vanguard defect (60 Target Retirement share classes, 176,514 bp of fund positions
+    filed ``assetCat=EC``/``issuerCat=CORP``) was invisible to every arithmetic gate: the
+    rows were equities, the LEIs resolved, and the coverage was 99.5%. What it was not
+    invisible to is the release's own name list. This is not a classifier and does not try
+    to be one — exact case-folded name equality against funds this release publishes,
+    material rows only, which is narrow enough to be free of false positives and wide
+    enough to catch the next filer who declares a fund to be a stock.
+    """
+    by_name = {str(fund.get("name") or "").casefold() for fund in funds}
+    by_name.discard("")
+    if not by_name:
+        return
+    hits = 0
+    for document in funds:
+        for row in document.get("holdings") or []:
+            if row.get("asset_cat") == "fund" or abs(row.get("weight_bp") or 0) < FUND_NAME_ROW_BP:
+                continue
+            if str(row.get("name") or "").casefold() in by_name:
+                hits += 1
+                if hits <= 20:
+                    report.fail(
+                        f"{document.get('ticker')}.fund_row",
+                        f"{row['name']!r} at {row['weight_bp']} bp is a published fund "
+                        f"but is filed as {row.get('asset_cat')}",
+                    )
+    if hits > 20:
+        report.fail("fund_rows", f"{hits} fund-named rows are not classified as funds")
 
 
 def _published_files(release_dir: Path, manifest: dict) -> list[Path]:

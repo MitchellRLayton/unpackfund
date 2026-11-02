@@ -506,3 +506,52 @@ def test_cash_and_derivatives_are_never_fund_edges_even_when_registered():
     """A money-market sweep files issuerCat RF and must stay cash (§3 of the math skill)."""
     money_market = classify.classify("STIV", "RF", is_derivative=False)
     assert money_market.category == classify.CASH
+
+
+# --- ADR-0016 §4: a sleeve says what it is -----------------------------------
+
+
+def test_a_sleeve_is_labelled_from_its_own_published_split():
+    """AOR's sleeves are pure; AOA's growth sleeve is 60/40, so it is ``mixed``."""
+    parent = fund(
+        [fund_row("Equity ETF", 5_000, lei="EQ"), fund_row("Bond ETF", 3_000, lei="BD"),
+         fund_row("Growth ETF", 2_000, lei="MIX")],
+        ticker="PARENT",
+    )
+    children = [
+        fund([holding("Apple Inc.", 10_000, company_id="c_apple")], ticker="EQ",
+             series_lei="EQ"),
+        fund([holding("Treasury 2030", 10_000, asset_cat=classify.DEBT)], ticker="BD",
+             series_lei="BD"),
+        fund(
+            [holding("Apple Inc.", 6_000, company_id="c_apple"),
+             holding("Treasury 2030", 4_000, asset_cat=classify.DEBT)],
+            ticker="MIX", series_lei="MIX",
+        ),
+    ]
+    labels = {row["ticker"]: row["asset_cat"] for row in compose(parent, children).components}
+    assert labels == {"EQ": "equity", "BD": "debt", "MIX": "mixed"}
+
+
+def test_an_unresolved_sleeve_carries_no_label():
+    """We do not know what it holds, so a label would be a guess (ADR-0016 §4)."""
+    parent = fund([fund_row("Unknown ETF", 4_000, lei="MISSING")], ticker="PARENT")
+    composed = compose(parent, [])
+    assert composed.components[0]["asset_cat"] is None
+    assert composed.components[0]["resolved_by"] is None
+
+
+def test_the_mixed_threshold_is_twenty_percent_of_the_sleeve():
+    """``mixed`` means the same thing here as "balanced fund" does in the release."""
+    sleeve = fund(
+        [holding("Stocks", 8_100, company_id="c_a"), holding("Bonds", 1_900,
+                                                            asset_cat=classify.DEBT)],
+        ticker="SLEEVE",
+    )
+    assert fol._sleeve_label(tuple(sleeve.holdings)) == "equity"
+    exactly_twenty = fund(
+        [holding("Stocks", 8_000, company_id="c_a"), holding("Bonds", 2_000,
+                                                            asset_cat=classify.DEBT)],
+        ticker="SLEEVE",
+    )
+    assert fol._sleeve_label(tuple(exactly_twenty.holdings)) == "mixed"

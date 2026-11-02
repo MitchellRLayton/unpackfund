@@ -50,7 +50,7 @@ def sample_document(
     vector = weights.build_vector(
         filing.holdings, index, filing.net_assets, lag_days=59
     )
-    return artifact.build_fund_artifact(
+    document = artifact.build_fund_artifact(
         ticker="TEST",
         fund_id=filing.series_id or "CIK0000000001",
         name=filing.series_name or "",
@@ -75,6 +75,31 @@ def sample_document(
         metrics=weights.metrics(vector.holdings),
         warnings=vector.warnings,
     )
+    # The sample filing holds one fund position, so a *published* document for it has
+    # sleeves: ADR-0016 §5 refuses to publish "5% in funds, no composition named". The
+    # sleeve here is unresolved (the fixture has no child fund), which is the honest
+    # shape for it and exercises the gate's `None` label.
+    sleeves = [
+        {
+            "ticker": None,
+            "name": row["name"],
+            "weight_bp": row["weight_bp"],
+            "coverage_pct": None,
+            "asset_cat": None,
+            "resolved_by": None,
+        }
+        for row in document["holdings"]
+        if row["asset_cat"] == classify.FUND
+    ]
+    if sleeves:
+        document = artifact.attach_fund_of_funds(
+            document,
+            holdings=document["holdings"],
+            coverage_pct=document["coverage_pct"],
+            metrics=document["metrics"],
+            components=sleeves,
+        )
+    return document
 
 
 def write_release(root: Path, documents: list[dict], release_id: str = FIXTURE_RELEASE_ID) -> Path:

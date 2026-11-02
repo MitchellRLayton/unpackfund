@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 
+from . import weights
 from .identifiers import UNNAMED_HOLDING, is_licensed, public_name
 
 import hashlib
@@ -50,6 +51,23 @@ def utc_now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+def category_fields(holdings: list[dict[str, Any]]) -> dict[str, Any]:
+    """The two ADR-0016 objects for a published vector, derived from its rows.
+
+    One implementation for the filed vector and the composed one: both are lists of
+    published rows, and the split of a document is a function of exactly what it
+    publishes. Two implementations here would be a number that can disagree with itself.
+    """
+    rows = [
+        (row["asset_cat"], row["weight_bp"], bool(row.get("company_id")))
+        for row in holdings
+    ]
+    return {
+        "categories": weights.category_totals(rows),
+        "coverage_by_cat": weights.category_coverage(rows),
+    }
+
+
 def build_fund_artifact(
     *,
     ticker: str,
@@ -65,7 +83,13 @@ def build_fund_artifact(
     metrics: dict[str, float | None],
     warnings: list[str],
 ) -> dict[str, Any]:
-    """Assemble the artifact in contract order (``data-contract-and-release`` §1)."""
+    """Assemble the artifact in contract order (``data-contract-and-release`` §1).
+
+    ``categories`` and ``coverage_by_cat`` are **derived here, not passed in**: the split
+    of a document is a function of the rows it publishes, so deriving it makes it
+    impossible for a caller to publish a vector and a split that disagree — including the
+    flattened path, where the rows are a composition rather than a filing (ADR-0016).
+    """
     lag_days = _days_between(filed_at, as_of)
     return {
         "schema_version": SCHEMA_VERSION,
@@ -87,6 +111,11 @@ def build_fund_artifact(
         "source": SOURCE_NPORT,
         "source_url": source_url,
         "coverage_pct": coverage_pct,
+        # ADR-0016: what the fund is made of, and how much of each part we can name.
+        # ``categories`` is the "60/40" fact in integer basis points and sums to the
+        # holding total; ``coverage_by_cat`` is the only coverage number that can be
+        # compared across funds, because it measures inside one asset class.
+        **category_fields(holdings),
         "holdings": holdings,
         "metrics": metrics,
         "warnings": warnings,
@@ -176,6 +205,7 @@ def attach_fund_of_funds(
         "source": document["source"],
         "source_url": document["source_url"],
         "coverage_pct": coverage_pct,
+        **category_fields(holdings),
         "holdings": holdings,
         "metrics": metrics,
     }

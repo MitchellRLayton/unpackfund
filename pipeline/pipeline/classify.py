@@ -37,6 +37,10 @@ _ASSET_CAT = {
 #: Categories that are a company exposure and therefore enter concentration math.
 COMPANY_CATEGORIES = frozenset({EQUITY, DEBT, FUND})
 
+#: Publication order for the six categories. Every published object keyed by category
+#: uses this order, so a diff between two releases is a diff in values, not in key order.
+CATEGORY_ORDER = (EQUITY, DEBT, CASH, DERIVATIVE, FUND, OTHER)
+
 
 @dataclass(frozen=True)
 class Classification:
@@ -46,11 +50,34 @@ class Classification:
     is_fund_position: bool
 
 
-def classify(asset_cat: str | None, issuer_cat: str | None, is_derivative: bool) -> Classification:
+def classify(
+    asset_cat: str | None,
+    issuer_cat: str | None,
+    is_derivative: bool,
+    *,
+    published_fund: bool = False,
+) -> Classification:
+    """Map one filed row to a category. ``published_fund`` is an *identity*, not a label.
+
+    A row is a fund position when the filer says so (``issuerCat=RF``, below) **or** when
+    the row's LEI is the ``seriesLei`` of a fund this release publishes (ADR-0016
+    decision 1). The second test exists because the first trusts a label a filer can get
+    wrong, and one does: **Vanguard's Target Retirement funds file their four underlying
+    funds as ``assetCat=EC``, ``issuerCat=CORP``** — a fund position declared as a
+    corporate equity. Sixty share classes published 99.5% "coverage" that was entirely
+    fund positions (VFIFX listed *Vanguard Total Stock Market Index Fund* as its largest
+    "company" at 53.69%) until this rule was added. Equality against a series LEI cannot
+    produce a false positive: one series, one LEI.
+    """
     if is_derivative:
         category = DERIVATIVE
     else:
         category = _ASSET_CAT.get((asset_cat or "").strip().upper(), OTHER)
+        # Identity outranks the label, with the same cash/derivative exception the RF
+        # rule makes below: a sweep row whose LEI happens to be a fund series is still
+        # the fund's cash, and a derivative is a contract, not a share of a fund.
+        if published_fund and category not in (CASH, DERIVATIVE):
+            category = FUND
         # A registered fund held as a position is a fund-of-funds edge (ADR-0013).
         #
         # **``issuerCat=RF`` is the whole test, not ``RF`` *and* ``assetCat=EC``.**
