@@ -52,6 +52,31 @@ US="$(printf '\037')"   # field separator for parsed git output; not IFS whitesp
 # `check` prints a warning when they disagree.
 DEPLOY_PATHS='^(web/|pipeline/)|^package\.json$|^pnpm-lock\.yaml$|^pnpm-workspace\.yaml$|^\.nvmrc$|^wrangler\.prod\.jsonc$|^\.github/workflows/deploy-site\.yml$'
 
+# Print every path in .github/workflows/deploy-site.yml's `on.push.paths` that DEPLOY_PATHS
+# does not classify as a deploy. Empty output means the copy is still in step with the
+# workflow; anything printed is a path that could publish production while the PR rule
+# calls it safe.
+deploy_drift() {
+  _wf="$1/.github/workflows/deploy-site.yml"
+  [ -f "$_wf" ] || return 0
+  awk '
+    /^[[:space:]]*paths:[[:space:]]*$/ { inp = 1; next }
+    inp && /^[[:space:]]*-[[:space:]]*"/ {
+      s = $0
+      sub(/^[[:space:]]*-[[:space:]]*"/, "", s)
+      sub(/"[[:space:]]*$/, "", s)
+      print s
+      next
+    }
+    inp && /^[[:space:]]*#/ { next }
+    inp && NF == 0 { next }
+    inp { inp = 0 }
+  ' "$_wf" | while IFS= read -r _p; do
+    [ -n "$_p" ] || continue
+    printf '%s' "$_p" | grep -Eq "$DEPLOY_PATHS" || printf '%s\n' "$_p"
+  done
+}
+
 # Trailer keys this project requires. `Agent` predates the rest (2026-10-28) and is kept
 # so older tooling keeps working.
 REQUIRED_TRAILERS="Session Worktree Agent"
@@ -366,6 +391,15 @@ cmd_check() {
     esac
   done
   require_repo
+
+  # The deploy-path list is a copy of the workflow's. Say so when the copy has drifted:
+  # a path that deploys production but reads as "safe" defeats the whole landing rule.
+  _drift="$(deploy_drift "$GIT_ROOT")"
+  if [ -n "$_drift" ]; then
+    warn "deploy-site.yml deploys on paths DEPLOY_PATHS does not treat as deploys — fix the constant in this script:"
+    printf '%s\n' "$_drift" | while IFS= read -r _p; do warn "    $_p"; done
+  fi
+
   if [ -z "$_range" ]; then
     if git -C "$GIT_ROOT" rev-parse --verify --quiet origin/main >/dev/null; then
       _range="origin/main..HEAD"
@@ -660,6 +694,12 @@ cmd_pr() {
   _files="$(git -C "$_top" diff --name-only "$_base_ref...HEAD" | head -40)"
   _nfiles="$(git -C "$_top" diff --name-only "$_base_ref...HEAD" | wc -l | tr -d ' ')"
   _deploy="$(git -C "$_top" diff --name-only "$_base_ref...HEAD" | grep -E "$DEPLOY_PATHS" || true)"
+
+  _drift="$(deploy_drift "$_top")"
+  if [ -n "$_drift" ]; then
+    warn "deploy-site.yml deploys on paths this script does not treat as deploys, so the impact below may be wrong:"
+    printf '%s\n' "$_drift" | while IFS= read -r _p; do warn "    $_p"; done
+  fi
 
   if [ -n "$_deploy" ]; then
     _impact="- [x] **Touches a deploy path — merging to \`$_base\` runs \`deploy-site\` and publishes \`unpackfund.com\`.**"
