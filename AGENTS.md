@@ -15,7 +15,13 @@ copy; the older prohibition was written when one session owned the tree.)
 ## Git authority
 
 - Agents may **commit and push directly to `main`**, and may push feature
-  branches. No pull request is required.
+  branches. No human approval is required to merge.
+- **A merge to `main` can publish production.** `deploy-site.yml` deploys on any
+  push to `main` that touches `web/**`, `pipeline/**`, `package.json`,
+  `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.nvmrc`, `wrangler.prod.jsonc` or its
+  own workflow file. Land those through a **pull request** (§Landing work), so the
+  diff, the evidence and the session that produced it are recorded before the
+  merge. Everything else — docs, scripts, this file — may be pushed directly.
 - **Never `git push --force` or `--force-with-lease` to `main`.** History on
   `main` is public and Workers Builds deploys from it.
 - **Never delete or rename `main`.**
@@ -23,6 +29,74 @@ copy; the older prohibition was written when one session owned the tree.)
   rewrite history.
 - Never `git reset --hard` a branch that has unpushed work from someone else, and
   never `git clean -xdf` without checking `git status` first.
+
+## Landing work — three tiers
+
+Which path a change takes is decided by what it touches, not by how large it feels.
+The tier is computed for you: `scripts/session-provenance.sh pr` prints
+`Touches a deploy path` or `Does not touch a deploy path` and lists the files.
+
+| Tier | Change touches | How it lands |
+|---|---|---|
+| **Deploy** | any path in `deploy-site.yml`'s `paths:` list (`web/**`, `pipeline/**`, `package.json`, the lockfiles, `.nvmrc`, `wrangler.prod.jsonc`, `deploy-site.yml`) | **Pull request**, merged with a merge commit. Merging publishes `unpackfund.com`, so the production-deploy escalation rule still applies (workspace `AGENTS.md`, Autonomy) |
+| **Repo, no deploy** | `scripts/`, `AGENTS.md`, `README.md`, `.gitignore`, the other workflows | Direct push to `main` when you are the only session; a PR is optional |
+| **Workspace** | `docs/`, `.dsh/`, `.work/` | Nothing to commit — `docs/` is outside the repo. Record it in the day file |
+
+**Merge with `--merge`, not `--squash`.** A merge commit keeps the branch's
+messages and their provenance trailers. A squash collapses them into one
+unattributed commit on `main`; if you must squash, paste the PR body's provenance
+block into the squash message.
+
+## Commit provenance
+
+Several sessions run at once, each in its own worktree (workspace `AGENTS.md` →
+multi-session playbook). A commit must say which one produced it, so the history
+answers *"who changed this, and from where?"* without asking anybody.
+
+**Every commit ends with three trailers** — merge commits excepted, because git or
+GitHub writes their message:
+
+```
+Session: alpha
+Worktree: .work/wt-alpha
+Agent: DSH deepseek-failover (lead)
+```
+
+| Trailer | Answers | Value |
+|---|---|---|
+| `Session` | whose workstream | the session name; the same `<name>` in `wt-<name>` |
+| `Worktree` | which workspace it was written in | `.work/wt-<name>`, or `unpackfund` for the trunk |
+| `Agent` | which agent instance | the label recorded at registration |
+
+An optional fourth, `Task: <one line>`, names the task when the commit is part of a
+larger one.
+
+**Write them with the wrapper, never by hand:**
+
+```bash
+scripts/session-provenance.sh commit -m "fix(web): one-line summary" -m "<why>"
+```
+
+The hooks enforce the block. `commit-msg` refuses a commit without it, and
+`pre-push` refuses to publish one (commits authored before 2026-11-02T00:00:00Z are
+exempt, so work already in flight is not retroactively blocked). `--no-verify` is
+not an escape hatch. The `.work/sessions/<name>.conf` registry holds what git
+cannot — the agent label, the task, the start time — and `session-worktree.sh create`
+writes it for you.
+
+### Answering the questions
+
+| Question | Command |
+|---|---|
+| Who am I in this worktree? | `scripts/session-provenance.sh whoami` |
+| Who wrote this commit? | `git log -1 --format='%(trailers)'` |
+| What is in flight, and who owns it? | `scripts/session-provenance.sh board` |
+| Which commits cannot be attributed? | `scripts/session-provenance.sh check` |
+| Who has touched this file? | `scripts/session-provenance.sh blame <path>` |
+| What is live right now? | `scripts/session-provenance.sh board` — last `deploy-site` run against `origin/main` |
+| Open the pull request | `scripts/session-provenance.sh pr --evidence "pnpm verify exit 0"` |
+
+Model and rationale: `docs/08-operations/2026-11-01-cross-session-provenance.md`.
 
 ## The commit loop
 
@@ -34,9 +108,12 @@ git fetch origin
 git status --short                      # read before you change anything
 git add -A                              # stages tracked + new files, respects .gitignore
 git diff --cached --stat                # confirm the change is the one you intended
-git commit --no-edit -m "type(scope): summary"
-git push origin main
+scripts/session-provenance.sh commit -m "type(scope): summary"
+git push origin <branch>                # feature branch, or main for a Tier 2 change
 ```
+
+`scripts/session-provenance.sh commit` is `git commit` plus the provenance trailers
+(§Commit provenance); a bare `git commit -m` is refused by the `commit-msg` hook.
 
 Push with a timeout so a network stall fails loudly instead of hanging:
 
@@ -83,13 +160,10 @@ helper is the problem, fix the helper.
 Imperative mood, present tense, no trailing period, ≤72 characters in the subject.
 Body (optional) explains *why*, wrapped at 72.
 
-**Every agent-authored commit ends with a trailer:**
-
-```
-Agent: <name or model-id>
-```
-
-so agent work is distinguishable from the operator's in `git log`.
+**Every commit ends with the three provenance trailers** — `Session`, `Worktree`,
+`Agent` — so agent work is distinguishable from the operator's in `git log` and
+attributable to one session and one worktree. The contract, the wrapper and the
+enforcement are in §Commit provenance above; do not hand-write the block.
 
 ## Hard rules — do not break these
 
@@ -103,17 +177,27 @@ so agent work is distinguishable from the operator's in `git log`.
   and exit code behind it in the same session.
 - **Do not amend or rebase commits that are already pushed** to `main`.
 
-## Optional local guard
+## Hooks
 
 ```bash
-git config core.hooksPath scripts/git-hooks   # enable once per clone
+scripts/git-setup.sh          # enable once per clone (sets core.hooksPath)
 ```
 
-The pre-commit hook blocks staged `.env` files and obvious secret patterns. It is
-a safety net for accidental staging, not a substitute for the rules above.
+Three hooks live in `scripts/git-hooks/`, and all three are part of the workflow,
+not optional extras:
+
+| Hook | Refuses |
+|---|---|
+| `pre-commit` | staged `.env` files, credential-shaped strings, files over 5 MiB |
+| `commit-msg` | a commit without the `Session`/`Worktree`/`Agent` trailers, or one that names another worktree's session |
+| `pre-push` | publishing a commit authored after 2026-11-02T00:00:00Z that has no trailers — the second lock, for commits made with `--no-verify` |
+
+They are a safety net for the rules above, and `--no-verify` is never the way past
+them: fix the commit, not the hook.
 
 ## Status of this file
 
-Added 2026-10-28 to give agents a working git surface for this repo. It is a
+Added 2026-10-28 to give agents a working git surface for this repo; updated
+2026-11-01 with the commit-provenance contract and the three landing tiers. It is a
 plain-language rule file, not a build artifact; keep it current when the workflow
 changes.

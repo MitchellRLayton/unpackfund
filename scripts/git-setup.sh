@@ -31,9 +31,10 @@ git config --local --replace-all credential.helper ""
 git config --local --add credential.helper '!gh auth git-credential'
 echo "git-setup: credential.helper -> !gh auth git-credential"
 
-# 2. The secret/large-file pre-commit guard.
+# 2. The guards: secrets and large files (pre-commit), provenance trailers
+#    (commit-msg), and the same trailers at the push boundary (pre-push).
 git config --local core.hooksPath scripts/git-hooks
-echo "git-setup: core.hooksPath -> scripts/git-hooks"
+echo "git-setup: core.hooksPath -> scripts/git-hooks (pre-commit, commit-msg, pre-push)"
 
 # 3. Prove the credential path is actually fast, rather than assuming it.
 start=$(date +%s)

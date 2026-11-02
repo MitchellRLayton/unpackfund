@@ -45,6 +45,7 @@ WORKSPACE="$(cd -P "$REPO_ROOT/.." && pwd -P)"
 WORK_ROOT="$WORKSPACE/.work"
 SESSIONS_DIR="$WORK_ROOT/sessions"
 TMP_DIR="$WORK_ROOT/tmp"
+US="$(printf '\037')"   # field separator for parsed git output; not IFS whitespace
 
 # The deploy trigger, copied from .github/workflows/deploy-site.yml `on.push.paths`.
 # A merge to main that matches this list publishes unpackfund.com. Keep the two in step:
@@ -355,6 +356,7 @@ cmd_commit() {
 }
 
 cmd_check() {
+  GIT_ROOT="$(toplevel)"
   _range=""; _quiet=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -365,7 +367,7 @@ cmd_check() {
   done
   require_repo
   if [ -z "$_range" ]; then
-    if git -C "$REPO_ROOT" rev-parse --verify --quiet origin/main >/dev/null; then
+    if git -C "$GIT_ROOT" rev-parse --verify --quiet origin/main >/dev/null; then
       _range="origin/main..HEAD"
     else
       _range="HEAD"
@@ -374,31 +376,32 @@ cmd_check() {
 
   _bad=0; _n=0; _ok=0; _skipped=0
   _rows=""
-  for _c in $(git -C "$REPO_ROOT" rev-list --reverse "$_range" 2>/dev/null); do
+  for _c in $(git -C "$GIT_ROOT" rev-list --reverse "$_range" 2>/dev/null); do
     _n=$((_n + 1))
-    _subj="$(git -C "$REPO_ROOT" log -1 --format='%s' "$_c")"
+    _subj="$(git -C "$GIT_ROOT" log -1 --format='%s' "$_c")"
     case "$_subj" in
       "Merge "*) _skipped=$((_skipped + 1)); continue ;;
     esac
     _missing=""
     for _k in $REQUIRED_TRAILERS; do
-      _v="$(git -C "$REPO_ROOT" log -1 --format="%(trailers:key=$_k,valueonly,separator=,)" "$_c")"
+      _v="$(git -C "$GIT_ROOT" log -1 --format="%(trailers:key=$_k,valueonly,separator=,)" "$_c")"
       [ -n "$_v" ] || _missing="$_missing $_k"
     done
+    _sha="$(git -C "$GIT_ROOT" log -1 --format='%h' "$_c")"
     if [ -n "$_missing" ]; then
       _bad=$((_bad + 1))
-      _rows="$_rows$(printf '%s\t%s\tmissing:%s' "$(git -C "$REPO_ROOT" log -1 --format='%h' "$_c")" "$_subj" "$_missing")
+      _rows="$_rows${_sha}${US}${_subj}${US}missing:${_missing}
 "
     else
       _ok=$((_ok + 1))
-      _rows="$_rows$(printf '%s\t%s\tok' "$(git -C "$REPO_ROOT" log -1 --format='%h' "$_c")" "$_subj")
+      _rows="$_rows${_sha}${US}${_subj}${US}ok
 "
     fi
   done
 
   if [ "$_quiet" -eq 0 ]; then
     say "range: $_range"
-    printf '%s' "$_rows" | while IFS='	' read -r _sha _subj _state; do
+    printf '%s' "$_rows" | while IFS="$US" read -r _sha _subj _state; do
       [ -n "${_sha:-}" ] || continue
       printf '  %-9s %-12s %s\n' "$_sha" "$_state" "$_subj"
     done
@@ -412,7 +415,7 @@ cmd_check() {
   # a path that publishes production is not counted as one by `check` and `pr`.
   _wf="$REPO_ROOT/.github/workflows/deploy-site.yml"
   if [ -f "$_wf" ]; then
-    _wfpaths="$(sed -n '/^  push:/,/^  [a-z_]*:$/p' "$_wf" | grep -E '^[[:space:]]+- "' | tr -d ' -"')"
+    _wfpaths="$(sed -n '/^  push:/,/^  [a-z_]*:$/p' "$_wf" | grep -E '^[[:space:]]+- "' | sed -e 's/^[[:space:]]*-[[:space:]]*//' -e 's/"//g')"
     if [ -z "$_wfpaths" ]; then
       warn "could not read the deploy paths from .github/workflows/deploy-site.yml"
     else
@@ -429,6 +432,7 @@ cmd_check() {
 }
 
 cmd_log() {
+  GIT_ROOT="$(toplevel)"
   _count=20; _since=""; _branch=""; _all=""; _wide=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -442,13 +446,13 @@ cmd_log() {
   done
   require_repo
 
-  _args=("--format=%h%x09%(trailers:key=Session,valueonly,separator=+)%x09%(trailers:key=Worktree,valueonly,separator=+)%x09%ad%x09%s" "--date=short" "-n" "$_count")
+  _args=("--format=%h%x1f%(trailers:key=Session,valueonly,separator=+)%x1f%(trailers:key=Worktree,valueonly,separator=+)%x1f%ad%x1f%s" "--date=short" "-n" "$_count")
   [ -z "$_since" ] || _args[${#_args[@]}]="--since=$_since"
   [ -z "$_branch" ] || _args[${#_args[@]}]="$_branch"
   [ -z "$_all" ] || _args[${#_args[@]}]="--all"
 
   printf '%-9s %-14s %-22s %-11s %s\n' "COMMIT" "SESSION" "WORKTREE" "DATE" "SUBJECT"
-  git -C "$REPO_ROOT" log "${_args[@]}" | while IFS='	' read -r _sha _ssn _wt _date _subj; do
+  git -C "$GIT_ROOT" log "${_args[@]}" | while IFS="$US" read -r _sha _ssn _wt _date _subj; do
     [ -n "${_sha:-}" ] || continue
     [ -n "$_ssn" ] || _ssn="-"
     [ -n "$_wt" ] || _wt="-"
@@ -456,8 +460,8 @@ cmd_log() {
     printf '%-9s %-14s %-22s %-11s %s\n' "$_sha" "$_ssn" "$_wt" "$_date" "$_subj"
   done
 
-  _total="$(git -C "$REPO_ROOT" log "${_args[@]}" --format='%h' | wc -l | tr -d ' ')"
-  _with="$(git -C "$REPO_ROOT" log "${_args[@]}" --format='%(trailers:key=Session,valueonly,separator=+)' | grep -c . || true)"
+  _total="$(git -C "$GIT_ROOT" log "${_args[@]}" --format='%h' | wc -l | tr -d ' ')"
+  _with="$(git -C "$GIT_ROOT" log "${_args[@]}" --format='%(trailers:key=Session,valueonly,separator=+)' | grep -c . || true)"
   say ""
   say "$_total commit(s) shown, $_with attributed to a session"
 }
@@ -483,6 +487,7 @@ last_deploy() {
 }
 
 cmd_board() {
+  GIT_ROOT="$(toplevel)"
   _offline=0; _all=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -499,12 +504,12 @@ cmd_board() {
   fi
 
   _base="origin/main"
-  git -C "$REPO_ROOT" rev-parse --verify --quiet "$_base" >/dev/null || _base="main"
+  git -C "$GIT_ROOT" rev-parse --verify --quiet "$_base" >/dev/null || _base="main"
 
-  _refs="$(git -C "$REPO_ROOT" for-each-ref --format='%(refname:short)' refs/heads)"
+  _refs="$(git -C "$GIT_ROOT" for-each-ref --format='%(refname:short)' refs/heads)"
   if [ "$_all" -eq 1 ]; then
     _refs="$_refs
-$(git -C "$REPO_ROOT" for-each-ref --format='%(refname:short)' refs/remotes/origin | grep -v '^origin/HEAD$' | sed 's|^origin/||')"
+$(git -C "$GIT_ROOT" for-each-ref --format='%(refname:short)' refs/remotes/origin | grep -v '^origin/HEAD$' | sed 's|^origin/||')"
   fi
   _refs="$(printf '%s\n' "$_refs" | grep -v '^origin$' | sort -u)"
 
@@ -512,18 +517,18 @@ $(git -C "$REPO_ROOT" for-each-ref --format='%(refname:short)' refs/remotes/orig
   printf '%s\n' "$_refs" | while IFS= read -r _b; do
     [ -n "$_b" ] || continue
     _full="refs/heads/$_b"
-    if ! git -C "$REPO_ROOT" rev-parse --verify --quiet "$_full" >/dev/null; then
+    if ! git -C "$GIT_ROOT" rev-parse --verify --quiet "$_full" >/dev/null; then
       _full="refs/remotes/origin/$_b"
-      git -C "$REPO_ROOT" rev-parse --verify --quiet "$_full" >/dev/null || continue
+      git -C "$GIT_ROOT" rev-parse --verify --quiet "$_full" >/dev/null || continue
     fi
-    _counts="$(git -C "$REPO_ROOT" rev-list --left-right --count "$_base...$_full" 2>/dev/null || printf '?\t?')"
+    _counts="$(git -C "$GIT_ROOT" rev-list --left-right --count "$_base...$_full" 2>/dev/null || printf '?\t?')"
     _behind="$(printf '%s' "$_counts" | cut -f1)"
     _ahead="$(printf '%s' "$_counts" | cut -f2)"
-    _last="$(git -C "$REPO_ROOT" log -1 --format='%h %ad' --date=short "$_full")"
+    _last="$(git -C "$GIT_ROOT" log -1 --format='%h %ad' --date=short "$_full")"
 
     _ssn="$(session_for_branch "$_b")"
     if [ -z "$_ssn" ]; then
-      _ssn="$(git -C "$REPO_ROOT" log -1 --format='%(trailers:key=Session,valueonly,separator=+)' "$_full")"
+      _ssn="$(git -C "$GIT_ROOT" log -1 --format='%(trailers:key=Session,valueonly,separator=+)' "$_full")"
       [ -n "$_ssn" ] || _ssn="-"
     fi
     _wt="-"
@@ -549,8 +554,8 @@ $(git -C "$REPO_ROOT" for-each-ref --format='%(refname:short)' refs/remotes/orig
   done
 
   say ""
-  _main="$(git -C "$REPO_ROOT" rev-parse --short main 2>/dev/null || printf '?')"
-  _origin="$(git -C "$REPO_ROOT" rev-parse --short origin/main 2>/dev/null || printf '?')"
+  _main="$(git -C "$GIT_ROOT" rev-parse --short main 2>/dev/null || printf '?')"
+  _origin="$(git -C "$GIT_ROOT" rev-parse --short origin/main 2>/dev/null || printf '?')"
   say "main: local $_main · origin/main $_origin"
   if [ "$_offline" -eq 0 ]; then
     _d="$(last_deploy)"
@@ -562,7 +567,7 @@ $(git -C "$REPO_ROOT" for-each-ref --format='%(refname:short)' refs/remotes/orig
       if [ "${_dsha:0:7}" = "$_origin" ]; then
         say "live: origin/main ($_origin) is the deployed commit"
       else
-        _since="$(git -C "$REPO_ROOT" rev-list --count "${_dsha}..origin/main" 2>/dev/null || printf '?')"
+        _since="$(git -C "$GIT_ROOT" rev-list --count "${_dsha}..origin/main" 2>/dev/null || printf '?')"
         say "live: origin/main has $_since commit(s) after the last deploy-site run"
       fi
     else
@@ -572,6 +577,7 @@ $(git -C "$REPO_ROOT" for-each-ref --format='%(refname:short)' refs/remotes/orig
 }
 
 cmd_blame() {
+  GIT_ROOT="$(toplevel)"
   _path="${1:-}"
   [ -n "$_path" ] || die "blame needs a path: session-provenance.sh blame <path>"
   shift || true
@@ -587,9 +593,9 @@ cmd_blame() {
 
   say "session history for $_path"
   printf '%-9s %-14s %-11s %s\n' "COMMIT" "SESSION" "DATE" "SUBJECT"
-  git -C "$REPO_ROOT" log --follow -n "$_count" \
-    --format='%h%x09%(trailers:key=Session,valueonly,separator=+)%x09%ad%x09%s' --date=short \
-    -- "$_path" | while IFS='	' read -r _sha _ssn _date _subj; do
+  git -C "$GIT_ROOT" log --follow -n "$_count" \
+    --format='%h%x1f%(trailers:key=Session,valueonly,separator=+)%x1f%ad%x1f%s' --date=short \
+    -- "$_path" | while IFS="$US" read -r _sha _ssn _date _subj; do
     [ -n "${_sha:-}" ] || continue
     [ -n "$_ssn" ] || _ssn="-"
     printf '%-9s %-14s %-11s %s\n' "$_sha" "$_ssn" "$_date" "$_subj"
@@ -597,7 +603,7 @@ cmd_blame() {
 
   say ""
   say "commits per session:"
-  git -C "$REPO_ROOT" log --follow -n 200 \
+  git -C "$GIT_ROOT" log --follow -n 200 \
     --format='%(trailers:key=Session,valueonly,separator=+)' -- "$_path" |
     sed 's/^$/unattributed/' | sort | uniq -c | sort -rn | head -12 | sed 's/^/  /'
 }

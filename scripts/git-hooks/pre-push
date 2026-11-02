@@ -63,13 +63,16 @@ if [ "$status" -ne 0 ]; then
     echo "  Every commit authored after $PROVENANCE_SINCE needs Session:, Worktree: and Agent:"
     echo "  trailers (AGENTS.md, \"Commit provenance\")."
     echo ""
-    echo "  Fix the branch (unpushed, so it is safe to rewrite):"
-    echo "    git rebase -i --root   # or: git rebase -i origin/main"
-    echo "  and rewrite each message with:"
-    echo "    scripts/session-provenance.sh commit -m \"<the same message>\"   # after 'git commit --amend -m'"
+    echo "  Fix the branch — it is unpushed, so rewriting it is safe:"
+    echo "    scripts/session-provenance.sh check --range origin/main..HEAD   # what is missing"
+    echo "    git rebase -i origin/main        # mark those commits 'reword'"
+    echo "  and give each message the block:"
+    echo "    Session: <name>"
+    echo "    Worktree: <path relative to the workspace>"
+    echo "    Agent: <label>"
     echo ""
-    echo "  Or check what is missing first:"
-    echo "    scripts/session-provenance.sh check --range origin/main..HEAD"
+    echo "  For a single commit at the tip: git commit --amend  (add the block by hand)"
+    echo "  A new commit here would carry it automatically: scripts/session-provenance.sh commit"
   } >&2
   exit 1
 fi
