@@ -38,9 +38,10 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 
   for c in $recent; do
     checked=$((checked + 1))
-    subject=$(git log -1 --format=%s "$c")
-    case "$subject" in
-      "Merge "*) continue ;;
+    # A merge commit is exempt — but only if it really is one. Two or more parents, not
+    # a subject that happens to start with "Merge ".
+    case "$(git log -1 --format=%P "$c")" in
+      *" "*) continue ;;
     esac
     missing=""
     for key in Session Worktree Agent; do

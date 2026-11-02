@@ -22,8 +22,14 @@ set -eu
 msg_file="$1"
 subject=$(head -n 1 "$msg_file")
 
+# Exempt: a merge, whose message git or GitHub writes. Recognise the canonical forms,
+# and trust MERGE_HEAD when a merge is in progress — a subject that merely begins with
+# "Merge " ("Merge the two resolvers") is an ordinary commit and must carry the block.
+if [ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ]; then
+  exit 0
+fi
 case "$subject" in
-  "Merge "*) exit 0 ;;
+  "Merge branch "*|"Merge remote-tracking branch "*|"Merge tag "*|"Merge commit "*|"Merge pull request #"*) exit 0 ;;
 esac
 
 # ------------------------------------------------------------------ where am I
