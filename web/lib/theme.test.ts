@@ -72,6 +72,9 @@ const TEXT_PAIRS: Array<[fg: string, bg: string, why: string]> = [
   ["warn", "warn-soft", "warning text in a warning notice"],
   ["fg", "warn-soft", "body text in a warning notice"],
   ["danger", "bg", "error text"],
+  // The ledger gate's sentence: red while the portfolio is short or over, green once it
+  // is exactly 100% (operator's instruction, 2026-11-02). Both inks on the page.
+  ["ok", "bg", "the ledger gate once the portfolio is at 100%"],
   ["bg", "accent", "the primary button's label"],
   // A shaded row carries the same text as any other row, so both of its inks are
   // checked against the tint — in both schemes (2026-11-02).

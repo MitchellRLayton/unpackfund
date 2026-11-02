@@ -47,6 +47,7 @@ Defined once in `app/globals.css` as custom properties, light and dark through `
 | `--rule`                                | `#d7dde1`                   | `#232b33`                    | hairlines, table rules                           |
 | `--accent`                              | `#0f6d78`                   | `#5ec8d4`                    | primary action                                   |
 | `--warn` / `--warn-soft`                | `#7a4b00` / `#fdf3e2`       | `#f0b429` / `#2e2413`        | warnings, partial coverage                       |
+| `--ok`                                  | `#17693a`                   | `#6fce8f`                    | the ledger gate once the total is exactly 100%   |
 | `--tint-direct` / `--tint-direct-hover` | `#f2ecff` / `#e9e0fd`       | `#1d1930` / `#262038`        | the ledger row of a stock you hold directly      |
 | `--country-us`                          | `#9dc2ea`                   | `#2b4a6d`                    | the row's left edge for a US-domiciled company   |
 | `--country-intl`                        | `#8d9fe0`                   | `#2f3a6e`                    | the row's left edge for any other domicile       |
@@ -133,6 +134,12 @@ total is, never rebalance the fields relative to each other, and open the ledger
 - **"View the ledger" is inert until the total is exactly 100%**, with the reason beside it in words. It stays a link
   with `aria-disabled="true"` and a prevented click rather than a `disabled` button, because a control that disappears
   takes its explanation with it.
+- **The reason is red until the portfolio is whole and green once it is** (operator's instruction, 2026-11-02). Same
+  sentence in both states — `The ledger opens at exactly 100%.` — so it reads as the rule it is, and only the ink
+  changes: `--danger` (#8c1d18, 9.11:1 on white) while short or over, `--ok` (#17693a, 6.73:1) at exactly 100%, with
+  `#ff9c96` / `#6fce8f` in the dark scheme. Colour is reinforcement here, never the only carrier: the tally already says
+  `5.00% over 100%` or `fully allocated`, and the link itself is inert or live (rule 3). `lib/theme.test.ts` checks both
+  inks against the page in both schemes.
 - **The URL keeps the number.** `fragment.ts` reads an over-100 total instead of refusing it, so a reload restores what
   is on screen. What an over-100 portfolio may not do is _answer for_ the numbers: `isComplete` is exact, so the ledger
   shows "these percentages do not add up to 100%" and computes no table from them.

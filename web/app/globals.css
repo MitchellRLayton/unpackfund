@@ -20,6 +20,12 @@
   --warn: #7a4b00;
   --warn-soft: #fdf3e2;
   --danger: #8c1d18;
+  /* The ledger gate's satisfied state (operator's instruction, 2026-11-02: the sentence
+   * beside "View the ledger" is red until the total is 100%, green once it is). Green is
+   * a state, not a brand colour, so it is one token per scheme and it is checked against
+   * `--bg` like any other text: #17693a is 6.73:1 on white, and the red it pairs with
+   * (--danger) is 9.11:1, so neither state is the one that is hard to read. */
+  --ok: #17693a;
   /* The row of a company the visitor holds directly, as a stock — the operator's
    * instruction, 2026-11-02. Pastel and quiet on purpose: it shades a row that
    * already says so in words (`You · NVDA`, and `direct` in the Funds column when
@@ -69,6 +75,9 @@
     --warn: #f0b429;
     --warn-soft: #2e2413;
     --danger: #ff9c96;
+    /* 9.82:1 on #0d1117 — the red above is already legible in this scheme, so only the
+     * green needed a dark value. */
+    --ok: #6fce8f;
     /* The same two tints, darkened until the row reads as a shade rather than a
      * highlight: a light pastel over #0d1117 would glow, which is the opposite of
      * quiet. Both keep `--fg` and `--muted` above AA (lib/theme.test.ts). */
@@ -481,6 +490,20 @@ button.quiet:hover {
   background: var(--surface);
   color: var(--muted);
   cursor: not-allowed;
+}
+
+/* The sentence beside the link, in two states (operator's instruction, 2026-11-02): red
+ * while the portfolio is not at 100%, green once it is. The words do not change, and the
+ * state is also carried by the tally (`5.00% over 100%` / `fully allocated`) and by
+ * whether the link works — so the colour is reinforcement and never the only carrier
+ * (DESIGN rule 3, §8). Both inks are checked against `--bg` in both schemes by
+ * lib/theme.test.ts. */
+.tally__gate--locked {
+  color: var(--danger);
+}
+
+.tally__gate--open {
+  color: var(--ok);
 }
 
 /* -- ledger -------------------------------------------------------------- */

@@ -230,11 +230,15 @@ describe("PortfolioBuilder — 100% is a statement, not a clamp", () => {
     render(<PortfolioBuilder />);
     fireEvent.click(screen.getByRole("button", { name: "Add QQQ" }));
     fireEvent.click(screen.getByRole("button", { name: "Add VTI" }));
-    // A clean 50/50 split opens the ledger.
+    // The sentence is always on screen in percent mode; its state is a class, so the
+    // ink flips rather than the words appearing and disappearing.
+    const gate = () => screen.getByText("The ledger opens at exactly 100%.");
+    // A clean 50/50 split opens the ledger, and the sentence says so in green.
     expect(
       screen.getByRole("link", { name: "View the ledger" }).getAttribute("aria-disabled"),
     ).toBeNull();
-    expect(screen.queryByText("The ledger opens at exactly 100%.")).toBeNull();
+    expect(gate().className).toContain("tally__gate--open");
+    expect(gate().className).not.toContain("tally__gate--locked");
 
     fireEvent.change(screen.getByLabelText("Amount for QQQ, in percent"), {
       target: { value: "95" },
@@ -242,17 +246,20 @@ describe("PortfolioBuilder — 100% is a statement, not a clamp", () => {
     const gated = screen.getByRole("link", { name: "View the ledger" });
     expect(gated.getAttribute("aria-disabled")).toBe("true");
     expect(gated.getAttribute("aria-describedby")).toBe("ledger-gate");
-    expect(screen.getByText("The ledger opens at exactly 100%.")).toBeTruthy();
+    // Red until the portfolio is whole (operator's instruction, 2026-11-02).
+    expect(gate().className).toContain("tally__gate--locked");
+    expect(gate().className).not.toContain("tally__gate--open");
     // Still a link, still focusable: the explanation has to be reachable.
     expect(gated.getAttribute("href")).toContain("/x#");
 
-    // Back to exactly 100% (VTI is still 50) and it opens again.
+    // Back to exactly 100% (VTI is still 50) and it opens again, in green.
     fireEvent.change(screen.getByLabelText("Amount for QQQ, in percent"), {
       target: { value: "50" },
     });
     expect(
       screen.getByRole("link", { name: "View the ledger" }).getAttribute("aria-disabled"),
     ).toBeNull();
+    expect(gate().className).toContain("tally__gate--open");
   });
 
   it("opens the ledger in dollar mode whatever the amounts are", () => {
@@ -262,10 +269,12 @@ describe("PortfolioBuilder — 100% is a statement, not a clamp", () => {
     fireEvent.change(screen.getByLabelText("Amount for QQQ, in dollars"), {
       target: { value: "1234.56" },
     });
-    // Dollars are their own total, so nothing to be short of.
+    // Dollars are their own total, so nothing to be short of — and no sentence about a
+    // 100% rule the visitor is not being asked to meet.
     expect(
       screen.getByRole("link", { name: "View the ledger" }).getAttribute("aria-disabled"),
     ).toBeNull();
+    expect(screen.queryByText("The ledger opens at exactly 100%.")).toBeNull();
   });
 });
 
