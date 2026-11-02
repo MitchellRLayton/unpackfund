@@ -38,8 +38,10 @@ export interface PortfolioState {
   total: number;
   /** Whether the entries account for the whole portfolio (see `fragment.ts`). */
   complete: boolean;
-  /** Percentage mode only: what is left of 100%, in basis points. */
+  /** Percentage mode only: what is left of 100%, in basis points. Zero when over. */
   unallocatedBp: number;
+  /** Percentage mode only: how far past 100% the entries are, in basis points. */
+  overBp: number;
   add: (kind: EntryKind, key: string) => void;
   remove: (kind: EntryKind, key: string) => void;
   /**
@@ -171,6 +173,10 @@ export function usePortfolio(): PortfolioState {
     total,
     complete: isComplete(mode, entries),
     unallocatedBp: mode === "bp" ? Math.max(0, FULL_ALLOCATION_BP - total) : 0,
+    // Both are zero unless the total is off the whole, and only one of them can be
+    // positive: the pair is how the builder says "short" or "over" without sign maths
+    // in the view.
+    overBp: mode === "bp" ? Math.max(0, total - FULL_ALLOCATION_BP) : 0,
     add,
     remove,
     move,

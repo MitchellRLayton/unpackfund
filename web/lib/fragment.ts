@@ -152,10 +152,14 @@ function parsePortfolioEntries(raw: unknown, mode: EntryMode): PortfolioEntry[] 
     }
     entries.push({ kind, key, amount });
   }
-  // A percentage portfolio above 100% is not a portfolio the ledger can read: the
-  // shares would sum past the whole, and every weight would be a guess about what
-  // the visitor meant.
-  if (mode === "bp" && totalAmount(entries) > FULL_ALLOCATION_BP) return null;
+  // A percentage total above 100% is read, not refused. Ten rows are edited one at a
+  // time, so the visitor is past the whole for as long as it takes to lower the next
+  // row; imposing a split on their behalf is the rebalancing the builder stopped doing
+  // (2026-11-02, operator's instruction), and refusing the *link* would throw away the
+  // numbers on screen at the next reload. What an over-100 portfolio may not do is
+  // answer for the numbers: `isComplete` is exact, so the ledger says the percentages
+  // do not add up and the builder's link to it waits for exactly 100% (`LedgerView`,
+  // `PortfolioBuilder`).
   // Payload order, not sorted: the link is the portfolio's order (see the header).
   return entries;
 }

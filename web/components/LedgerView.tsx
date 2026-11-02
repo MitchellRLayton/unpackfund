@@ -205,8 +205,10 @@ export function LedgerView() {
               ? `${(unallocated / 100).toFixed(2)}% short of the full value of your holdings.`
               : `${(Math.abs(unallocated) / 100).toFixed(2)}% over.`}{" "}
             Look-through weights are a share of the whole portfolio, so they are only
-            meaningful once the total is 100%. An unallocated remainder is shown as
-            unallocated — it is not treated as cash.
+            meaningful once the total is 100%.
+            {unallocated >= 0
+              ? " An unallocated remainder is shown as unallocated — it is not treated as cash."
+              : ""}
           </p>
           <p>
             <button type="button" onClick={() => portfolio.equalise()}>

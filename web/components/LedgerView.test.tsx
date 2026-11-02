@@ -225,6 +225,7 @@ beforeEach(() => {
     total: 10_000,
     complete: true,
     unallocatedBp: 0,
+    overBp: 0,
     add: () => {},
     remove: () => {},
     setAmount: () => {},
@@ -373,5 +374,55 @@ describe("the ledger when the benchmark cannot be read", () => {
     expect(screen.queryByText(/Loading/)).toBeNull();
     expect(screen.getByText(/No benchmark comparison on this page/)).toBeTruthy();
     expect(screen.queryByRole("columnheader", { name: /In VT/ })).toBeNull();
+  });
+});
+
+describe("the ledger when the percentages do not add up", () => {
+  /** The page's own branch: no table, one sentence, and the reason in words. */
+  function incomplete(total: number) {
+    // The hooks above the branch still run, so they need answers even though this
+    // path computes nothing from them.
+    useFunds.mockReturnValue({ funds: [], pending: [], error: null });
+    useRelease.mockReturnValue({ status: "ready", data: release, error: null });
+    useLedger.mockReturnValue({ ledger, error: null, mode: "main", durationMs: 3 });
+    usePortfolio.mockReturnValue({
+      entries: [{ kind: "fund", key: "VOO", amount: total }],
+      mode: "bp",
+      ready: true,
+      problem: null,
+      total,
+      complete: false,
+      unallocatedBp: Math.max(0, 10_000 - total),
+      overBp: Math.max(0, total - 10_000),
+      add: () => {},
+      remove: () => {},
+      setAmount: () => {},
+      equalise: () => {},
+      clear: () => {},
+      setMode: () => {},
+      replace: () => {},
+    });
+    render(<LedgerView />);
+  }
+
+  it("says a portfolio past 100% is over, and computes nothing from it", () => {
+    // Reachable by a hand-typed link: the builder's own link is inert until the
+    // total is exactly 100%, but the ledger still has to answer for what it is given.
+    incomplete(10_500);
+    expect(screen.getByText(/do not add up to 100%/)).toBeTruthy();
+    expect(screen.getByText(/5\.00% over/, { exact: false })).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
+    // "Not treated as cash" is a sentence about a remainder, which an over-100
+    // portfolio does not have.
+    expect(screen.queryByText(/not treated as cash/)).toBeNull();
+  });
+
+  it("calls a short portfolio short, and keeps the unallocated sentence", () => {
+    incomplete(9_700);
+    expect(
+      screen.getByText(/3\.00% short of the full value of your holdings/),
+    ).toBeTruthy();
+    expect(screen.getByText(/not treated as cash/)).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
   });
 });

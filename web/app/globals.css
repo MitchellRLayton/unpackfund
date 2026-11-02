@@ -36,6 +36,11 @@
   /* The same edge for any other domicile. */
   --country-intl: #8d9fe0;
 
+  /* The shadow under the current section's pill. Soft and small: it separates the
+   * pill from the bar, not from the page. A black 8% shadow is invisible on the dark
+   * scheme's #0d1117, so the dark value is deeper rather than the same. */
+  --pill-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+
   --font-sans:
     system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -67,6 +72,7 @@
      * text, and the code beside it uses `--muted`. */
     --country-us: #2b4a6d;
     --country-intl: #2f3a6e;
+    --pill-shadow: 0 1px 2px rgb(0 0 0 / 45%);
   }
 }
 
@@ -118,7 +124,8 @@ a:hover {
   background: var(--accent);
   color: var(--bg);
   padding: 0.5rem 1rem;
-  z-index: 10;
+  /* Above the frozen header (z-index 20): the first Tab must land somewhere visible. */
+  z-index: 30;
 }
 
 .skip-link:focus {
@@ -126,7 +133,14 @@ a:hover {
   top: 0.5rem;
 }
 
+/* Frozen, on every screen: the section you are in is a location, and it stays on
+ * screen while the page scrolls under it (operator's instruction, 2026-11-02). Opaque
+ * `--bg` plus the rule is the seam — no translucency and no blur, because a bar that
+ * tints a dense table as it passes reads as a rendering fault. */
 .site-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   border-bottom: 1px solid var(--rule);
   background: var(--bg);
 }
@@ -150,18 +164,34 @@ a:hover {
 
 .site-nav {
   display: flex;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.2rem;
   font-size: 0.9rem;
 }
 
+/* Every label carries the pill's padding, so the current page does not shift the rest
+ * of the row when it gains one, and the bar does not overflow on a narrow screen. */
 .site-nav a {
   text-decoration: none;
   color: var(--muted);
+  padding: 0.25rem 0.55rem;
+  border-radius: 0.4rem;
 }
 
+.site-nav a:hover {
+  color: var(--fg);
+  background: var(--surface);
+}
+
+/* The section you are on: bold, and a light grey rounded block with a soft shadow, so
+ * it reads as a place rather than as a word someone bolded (operator's instruction,
+ * 2026-11-02). `aria-current` carries the same fact to a screen reader, so the colour
+ * is reinforcement and never the only carrier (§8). */
 .site-nav a[aria-current="page"] {
   color: var(--fg);
   font-weight: 600;
+  background: var(--surface);
+  box-shadow: var(--pill-shadow);
 }
 
 main {
@@ -430,6 +460,14 @@ button.quiet:hover {
   font-weight: 600;
   text-decoration: none;
   margin-left: auto;
+}
+
+/* The ledger link until the portfolio is whole. Inert, not removed: the reason sits
+ * beside it in words, and a control that disappears takes its explanation with it. */
+.tally__go[aria-disabled="true"] {
+  background: var(--surface);
+  color: var(--muted);
+  cursor: not-allowed;
 }
 
 /* -- ledger -------------------------------------------------------------- */
