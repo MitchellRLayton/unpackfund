@@ -125,10 +125,11 @@ def test_only_alpha_2_codes_count_as_votes():
 
 def test_a_fund_contributes_its_country_only_for_country_shaped_codes():
     class Row:
-        def __init__(self, company_id, country, weight_bp):
+        def __init__(self, company_id, country, weight_bp, asset_cat="equity"):
             self.company_id = company_id
             self.country = country
             self.weight_bp = weight_bp
+            self.asset_cat = asset_cat
 
     rows = [
         Row("c_1", "US", 500),
@@ -140,6 +141,33 @@ def test_a_fund_contributes_its_country_only_for_country_shaped_codes():
     votes, invalid = company_countries.fund_votes(rows)
     assert votes == {"c_1": ("US", 500)}
     assert invalid == 1
+
+
+def test_a_fund_position_does_not_vote():
+    """A fund row's `invCountry` is the fund's domicile, and VT is a US fund holding
+    the world — so it may never place a company, and it is never placed itself.
+
+    This is not a nicety: the wide build of 2026-11-02.7 failed the release at the
+    projection gate because three flattened wrappers' sleeve rows had voted, and after
+    flattening those sleeves had no company shard left to agree with the map.
+    """
+
+    class Row:
+        def __init__(self, company_id, country, weight_bp, asset_cat):
+            self.company_id = company_id
+            self.country = country
+            self.weight_bp = weight_bp
+            self.asset_cat = asset_cat
+
+    votes, invalid = company_countries.fund_votes(
+        [
+            Row("c_1", "US", 4_000, "fund"),
+            Row("c_2", "US", 2_500, "equity"),
+            Row("c_3", "usa", 2_500, "fund"),  # a fund row is not even counted as junk
+        ]
+    )
+    assert votes == {"c_2": ("US", 2_500)}
+    assert invalid == 0
 
 
 def test_the_tally_weights_by_dollars_not_by_row_count():

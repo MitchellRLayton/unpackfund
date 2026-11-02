@@ -24,6 +24,14 @@ Four rules, each of which exists because the alternative is a guess:
   occasional junk in that element; only a two-letter alphabetic value counts. The
   number of rows thrown away is published as a build statistic (``invalid_rows``,
   like ``catalogue.etf_classifier``: provenance the validator cannot recompute).
+* **A fund position does not vote, and is never placed.** A row classified ``fund``
+  is another fund's *domicile*, not a company's — VT is a US-domiciled fund that
+  holds the world, so a tag reading "US" beside a global fund would be worse than no
+  tag. Excluding fund rows is also what keeps the map a projection of what the
+  release publishes: a flattened wrapper's sleeve rows leave the published vector, so
+  a sleeve that only ever voted through a wrapper would appear in the map with no
+  company shard behind it — which the validator caught on the first wide build
+  (`2026-11-02.7`: `extra ['c_0001327068', 'c_0001383062', 'c_0001383082']`).
 * **Absence is the answer for the undecided.** A company with no country key in the
   map is not "unknown country" to be defaulted — it is a company we decline to
   place, and the ledger shows no tag.
@@ -38,6 +46,8 @@ from __future__ import annotations
 
 import json
 from typing import Any, Iterable, Mapping
+
+from pipeline import classify
 
 from .artifact import sha256_hex
 
@@ -208,6 +218,12 @@ def fund_votes(holdings: Iterable[Any]) -> tuple[dict[str, tuple[str, int]], int
     second rollup. The second return value counts rows whose ``invCountry`` was
     present but unusable — a blank or an absent element is silence, not an error,
     and is not counted.
+
+    A row whose ``asset_cat`` is ``fund`` is skipped entirely: it is a *fund's*
+    domicile, and after ``fund_lookthrough`` flattens a wrapper its sleeve rows are no
+    longer published, so a sleeve that voted only through a wrapper would land in the
+    map with no company shard behind it. The wide build of 2026-11-02.7 is the evidence
+    — three such sleeves failed the release at the projection gate.
     """
     votes: dict[str, tuple[str, int]] = {}
     invalid = 0
@@ -216,6 +232,8 @@ def fund_votes(holdings: Iterable[Any]) -> tuple[dict[str, tuple[str, int]], int
         country = getattr(row, "country", None)
         weight_bp = getattr(row, "weight_bp", 0) or 0
         if not company_id or not weight_bp:
+            continue
+        if getattr(row, "asset_cat", None) == classify.FUND:
             continue
         if not is_country_code(country):
             if country:
