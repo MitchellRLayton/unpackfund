@@ -29,7 +29,12 @@ scope.addEventListener("message", (event) => {
 
   const started = performance.now();
   try {
-    const ledger = buildLedger({ funds: request.funds, weightsBp: request.weightsBp });
+    const ledger = buildLedger({
+      funds: request.funds,
+      weights: request.weights,
+      direct: request.direct,
+      cash: request.cash,
+    });
     scope.postMessage({
       type: "result",
       requestId: request.requestId,

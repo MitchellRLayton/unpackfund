@@ -22,6 +22,25 @@ const oneDp = new Intl.NumberFormat(LOCALE, {
 
 const integer = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 0 });
 
+const money = new Intl.NumberFormat(LOCALE, {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/**
+ * Integer cents as dollars: `900000` → `$9,000.00`.
+ *
+ * Cents, not dollars, because a dollar entry is stored as an exact integer and a
+ * float would turn `$4,000.50` into something with a `.49999` in it. The currency
+ * is fixed to USD in v1: SEC filings are filed in USD, and picking a display currency
+ * from the visitor's locale would relabel the same number rather than convert it.
+ */
+export function formatCents(cents: number): string {
+  return money.format(cents / 100);
+}
+
 /** `273` → `2.73%`. Integer basis points are exactly representable at 2 dp. */
 export function formatWeightBp(weightBp: number): string {
   return `${twoDp.format(weightBp / 100)}%`;

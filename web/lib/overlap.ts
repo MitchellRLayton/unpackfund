@@ -57,8 +57,10 @@ export interface Overlap {
 }
 
 export function buildOverlap({ a, b }: { a: OverlapSide; b: OverlapSide }): Overlap {
-  const ledgerA = buildLedger({ funds: a.funds, weightsBp: a.weightsBp });
-  const ledgerB = buildLedger({ funds: b.funds, weightsBp: b.weightsBp });
+  // `/compare` is funds-only, so the aggregate gets the same shape as `/x` produces
+  // for a fund-only portfolio: fractions, no direct holdings, no cash.
+  const ledgerA = buildLedger({ funds: a.funds, weights: fractions(a.weightsBp) });
+  const ledgerB = buildLedger({ funds: b.funds, weights: fractions(b.weightsBp) });
 
   const byCompany = new Map<string, OverlapRow>();
   for (const row of ledgerA.rows) {
@@ -126,4 +128,11 @@ export function buildOverlap({ a, b }: { a: OverlapSide; b: OverlapSide }): Over
     ledgerA,
     ledgerB,
   };
+}
+
+/** Basis points per fund → fractions of the portfolio, the aggregate's unit. */
+function fractions(weightsBp: Record<string, number>): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(weightsBp).map(([ticker, bp]) => [ticker, bp / 10_000]),
+  );
 }

@@ -33,6 +33,8 @@ import {
   type FundDocument,
   type FundIndexShard,
   type ReleaseDescriptor,
+  type SecuritiesRow,
+  type SecuritiesShard,
   type TickerList,
 } from "./types";
 
@@ -486,4 +488,79 @@ export function catalogueRow(
   ticker: string,
 ): CatalogueRow | null {
   return catalogue?.funds[ticker] ?? null;
+}
+
+/**
+ * `securities/{L}.json` — one shard of typed stock symbols, hash-verified.
+ *
+ * Failure here is a refusal, never a guess: without the descriptor's object the
+ * release predates ADR-0014 and the builder says "stocks are not in this release";
+ * with it, the bytes must match the hash the descriptor names.
+ */
+export async function loadSecuritiesShard(
+  release: ReleaseDescriptor,
+  letter: string,
+  fetchImpl: FetchImpl = fetch,
+): Promise<SecuritiesShard> {
+  const object = release.objects.securities;
+  if (!object) {
+    throw new DataError(
+      "missing-fund",
+      "This release does not carry stock symbols.",
+      `Release ${release.as_of} has no objects.securities; stocks need a newer release.`,
+    );
+  }
+  const descriptor = object.shards[letter];
+  if (!descriptor) {
+    throw new DataError(
+      "missing-fund",
+      "No stock symbols start with that letter in this release.",
+      `Release ${release.as_of} has shards ${Object.keys(object.shards).join(", ")}.`,
+    );
+  }
+  const document = await loadDescribed<SecuritiesShard>(
+    release,
+    descriptor,
+    `${letter} stock symbols`,
+    fetchImpl,
+  );
+  if (!document || document.as_of !== release.as_of || !document.securities) {
+    throw new DataError(
+      "schema",
+      "The stock symbols do not belong to this release.",
+      `as_of ${document?.as_of ?? "missing"}, release ${release.as_of}.`,
+    );
+  }
+  return document;
+}
+
+/**
+ * Resolve typed symbols to their published rows, fetching only the shards needed.
+ *
+ * A symbol that is absent from its shard comes back missing rather than as an error:
+ * the caller turns that into "not in this release", which is a different sentence
+ * from "that symbol is a fund".
+ */
+export async function loadSecurities(
+  release: ReleaseDescriptor,
+  symbols: string[],
+  fetchImpl: FetchImpl = fetch,
+): Promise<Map<string, SecuritiesRow>> {
+  const letters = new Set(symbols.map((symbol) => shardFor(symbol)));
+  const rows = new Map<string, SecuritiesRow>();
+  await Promise.all(
+    [...letters].map(async (letter) => {
+      try {
+        const shard = await loadSecuritiesShard(release, letter, fetchImpl);
+        for (const [symbol, row] of Object.entries(shard.securities)) {
+          rows.set(symbol, row);
+        }
+      } catch (error) {
+        // One letter's shard failing must not hide the others: the caller decides
+        // whether the symbol it wanted was in it.
+        if (!(error instanceof DataError)) throw error;
+      }
+    }),
+  );
+  return rows;
 }
