@@ -10,12 +10,18 @@
 # infrastructure at 00:15 PT (after the 05:45Z promote and 06:30Z refresh) and again at
 # 05:00 PT, in case the scheduler slipped the way it did on 2026-10-31 (5.5–6.4 h late).
 #
-# The five checks are in `scripts/verify-live.py`, which takes no secrets: the data
+# The five checks are in `scripts/verify-live.py`, which needs no secrets to read: the data
 # origin and the site are public, and the run history is read with the workflow's own
 # GITHUB_TOKEN. A failure fails the run — that is the alarm, since a red scheduled run
 # notifies the repository owner.
 #
-# Not a deploy. Nothing here writes to production.
+# The verdict is also appended to `monitoring/verify-live.jsonl`, so "how have the checks
+# been going?" is a file instead of a scroll through run history (logs and artifacts expire).
+# That write is the only part of this workflow that uses a secret, and it cannot publish
+# anything: one line, outside every release prefix. See
+# `docs/08-operations/2026-11-02-nightly-telemetry.md`.
+#
+# Not a deploy. Nothing here writes to a release prefix or a pointer.
 
 name: verify-live
 
@@ -54,6 +60,38 @@ jobs:
           python3 scripts/verify-live.py | tee verify-live.txt
           # pipefail makes a failing check fail this step, which fails the run; the
           # summary step below still runs (if: always()).
+
+      # `if: always()` on both of these for the same reason: the run that most needs a
+      # ledger line is the one that failed, and a default step would be skipped.
+      # `continue-on-error` keeps a telemetry problem from becoming a false alarm — the
+      # checks above own this run's verdict, nothing here is allowed to change it.
+      - uses: actions/setup-python@v5
+        if: always()
+        with:
+          python-version: "3.13"
+
+      - name: Install the pipeline
+        if: always()
+        continue-on-error: true
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ./pipeline
+
+      - name: Append the verdict to the ledger
+        if: always()
+        continue-on-error: true
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          if [ ! -f verify-live.txt ]; then
+            : > verify-live.txt      # the verifier died before printing; a line still gets written
+          fi
+          python -m pipeline.telemetry append --ledger verify-live \
+            --report verify-live.txt \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
       - name: Write the job summary
         if: always()

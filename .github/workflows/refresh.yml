@@ -115,6 +115,33 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+      # A night with nothing new — or a detector that fell over — is still a night to record,
+      # otherwise the ledger goes quiet exactly when something is wrong. When there is work to
+      # do, the `stage` job records it instead, so every night produces exactly one line.
+      - name: Record the night in the ledger
+        if: always()
+        continue-on-error: true      # telemetry can never be the reason a night is red
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          OUTCOME="${{ steps.detect.outcome }}"
+          NEW="${{ steps.detect.outputs.new_filings }}"
+          FORCE="${{ inputs.force }}"
+          if [ "$OUTCOME" != "success" ]; then
+            KIND=failed; STATUS=failed
+          elif [ "$NEW" = "0" ] && [ "$FORCE" != "true" ]; then
+            KIND=idle; STATUS=ok
+          else
+            echo "the stage job records this night"; exit 0
+          fi
+          python -m pipeline.telemetry append --ledger nightly \
+            --kind "$KIND" --status "$STATUS" --artifacts artifacts \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
   stage:
     name: build, gate, stage, preview
     needs: detect
@@ -378,3 +405,20 @@ jobs:
             artifacts/triage/
           retention-days: 14
           if-no-files-found: ignore
+
+      # One line per built night, whatever happened — this step runs last and under
+      # `if: always()`, so a stage that died at the read-back gate still leaves a record
+      # (`monitoring/nightly.jsonl`, see docs/08-operations/2026-11-02-nightly-telemetry.md).
+      - name: Record the night in the ledger
+        if: always()
+        continue-on-error: true      # telemetry can never be the reason a night is red
+        env:
+          STATUS: ${{ job.status == 'success' && 'ok' || 'failed' }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          python -m pipeline.telemetry append --ledger nightly --kind build \
+            --status "$STATUS" --artifacts artifacts \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
