@@ -15,8 +15,12 @@ provenance of every number visible without a click.
 1. **Provenance is part of the number.** The freshness strip (release, filing period, longest lag, coverage, the share
    of money not traced, company count) sits above the metrics, not in a footnote. A fund's filing period is shown per fund because five funds can span
    three different quarters — the strip says `2026-05-31 – 2026-07-31` rather than picking one.
-2. **Weight is a share of the portfolio, never of a fund.** The H1 subtitle and the table caption both say so in words,
-   because a reader who assumes otherwise misreads every row.
+2. **Weight is a share of the portfolio, never of a fund** — with one deliberate exception, which is why the rule is
+   written down. The H1 subtitle and the table caption both say so in words, because a reader who assumes otherwise
+   misreads every row. The exception is the benchmark column: a company's weight _inside VT_ is a share of VT's own NAV,
+   so it is a separate column, immediately right of the portfolio weight, with its own caption sentence and its own
+   provenance beside the table. The two are never added, subtracted, or put in one cell — the page shows the comparison
+   and does not score it ([ADR-0015](../../docs/04-decisions/ADR-0015-vt-benchmark.md)).
 3. **No colour-only meaning.** Coverage bands are text (`93.3% of weight covered`) with a chip as reinforcement; the
    sorted column is marked with `aria-sort` and a drawn arrow.
 4. **Quiet chrome.** One accent colour, used for the primary action and the current nav item only. Rules are 1 px,
