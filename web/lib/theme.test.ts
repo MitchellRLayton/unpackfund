@@ -177,17 +177,24 @@ const UI_PAIRS: Array<[fg: string, bg: string, why: string]> = [
     "tint-direct-hover",
     "the US geography edge on a direct-position row under the pointer",
   ],
-  ["country-intl", "bg", "the international geography edge on a plain row"],
-  ["country-intl", "surface", "the international geography edge on a hovered row"],
+  // Split into two international inks on 2026-11-02 (developed ex-US against emerging), so
+  // both are now held to the floor on every row background rather than one standing for
+  // "everywhere else".
+  ["country-dm", "bg", "the developed geography edge on a plain row"],
+  ["country-dm", "surface", "the developed geography edge on a hovered row"],
+  ["country-dm", "tint-direct", "the developed geography edge on a direct-position row"],
   [
-    "country-intl",
-    "tint-direct",
-    "the international geography edge on a direct-position row",
-  ],
-  [
-    "country-intl",
+    "country-dm",
     "tint-direct-hover",
-    "the international geography edge on a direct-position row under the pointer",
+    "the developed geography edge on a direct-position row under the pointer",
+  ],
+  ["country-em", "bg", "the emerging geography edge on a plain row"],
+  ["country-em", "surface", "the emerging geography edge on a hovered row"],
+  ["country-em", "tint-direct", "the emerging geography edge on a direct-position row"],
+  [
+    "country-em",
+    "tint-direct-hover",
+    "the emerging geography edge on a direct-position row under the pointer",
   ],
 ];
 
@@ -238,39 +245,61 @@ describe("automatic light/dark", () => {
       expect(failures).toEqual([]);
     });
 
-    it(`keeps the two geography inks apart for colour-blind readers in ${name}`, () => {
-      const us = theme["country-us"];
-      const intl = theme["country-intl"];
+    it(`keeps every pair of geography inks apart for colour-blind readers in ${name}`, () => {
+      // Each entry: the two tokens, the separation uncorrected vision must show, and why.
+      // The simulated floor is the same for all three pairs — 25 is the point below which
+      // two inks read as one colour — and the uncorrected floors differ by what the pair
+      // is. Blue against either ochre clears 40 with room (81.7 and 64.4 in the light
+      // scheme). The two ochres cannot: both must clear the 3:1 non-text floor on every
+      // row background, which confines them to roughly L* 18-54 and caps their separation
+      // at about dE 37. Their floor is 30 — still two clearly different tones, measured at
+      // 34.2 and 33.2 — because 40 is unreachable by construction, not because it was
+      // lowered for convenience. Loosening any of these numbers is an escalation, not an
+      // edit.
+      const INK_PAIRS: Array<[string, string, number, string]> = [
+        ["country-us", "country-dm", 40, "blue against the developed ochre"],
+        ["country-us", "country-em", 40, "blue against the emerging ochre"],
+        ["country-dm", "country-em", 30, "the two ochres against each other"],
+      ];
+      const MIN_SIMULATED_SEPARATION = 25;
       const background = theme["bg"];
-      if (!us || !intl || !background) throw new Error("missing geography tokens");
+      if (!background) throw new Error("missing --bg");
 
-      // Below this the two domiciles read as one colour rather than two.
-      const MIN_SEPARATION = 25;
       const failures: string[] = [];
-      const normal = deltaE(us, intl);
-      if (normal < 40) {
-        failures.push(`uncorrected vision: dE ${normal.toFixed(1)} (want >= 40)`);
-      }
-      for (const [kind, matrix] of Object.entries(CVD_MATRICES)) {
-        const simulatedUs = simulate(us, matrix);
-        const simulatedIntl = simulate(intl, matrix);
-        const separation = deltaE(simulatedUs, simulatedIntl);
-        if (separation < MIN_SEPARATION) {
+      for (const [leftName, rightName, normalFloor, why] of INK_PAIRS) {
+        const left = theme[leftName];
+        const right = theme[rightName];
+        if (!left || !right) throw new Error(`missing ${leftName} or ${rightName}`);
+
+        const normal = deltaE(left, right);
+        if (normal < normalFloor) {
           failures.push(
-            `${kind}: dE ${separation.toFixed(1)} (want >= ${MIN_SEPARATION}) — ` +
-              `${us} -> ${simulatedUs} and ${intl} -> ${simulatedIntl}`,
+            `${why}: uncorrected dE ${normal.toFixed(1)} (want >= ${normalFloor})`,
           );
         }
-        for (const [ink, simulated] of [
-          [us, simulatedUs],
-          [intl, simulatedIntl],
-        ] as const) {
-          const simulatedBackground = simulate(background, matrix);
-          const ratio = contrast(simulated, simulatedBackground);
-          if (ratio < 3) {
+        for (const [kind, matrix] of Object.entries(CVD_MATRICES)) {
+          const simulatedLeft = simulate(left, matrix);
+          const simulatedRight = simulate(right, matrix);
+          const separation = deltaE(simulatedLeft, simulatedRight);
+          if (separation < MIN_SIMULATED_SEPARATION) {
             failures.push(
-              `${kind}: ${ink} -> ${simulated} is ${ratio.toFixed(2)}:1 on ${simulatedBackground}`,
+              `${why}: ${kind} dE ${separation.toFixed(1)} (want >= ${MIN_SIMULATED_SEPARATION}) — ` +
+                `${left} -> ${simulatedLeft} and ${right} -> ${simulatedRight}`,
             );
+          }
+          // An ink that reaches the floor only because the simulated background moved
+          // would still be a stripe a reader cannot find.
+          const simulatedBackground = simulate(background, matrix);
+          for (const [ink, simulated] of [
+            [left, simulatedLeft],
+            [right, simulatedRight],
+          ] as const) {
+            const ratio = contrast(simulated, simulatedBackground);
+            if (ratio < 3) {
+              failures.push(
+                `${why}: ${kind} turns ${ink} into ${simulated}, ${ratio.toFixed(2)}:1 on ${simulatedBackground}`,
+              );
+            }
           }
         }
       }

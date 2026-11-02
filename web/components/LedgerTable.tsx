@@ -15,6 +15,7 @@
 import { useMemo, useState } from "react";
 
 import { benchmarkDelta } from "@/lib/benchmark";
+import { TIER_AS_OF, tierOf } from "@/lib/country-tier";
 import { formatCount, formatShare, formatSignedShare } from "@/lib/format";
 import type { BenchmarkFacts, LedgerRow } from "@/lib/types";
 
@@ -138,9 +139,13 @@ export function LedgerTable({
             : ""}
           {anyCountry
             ? " The country beside a company is the domicile its holders' filings" +
-              " agree on by value; the row's left edge repeats it in colour — blue for" +
-              " the United States, ochre elsewhere — and a company whose filings" +
-              " do not agree carries no country."
+              " agree on by value. The row's left edge repeats it in colour — blue for" +
+              " the United States, ochre for developed markets elsewhere, a deeper" +
+              " ochre for emerging ones — and stays blank where the filings do not" +
+              " agree, or where the country is neither developed nor emerging." +
+              " Developed and emerging follow the FTSE country classification, as of " +
+              TIER_AS_OF +
+              "."
             : ""}
         </caption>
         <thead>
@@ -190,14 +195,18 @@ export function LedgerTable({
             const benchmarkWeight = row.benchmark_weight;
             const delta = benchmarkDelta(row.weight, benchmarkWeight);
             // The two axes, side by side and independent: `data-direct` makes the row's
-            // background mean position kind, and `data-country` makes a 3px edge on the
-            // first cell mean geography. A row can carry both; neither borrows the
-            // other's encoding.
+            // background mean position kind, and `data-tier` makes a 6px edge on the
+            // first cell mean geography — American, developed ex-US, or emerging, under
+            // the convention `lib/country-tier.ts` records. A row can carry both; neither
+            // borrows the other's encoding. `data-country` keeps the raw code in the DOM
+            // so the edge can be traced back to the domicile that produced it, and a row
+            // with no country carries neither attribute rather than a default.
             return (
               <tr
                 key={row.company_id}
                 data-direct={row.held_directly ? "true" : undefined}
                 data-country={row.country ?? undefined}
+                data-tier={row.country ? tierOf(row.country) : undefined}
               >
                 <th scope="row">
                   {onSelect ? (

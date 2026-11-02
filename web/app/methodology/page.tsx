@@ -66,6 +66,37 @@ export default function MethodologyPage() {
         weight, never a count of rows.
       </p>
 
+      <h2>Developed and emerging markets</h2>
+      <p>
+        A row&rsquo;s left edge is coloured by the market its country belongs to: blue for
+        the United States, one shade of ochre for the developed markets outside it, and a
+        deeper ochre for the emerging ones. The country comes from the filings; the market
+        does not. It is a <strong>classification</strong>, and classifications are
+        conventions that publishers genuinely disagree about.
+      </p>
+
+      <p>
+        This site follows the <strong>FTSE Russell equity country classification</strong>,
+        as of 2 November 2026, because the funds it looks through are FTSE-indexed: the
+        labels here mean what they mean on those funds&rsquo; own index. Where this
+        differs from another publisher the difference is real, not an error — South Korea
+        and Poland are developed here and emerging to MSCI, Taiwan is emerging here and
+        advanced to the IMF, Greece is developed here and will not be for MSCI until its
+        May 2027 review, and Peru is frontier here and emerging to MSCI.
+      </p>
+
+      <p>
+        The table behind the colours is written for this site from FTSE&rsquo;s published
+        criteria and cross-checked against the IMF&rsquo;s advanced-economy list and
+        MSCI&rsquo;s classification. No FTSE document, table or data file is reproduced
+        here, and FTSE Russell has not reviewed or endorsed this site. A country that
+        neither publisher calls developed or emerging — Cayman, Bermuda, Argentina, Russia
+        and the frontier markets among them — keeps its country code and gets no colour,
+        because calling it emerging would be an invention. The country is a domicile and
+        not a measure of where a company earns its money: a company domiciled in the
+        Cayman Islands can earn almost everything it makes in China.
+      </p>
+
       <h2>Coverage, and why some pages withhold numbers</h2>
       <p>
         Coverage is the share of a fund&rsquo;s assets, by weight, that could be matched

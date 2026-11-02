@@ -50,7 +50,8 @@ Defined once in `app/globals.css` as custom properties, light and dark through `
 | `--ok`                                  | `#17693a`                   | `#6fce8f`                    | the ledger gate once the total is exactly 100%   |
 | `--tint-direct` / `--tint-direct-hover` | `#f2ecff` / `#e9e0fd`       | `#1d1930` / `#262038`        | the ledger row of a stock you hold directly      |
 | `--country-us`                          | `#3b6ea5`                   | `#6c9bd2`                    | the row's left edge for a US-domiciled company   |
-| `--country-intl`                        | `#9c7025`                   | `#d9a54a`                    | the row's left edge for any other domicile       |
+| `--country-dm`                          | `#9c7025`                   | `#d9a54a`                    | the edge for a developed market outside the US   |
+| `--country-em`                          | `#4a3410`                   | `#8b6d40`                    | the edge for an emerging market                  |
 | `--pill-bg`                             | `#c5c6c7`                   | `#192028`                    | the current section's pill (20% off `--surface`) |
 | `--pill-shadow`                         | `0 1px 2px rgb(0 0 0 / 8%)` | `0 1px 2px rgb(0 0 0 / 45%)` | the current section's pill, under the bar        |
 
@@ -81,9 +82,10 @@ the row's second line. The rules:
 - **Text carries the meaning; colour reinforces it.** The code is real text in the row (`US`, `TW`), so a screen
   reader reads it and a printed page keeps it, and the table's caption gains one sentence saying what the tag and the
   edge mean. The edge repeats the code in colour so a reader scanning rows can find a domicile at a glance (rule 3).
-  Blue is the United States, ochre everywhere else; that mapping is stated in the caption, never implied by hue.
+  Blue is the United States, ochre for the developed markets elsewhere, and a deeper ochre for emerging
+  markets; that mapping is stated in the caption, never implied by hue.
 - **A row can be both.** A stock held directly that also has a decided domicile keeps its purple background and gains
-  the edge: `data-direct` and `data-country` sit side by side on the same `<tr>`, and neither channel borrows the
+  the edge: `data-direct` and `data-tier` sit side by side on the same `<tr>`, and neither channel borrows the
   other's encoding. The stripe is an inset `box-shadow` on the first cell rather than a `tr` border, which is
   unreliable under `border-collapse: separate`, and inset shadow costs no layout.
 - **Wide and strong enough to be found (operator's instruction, 2026-11-02, "slightly wider … more prominent").** The
@@ -106,15 +108,35 @@ the row's second line. The rules:
   saturation one step darker, 4.41:1 on the page and 3.48:1 at worst, and at L\* 50.4 it sits closer to the blue's
   45.4 than the recommendation's ochre did (61.3, visibly paler than the blue it was paired with). Dark-scheme values
   are the recommendation's, unchanged: both pass with room to spare.
-- **A further split uses two ochre shades, never a third hue** (operator, 2026-11-02: developed against emerging
-  markets is the next step). A third hue makes the reader compare three colours instead of two and loses the
-  US-versus-international read at a glance. The constraint: the second recommended ochre `#8c6420` is 4.14:1 at worst and
-  would clear the floor, but a split needs _both_ shades above 3:1 on every row background, so the lighter one cannot be
-  the recommended `#c08a2e`. Until that split ships, the channel stays one colour per side of the axis.
+- **The developed/emerging split is two shades of the ochre, never a third hue** (shipped 2026-11-02 on the
+  operator's instruction). A third hue would make the reader compare three colours instead of two and lose the
+  US-versus-international read at a glance. The binding constraint is the 3:1 floor: two ochres that each clear it on
+  every row background are confined to roughly L\* 18–54 in the light scheme, which caps their separation near dE 37.
+  The shipped pair sits at the ends of that band — `#4a3410` at L\* 23.5 against `#9c7025` at 50.4 — measuring
+  **dE 34.2 normally and 30.0 at worst in simulation** (deuteranopia 34.2, protanopia 33.6, tritanopia 30.0), at
+  9.24:1 on the darkest row background. Dark: `#8b6d40` against `#d9a54a`, **33.2 / 26.4**, 3.24:1 at worst. Emerging
+  is the deeper shade in both schemes, so the meaning does not flip at night. `lib/theme.test.ts` holds all three inks
+  and all three pairs: 40 uncorrected between blue and either ochre, 30 between the two ochres (40 is unreachable at
+  this contrast budget, not waived), and 25 after simulation for every pair.
 - **Absence means no answer.** A company the filings disagree about — or one held only by funds that file no country —
   is absent from the map, and its row carries no edge and no tag. A default would be a guess. The caption sentence
   appears only when a row actually carries a code, and a release that publishes no country object renders exactly as
   it did before the channel existed: no tag, no edge, no sentence, no extra fetch.
+- **`OTHER` keeps the code and loses the edge.** A domicile neither provider calls developed or emerging — Cayman,
+  Bermuda, the British Virgin Islands, Argentina, Russia, frontier Europe — is 4.2% of the release's classified
+  companies. Colouring those as emerging would be an invention; leaving them indistinguishable from an undecided
+  company would hide a decision that was made. So the row keeps its two-letter code (text), gets
+  `data-tier="OTHER"` (no colour), and the caption says the edge stays blank where the country is neither.
+- **The classification is a convention, and the convention is named** (`web/lib/country-tier.ts`). The edge answers
+  "developed or emerging?", which is a publisher's judgement rather than a fact: FTSE, MSCI, S&P DJI and the IMF
+  disagree about nine countries. This site follows the **FTSE Russell equity country classification as of 2026-11-02**,
+  because VTI, VT and VXUS are FTSE-indexed, so the label means what it means on the fund's own page — Korea and Poland
+  developed, Taiwan emerging, Greece developed since 21 September 2026, Peru frontier. The table is written for this
+  site to FTSE's published criteria and cross-checked against the IMF's October 2026 advanced list and MSCI's
+  classification; no FTSE document, table or data file is reproduced, nothing is fetched at build or run time, and the
+  divergences are recorded in the module rather than resolved silently. `lib/country-tier.test.ts` pins the published
+  counts (26 developed, 23 emerging), the disjointness, the nine disputed countries, and the offshore domiciles that
+  must stay `OTHER`.
 - **Where the codes come from.** The pipeline's `companies/countries.json`: each code is the `invCountry` of the
   company's holders' N-PORT filings decided by **value-weighted majority**, published only at ≥ 80% agreement. The
   browser does not aggregate, vote, or infer one — it looks the code up (`web/lib/aggregate.ts`), because the rule that

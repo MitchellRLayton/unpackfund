@@ -51,8 +51,9 @@
    * over (the direct-position hover), clearing the 3:1 non-text floor everywhere
    * `lib/theme.test.ts` checks. */
   --country-us: #3b6ea5;
-  /* The same edge for any other domicile: muted ochre, saturation deliberately unchanged
-   * from the recommendation so it reads as a colour and not as a warning.
+  /* The same edge for a developed market outside the United States: muted ochre,
+   * saturation deliberately unchanged from the recommendation so it reads as a colour and
+   * not as a warning.
    *
    * **Darkened from the recommended #c08a2e, and only in this one value.** At that
    * lightness the ochre measures 3.04:1 on white but **2.85:1** on `--surface` and
@@ -61,7 +62,21 @@
    * same hue and saturation one step darker: 4.41:1 on the page, 3.48:1 at worst. It is
    * also *closer* in visual weight to the blue (L* 50.4 against 45.4; the recommendation's
    * ochre sat at 61.3 and read noticeably paler than the blue it was meant to match). */
-  --country-intl: #9c7025;
+  --country-dm: #9c7025;
+  /* Emerging markets: the *deeper* of the two ochres, and the one token this change adds
+   * (operator's instruction, 2026-11-02: "don't forget the colour differentiation between
+   * DM and EM"). Not a third hue — the rule the previous edge was written under is
+   * "two shades of the ochre, never a third hue", because a third hue makes a reader
+   * compare three things instead of two, and because the blue–yellow axis is the only one
+   * that survives every common colour-vision deficiency.
+   *
+   * The shade is a measurement, not a taste. Two ochres that both clear the 3:1 non-text
+   * floor on every row background are confined to L* 18–54 in this scheme, which caps
+   * their separation at about dE 37; #4a3410 sits at L* 23.5 against the developed ochre's
+   * 50.4, giving **dE 34.2 normally and 30.0 at worst in simulation** (deuteranopia 34.2,
+   * protanopia 33.6, tritanopia 30.0) while measuring **9.24:1** on the darkest row
+   * background — a stripe that is darker and quieter, never a second hue. */
+  --country-em: #4a3410;
 
   /* The current section's pill: `--surface` mixed 20% darker, per the operator's
    * instruction of 2026-11-02 ("20% darker pill"). It is a token rather than a
@@ -104,15 +119,23 @@
      * quiet. Both keep `--fg` and `--muted` above AA (lib/theme.test.ts). */
     --tint-direct: #1d1930;
     --tint-direct-hover: #262038;
-    /* The two geography edges in the dark scheme: the same slate blue and ochre, lifted
-     * until they read as a stripe on #0d1117 instead of disappearing into it. Both are the
-     * values from the operator's recommended palette unchanged — the dark pair passes the
-     * 3:1 floor with room to spare, so nothing needed adjusting here:
+    /* The geography edges in the dark scheme: the same slate blue and two ochres, lifted
+     * until they read as a stripe on #0d1117 instead of disappearing into it. The blue and
+     * the developed ochre are the values from the operator's recommended palette unchanged
+     * — that pair passes the 3:1 floor with room to spare:
      * #6c9bd2 is 6.54:1 on the page and 5.39:1 on the direct-position hover,
      * #d9a54a is 8.50:1 and 7.01:1. Simulation again: pair separation 87.3 normally,
-     * 89.6 for deuteranopia, 84.9 for protanopia. */
+     * 89.6 for deuteranopia, 84.9 for protanopia.
+     *
+     * The emerging ochre is new here and is the *darker* of the two, as in the light
+     * scheme. On a dark page that means it sits closest to the 3:1 floor — 3.24:1 on the
+     * direct-position hover — which is the price of keeping "emerging is the deeper tone"
+     * true in both schemes rather than flipping the meaning at night. Separation from the
+     * developed ochre: **33.2 normally, 26.4 at worst in simulation** (deuteranopia 33.2,
+     * protanopia 32.5, tritanopia 26.4), and from the blue 64.6. */
     --country-us: #6c9bd2;
-    --country-intl: #d9a54a;
+    --country-dm: #d9a54a;
+    --country-em: #8b6d40;
     /* 20% in the opposite direction, and deliberately: on a #0d1117 page a darker pill
      * moves *toward* the page and erases the block the light scheme just gained, so the
      * dark scheme gets the same 20% step away from `--surface` instead. #151b22 at 120%
@@ -698,22 +721,31 @@ table.ledger tbody tr[data-direct="true"]:hover {
  * live in the two `--country-*` tokens with the measurements and the one deliberate
  * deviation from the recommendation.
  *
- * **If geography ever splits further** — developed against emerging markets, which the
- * operator has flagged as the next step — use **two shades of the ochre, never a third
- * hue**: the US-versus-international distinction has to stay readable at a glance, and a
- * third hue makes the reader compare three things instead of two. The constraint that
- * will bite is this same 3:1 floor: the recommendation's second ochre (#8c6420) is 4.14:1
- * at worst and would work, but the pair it was meant to sit beside (#c08a2e, 2.39:1) does
- * not, so the split needs both shades dark enough to clear the floor on every row
- * background — or a non-colour tiebreak (the country code is already there) instead of
- * leaning on the shade difference alone. `lib/theme.test.ts` is the gate for whatever
- * lands. */
-table.ledger tbody tr[data-country="US"] > :first-child {
+ * **Geography then split into three** (operator's instruction, 2026-11-02: ship the
+ * developed/emerging classification "and don't forget the colour differentiation between
+ * DM and EM"). It is **two shades of the ochre, never a third hue**, because a third hue
+ * makes the reader compare three things instead of two. The constraint that bites is
+ * this same 3:1 floor: two ochres that both clear it on every row background are confined
+ * to a narrow lightness band, which caps their separation at about dE 37. The values in
+ * the tokens above are the measured best of that band — 34.2 apart in the light scheme and
+ * 33.2 in the dark, and 30.0 / 26.4 at worst under simulated colour-vision deficiency,
+ * against a floor of 25. `lib/theme.test.ts` holds all three inks and all three pairs.
+ *
+ * A fourth bucket exists and gets no edge on purpose: `OTHER` is a domicile neither
+ * provider calls developed or emerging (Cayman, Bermuda, Argentina, Russia, frontier
+ * Europe), which is 4.2% of the release's classified companies. It keeps its country code
+ * and loses the colour, and the caption says so, so a blank edge reads as "not classified"
+ * rather than as a missing value. */
+table.ledger tbody tr[data-tier="US"] > :first-child {
   box-shadow: inset 6px 0 0 var(--country-us);
 }
 
-table.ledger tbody tr[data-country]:not([data-country="US"]) > :first-child {
-  box-shadow: inset 6px 0 0 var(--country-intl);
+table.ledger tbody tr[data-tier="DM"] > :first-child {
+  box-shadow: inset 6px 0 0 var(--country-dm);
+}
+
+table.ledger tbody tr[data-tier="EM"] > :first-child {
+  box-shadow: inset 6px 0 0 var(--country-em);
 }
 
 table.ledger tbody th {
