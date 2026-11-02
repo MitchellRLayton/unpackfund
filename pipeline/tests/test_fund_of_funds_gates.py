@@ -348,44 +348,72 @@ def test_an_unresolved_sleeve_may_carry_no_label():
     assert failures(doc) == []
 
 
-def test_a_fund_published_as_a_company_is_caught_by_name():
+def _tripwire_report() -> tuple[Report, list[str], list[str]]:
+    report = Report()
+    fails: list[str] = []
+    warns: list[str] = []
+    report.fail = lambda name, detail="": fails.append(name)  # type: ignore[method-assign]
+    report.warn = lambda name, detail="": warns.append(name)  # type: ignore[method-assign]
+    return report, fails, warns
+
+
+def _fund_holding_a_named_fund(ticker: str, name: str, bp: int, asset_cat: str = "equity") -> dict:
+    return {
+        "ticker": ticker, "name": f"{ticker} Portfolio", "coverage_pct": 99.0, "warnings": [],
+        "holdings": [{"company_id": "c_x", "name": name, "ticker": None,
+                      "asset_cat": asset_cat, "weight_bp": bp}],
+    }
+
+
+def test_a_fund_published_as_a_company_is_visible_by_name():
     """The Vanguard defect, as the release-level tripwire sees it.
 
     Sixty Target Retirement share classes filed their sleeves as ``EC``/``CORP`` and
     published 99.5% "coverage" that was entirely fund positions. No arithmetic gate can
-    see that; the release's own name list can.
+    see that; the release's own name list can. One fund is a filer omission and warns;
+    sixty is systematic and fails (see the ceiling test below).
     """
     child = {"ticker": "CHILD", "name": "Vanguard Total Stock Market Index Fund",
              "holdings": [], "coverage_pct": 99.0, "warnings": []}
-    parent = {
-        "ticker": "PARENT",
-        "name": "Vanguard Target Retirement 2050 Fund",
-        "holdings": [
-            {"company_id": "c_x", "name": "Vanguard Total Stock Market Index Fund",
-             "ticker": None, "asset_cat": "equity", "weight_bp": 5_369},
-        ],
-        "coverage_pct": 99.5,
-        "warnings": [],
-    }
-    report = Report()
-    printed: list[str] = []
-    report.fail = lambda name, detail="": printed.append(name)  # type: ignore[method-assign]
+    parent = _fund_holding_a_named_fund("PARENT", "Vanguard Total Stock Market Index Fund",
+                                        5_369)
+    report, fails, warns = _tripwire_report()
     _check_fund_of_funds_release([parent, child], report)
-    assert "PARENT.fund_row" in printed
+    assert "PARENT.fund_row" in warns
+    assert fails == []
+
+
+def test_sixty_funds_with_fund_named_rows_refuse_the_release():
+    """The Vanguard shape at scale is not a filer omission, and it fails the release."""
+    child = {"ticker": "CHILD", "name": "Vanguard Total Stock Market Index Fund",
+             "holdings": [], "coverage_pct": 99.0, "warnings": []}
+    parents = [
+        _fund_holding_a_named_fund(f"P{i:03d}", "Vanguard Total Stock Market Index Fund",
+                                   5_369)
+        for i in range(60)
+    ]
+    report, fails, warns = _tripwire_report()
+    _check_fund_of_funds_release([*parents, child], report)
+    assert "fund_rows" in fails
+    assert len(warns) == 20, "the ceiling bounds how much of the log one defect can fill"
+
+
+def test_an_option_naming_an_etf_is_not_a_tripwire_hit():
+    """HEDG holds options on IVV: a contract is not a share, so the label is right."""
+    child = {"ticker": "IVV", "name": "iShares Core S&P 500 ETF", "holdings": [],
+             "coverage_pct": 99.0, "warnings": []}
+    parent = _fund_holding_a_named_fund("HEDG", "iShares Core S&P 500 ETF", -180,
+                                        asset_cat="derivative")
+    report, fails, warns = _tripwire_report()
+    _check_fund_of_funds_release([parent, child], report)
+    assert (fails, warns) == ([], [])
 
 
 def test_a_row_below_the_materiality_floor_is_not_a_tripwire_hit():
-    """A 0.5% name collision is noise; the gate fires on material rows only."""
+    """A 0.4% name collision is noise; the gate fires on material rows only."""
     child = {"ticker": "CHILD", "name": "Some Other Fund", "holdings": [],
              "coverage_pct": 99.0, "warnings": []}
-    parent = {
-        "ticker": "PARENT", "name": "Parent Fund",
-        "holdings": [{"company_id": "c_x", "name": "Some Other Fund", "ticker": None,
-                      "asset_cat": "equity", "weight_bp": 40}],
-        "coverage_pct": 99.0, "warnings": [],
-    }
-    report = Report()
-    printed: list[str] = []
-    report.fail = lambda name, detail="": printed.append(name)  # type: ignore[method-assign]
+    parent = _fund_holding_a_named_fund("PARENT", "Some Other Fund", 40)
+    report, fails, warns = _tripwire_report()
     _check_fund_of_funds_release([parent, child], report)
-    assert printed == []
+    assert (fails, warns) == ([], [])

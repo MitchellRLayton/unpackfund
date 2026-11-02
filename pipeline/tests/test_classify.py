@@ -72,3 +72,23 @@ def test_a_promoted_row_is_a_company_exposure_and_a_fund_position():
     assert promoted.is_fund_position is True
     assert promoted.is_company_exposure is True
     assert promoted.is_cash_or_derivative is False
+
+
+@pytest.mark.parametrize(
+    ("asset_cat", "issuer_cat", "expected"),
+    [
+        # TIPS filed as SN: VTIP published `other: 9900` before this mapping existed.
+        ("SN", "UST", "debt"),
+        ("LON", "CORP", "debt"),
+        ("ABS-O", "CORP", "debt"),
+        ("ABS-CBDO", "CORP", "debt"),
+        ("ABS-APCP", "CORP", "debt"),
+        # Repo is collateralised short-term lending, not a company exposure.
+        ("RA", "CORP", "cash"),
+        # The filing does not say what these are, so the mapper does not guess.
+        (None, "CORP", "other"),
+        ("RE", "CORP", "other"),
+    ],
+)
+def test_the_rest_of_the_schema_is_mapped(asset_cat, issuer_cat, expected):
+    assert classify(asset_cat, issuer_cat, False).category == expected

@@ -1,15 +1,30 @@
-"""Turn N-PORT's raw codes into the four categories the artifact needs.
+"""Turn N-PORT's raw codes into the six categories the artifact needs.
 
-Every code here was observed in real filings on 2026-10-28 (VOO, AVUV, QQQ, ARKK):
+Every code here was observed in real filings. The first pass (2026-10-28, VOO, AVUV, QQQ,
+ARKK) saw only ``EC``/``EP``/``DE``/``STIV``; the full-universe pass (2026-11-02, a 400-fund
+sample of 12,274 series) saw the rest of the schema:
 
-* ``assetCat``: ``EC`` 653, ``EP`` 1, ``DE`` 15, ``STIV`` 7 — no other values.
-* ``issuerCat``: ``CORP`` 947, ``RF`` 5, ``PF`` 2, absent on 15 derivative rows.
+* ``assetCat``: ``EC`` 59,237 · ``DBT`` 28,306 · ``DFE`` 6,309 · ``ABS-MBS`` 6,222 · ``DE``
+  4,439 · ``ABS-CBDO`` 2,593 · ``ABS-O`` 1,534 · ``DIR`` 1,234 · ``LON`` 1,126 · ``STIV`` 548
+  · ``DCO`` 537 · ``EP`` 328 · blank 267 · ``RA`` 139 · ``DCR`` 132 · ``RE`` 63 · ``DO`` 32 ·
+  ``SN`` 23 · ``ABS-APCP`` 1.
+* ``issuerCat``: ``CORP``, ``MUN``, ``USGSE``, ``USGA``, ``UST``, ``NUSS``, ``RF``, ``PF``,
+  absent on derivative rows.
 
-An unobserved code is **not** guessed into a category: it lands in ``other`` and
-the release manifest records the full observed distribution, so a new filer
-convention shows up as a number that changed rather than as a silent
-misclassification. That is the difference between a mapper with a policy and a
-mapper with a pile of if-statements.
+An unobserved code is **not** guessed into a category: it lands in ``other`` and the release
+manifest records the full observed distribution, so a new filer convention shows up as a
+number that changed rather than as a silent misclassification. That is the difference
+between a mapper with a policy and a mapper with a pile of if-statements.
+
+The table was completed on 2026-11-02 for exactly that reason. Publishing ``categories``
+(ADR-0016) made the ``other`` bucket visible for the first time, and 1.5% of the release sat
+in it: ``SN`` (23 rows, 3,399 bp in the sample) is how Vanguard files **Treasury
+Inflation-Indexed Bonds**, so VTIP published ``other: 9900`` — a TIPS fund whose entire
+portfolio was "other" — and ``RA`` (repo, the largest by weight) read as unclassified cash.
+Every code added below names an instrument whose category is not a judgement call: a
+structured note, a loan, a securitisation tranche and commercial paper are debt; a
+repurchase agreement is cash. ``blank`` and ``RE`` stay ``other``, because those are the
+cases where the filing does not say what the row is.
 """
 
 from __future__ import annotations
@@ -29,6 +44,16 @@ _ASSET_CAT = {
     "EP": EQUITY,
     "DBT": DEBT,
     "ABS-MBS": DEBT,
+    # Asset-backed tranches and commercial paper: debt instruments by construction.
+    "ABS-O": DEBT,
+    "ABS-CBDO": DEBT,
+    "ABS-APCP": DEBT,
+    # A loan is a debt exposure, and one that can resolve to its issuer.
+    "LON": DEBT,
+    # A structured note is a debt security — and ``SN`` is also how Vanguard files TIPS.
+    "SN": DEBT,
+    # A repurchase agreement is collateralised short-term lending, i.e. cash.
+    "RA": CASH,
     "STIV": CASH,
     "DE": DERIVATIVE,
     "CASH": CASH,

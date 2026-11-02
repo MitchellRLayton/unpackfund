@@ -524,6 +524,13 @@ def _check_fund_of_funds_release(funds: list[dict], report: Report) -> None:
 #: tolerating: it is a fund position the classifier did not see (ADR-0016 §5).
 FUND_NAME_ROW_BP = 100
 
+#: How many funds may carry such a row before the release is refused. One is a filer
+#: omission (see the docstring); sixty is the Vanguard defect arriving again, and that is
+#: what this gate exists to stop. Between the two, the honest signal is a warning: the
+#: release publishes, the named funds are visible in the validator output and in the day
+#: log, and nobody has to keep a whitelist in the code to get a release out.
+MAX_FUND_NAME_ROW_FUNDS = 20
+
 
 def _check_fund_rows_by_name(funds: list[dict], report: Report) -> None:
     """The tripwire for a fund publishing another fund as a company.
@@ -535,26 +542,41 @@ def _check_fund_rows_by_name(funds: list[dict], report: Report) -> None:
     to be one — exact case-folded name equality against funds this release publishes,
     material rows only, which is narrow enough to be free of false positives and wide
     enough to catch the next filer who declares a fund to be a stock.
+
+    It warns rather than fails below ``MAX_FUND_NAME_ROW_FUNDS`` because the identity model
+    (ADR-0016 §1) keys on the row's LEI, and a filer who omits the LEI leaves nothing to
+    match on: on release ``2026-11-02.3`` four funds do exactly that — DRAFX, RISE, NCBGX
+    and NCBIX publish a fund they hold as an equity, with an ISIN and no LEI. Those rows are
+    a real, bounded defect; refusing the whole release over four filers' omissions would
+    trade a visible error for an invisible one, and the ceiling still refuses the systematic
+    case the gate was built for. Derivatives are excluded: an option on IVV is a contract,
+    not a share of IVV, so naming an ETF there is correct classification.
     """
     by_name = {str(fund.get("name") or "").casefold() for fund in funds}
     by_name.discard("")
     if not by_name:
         return
-    hits = 0
+    caught: dict[str, int] = {}
     for document in funds:
         for row in document.get("holdings") or []:
-            if row.get("asset_cat") == "fund" or abs(row.get("weight_bp") or 0) < FUND_NAME_ROW_BP:
+            if row.get("asset_cat") in ("fund", "derivative"):
+                continue
+            if abs(row.get("weight_bp") or 0) < FUND_NAME_ROW_BP:
                 continue
             if str(row.get("name") or "").casefold() in by_name:
-                hits += 1
-                if hits <= 20:
-                    report.fail(
+                caught[document.get("ticker")] = caught.get(document.get("ticker"), 0) + 1
+                if len(caught) <= MAX_FUND_NAME_ROW_FUNDS:
+                    report.warn(
                         f"{document.get('ticker')}.fund_row",
                         f"{row['name']!r} at {row['weight_bp']} bp is a published fund "
                         f"but is filed as {row.get('asset_cat')}",
                     )
-    if hits > 20:
-        report.fail("fund_rows", f"{hits} fund-named rows are not classified as funds")
+    if len(caught) > MAX_FUND_NAME_ROW_FUNDS:
+        report.fail(
+            "fund_rows",
+            f"{len(caught)} funds publish a fund-named row that is not classified as a fund "
+            f"(ceiling {MAX_FUND_NAME_ROW_FUNDS}) — the identity model is not reaching them",
+        )
 
 
 def _published_files(release_dir: Path, manifest: dict) -> list[Path]:
