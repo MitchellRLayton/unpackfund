@@ -279,6 +279,37 @@ describe("the benchmark column", () => {
     expect(cells[2]).toBe("direct");
   });
 
+  it("marks a directly held company's row, and says in words what the shading means", () => {
+    // The operator's instruction (2026-11-02): a single-stock position should be
+    // visible at a glance. `data-direct` is what the stylesheet shades, and the
+    // caption carries the meaning as text, so colour is reinforcement and never the
+    // message (static-xray-frontend §8) — a reader in forced-colours mode, on a
+    // monochrome e-ink screen, or with a screen reader loses nothing.
+    const direct: LedgerRow = {
+      ...row("c_3", "Bridgeway Omni Small-Cap Value", 0.003, 0, 0),
+      held_directly: true,
+      sources: [{ kind: "security" as const, ref: "BSVO", weight: 0.003 }],
+    };
+    const viaFund = row("c_4", "Fund Only Co", 0.05, 2, 0.01);
+    const { container } = render(<LedgerTable rows={[direct, viaFund]} benchmark={vt} />);
+    const shaded = [
+      ...container.querySelectorAll("tbody tr[data-direct='true']"),
+    ] as HTMLTableRowElement[];
+    expect(shaded).toHaveLength(1);
+    expect(shaded[0]?.textContent).toContain("Bridgeway Omni Small-Cap Value");
+    expect(container.querySelector("caption")?.textContent).toContain(
+      "hold directly, as a stock",
+    );
+  });
+
+  it("neither shades a row nor explains shading when nothing is held directly", () => {
+    // A fund-only portfolio is the common case, and a sentence about shading with
+    // no shaded row on screen is noise in the caption.
+    const { container } = render(<LedgerTable rows={ledger.rows} />);
+    expect(container.querySelectorAll("tbody tr[data-direct='true']")).toHaveLength(0);
+    expect(container.querySelector("caption")?.textContent).not.toContain("shaded");
+  });
+
   it("sorts by the benchmark weight like every other numeric column", () => {
     const rows = [
       row("c_1", "Portfolio Heavy", 0.5, 1, 0),

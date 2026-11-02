@@ -20,6 +20,14 @@
   --warn: #7a4b00;
   --warn-soft: #fdf3e2;
   --danger: #8c1d18;
+  /* The row of a company the visitor holds directly, as a stock — the operator's
+   * instruction, 2026-11-02. Pastel and quiet on purpose: it shades a row that
+   * already says so in words (`You · NVDA`, and `direct` in the Funds column when
+   * no fund holds it), so colour is reinforcement and never the meaning. A solid
+   * tint rather than a low-alpha layer, so it composites the same over the page,
+   * over a hover, and on a phone at 12% brightness. */
+  --tint-direct: #f2ecff;
+  --tint-direct-hover: #e9e0fd;
 
   --font-sans:
     system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -42,6 +50,11 @@
     --warn: #f0b429;
     --warn-soft: #2e2413;
     --danger: #ff9c96;
+    /* The same two tints, darkened until the row reads as a shade rather than a
+     * highlight: a light pastel over #0d1117 would glow, which is the opposite of
+     * quiet. Both keep `--fg` and `--muted` above AA (lib/theme.test.ts). */
+    --tint-direct: #1d1930;
+    --tint-direct-hover: #262038;
   }
 }
 
@@ -534,6 +547,20 @@ table.ledger td.numeric {
 
 table.ledger tbody tr:hover {
   background: var(--surface);
+}
+
+/* A company the visitor holds directly, as a stock. The shading is reinforcement:
+ * the row already names the direct position in words (`You · NVDA` in the
+ * attribution, and `direct` in the Funds column when no fund holds it), and the
+ * table caption says what the shading means — so a reader who cannot see colour
+ * loses nothing (static-xray-frontend §8, "no colour-only meaning"). Declared in
+ * web/DESIGN.md. */
+table.ledger tbody tr[data-direct="true"] {
+  background: var(--tint-direct);
+}
+
+table.ledger tbody tr[data-direct="true"]:hover {
+  background: var(--tint-direct-hover);
 }
 
 table.ledger tbody th {
