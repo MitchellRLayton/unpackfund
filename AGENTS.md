@@ -25,8 +25,9 @@ copy; the older prohibition was written when one session owned the tree.)
 - **Never `git push --force` or `--force-with-lease` to `main`.** History on
   `main` is public and Workers Builds deploys from it.
 - **Never delete or rename `main`.**
-- To undo something already pushed, **add a new commit** (`git revert`). Do not
-  rewrite history.
+- To undo something already pushed, **add a new commit**. Do not rewrite history.
+  `git revert` writes its commit without the trailers, so `pre-push` will refuse it:
+  use `git revert -n <sha>` and then `scripts/session-provenance.sh commit -m "Revert …"`.
 - Never `git reset --hard` a branch that has unpushed work from someone else, and
   never `git clean -xdf` without checking `git status` first.
 
@@ -78,8 +79,9 @@ scripts/session-provenance.sh commit -m "fix(web): one-line summary" -m "<why>"
 ```
 
 The hooks enforce the block. `commit-msg` refuses a commit without it, and
-`pre-push` refuses to publish one (commits authored before 2026-11-02T00:00:00Z are
-exempt, so work already in flight is not retroactively blocked). `--no-verify` is
+`pre-push` refuses to publish one. Commits **committed** before 2026-11-02T00:00:00Z are
+exempt so work already in flight is not retroactively blocked — the committer date, which
+means a rebase refreshes it and a rebased old commit is enforced. `--no-verify` is
 not an escape hatch. The `.work/sessions/<name>.conf` registry holds what git
 cannot — the agent label, the task, the start time — and `session-worktree.sh create`
 writes it for you.
@@ -190,7 +192,7 @@ not optional extras:
 |---|---|
 | `pre-commit` | staged `.env` files, credential-shaped strings, files over 5 MiB |
 | `commit-msg` | a commit without the `Session`/`Worktree`/`Agent` trailers, or one that names another worktree's session |
-| `pre-push` | publishing a commit authored after 2026-11-02T00:00:00Z that has no trailers — the second lock, for commits made with `--no-verify` |
+| `pre-push` | publishing a commit *committed* after 2026-11-02T00:00:00Z that has no trailers, or one whose `Session` and `Worktree` disagree — the second lock, for commits made with `--no-verify` |
 
 They are a safety net for the rules above, and `--no-verify` is never the way past
 them: fix the commit, not the hook.
