@@ -61,9 +61,11 @@ function row(
  * reinforcement and a screen reader or a monochrome print loses nothing.
  */
 const COUNTRY_SENTENCE =
-  " The country beside a company is the domicile its holders' filings agree on by value;" +
-  " the row's left edge repeats it in colour — blue for the United States, ochre" +
-  " elsewhere; a company whose filings do not agree carries no country.";
+  " The country beside a company is the domicile its holders' filings agree on by value." +
+  " The row's left edge repeats it in colour — blue for the United States, ochre for" +
+  " developed markets elsewhere, a deeper ochre for emerging ones — and stays blank" +
+  " where the filings do not agree, or where the country is neither developed nor" +
+  " emerging.";
 
 const vt: BenchmarkFacts = {
   ticker: "VT",
@@ -378,9 +380,39 @@ describe("the country channel", () => {
     expect(container.querySelectorAll(".country-tag")).toHaveLength(2);
   });
 
+  it("turns each domicile into its market tier, and leaves an unclassified one blank", () => {
+    // The third axis: the same country code the row tags becomes the edge's tier. Taiwan
+    // is emerging under FTSE (the IMF calls it advanced), the United States is its own
+    // tier, and a domicile with no market classification keeps the code but no edge —
+    // "not classified" and "not decided" stay distinguishable because only the undecided
+    // row loses the code as well.
+    const tiers = [
+      row("c_5", "Cayman Holdco", 0.02, 0, null, "KY"),
+      row("c_6", "Samsung Electronics", 0.03, 0, null, "KR"),
+      row("c_7", "Nestle", 0.03, 0, null, "CH"),
+    ];
+    const { container } = render(<LedgerTable rows={tiers} />);
+    const byName = (name: string) =>
+      [...container.querySelectorAll<HTMLTableRowElement>("tbody tr")].find((tr) =>
+        tr.textContent?.includes(name),
+      );
+    expect(byName("Cayman Holdco")?.dataset.tier).toBe("OTHER");
+    expect(byName("Samsung Electronics")?.dataset.tier).toBe("DM");
+    expect(byName("Nestle")?.dataset.tier).toBe("DM");
+    // Every classified row still carries its code as text, whatever its tier.
+    expect(screen.getByText("KY")).toBeTruthy();
+    expect(screen.getByText("KR")).toBeTruthy();
+  });
+
   it("explains the tag and the edge in the caption, word for word", () => {
     const { container } = render(<LedgerTable rows={rows} />);
-    expect(container.querySelector("caption")?.textContent).toContain(COUNTRY_SENTENCE);
+    const caption = container.querySelector("caption")?.textContent ?? "";
+    expect(caption).toContain(COUNTRY_SENTENCE);
+    // Named, not implied: a colour that encodes a publisher's judgement has to say whose
+    // judgement and which vintage, or the reader cannot check it against the fund page.
+    expect(caption).toContain(
+      "Developed and emerging follow the FTSE country classification, as of 2026-11-02",
+    );
   });
 
   it("colours the bracket with the row's domicile, and says so in the caption", () => {
@@ -409,7 +441,8 @@ describe("the country channel", () => {
       "(+2.00%)",
     ]);
     expect(container.querySelector("caption")?.textContent).toContain(
-      "the bracketed difference in the In VT column wears the same ink",
+      "The bracketed difference in the In VT column is coloured the same way for an" +
+        " American row against any other",
     );
   });
 
@@ -426,6 +459,7 @@ describe("the country channel", () => {
     const tr = container.querySelector<HTMLTableRowElement>("tbody tr");
     expect(tr?.dataset.direct).toBe("true");
     expect(tr?.dataset.country).toBe("TW");
+    expect(tr?.dataset.tier).toBe("EM");
     expect(tr?.querySelector(".country-tag")?.textContent).toBe("TW");
     expect(container.querySelector("caption")?.textContent).toContain(COUNTRY_SENTENCE);
   });

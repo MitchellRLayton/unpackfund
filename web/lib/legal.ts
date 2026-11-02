@@ -46,8 +46,15 @@ export const CONTACT_EMAIL = "unfetteredaccess@duck.com";
  */
 export const EFFECTIVE_DATE = "October 30, 2026";
 
-/** Bumped by hand when the method changes; the page and the copy must move together. */
-export const METHODOLOGY_VERSION = "1.0.0";
+/**
+ * Bumped by hand when the method changes; the page and the copy must move together.
+ *
+ * 1.1.0 (2026-11-02): the ledger's left edge now carries a market classification —
+ * developed ex-US against emerging — as well as the domicile it always carried, and the
+ * page gained the section that says which convention is being followed and where other
+ * publishers disagree with it.
+ */
+export const METHODOLOGY_VERSION = "1.1.0";
 
 /**
  * Version of the copy above, for the change history in the footer of each page.
@@ -56,5 +63,9 @@ export const METHODOLOGY_VERSION = "1.0.0";
  * and the methodology gained its paragraph on positions that have no company
  * (cash, derivatives, and unresolved non-US issuers). The method itself did not
  * change, so `METHODOLOGY_VERSION` stays at 1.0.0.
+ *
+ * 1.2.0 (2026-11-02): the methodology explains the developed/emerging split, the
+ * convention behind it, and the licence position — the table is ours, no FTSE
+ * document is reproduced, and none of the three publishers has endorsed the site.
  */
-export const LEGAL_COPY_VERSION = "1.1.0";
+export const LEGAL_COPY_VERSION = "1.2.0";

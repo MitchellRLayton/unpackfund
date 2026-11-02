@@ -157,8 +157,9 @@ function deltaE(a: string, b: string): number {
   // (operator's instruction, 2026-11-02). It is text, so it answers to 4.5:1 on every
   // background a ledger row can have — the same four the edges are held to at 3:1. This
   // is why the text inks are a step darker than the stripes; the stripe tokens
-  // (`country-us`, `country-intl`) would fail here on the tinted rows and are
-  // deliberately not listed.
+  // (`country-us`, `country-dm`, `country-em`) would fail here on the tinted rows and are
+  // deliberately not listed. The ink stays a two-group channel — American or not — even
+  // though the edge now has three tiers: the comment at the token says why.
   ["country-us-ink", "bg", "the bracket on a US company's row"],
   ["country-us-ink", "surface", "the bracket on a US company's row, hovered"],
   ["country-us-ink", "tint-direct", "the bracket on a US company held directly"],
@@ -203,17 +204,24 @@ const UI_PAIRS: Array<[fg: string, bg: string, why: string]> = [
     "tint-direct-hover",
     "the US geography edge on a direct-position row under the pointer",
   ],
-  ["country-intl", "bg", "the international geography edge on a plain row"],
-  ["country-intl", "surface", "the international geography edge on a hovered row"],
+  // Split into two international inks on 2026-11-02 (developed ex-US against emerging), so
+  // both are now held to the floor on every row background rather than one standing for
+  // "everywhere else".
+  ["country-dm", "bg", "the developed geography edge on a plain row"],
+  ["country-dm", "surface", "the developed geography edge on a hovered row"],
+  ["country-dm", "tint-direct", "the developed geography edge on a direct-position row"],
   [
-    "country-intl",
-    "tint-direct",
-    "the international geography edge on a direct-position row",
-  ],
-  [
-    "country-intl",
+    "country-dm",
     "tint-direct-hover",
-    "the international geography edge on a direct-position row under the pointer",
+    "the developed geography edge on a direct-position row under the pointer",
+  ],
+  ["country-em", "bg", "the emerging geography edge on a plain row"],
+  ["country-em", "surface", "the emerging geography edge on a hovered row"],
+  ["country-em", "tint-direct", "the emerging geography edge on a direct-position row"],
+  [
+    "country-em",
+    "tint-direct-hover",
+    "the emerging geography edge on a direct-position row under the pointer",
   ],
 ];
 
@@ -264,46 +272,61 @@ describe("automatic light/dark", () => {
       expect(failures).toEqual([]);
     });
 
-    it(`keeps the two geography inks apart for colour-blind readers in ${name}`, () => {
+    it(`keeps every pair of geography inks apart for colour-blind readers in ${name}`, () => {
+      // Each entry: the two tokens, the separation uncorrected vision must show, and why.
+      // The simulated floor is the same for every pair — 25 is where two inks read as one
+      // colour — and the uncorrected floor differs by what the pair is. Blue against
+      // either ochre clears 40 with room (81.7 and 64.4 in the light scheme). The two
+      // ochres cannot: both must clear the 3:1 non-text floor on every row background,
+      // which confines them to roughly L* 18-54 and caps their separation at about dE 37.
+      // Their floor is 30 — still two clearly different tones, measured at 34.2 and 33.2 —
+      // because 40 is unreachable by construction, not because it was lowered for
+      // convenience. The bracket's text ink is a two-group channel (American or not; see
+      // the token comment for why it did not gain a third ink), so it contributes one pair
+      // at the same 40 as the blue-versus-ochre edges.
+      const INK_PAIRS: Array<[string, string, number, string]> = [
+        ["country-us", "country-dm", 40, "blue against the developed ochre"],
+        ["country-us", "country-em", 40, "blue against the emerging ochre"],
+        ["country-dm", "country-em", 30, "the two ochres against each other"],
+        ["country-us-ink", "country-intl-ink", 40, "the two bracket inks"],
+      ];
+      const MIN_SIMULATED_SEPARATION = 25;
       const background = theme["bg"];
-      if (!background) throw new Error("missing geography tokens");
+      if (!background) throw new Error("missing --bg");
 
-      // Below this the two domiciles read as one colour rather than two.
-      const MIN_SEPARATION = 25;
       const failures: string[] = [];
-      // Both uses of the pair answer to the same question, so both are checked: the 6 px
-      // edge on the first cell, and the darker text ink the bracket wears.
-      const uses = [
-        ["edge", theme["country-us"], theme["country-intl"]],
-        ["bracket", theme["country-us-ink"], theme["country-intl-ink"]],
-      ] as const;
-      for (const [use, us, intl] of uses) {
-        if (!us || !intl) throw new Error(`missing geography ${use} tokens`);
-        const normal = deltaE(us, intl);
-        if (normal < 40) {
+      for (const [leftName, rightName, normalFloor, why] of INK_PAIRS) {
+        const left = theme[leftName];
+        const right = theme[rightName];
+        if (!left || !right) throw new Error(`missing ${leftName} or ${rightName}`);
+
+        const normal = deltaE(left, right);
+        if (normal < normalFloor) {
           failures.push(
-            `${use}, uncorrected vision: dE ${normal.toFixed(1)} (want >= 40)`,
+            `${why}: uncorrected dE ${normal.toFixed(1)} (want >= ${normalFloor})`,
           );
         }
         for (const [kind, matrix] of Object.entries(CVD_MATRICES)) {
-          const simulatedUs = simulate(us, matrix);
-          const simulatedIntl = simulate(intl, matrix);
-          const separation = deltaE(simulatedUs, simulatedIntl);
-          if (separation < MIN_SEPARATION) {
+          const simulatedLeft = simulate(left, matrix);
+          const simulatedRight = simulate(right, matrix);
+          const separation = deltaE(simulatedLeft, simulatedRight);
+          if (separation < MIN_SIMULATED_SEPARATION) {
             failures.push(
-              `${use}, ${kind}: dE ${separation.toFixed(1)} (want >= ${MIN_SEPARATION}) — ` +
-                `${us} -> ${simulatedUs} and ${intl} -> ${simulatedIntl}`,
+              `${why}: ${kind} dE ${separation.toFixed(1)} (want >= ${MIN_SIMULATED_SEPARATION}) — ` +
+                `${left} -> ${simulatedLeft} and ${right} -> ${simulatedRight}`,
             );
           }
+          // A pair that reached the floor only because the simulated background moved
+          // would still be a stripe a reader cannot find.
+          const simulatedBackground = simulate(background, matrix);
           for (const [ink, simulated] of [
-            [us, simulatedUs],
-            [intl, simulatedIntl],
+            [left, simulatedLeft],
+            [right, simulatedRight],
           ] as const) {
-            const simulatedBackground = simulate(background, matrix);
             const ratio = contrast(simulated, simulatedBackground);
             if (ratio < 3) {
               failures.push(
-                `${use}, ${kind}: ${ink} -> ${simulated} is ${ratio.toFixed(2)}:1 on ${simulatedBackground}`,
+                `${why}: ${kind} turns ${ink} into ${simulated}, ${ratio.toFixed(2)}:1 on ${simulatedBackground}`,
               );
             }
           }
