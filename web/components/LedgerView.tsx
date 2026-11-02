@@ -38,7 +38,7 @@ import { refusal } from "@/lib/securities";
 import { FULL_ALLOCATION_BP } from "@/lib/types";
 import { useLedger } from "@/lib/use-ledger";
 import { usePortfolio } from "@/lib/use-portfolio";
-import { useBenchmark, useFunds, useRelease } from "@/lib/use-release";
+import { useBenchmark, useCountries, useFunds, useRelease } from "@/lib/use-release";
 import { useSecurities } from "@/lib/use-securities";
 import type { DirectHolding, LedgerRow } from "@/lib/types";
 /**
@@ -130,12 +130,25 @@ export function LedgerView() {
     const document = benchmarkLoad.funds[0];
     return document ? benchmarkFor(document) : null;
   }, [funds, compactLoad.data, benchmarkLoad.funds]);
+  // Geography is a second, independent channel (`web/DESIGN.md`): a release may publish
+  // a country map, a benchmark, both, or neither, and neither waits on the other. The map
+  // is a lookup for the rows, never a computation, and it deliberately does not gate the
+  // table — an additive tag that arrives late must not leave a visitor on "Loading" the
+  // way a permanently-pending ticker once did.
+  const countriesLoad = useCountries(releaseData);
   const {
     ledger,
     error: aggregateError,
     mode,
     durationMs,
-  } = useLedger(funds, split.fundWeights, direct, split.cash, benchmark);
+  } = useLedger(
+    funds,
+    split.fundWeights,
+    direct,
+    split.cash,
+    benchmark,
+    countriesLoad.data,
+  );
   // Named, so the loading state is a statement about which filings are still
   // arriving rather than a spinner. The comparison column is part of the table's
   // shape, so the table waits for it rather than reflowing under a reader.

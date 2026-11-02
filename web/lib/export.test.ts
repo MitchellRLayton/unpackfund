@@ -20,6 +20,9 @@ function row(over: Partial<LedgerRow> & Pick<LedgerRow, "name" | "weight">): Led
     // The benchmark comparison is required on a row: `null` is "no benchmark in this
     // release", which is a different statement from a zero (ADR-0015).
     benchmark_weight: null,
+    // Geography is its own channel and it is not a CSV column: the export's shape is
+    // unchanged by it, so a row here says "no answer" and the file says nothing.
+    country: null,
     holder_count: 1,
     held_directly: false,
     sources: [],

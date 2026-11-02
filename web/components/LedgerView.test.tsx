@@ -29,6 +29,9 @@ vi.mock("@/lib/use-release", () => ({
   useRelease: () => useRelease(),
   useFunds: (...args: unknown[]) => useFunds(...args),
   useBenchmark: (...args: unknown[]) => useBenchmark(...args),
+  // No country object in these fixtures: the release answers no domicile, which is a
+  // valid release and leaves the ledger's shape untouched.
+  useCountries: () => ({ status: "ready", data: {}, error: null }),
   // The drawer is closed in these tests; it still calls its hook.
   useCompany: () => ({ status: "loading", data: null, error: null }),
 }));
@@ -161,6 +164,7 @@ function ledgerRow(company_id: string, name: string, weight: number): LedgerRow 
     ticker: name.slice(0, 4).toUpperCase(),
     weight,
     benchmark_weight: null,
+    country: null,
     holder_count: 1,
     held_directly: false,
     sources: [{ kind: "fund", ref: "VOO", weight }],

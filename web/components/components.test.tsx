@@ -40,6 +40,7 @@ function row(
   weight: number,
   holder_count = 1,
   benchmark_weight: number | null = null,
+  country: string | null = null,
 ): LedgerRow {
   return {
     company_id,
@@ -47,11 +48,22 @@ function row(
     ticker: name.slice(0, 4).toUpperCase(),
     weight,
     benchmark_weight,
+    country,
     holder_count,
     held_directly: false,
     sources: [{ kind: "fund", ref: "VOO", weight }],
   };
 }
+
+/**
+ * The caption sentence for the geography channel, word for word as the operator's
+ * instruction gives it: the tag and the edge are explained in text, so the colour is
+ * reinforcement and a screen reader or a monochrome print loses nothing.
+ */
+const COUNTRY_SENTENCE =
+  " The country beside a company is the domicile its holders' filings agree on by value;" +
+  " the row's left edge repeats it in colour — blue for the United States, periwinkle" +
+  " elsewhere — and a company whose filings do not agree carries no country.";
 
 const vt: BenchmarkFacts = {
   ticker: "VT",
@@ -333,6 +345,70 @@ describe("the benchmark column", () => {
     const { container } = render(<LedgerTable rows={ledger.rows} />);
     expect(container.querySelectorAll('thead th[scope="col"]')).toHaveLength(3);
     expect(container.querySelector("caption")?.textContent).not.toContain("In VT");
+  });
+});
+
+describe("the country channel", () => {
+  // Two companies the release answers for (US and Taiwan) and one it does not: the
+  // filings disagree about it, so it is absent from the map. Absence is a no-answer,
+  // not a default, and the row must show nothing rather than guess a domicile.
+  const rows = [
+    row("c_1", "NVIDIA Corp", 0.075, 1, null, "US"),
+    row("c_2", "Taiwan Semiconductor", 0.05, 1, null, "TW"),
+    row("c_3", "Undecided Co", 0.02, 1),
+  ];
+
+  it("tags exactly the rows the release answers for, and reads the code as text", () => {
+    const { container } = render(<LedgerTable rows={rows} />);
+    const tagged = [
+      ...container.querySelectorAll<HTMLTableRowElement>("tbody tr[data-country]"),
+    ];
+    expect(tagged.map((tr) => tr.dataset.country)).toEqual(["US", "TW"]);
+    // The code is text in the row's second line, so it is read aloud and survives a
+    // monochrome print; the edge only repeats it (static-xray-frontend §8).
+    expect(screen.getByText("US")).toBeTruthy();
+    expect(screen.getByText("TW")).toBeTruthy();
+    // The undecided company carries neither the attribute nor a tag.
+    const untagged = [
+      ...container.querySelectorAll<HTMLTableRowElement>("tbody tr"),
+    ].filter((tr) => !tr.hasAttribute("data-country"));
+    expect(untagged).toHaveLength(1);
+    expect(untagged[0]?.textContent).toContain("Undecided Co");
+    expect(untagged[0]?.querySelector(".country-tag")).toBeNull();
+    expect(container.querySelectorAll(".country-tag")).toHaveLength(2);
+  });
+
+  it("explains the tag and the edge in the caption, word for word", () => {
+    const { container } = render(<LedgerTable rows={rows} />);
+    expect(container.querySelector("caption")?.textContent).toContain(COUNTRY_SENTENCE);
+  });
+
+  it("carries a direct position and a country on the same row, one channel each", () => {
+    // The combination the two axes exist for: a stock you hold directly that also has
+    // a decided domicile. The background keeps meaning position kind and the edge
+    // means geography, so neither meaning is asked to share an encoding.
+    const both: LedgerRow = {
+      ...row("c_4", "Taiwan Semiconductor", 0.04, 0, null, "TW"),
+      held_directly: true,
+      sources: [{ kind: "security" as const, ref: "TSM", weight: 0.04 }],
+    };
+    const { container } = render(<LedgerTable rows={[both]} />);
+    const tr = container.querySelector<HTMLTableRowElement>("tbody tr");
+    expect(tr?.dataset.direct).toBe("true");
+    expect(tr?.dataset.country).toBe("TW");
+    expect(tr?.querySelector(".country-tag")?.textContent).toBe("TW");
+    expect(container.querySelector("caption")?.textContent).toContain(COUNTRY_SENTENCE);
+  });
+
+  it("adds no tag and no sentence when the release publishes no countries", () => {
+    // Every release before this one, and the common case today: the table renders as
+    // it did before the channel existed — no attribute, no tag, no sentence.
+    const { container } = render(<LedgerTable rows={ledger.rows} />);
+    expect(container.querySelectorAll("tbody tr[data-country]")).toHaveLength(0);
+    expect(container.querySelector(".country-tag")).toBeNull();
+    const caption = container.querySelector("caption")?.textContent ?? "";
+    expect(caption).not.toContain("country");
+    expect(caption).not.toContain("shaded");
   });
 });
 

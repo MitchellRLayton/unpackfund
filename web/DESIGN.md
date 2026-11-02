@@ -35,16 +35,18 @@ provenance of every number visible without a click.
 
 Defined once in `app/globals.css` as custom properties, light and dark through `prefers-color-scheme`.
 
-| Token                                   | Light                 | Dark                  | Use                                         |
-| --------------------------------------- | --------------------- | --------------------- | ------------------------------------------- |
-| `--bg`                                  | `#ffffff`             | `#0d1117`             | page                                        |
-| `--surface`                             | `#f6f8f9`             | `#151b22`             | table header, notices                       |
-| `--fg`                                  | `#11181c`             | `#e8edf0`             | body text                                   |
-| `--muted`                               | `#55636b`             | `#9aa7b0`             | labels, notes, secondary values             |
-| `--rule`                                | `#d7dde1`             | `#232b33`             | hairlines, table rules                      |
-| `--accent`                              | `#0f6d78`             | `#5ec8d4`             | primary action, current nav item            |
-| `--warn` / `--warn-soft`                | `#7a4b00` / `#fdf3e2` | `#f0b429` / `#2e2413` | warnings, partial coverage                  |
-| `--tint-direct` / `--tint-direct-hover` | `#f2ecff` / `#e9e0fd` | `#1d1930` / `#262038` | the ledger row of a stock you hold directly |
+| Token                                   | Light                 | Dark                  | Use                                            |
+| --------------------------------------- | --------------------- | --------------------- | ---------------------------------------------- |
+| `--bg`                                  | `#ffffff`             | `#0d1117`             | page                                           |
+| `--surface`                             | `#f6f8f9`             | `#151b22`             | table header, notices                          |
+| `--fg`                                  | `#11181c`             | `#e8edf0`             | body text                                      |
+| `--muted`                               | `#55636b`             | `#9aa7b0`             | labels, notes, secondary values                |
+| `--rule`                                | `#d7dde1`             | `#232b33`             | hairlines, table rules                         |
+| `--accent`                              | `#0f6d78`             | `#5ec8d4`             | primary action, current nav item               |
+| `--warn` / `--warn-soft`                | `#7a4b00` / `#fdf3e2` | `#f0b429` / `#2e2413` | warnings, partial coverage                     |
+| `--tint-direct` / `--tint-direct-hover` | `#f2ecff` / `#e9e0fd` | `#1d1930` / `#262038` | the ledger row of a stock you hold directly    |
+| `--country-us`                          | `#9dc2ea`             | `#2b4a6d`             | the row's left edge for a US-domiciled company |
+| `--country-intl`                        | `#8d9fe0`             | `#2f3a6e`             | the row's left edge for any other domicile     |
 
 **Row shading (operator's instruction, 2026-11-02).** A company the visitor holds as a stock, not only through a fund, gets
 a pastel light-purple row — quiet enough that the numbers still lead, distinct enough to find the single-stock positions at
@@ -62,6 +64,30 @@ a glance. Three constraints, each with a check behind it:
 Type is `system-ui` with an Apple/Segoe/Roboto fallback chain at 16 px base, 0.9–1.05 rem in the ledger, 650 weight for
 values. No webfont: one fewer request, no layout shift, no licence question. `--row: 2rem` fixes the row height for the
 day-4 windowing pass.
+
+## Country edge (operator's instruction, 2026-11-02)
+
+Geography is a second axis on the ledger, and it is a **separate channel** because one background cannot carry two
+meanings: the row _background_ keeps meaning position kind — a company the visitor holds directly as a stock, purple —
+and geography is drawn as a 3 px **left edge on the row's first cell** plus the two-letter country code as **text** in
+the row's second line. The rules:
+
+- **Text carries the meaning; colour reinforces it.** The code is real text in the row (`US`, `TW`), so a screen
+  reader reads it and a printed page keeps it, and the table's caption gains one sentence saying what the tag and the
+  edge mean. The edge repeats the code in colour so a reader scanning rows can find a domicile at a glance (rule 3).
+  Blue is the United States, periwinkle everywhere else; that mapping is stated in the caption, never implied by hue.
+- **A row can be both.** A stock held directly that also has a decided domicile keeps its purple background and gains
+  the edge: `data-direct` and `data-country` sit side by side on the same `<tr>`, and neither channel borrows the
+  other's encoding. The 3 px stripe is an inset `box-shadow` on the first cell rather than a `tr` border, which is
+  unreliable under `border-collapse: separate`, and inset shadow costs no layout.
+- **Absence means no answer.** A company the filings disagree about — or one held only by funds that file no country —
+  is absent from the map, and its row carries no edge and no tag. A default would be a guess. The caption sentence
+  appears only when a row actually carries a code, and a release that publishes no country object renders exactly as
+  it did before the channel existed: no tag, no edge, no sentence, no extra fetch.
+- **Where the codes come from.** The pipeline's `companies/countries.json`: each code is the `invCountry` of the
+  company's holders' N-PORT filings decided by **value-weighted majority**, published only at ≥ 80% agreement. The
+  browser does not aggregate, vote, or infer one — it looks the code up (`web/lib/aggregate.ts`), because the rule that
+  decided it lives in the pipeline and only there.
 
 ## Open questions — the operator's, not the agent's
 

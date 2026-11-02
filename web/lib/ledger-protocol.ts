@@ -28,6 +28,12 @@ export interface AggregateRequest {
    * the filed rows ([ADR-0015](../../../docs/04-decisions/ADR-0015-vt-benchmark.md)).
    */
   benchmark: BenchmarkComparison | null;
+  /**
+   * `company_id → ISO-3166-1 alpha-2`, straight from the release's country object, or
+   * `null` when the release publishes none. It travels to the worker because the rows
+   * are built there; it is copied into each row and never used in any arithmetic.
+   */
+  countries: Record<string, string> | null;
 }
 
 export interface AggregateSuccess {

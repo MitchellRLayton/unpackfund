@@ -49,7 +49,18 @@ export interface ReleaseDescriptor {
     tickers: ObjectDescriptor;
     catalogue: ObjectDescriptor;
     fund_index: { prefix: string; shards: string[]; funds: number };
-    companies: { index: ObjectDescriptor; prefix: string; count: number };
+    companies: {
+      index: ObjectDescriptor;
+      prefix: string;
+      count: number;
+      /**
+       * The company→country map. Optional, and its absence is a valid release: every
+       * release published before `2026-11-02.6` carries no country object at all, and
+       * the ledger then shows no tag, no edge, and no caption sentence rather than a
+       * default or an error.
+       */
+      countries?: ObjectDescriptor;
+    };
     /**
      * Share-class tickers, optional because a release built before the alias map
      * existed is still a valid release: the app degrades to "unknown ticker"
@@ -181,8 +192,44 @@ export interface CompanyShard {
   company_id: string;
   name: string;
   ticker: string | null;
+  /**
+   * The domicile this company's holders' filings agree on, or `null` when they do not.
+   * Additive, so a shard from a release before the field existed is still readable; the
+   * ledger does not read it (it has its own map), and `/c` will.
+   */
+  country?: string | null;
   /** `[ticker, weight_bp]`, the fund's own weight for this company. */
   funds: Array<[string, number]>;
+}
+
+/**
+ * `releases/{as_of}/companies/countries.json` — one country code per company.
+ *
+ * A **lookup, never a computation**: the code is decided once by the pipeline, and the
+ * browser only reads the row it needs. A company that is absent from `companies` is one
+ * the filings disagree about, or one held only by funds that file no country — the
+ * honest no-answer, which renders as no tag rather than as a guess or a default
+ * (`data-contract-and-release` §5).
+ */
+export interface CompanyCountries {
+  schema_version: number;
+  kind: "company_countries";
+  /** The release stamp this map belongs to, e.g. `2026-11-02.6`. */
+  as_of: string;
+  /** Where the codes came from, in words — `SEC N-PORT invCountry`. */
+  source: string;
+  /** The rule that decided an answer, in words: the majority threshold, not a guess. */
+  rule: string;
+  /** `company_id` → ISO-3166-1 alpha-2, uppercase. Absence means "no answer". */
+  companies: Record<string, string>;
+  /** How many companies got an answer, so coverage is statable rather than implied. */
+  counts: {
+    companies: number;
+    with_country: number;
+    us: number;
+    non_us: number;
+    undecided: number;
+  };
 }
 
 export type AssetCategory = "equity" | "debt" | "cash" | "derivative" | "fund" | "other";
@@ -463,6 +510,15 @@ export interface LedgerRow {
   company_id: string;
   name: string;
   ticker: string | null;
+  /**
+   * ISO-3166-1 alpha-2 code for the company's domicile, or `null` when this release does
+   * not answer the question — no country object, or the filings disagree about it.
+   *
+   * Required rather than optional so every consumer of a row has to decide what it does
+   * with the question; `null` is the answer "not known", and the row renders no tag. It
+   * is read from the release's map, never computed, voted, or inferred here.
+   */
+  country: string | null;
   /** Fraction of the whole portfolio. */
   weight: number;
   /**

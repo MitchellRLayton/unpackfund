@@ -9,6 +9,7 @@ import {
   loadAliases,
   loadBenchmark,
   loadCompany,
+  loadCompanyCountries,
   loadFund,
   loadRelease,
   loadSecurities,
@@ -358,6 +359,79 @@ describe("loadBenchmark", () => {
     const release = await withBenchmark(wrong);
     await expect(
       loadBenchmark(release, "VT", releaseHost({ "benchmarks/VT.json": wrong })),
+    ).rejects.toMatchObject({ kind: "schema" });
+  });
+});
+
+describe("loadCompanyCountries", () => {
+  const countries = {
+    schema_version: 1,
+    kind: "company_countries",
+    as_of: RELEASE.as_of,
+    source: "SEC N-PORT invCountry",
+    rule: "value-weighted majority; published only at >= 80% agreement",
+    companies: { c_0000320193: "US", c_0000875320: "TW" },
+    counts: { companies: 2, with_country: 2, us: 1, non_us: 1, undecided: 0 },
+  };
+
+  async function withCountries(document: unknown): Promise<ReleaseDescriptor> {
+    const bytes = new TextEncoder().encode(JSON.stringify(document));
+    return {
+      ...RELEASE,
+      objects: {
+        ...RELEASE.objects,
+        companies: {
+          ...RELEASE.objects.companies,
+          countries: {
+            path: "companies/countries.json",
+            bytes: bytes.byteLength,
+            sha256: await sha256Hex(bytes),
+          },
+        },
+      },
+    };
+  }
+
+  it("returns an empty map, and fetches nothing, when the descriptor omits it", async () => {
+    // Every release published before this object existed, and the first test of the
+    // operator's rule that its absence costs nothing: no tag, no edge, no sentence,
+    // **and no extra request**. A fetch here would be a 404 on every visit.
+    let calls = 0;
+    const map = await loadCompanyCountries(RELEASE, async () => {
+      calls += 1;
+      return jsonResponse({});
+    });
+    expect(map).toEqual({});
+    expect(calls).toBe(0);
+  });
+
+  it("returns the published map when the descriptor names it", async () => {
+    const release = await withCountries(countries);
+    const map = await loadCompanyCountries(
+      release,
+      releaseHost({ "companies/countries.json": countries }),
+    );
+    expect(map).toEqual({ c_0000320193: "US", c_0000875320: "TW" });
+  });
+
+  it("refuses bytes that do not match the described hash", async () => {
+    // A country is a claim about a company, so it is read only from bytes that hash to
+    // what the descriptor published — the same rule every other release object follows.
+    const release = await withCountries(countries);
+    const other = { ...countries, companies: { c_0000320193: "IE" } };
+    await expect(
+      loadCompanyCountries(release, releaseHost({ "companies/countries.json": other })),
+    ).rejects.toMatchObject({ kind: "hash" });
+  });
+
+  it("refuses an object that is not a country map", async () => {
+    const wrongKind = { ...countries, kind: "catalogue" };
+    const release = await withCountries(wrongKind);
+    await expect(
+      loadCompanyCountries(
+        release,
+        releaseHost({ "companies/countries.json": wrongKind }),
+      ),
     ).rejects.toMatchObject({ kind: "schema" });
   });
 });

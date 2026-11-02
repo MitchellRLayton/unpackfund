@@ -14,6 +14,7 @@ large one:
     catalogue.json          ticker -> name, issuer, ETF flag, coverage
     companies/index.json    company_id -> name, ticker, holder count (search)
     companies/{id}.json     company_id -> [[ticker, weight_bp], …] (reverse X-Ray)
+    companies/countries.json  company_id -> ISO country, for the ledger's country tag
     benchmarks/{T}.json     one configured benchmark's traced weights, pre-rolled
     manifest.json           the full file inventory, for audits and `release verify`
 
@@ -33,9 +34,11 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any, Iterable
 
 from . import benchmarks as benchmarks_mod
+from . import company_countries as company_countries_mod
 from .artifact import canonical_bytes, sha256_hex
 
 #: Tickers that do not start with a letter share one shard.
@@ -122,7 +125,9 @@ def alias_object(as_of: str, aliases: dict[str, str]) -> dict[str, Any]:
 
 
 def company_objects(
-    as_of: str, documents: Iterable[dict[str, Any]]
+    as_of: str,
+    documents: Iterable[dict[str, Any]],
+    countries: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     """Reverse X-Ray: one shard per company, plus a search index.
 
@@ -130,6 +135,12 @@ def company_objects(
     the reverse lookup is keyed by it. A fund that reports the same company twice
     (two asset categories, say) is summed into one row, because "this fund holds
     2.1% of NVIDIA" is one fact.
+
+    ``countries`` is the decision ``company_countries.decide`` reached from the
+    filings; a company it could not decide simply has no key here. The shard carries
+    it because the shard is the company's own record (`/c` reads it), and the compact
+    ``companies/countries.json`` is the same value pre-rolled for the ledger — one
+    decision, two renderings, and the validator checks the second against the first.
     """
     companies: dict[str, dict[str, Any]] = {}
     for document in documents:
@@ -163,11 +174,13 @@ def company_objects(
     for company_id in sorted(companies):
         entry = companies[company_id]
         holders = dict(sorted(entry["funds"].items(), key=lambda pair: (-pair[1], pair[0])))
+        country = (countries or {}).get(company_id)
         shards[company_id] = {
             "as_of": as_of,
             "company_id": company_id,
             "name": entry["name"],
             "ticker": entry["ticker"],
+            **({"country": country} if country else {}),
             "funds": [[ticker, weight] for ticker, weight in holders.items()],
         }
         index.append([company_id, entry["name"], entry["ticker"], len(holders)])
@@ -233,6 +246,8 @@ def write_release_objects(
     etf_classifier: str = "",
     benchmarks: Iterable[str] = benchmarks_mod.BENCHMARK_TICKERS,
     securities_source: dict | None = None,
+    countries: Mapping[str, str] | None = None,
+    invalid_country_rows: int = 0,
 ) -> dict:
     """Write the objects a browser reads and describe them in ``release.json``.
 
@@ -278,10 +293,36 @@ def write_release_objects(
     alias_entries = aliases or {}
     alias_entry = write("aliases.json", alias_object(release, alias_entries))
 
-    company_index, company_shards = company_objects(release, documents)
+    company_index, company_shards = company_objects(release, documents, countries)
     company_index_entry = write("companies/index.json", company_index)
     for company_id, document in company_shards.items():
         write(f"companies/{company_id}.json", document)
+
+    # The company→country map the ledger tags rows with (operator's instruction,
+    # 2026-11-02). Optional by presence, like the benchmark: a release that decided no
+    # countries publishes no object and the app shows no tag — the dual read, skill §8.
+    # Compact encoder, not the fund document's indented one: it is fetched by a
+    # browser and read by nothing (`benchmarks.canonical_bytes` makes the same call).
+    countries_entry: dict | None = None
+    if countries:
+        countries_document = company_countries_mod.build_object(
+            release,
+            countries,
+            company_total=len(company_shards),
+            invalid_rows=invalid_country_rows,
+        )
+        countries_body = company_countries_mod.canonical_bytes(countries_document)
+        if len(countries_body) > company_countries_mod.MAX_COUNTRIES_BYTES:
+            raise ValueError(
+                f"companies/countries.json is {len(countries_body):,} B, over the "
+                f"{company_countries_mod.MAX_COUNTRIES_BYTES:,} B ceiling — the object "
+                "exists to be smaller than the company shards it summarises"
+            )
+        target = release_dir / "companies/countries.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(countries_body)
+        sizes["companies/countries.json"] = len(countries_body)
+        countries_entry = object_entry("companies/countries.json", countries_body)
 
     # The compact benchmark (ADR-0015): one fund's weights pre-rolled to companies,
     # so `/x` fetches 43 kB instead of 1.58 MB for the table's comparison column.
@@ -340,6 +381,7 @@ def write_release_objects(
                 "index": company_index_entry,
                 "prefix": "companies/",
                 "count": len(company_shards),
+                **({"countries": countries_entry} if countries_entry else {}),
             },
             "aliases": {
                 "object": alias_entry,
@@ -369,6 +411,12 @@ def write_release_objects(
         + "".join(
             f"benchmark {ticker} {sizes[f'benchmarks/{ticker}.json'] / 1e3:.0f} kB, "
             for ticker in benchmark_entries
+        )
+        + (
+            f"countries {sizes['companies/countries.json'] / 1e3:.0f} kB "
+            f"({len(countries):,} decided), "
+            if countries_entry is not None
+            else ""
         )
         + (
             f"{securities_entry['count']:,} symbol(s) in {len(securities_sizes)} "

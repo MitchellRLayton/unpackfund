@@ -109,6 +109,7 @@ def write_release(
     *,
     benchmarks: tuple[str, ...] = (),
     securities_source: dict | None = None,
+    countries: dict[str, str] | None = None,
 ) -> Path:
     """Write ``documents`` as a release directory, the way ``build.py`` does.
 
@@ -118,6 +119,9 @@ def write_release(
     that hard-coded VT could only run if the fixture were VT. ``securities_source``
     carries the typed-symbol input ADR-0014 added; ``None`` publishes no
     ``securities/`` family, which is the dual-read shape a release without it has.
+    ``countries`` is the decision ``company_countries.decide`` would have reached; a
+    fixture release publishes the map only when a caller supplies one, which keeps
+    both shapes — with and without a country — in reach of the validator's tests.
     """
     release_dir = root / "releases" / release_id
     (release_dir / "funds").mkdir(parents=True, exist_ok=True)
@@ -153,6 +157,7 @@ def write_release(
         etf_classifier=classify.ETF_CLASSIFIER,
         benchmarks=benchmarks,
         securities_source=securities_source,
+        countries=countries,
     )
     return release_dir
 
@@ -160,4 +165,13 @@ def write_release(
 def write_sample_release(root: Path) -> Path:
     # One benchmark object, so `pnpm data:validate --fixtures` exercises the compact
     # object's descriptor entry, hash gate and rollup check offline.
-    return write_release(root, [sample_document()], benchmarks=("TEST",))
+    document = sample_document()
+    # One company placed, so `--fixtures` exercises the map's descriptor entry, its
+    # hash gate, and the projection against the company shards offline. The CIK is the
+    # sample filing's Apple row, which is the only company the fixture can name twice.
+    return write_release(
+        root,
+        [document],
+        benchmarks=("TEST",),
+        countries={"c_0000320193": "US"},
+    )
