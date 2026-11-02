@@ -39,7 +39,7 @@ The tier is computed for you: `scripts/session-provenance.sh pr` prints
 
 | Tier | Change touches | How it lands |
 |---|---|---|
-| **Deploy** | any path in `deploy-site.yml`'s `paths:` list (`web/**`, `pipeline/**`, `package.json`, the lockfiles, `.nvmrc`, `wrangler.prod.jsonc`, `deploy-site.yml`) | **Pull request**, merged with a merge commit. Merging publishes `unpackfund.com`, so the production-deploy escalation rule still applies (workspace `AGENTS.md`, Autonomy) |
+| **Deploy** | any path in `deploy-site.yml`'s `paths:` list (`web/**`, `pipeline/**`, `package.json`, the lockfiles, `.nvmrc`, `wrangler.prod.jsonc`, `deploy-site.yml`) | **Pull request**, merged with a merge commit — **and the agent merges it as soon as the evidence is true.** Merging publishes `unpackfund.com`; that is the default, not a question (operator, 2026-11-02; workspace `AGENTS.md` → "Merge and deploy by default") |
 | **Repo, no deploy** | `scripts/`, `AGENTS.md`, `README.md`, `.gitignore`, the other workflows | Direct push to `main` when you are the only session; a PR is optional |
 | **Workspace** | `docs/`, `.dsh/`, `.work/` | Nothing to commit — `docs/` is outside the repo. Record it in the day file |
 
@@ -213,6 +213,7 @@ GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath \
 ## Status of this file
 
 Added 2026-10-28 to give agents a working git surface for this repo; updated
-2026-11-01 with the commit-provenance contract and the three landing tiers. It is a
-plain-language rule file, not a build artifact; keep it current when the workflow
-changes.
+2026-11-01 with the commit-provenance contract and the three landing tiers, and
+2026-11-02 with merge-by-default: a deploy-tier PR is merged by the agent as soon as
+its evidence is true, not handed back for approval. It is a plain-language rule file,
+not a build artifact; keep it current when the workflow changes.
