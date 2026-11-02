@@ -44,19 +44,23 @@ echo "git-setup: credential.helper -> !gh auth git-credential"
 # as quiet.
 #
 # So: absolute when this tree can back it, relative otherwise, and say which and why.
+# The canonical clone, not the directory this script happens to sit in: run from a
+# worktree and `pwd` is a temporary path that disappears with the worktree, leaving
+# core.hooksPath pointing at nothing — and git skips a hooks path that does not exist.
+_canon="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/scripts/git-hooks"
 _present=""
 _missing=""
 for _h in pre-commit commit-msg pre-push; do
-  if [ -f "scripts/git-hooks/$_h" ]; then _present="$_present $_h"; else _missing="$_missing $_h"; fi
+  if [ -f "$_canon/$_h" ]; then _present="$_present $_h"; else _missing="$_missing $_h"; fi
 done
 if [ -z "$_missing" ]; then
-  git config --local core.hooksPath "$(pwd -P)/scripts/git-hooks"
-  echo "git-setup: core.hooksPath -> $(pwd -P)/scripts/git-hooks ($(echo $_present))"
+  git config --local core.hooksPath "$_canon"
+  echo "git-setup: core.hooksPath -> $_canon ($(echo $_present))"
   echo "git-setup: every worktree of this clone now runs these hooks, whatever its own tree says"
 else
   git config --local core.hooksPath scripts/git-hooks
   echo "git-setup: core.hooksPath -> scripts/git-hooks ($(echo $_present))" >&2
-  echo "git-setup: WARNING this checkout does not contain:$_missing" >&2
+  echo "git-setup: WARNING the canonical clone does not contain:$_missing" >&2
   echo "           Those hooks cannot run from this tree, and git says nothing when a hook is" >&2
   echo "           missing. Left relative on purpose, so a worktree that does have them still" >&2
   echo "           runs its own. Update this checkout (git checkout main && git pull) and" >&2
