@@ -37,16 +37,31 @@
 
   /* The row's left edge for a US-domiciled company. Geography is a second channel,
    * separate from the background, and the code beside it — not this colour — is what
-   * carries the meaning. A clear blue rather than a pastel: the pastel it replaces
-   * (#9dc2ea) measured 1.85:1 on the page, under the 3:1 non-text floor, so at 3 px it
-   * read as a rendering artefact instead of a stripe (operator's instruction,
-   * 2026-11-02: "slightly more prominent blue color differentiation"). #1d6fb8 is
-   * 5.23:1 on the page and 4.53:1 on the direct-position tint. */
-  --country-us: #1d6fb8;
-  /* The same edge for any other domicile. Pulled away from blue toward periwinkle so the
-   * two ends of the axis are told apart by hue rather than by staring: the pair's CIE Lab
-   * separation is 35.9, against 19.8 for the two pastels it replaces. */
-  --country-intl: #7a5fd0;
+   * carries the meaning.
+   *
+   * **Slate blue against ochre** (operator's instruction, 2026-11-02, adopting the palette
+   * recommended to them): blue-versus-yellow is the one axis that survives every common
+   * colour-vision deficiency, and neither hue means "up" or "down" the way a green or a
+   * red would in portfolio software. The pair this replaces — blue against
+   * periwinkle-violet — collapsed for deuteranopes: measured in simulation, its two inks
+   * sat 35.9 apart in CIE Lab normally but only **7.5** for deuteranopia and 14.7 for
+   * protanopia, which is one colour to those readers. This pair holds 81.7 / 83.4 / 79.8.
+   *
+   * #3b6ea5 is 5.30:1 on the page and 4.18:1 on the darkest row background it is painted
+   * over (the direct-position hover), clearing the 3:1 non-text floor everywhere
+   * `lib/theme.test.ts` checks. */
+  --country-us: #3b6ea5;
+  /* The same edge for any other domicile: muted ochre, saturation deliberately unchanged
+   * from the recommendation so it reads as a colour and not as a warning.
+   *
+   * **Darkened from the recommended #c08a2e, and only in this one value.** At that
+   * lightness the ochre measures 3.04:1 on white but **2.85:1** on `--surface` and
+   * **2.39:1** on the direct-position hover tint — under the 3:1 floor, i.e. gone on a
+   * hovered row, which is the same defect the 6 px widening was fixing. #9c7025 is the
+   * same hue and saturation one step darker: 4.41:1 on the page, 3.48:1 at worst. It is
+   * also *closer* in visual weight to the blue (L* 50.4 against 45.4; the recommendation's
+   * ochre sat at 61.3 and read noticeably paler than the blue it was meant to match). */
+  --country-intl: #9c7025;
 
   /* The current section's pill: `--surface` mixed 20% darker, per the operator's
    * instruction of 2026-11-02 ("20% darker pill"). It is a token rather than a
@@ -89,14 +104,15 @@
      * quiet. Both keep `--fg` and `--muted` above AA (lib/theme.test.ts). */
     --tint-direct: #1d1930;
     --tint-direct-hover: #262038;
-    /* The two geography edges: same hues, lifted until they read as a stripe on #0d1117
-     * instead of disappearing into it. The dark scheme had the same problem as the light
-     * one — #2b4a6d measured 2.08:1 on the page — so these are brighter, and
-     * `lib/theme.test.ts` now holds them to the 3:1 non-text floor on every background a
-     * ledger row can have. #4f9ad8 is 6.26:1 on the page and 5.63:1 on the tint; #a08aec
-     * is 6.62:1 and 5.95:1. */
-    --country-us: #4f9ad8;
-    --country-intl: #a08aec;
+    /* The two geography edges in the dark scheme: the same slate blue and ochre, lifted
+     * until they read as a stripe on #0d1117 instead of disappearing into it. Both are the
+     * values from the operator's recommended palette unchanged — the dark pair passes the
+     * 3:1 floor with room to spare, so nothing needed adjusting here:
+     * #6c9bd2 is 6.54:1 on the page and 5.39:1 on the direct-position hover,
+     * #d9a54a is 8.50:1 and 7.01:1. Simulation again: pair separation 87.3 normally,
+     * 89.6 for deuteranopia, 84.9 for protanopia. */
+    --country-us: #6c9bd2;
+    --country-intl: #d9a54a;
     /* 20% in the opposite direction, and deliberately: on a #0d1117 page a darker pill
      * moves *toward* the page and erases the block the light scheme just gained, so the
      * dark scheme gets the same 20% step away from `--surface` instead. #151b22 at 120%
@@ -674,7 +690,24 @@ table.ledger tbody tr[data-direct="true"]:hover {
  * tints) in both schemes.
  *
  * An untagged row still gets nothing: a company whose filings disagree has no country,
- * and a default edge would be a guess. */
+ * and a default edge would be a guess.
+ *
+ * **The palette is blue against ochre** (operator's instruction, 2026-11-02, adopting the
+ * recommendation they were given): two hues on the colour-blind-safe blue–yellow axis,
+ * neither of which carries a gain/loss or warning meaning in portfolio software. The inks
+ * live in the two `--country-*` tokens with the measurements and the one deliberate
+ * deviation from the recommendation.
+ *
+ * **If geography ever splits further** — developed against emerging markets, which the
+ * operator has flagged as the next step — use **two shades of the ochre, never a third
+ * hue**: the US-versus-international distinction has to stay readable at a glance, and a
+ * third hue makes the reader compare three things instead of two. The constraint that
+ * will bite is this same 3:1 floor: the recommendation's second ochre (#8c6420) is 4.14:1
+ * at worst and would work, but the pair it was meant to sit beside (#c08a2e, 2.39:1) does
+ * not, so the split needs both shades dark enough to clear the floor on every row
+ * background — or a non-colour tiebreak (the country code is already there) instead of
+ * leaning on the shade difference alone. `lib/theme.test.ts` is the gate for whatever
+ * lands. */
 table.ledger tbody tr[data-country="US"] > :first-child {
   box-shadow: inset 6px 0 0 var(--country-us);
 }

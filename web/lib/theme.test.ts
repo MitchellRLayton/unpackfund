@@ -56,8 +56,79 @@ function contrast(a: string, b: string): number {
   return (high + 0.05) / (low + 0.05);
 }
 
-/** Every pair that carries text. 4.5:1 is AA for normal-size text. */
-const TEXT_PAIRS: Array<[fg: string, bg: string, why: string]> = [
+/**
+ * Colour-vision deficiency, so "the two geography inks are distinguishable" is a
+ * measurement and not a claim. Machado, Oliveira & Fernandes (2009) severity-1.0 matrices
+ * applied in linear sRGB — the standard approximation for complete dichromacy, which
+ * covers the ~8% of men (0.5% of women) with the common forms.
+ *
+ * This exists because the ledger's first blue-versus-violet pair *looked* fine and was
+ * one colour to a deuteranope: 35.9 apart normally, 7.5 after simulation. The operator
+ * adopted a blue-versus-ochre palette on exactly that reasoning (2026-11-02), so the
+ * reasoning is now a test: a future hue that collapses for a red-green reader fails here.
+ */
+const CVD_MATRICES: Record<string, readonly (readonly number[])[]> = {
+  deuteranopia: [
+    [0.367322, 0.860646, -0.227968],
+    [0.280085, 0.672501, 0.047413],
+    [-0.01182, 0.04294, 0.968881],
+  ],
+  protanopia: [
+    [0.152286, 1.052583, -0.204868],
+    [0.114503, 0.786281, 0.099216],
+    [-0.003882, -0.048116, 1.051998],
+  ],
+  tritanopia: [
+    [1.255528, -0.076749, -0.178779],
+    [-0.078411, 0.930809, 0.147602],
+    [0.004733, 0.691367, 0.3039],
+  ],
+};
+
+function linearChannels(hex: string): [number, number, number] {
+  const channel = (offset: number) => {
+    const value = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  return [channel(1), channel(3), channel(5)];
+}
+
+function hexFromLinear(channels: readonly number[]): string {
+  const encode = (value: number) => {
+    const clamped = Math.min(1, Math.max(0, value));
+    const srgb =
+      clamped <= 0.0031308 ? 12.92 * clamped : 1.055 * clamped ** (1 / 2.4) - 0.055;
+    return Math.round(srgb * 255)
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return "#" + channels.map(encode).join("");
+}
+
+function simulate(hex: string, matrix: readonly (readonly number[])[]): string {
+  const source = linearChannels(hex);
+  return hexFromLinear(
+    matrix.map((row) => row.reduce((sum, weight, i) => sum + weight * source[i]!, 0)),
+  );
+}
+
+function lab(hex: string): [number, number, number] {
+  const [r, g, b] = linearChannels(hex);
+  const x = (0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047;
+  const y = 0.2126729 * r + 0.7151522 * g + 0.072175 * b;
+  const z = (0.0193339 * r + 0.119192 * g + 0.9503041 * b) / 1.08883;
+  const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
+}
+
+function deltaE(a: string, b: string): number {
+  const [first, second] = [lab(a), lab(b)];
+  return Math.hypot(first[0] - second[0], first[1] - second[1], first[2] - second[2]);
+}
+
+/** Every pair that carries text. 4.5:1 is AA for normal-size text. */ const TEXT_PAIRS: Array<
+  [fg: string, bg: string, why: string]
+> = [
   ["fg", "bg", "body text"],
   ["fg", "surface", "text on a raised surface"],
   // The current section's pill is a darker step of `--surface` (operator's instruction,
@@ -164,6 +235,45 @@ describe("automatic light/dark", () => {
         .map(
           ([fg, bg, why]) => `${why}: ${fg} on ${bg} = ${contrast(fg, bg).toFixed(2)}:1`,
         );
+      expect(failures).toEqual([]);
+    });
+
+    it(`keeps the two geography inks apart for colour-blind readers in ${name}`, () => {
+      const us = theme["country-us"];
+      const intl = theme["country-intl"];
+      const background = theme["bg"];
+      if (!us || !intl || !background) throw new Error("missing geography tokens");
+
+      // Below this the two domiciles read as one colour rather than two.
+      const MIN_SEPARATION = 25;
+      const failures: string[] = [];
+      const normal = deltaE(us, intl);
+      if (normal < 40) {
+        failures.push(`uncorrected vision: dE ${normal.toFixed(1)} (want >= 40)`);
+      }
+      for (const [kind, matrix] of Object.entries(CVD_MATRICES)) {
+        const simulatedUs = simulate(us, matrix);
+        const simulatedIntl = simulate(intl, matrix);
+        const separation = deltaE(simulatedUs, simulatedIntl);
+        if (separation < MIN_SEPARATION) {
+          failures.push(
+            `${kind}: dE ${separation.toFixed(1)} (want >= ${MIN_SEPARATION}) — ` +
+              `${us} -> ${simulatedUs} and ${intl} -> ${simulatedIntl}`,
+          );
+        }
+        for (const [ink, simulated] of [
+          [us, simulatedUs],
+          [intl, simulatedIntl],
+        ] as const) {
+          const simulatedBackground = simulate(background, matrix);
+          const ratio = contrast(simulated, simulatedBackground);
+          if (ratio < 3) {
+            failures.push(
+              `${kind}: ${ink} -> ${simulated} is ${ratio.toFixed(2)}:1 on ${simulatedBackground}`,
+            );
+          }
+        }
+      }
       expect(failures).toEqual([]);
     });
   }

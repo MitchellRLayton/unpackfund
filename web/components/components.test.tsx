@@ -62,7 +62,7 @@ function row(
  */
 const COUNTRY_SENTENCE =
   " The country beside a company is the domicile its holders' filings agree on by value;" +
-  " the row's left edge repeats it in colour — blue for the United States, periwinkle" +
+  " the row's left edge repeats it in colour — blue for the United States, ochre" +
   " elsewhere — and a company whose filings do not agree carries no country.";
 
 const vt: BenchmarkFacts = {

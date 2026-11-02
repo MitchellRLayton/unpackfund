@@ -49,8 +49,8 @@ Defined once in `app/globals.css` as custom properties, light and dark through `
 | `--warn` / `--warn-soft`                | `#7a4b00` / `#fdf3e2`       | `#f0b429` / `#2e2413`        | warnings, partial coverage                       |
 | `--ok`                                  | `#17693a`                   | `#6fce8f`                    | the ledger gate once the total is exactly 100%   |
 | `--tint-direct` / `--tint-direct-hover` | `#f2ecff` / `#e9e0fd`       | `#1d1930` / `#262038`        | the ledger row of a stock you hold directly      |
-| `--country-us`                          | `#1d6fb8`                   | `#4f9ad8`                    | the row's left edge for a US-domiciled company   |
-| `--country-intl`                        | `#7a5fd0`                   | `#a08aec`                    | the row's left edge for any other domicile       |
+| `--country-us`                          | `#3b6ea5`                   | `#6c9bd2`                    | the row's left edge for a US-domiciled company   |
+| `--country-intl`                        | `#9c7025`                   | `#d9a54a`                    | the row's left edge for any other domicile       |
 | `--pill-bg`                             | `#c5c6c7`                   | `#192028`                    | the current section's pill (20% off `--surface`) |
 | `--pill-shadow`                         | `0 1px 2px rgb(0 0 0 / 8%)` | `0 1px 2px rgb(0 0 0 / 45%)` | the current section's pill, under the bar        |
 
@@ -81,7 +81,7 @@ the row's second line. The rules:
 - **Text carries the meaning; colour reinforces it.** The code is real text in the row (`US`, `TW`), so a screen
   reader reads it and a printed page keeps it, and the table's caption gains one sentence saying what the tag and the
   edge mean. The edge repeats the code in colour so a reader scanning rows can find a domicile at a glance (rule 3).
-  Blue is the United States, periwinkle everywhere else; that mapping is stated in the caption, never implied by hue.
+  Blue is the United States, ochre everywhere else; that mapping is stated in the caption, never implied by hue.
 - **A row can be both.** A stock held directly that also has a decided domicile keeps its purple background and gains
   the edge: `data-direct` and `data-country` sit side by side on the same `<tr>`, and neither channel borrows the
   other's encoding. The stripe is an inset `box-shadow` on the first cell rather than a `tr` border, which is
@@ -89,12 +89,28 @@ the row's second line. The rules:
 - **Wide and strong enough to be found (operator's instruction, 2026-11-02, "slightly wider … more prominent").** The
   channel first shipped as a 3 px pastel edge, and the operator could not tell the domiciles apart. The measurement
   agreed: `#9dc2ea` on the page is **1.85:1**, under the 3:1 non-text floor, so at 3 px the edge was a suggestion
-  rather than a signal. The edge is now **6 px** (the cell's own 0.75 rem left padding leaves 6 px of gap to the
-  company name, so nothing moves) and the two inks are pulled apart in hue as well as strength: `#1d6fb8` US blue and
-  `#7a5fd0` periwinkle measure 5.23:1 and 4.80:1 on the page, 4.53:1 and 4.16:1 on the direct-position tint, and their
-  CIE Lab separation is **35.9** against 19.8 for the pastels. Dark scheme: `#4f9ad8` / `#a08aec` at 6.26:1 / 6.62:1
-  (5.63:1 / 5.95:1 on the tint). `lib/theme.test.ts` holds every edge to 3:1 on every background a row can have —
-  `--bg`, `--surface`, both direct tints — in both schemes, so this cannot silently fade again.
+  rather than a signal. The edge is **6 px** (the cell's own 0.75 rem left padding leaves 6 px of gap to the company
+  name, so nothing moves) and `lib/theme.test.ts` holds every edge to 3:1 on every background a row can have — `--bg`,
+  `--surface`, both direct tints — in both schemes, so it cannot silently fade again.
+- **Slate blue against ochre (operator's instruction, 2026-11-02, adopting a recommended palette).** Blue against
+  yellow is the one colour pair that survives every common colour-vision deficiency, and neither hue means gain, loss,
+  or warning in portfolio software — which a green, a red, or a bright orange would. The pair this replaces was blue
+  against periwinkle-violet, and it collapsed for deuteranopes: simulated, the two inks sit 35.9 apart in CIE Lab
+  normally but only **7.5** for deuteranopia (14.7 protanopia) — one colour to those readers. The ochre pair holds
+  **81.7 / 83.4 / 79.8** (normal / deuteranopia / protanopia) and 87.3 / 89.6 / 84.9 in the dark scheme. Light:
+  `#3b6ea5` 5.30:1 on the page, 4.18:1 at worst; `#9c7025` 4.41:1 and 3.48:1. Dark: `#6c9bd2` 6.54:1 / 5.39:1 and
+  `#d9a54a` 8.50:1 / 7.01:1.
+- **One value deviates from the recommendation, and that is recorded here rather than hidden.** The recommended light
+  ochre `#c08a2e` measures 3.04:1 on white but **2.85:1** on `--surface` and **2.39:1** on the direct-position hover
+  tint — under the floor on a hovered row, the same defect the widening fixed. `#9c7025` is the same hue and
+  saturation one step darker, 4.41:1 on the page and 3.48:1 at worst, and at L\* 50.4 it sits closer to the blue's
+  45.4 than the recommendation's ochre did (61.3, visibly paler than the blue it was paired with). Dark-scheme values
+  are the recommendation's, unchanged: both pass with room to spare.
+- **A further split uses two ochre shades, never a third hue** (operator, 2026-11-02: developed against emerging
+  markets is the next step). A third hue makes the reader compare three colours instead of two and loses the
+  US-versus-international read at a glance. The constraint: the second recommended ochre `#8c6420` is 4.14:1 at worst and
+  would clear the floor, but a split needs _both_ shades above 3:1 on every row background, so the lighter one cannot be
+  the recommended `#c08a2e`. Until that split ships, the channel stays one colour per side of the axis.
 - **Absence means no answer.** A company the filings disagree about — or one held only by funds that file no country —
   is absent from the map, and its row carries no edge and no tag. A default would be a guess. The caption sentence
   appears only when a row actually carries a code, and a release that publishes no country object renders exactly as
