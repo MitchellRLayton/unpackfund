@@ -101,6 +101,9 @@ export function LedgerTable({
   const shown = limit === undefined ? sorted.length : Math.min(limit, sorted.length);
   const visible = shown === sorted.length ? sorted : sorted.slice(0, shown);
   const paged = shown < total;
+  // Only a portfolio that holds a stock directly gets the sentence, and only then
+  // is a shaded row on screen to explain.
+  const anyDirect = rows.some((entry) => entry.held_directly);
 
   return (
     <div className="table-wrap">
@@ -125,6 +128,10 @@ export function LedgerTable({
               " than " +
               benchmark.ticker +
               " does, positive more."
+            : ""}
+          {anyDirect
+            ? " The shaded rows are companies you hold directly, as a stock, rather" +
+              " than only through a fund."
             : ""}
         </caption>
         <thead>
@@ -174,7 +181,10 @@ export function LedgerTable({
             const benchmarkWeight = row.benchmark_weight;
             const delta = benchmarkDelta(row.weight, benchmarkWeight);
             return (
-              <tr key={row.company_id}>
+              <tr
+                key={row.company_id}
+                data-direct={row.held_directly ? "true" : undefined}
+              >
                 <th scope="row">
                   {onSelect ? (
                     <button

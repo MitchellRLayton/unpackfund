@@ -35,15 +35,29 @@ provenance of every number visible without a click.
 
 Defined once in `app/globals.css` as custom properties, light and dark through `prefers-color-scheme`.
 
-| Token                    | Light                 | Dark                  | Use                              |
-| ------------------------ | --------------------- | --------------------- | -------------------------------- |
-| `--bg`                   | `#ffffff`             | `#0d1117`             | page                             |
-| `--surface`              | `#f6f8f9`             | `#151b22`             | table header, notices            |
-| `--fg`                   | `#11181c`             | `#e8edf0`             | body text                        |
-| `--muted`                | `#55636b`             | `#9aa7b0`             | labels, notes, secondary values  |
-| `--rule`                 | `#d7dde1`             | `#232b33`             | hairlines, table rules           |
-| `--accent`               | `#0f6d78`             | `#5ec8d4`             | primary action, current nav item |
-| `--warn` / `--warn-soft` | `#7a4b00` / `#fdf3e2` | `#f0b429` / `#2e2413` | warnings, partial coverage       |
+| Token                                   | Light                 | Dark                  | Use                                         |
+| --------------------------------------- | --------------------- | --------------------- | ------------------------------------------- |
+| `--bg`                                  | `#ffffff`             | `#0d1117`             | page                                        |
+| `--surface`                             | `#f6f8f9`             | `#151b22`             | table header, notices                       |
+| `--fg`                                  | `#11181c`             | `#e8edf0`             | body text                                   |
+| `--muted`                               | `#55636b`             | `#9aa7b0`             | labels, notes, secondary values             |
+| `--rule`                                | `#d7dde1`             | `#232b33`             | hairlines, table rules                      |
+| `--accent`                              | `#0f6d78`             | `#5ec8d4`             | primary action, current nav item            |
+| `--warn` / `--warn-soft`                | `#7a4b00` / `#fdf3e2` | `#f0b429` / `#2e2413` | warnings, partial coverage                  |
+| `--tint-direct` / `--tint-direct-hover` | `#f2ecff` / `#e9e0fd` | `#1d1930` / `#262038` | the ledger row of a stock you hold directly |
+
+**Row shading (operator's instruction, 2026-11-02).** A company the visitor holds as a stock, not only through a fund, gets
+a pastel light-purple row — quiet enough that the numbers still lead, distinct enough to find the single-stock positions at
+a glance. Three constraints, each with a check behind it:
+
+- **Reinforcement, not the message.** The row already names the direct position in words — `You · NVDA` in the attribution,
+  and `direct` in the Funds column when no fund holds it — and the table's caption gains one sentence saying what the
+  shading means. Colour is never the only carrier (rule 3), so a forced-colours, monochrome, or screen-reader reader loses
+  nothing.
+- **A solid tint, not a low-alpha layer.** Declared per scheme in `app/globals.css`, so it composites the same over the page,
+  over the hover, and in dark mode, where a light pastel over `#0d1117` would glow instead of shade.
+- **Contrast is a gate.** `lib/theme.test.ts` checks `--fg` and `--muted` against both tints in both schemes; the tightest
+  pair is 4.89:1 (light hover, secondary text), above the 4.5:1 AA floor.
 
 Type is `system-ui` with an Apple/Segoe/Roboto fallback chain at 16 px base, 0.9–1.05 rem in the ledger, 650 weight for
 values. No webfont: one fewer request, no layout shift, no licence question. `--row: 2rem` fixes the row height for the

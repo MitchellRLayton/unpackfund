@@ -69,6 +69,12 @@ const TEXT_PAIRS: Array<[fg: string, bg: string, why: string]> = [
   ["fg", "warn-soft", "body text in a warning notice"],
   ["danger", "bg", "error text"],
   ["bg", "accent", "the primary button's label"],
+  // A shaded row carries the same text as any other row, so both of its inks are
+  // checked against the tint — in both schemes (2026-11-02).
+  ["fg", "tint-direct", "body text on a row shaded for a direct position"],
+  ["muted", "tint-direct", "secondary text on a shaded row"],
+  ["fg", "tint-direct-hover", "body text on a shaded row under the pointer"],
+  ["muted", "tint-direct-hover", "secondary text on a shaded row under the pointer"],
 ];
 
 function pairs(theme: Record<string, string>): Array<[string, string, string]> {
