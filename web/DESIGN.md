@@ -89,6 +89,26 @@ the row's second line. The rules:
   browser does not aggregate, vote, or infer one — it looks the code up (`web/lib/aggregate.ts`), because the rule that
   decided it lives in the pipeline and only there.
 
+## Allocation: 100% is a statement, not a clamp (operator's instruction, 2026-11-02)
+
+The builder used to enforce the whole in both directions: a row that would push the total past 100% was capped at the
+room the other rows left, the notice explained it, and the fragment decoder refused any link whose percentages summed
+above 100 — so an over-100 portfolio could not even be reloaded. The operator's instruction replaced that: **say what the
+total is, never rebalance the fields relative to each other, and open the ledger only at exactly 100%.**
+
+- **Rows hold what was typed.** The only ceiling left is a single row's own (100%, or $1bn in dollars). Editing one row
+  never moves another; overshooting is a normal step on the way to a total, not an error.
+- **The tally states the total in words**: `fully allocated`, `12.00% unallocated`, or `5.00% over 100%`. It is a live
+  region, so a screen reader hears the total change as the visitor types.
+- **"View the ledger" is inert until the total is exactly 100%**, with the reason beside it in words. It stays a link
+  with `aria-disabled="true"` and a prevented click rather than a `disabled` button, because a control that disappears
+  takes its explanation with it.
+- **The URL keeps the number.** `fragment.ts` reads an over-100 total instead of refusing it, so a reload restores what
+  is on screen. What an over-100 portfolio may not do is _answer for_ the numbers: `isComplete` is exact, so the ledger
+  shows "these percentages do not add up to 100%" and computes no table from them.
+- **Dollars are their own total**, so the ledger link is always live in dollar mode; an unfilled portfolio is not short
+  of anything.
+
 ## Open questions — the operator's, not the agent's
 
 - [`open`] **Chart or table only.** The table is the product right now. A treemap or bar strip of the top 10 is a visual

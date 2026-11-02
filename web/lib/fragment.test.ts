@@ -174,14 +174,22 @@ describe("refusals", () => {
     expect(reject(`#v3.${encodeBase64Url('{"a":1}')}`)).toBe("malformed");
   });
 
-  it("refuses percentages that add up to more than 100%", () => {
+  it("keeps an over-100 total, and calls it incomplete rather than rewriting it", () => {
     const over = portfolio([
       { kind: "fund", key: "VOO", amount: 6000 },
       { kind: "fund", key: "QQQ", amount: 6000 },
     ]);
-    // The encoder will emit it; the decoder must refuse it — renormalising 120%
-    // would answer a question the visitor did not ask.
-    expect(reject(`#${encodePortfolio(over)}`)).toBe("invalid-entry");
+    // 120% is what the builder holds while a row is being lowered: the link has to
+    // come back as it was written or a reload would discard the numbers on screen.
+    // It is not *complete*, so the ledger says the percentages do not add up and
+    // computes nothing from them.
+    const decoded = decodePortfolio(`#${encodePortfolio(over)}`);
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    expect(decoded.portfolio.entries.map((entry) => entry.amount)).toEqual([6000, 6000]);
+    expect(decoded.complete).toBe(false);
+    // Renormalising 120% back to 100% would answer a question nobody asked.
+    expect(decoded.portfolio.entries).toEqual(over.entries);
   });
 
   it("refuses two cash entries, because cash is one line", () => {

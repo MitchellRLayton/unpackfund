@@ -40,8 +40,10 @@ export function AmountInput({
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   // What this field last asked the store to hold. When the store keeps something
-  // else — the builder clamps at the 100% ceiling — the typed text is a number the
-  // portfolio does not contain, so the field shows the store's value instead.
+  // else — it caps a single row at the whole, 100% in percent mode — the typed text is
+  // a number the portfolio does not contain, so the field shows the store's value
+  // instead. The portfolio's *total* is never capped: overshooting is a normal step
+  // while filling in rows one at a time.
   const [sent, setSent] = useState<number | null>(null);
   if (draft !== null && sent !== null && amount !== sent) {
     setDraft(null);

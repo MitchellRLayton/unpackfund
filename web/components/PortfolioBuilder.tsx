@@ -9,7 +9,7 @@
  * is a button, because "CASH" is not a symbol anyone should have to guess (ADR-0014).
  *
  * The visitor also chooses how they think about the portfolio: **percentages** that
- * must add up to 100, or **dollars** that are the total by definition. The mode is
+ * are shares of 100, or **dollars** that are the total by definition. The mode is
  * part of the URL, so a shared link reproduces the numbers that were typed rather
  * than a re-normalised version of them.
  *
@@ -19,6 +19,14 @@
  * The list is shown in the order the visitor gave it — typed order, then whatever they
  * dragged it into. Nothing here sorts: the order is theirs, it is stored in the URL
  * with the amounts (`fragment.ts`), and a reorder is a normal edit of that link.
+ *
+ * **Nothing rebalances the rows, and nothing clamps at 100%.** Amounts are entered one
+ * row at a time, so a portfolio is short while it is being filled and past 100% for as
+ * long as it takes to lower the next row; adjusting the rows the visitor did not touch
+ * would rewrite numbers they did not edit. The tally states the total and whether it is
+ * short or over, and "View the ledger" waits for exactly 100% — a look-through weight
+ * is a share of the whole, so the numbers behind that link only mean something once
+ * there is a whole (2026-11-02, operator's instruction).
  */
 
 import Link from "next/link";
@@ -37,7 +45,6 @@ import { useRelease, useTickers } from "@/lib/use-release";
 import { useReorderList } from "@/lib/use-reorder";
 import {
   CASH_KEY,
-  FULL_ALLOCATION_BP,
   type EntryKind,
   type EntryMode,
   type PortfolioEntry,
@@ -106,7 +113,9 @@ export function PortfolioBuilder() {
     [tickers.status, tickers.data],
   );
   const mode = portfolio.mode;
-  const unallocatedBp = FULL_ALLOCATION_BP - portfolio.total;
+  // The ledger's numbers are shares of the whole, so the link into it is live only
+  // when there is a whole. Dollars are their own total, so they always are.
+  const ledgerOpen = mode === "usd" || portfolio.complete;
 
   /** Every add path clears the undo offers: they belong to the portfolio they changed. */
   function addEntry(kind: EntryKind, key: string) {
@@ -282,26 +291,14 @@ export function PortfolioBuilder() {
   }
 
   /**
-   * Set one row's amount, refusing to go past 100% in percentage mode.
+   * Set one row's amount, exactly as typed.
    *
-   * The fragment decoder refuses a portfolio above 100%, so writing one here would
-   * hand the visitor a link that will not reopen — their own edit would break their
-   * own portfolio. The field therefore stops at the room the other rows leave, and
-   * the notice says why rather than letting the number look broken.
+   * The only ceiling left is a single row's own (100% in percent mode, $1bn in
+   * dollars), which the store enforces because a row above the whole is not a number
+   * any view can use. The portfolio's total is not clamped and no other row moves:
+   * overshooting is a normal step on the way to a total, and the tally says so.
    */
   function setEntryAmount(entry: PortfolioEntry, amount: number) {
-    if (mode === "bp") {
-      const room = FULL_ALLOCATION_BP - (portfolio.total - entry.amount);
-      if (amount > room) {
-        portfolio.setAmount(entry.kind, entry.key, Math.max(0, room));
-        setMessage({
-          tone: "warn",
-          title: "That would take the portfolio over 100%",
-          body: `Percentages have to add up to exactly 100%, so ${entryLabel(entry)} stops at ${(Math.max(0, room) / 100).toFixed(2)}%. Lower another row first, or switch to dollars.`,
-        });
-        return;
-      }
-    }
     setMessage(null);
     portfolio.setAmount(entry.kind, entry.key, amount);
   }
@@ -485,7 +482,7 @@ export function PortfolioBuilder() {
             </button>
             <span className="muted">
               {mode === "bp"
-                ? "Percentages must add up to 100%."
+                ? "Percentages must add up to 100% for the ledger."
                 : "Dollars are the total — no need to reach any figure."}
             </span>
           </div>
@@ -546,7 +543,9 @@ export function PortfolioBuilder() {
               {mode === "bp"
                 ? portfolio.complete
                   ? "fully allocated"
-                  : `${(unallocatedBp / 100).toFixed(2)}% unallocated`
+                  : portfolio.overBp > 0
+                    ? `${(portfolio.overBp / 100).toFixed(2)}% over 100%`
+                    : `${(portfolio.unallocatedBp / 100).toFixed(2)}% unallocated`
                 : `${portfolio.entries.length} ${portfolio.entries.length === 1 ? "holding" : "holdings"}`}
             </span>
             {mode === "bp" ? (
@@ -566,9 +565,25 @@ export function PortfolioBuilder() {
             >
               Remove all
             </button>
-            <Link href={shareHref} className="tally__go">
+            <Link
+              href={shareHref}
+              className="tally__go"
+              aria-disabled={ledgerOpen ? undefined : true}
+              aria-describedby={ledgerOpen ? undefined : "ledger-gate"}
+              onClick={(event) => {
+                // A link that is inert but still focusable: a removed or `disabled`
+                // control takes its explanation with it, and this explanation is a
+                // sentence the visitor can act on (lower a row, or switch to dollars).
+                if (!ledgerOpen) event.preventDefault();
+              }}
+            >
               View the ledger
             </Link>
+            {ledgerOpen ? null : (
+              <span className="muted" id="ledger-gate">
+                The ledger opens at exactly 100%.
+              </span>
+            )}
           </p>
           <CopyLink href={shareHref} />
         </>

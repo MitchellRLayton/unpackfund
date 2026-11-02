@@ -432,6 +432,14 @@ button.quiet:hover {
   margin-left: auto;
 }
 
+/* The ledger link until the portfolio is whole. Inert, not removed: the reason sits
+ * beside it in words, and a control that disappears takes its explanation with it. */
+.tally__go[aria-disabled="true"] {
+  background: var(--surface);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
 /* -- ledger -------------------------------------------------------------- */
 
 .strip {

@@ -193,13 +193,13 @@ describe("PortfolioBuilder — stocks, cash, and units", () => {
   });
 });
 
-describe("PortfolioBuilder — the 100% ceiling", () => {
-  it("stops a row where the others leave room, and says why", () => {
+describe("PortfolioBuilder — 100% is a statement, not a clamp", () => {
+  it("keeps the amount that was typed and never moves the other rows", () => {
     render(<PortfolioBuilder />);
     fireEvent.click(screen.getByRole("button", { name: "Add QQQ" }));
     fireEvent.click(screen.getByRole("button", { name: "Add VTI" }));
-    // 50/50 by default. Drop VTI to 10 (legal: 40% is then unallocated), then try
-    // to put QQQ at 95, which would make 105%.
+    // 50/50 by default. Drop VTI to 10 — 40% short, which is a normal state while
+    // editing — then put QQQ at 95, which makes 105%.
     fireEvent.change(screen.getByLabelText("Amount for VTI, in percent"), {
       target: { value: "10" },
     });
@@ -207,12 +207,65 @@ describe("PortfolioBuilder — the 100% ceiling", () => {
       target: { value: "95" },
     });
 
-    expect(screen.getByText("That would take the portfolio over 100%")).toBeTruthy();
-    // The row holds the largest legal amount, and the total is still exactly 100%.
-    expect(screen.getByDisplayValue("90.00")).toBeTruthy();
-    expect(screen.getByText("100.00%")).toBeTruthy();
-    // The link still opens: a build that wrote 140% would emit a dead fragment.
+    // Leaving each field shows the number the store kept: no clamp, no rebalancing.
+    // (While the field has focus it shows the half-typed text, "95", which is why
+    // the assertion blurs first.)
+    fireEvent.blur(screen.getByLabelText("Amount for QQQ, in percent"));
+    fireEvent.blur(screen.getByLabelText("Amount for VTI, in percent"));
+    expect(screen.getByDisplayValue("95.00")).toBeTruthy();
+    expect(screen.getByDisplayValue("10.00")).toBeTruthy();
+    expect(screen.getByText("105.00%")).toBeTruthy();
+    // And the tally says which side of 100% the portfolio is on, in words.
+    expect(screen.getByText("5.00% over 100%")).toBeTruthy();
+    // The over-100 total is in the link, so a reload restores it rather than
+    // silently discarding the numbers on screen.
     expect(window.location.hash).not.toBe("");
+    const decoded = decodePortfolio(window.location.hash);
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    expect(decoded.portfolio.entries.map((entry) => entry.amount)).toEqual([9500, 1000]);
+  });
+
+  it("holds the ledger link until the total is exactly 100%", () => {
+    render(<PortfolioBuilder />);
+    fireEvent.click(screen.getByRole("button", { name: "Add QQQ" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add VTI" }));
+    // A clean 50/50 split opens the ledger.
+    expect(
+      screen.getByRole("link", { name: "View the ledger" }).getAttribute("aria-disabled"),
+    ).toBeNull();
+    expect(screen.queryByText("The ledger opens at exactly 100%.")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Amount for QQQ, in percent"), {
+      target: { value: "95" },
+    });
+    const gated = screen.getByRole("link", { name: "View the ledger" });
+    expect(gated.getAttribute("aria-disabled")).toBe("true");
+    expect(gated.getAttribute("aria-describedby")).toBe("ledger-gate");
+    expect(screen.getByText("The ledger opens at exactly 100%.")).toBeTruthy();
+    // Still a link, still focusable: the explanation has to be reachable.
+    expect(gated.getAttribute("href")).toContain("/x#");
+
+    // Back to exactly 100% (VTI is still 50) and it opens again.
+    fireEvent.change(screen.getByLabelText("Amount for QQQ, in percent"), {
+      target: { value: "50" },
+    });
+    expect(
+      screen.getByRole("link", { name: "View the ledger" }).getAttribute("aria-disabled"),
+    ).toBeNull();
+  });
+
+  it("opens the ledger in dollar mode whatever the amounts are", () => {
+    render(<PortfolioBuilder />);
+    fireEvent.click(screen.getByRole("button", { name: "Add QQQ" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dollars" }));
+    fireEvent.change(screen.getByLabelText("Amount for QQQ, in dollars"), {
+      target: { value: "1234.56" },
+    });
+    // Dollars are their own total, so nothing to be short of.
+    expect(
+      screen.getByRole("link", { name: "View the ledger" }).getAttribute("aria-disabled"),
+    ).toBeNull();
   });
 });
 
