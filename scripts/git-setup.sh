@@ -33,8 +33,14 @@ echo "git-setup: credential.helper -> !gh auth git-credential"
 
 # 2. The guards: secrets and large files (pre-commit), provenance trailers
 #    (commit-msg), and the same trailers at the push boundary (pre-push).
-git config --local core.hooksPath scripts/git-hooks
-echo "git-setup: core.hooksPath -> scripts/git-hooks (pre-commit, commit-msg, pre-push)"
+#
+# Absolute, not `scripts/git-hooks`: a relative hooksPath is resolved inside whichever
+# worktree is committing, and a worktree whose tree predates the hook simply has no
+# file there — git then skips it without a word. That is how seven concurrent sessions
+# would each keep running with no provenance check until they next merged main. One
+# absolute path means every worktree runs the canonical clone's hooks.
+git config --local core.hooksPath "$(pwd -P)/scripts/git-hooks"
+echo "git-setup: core.hooksPath -> $(pwd -P)/scripts/git-hooks (pre-commit, commit-msg, pre-push)"
 
 # 3. Prove the credential path is actually fast, rather than assuming it.
 start=$(date +%s)
