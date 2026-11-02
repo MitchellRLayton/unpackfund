@@ -37,10 +37,16 @@
 
   /* The row's left edge for a US-domiciled company. Geography is a second channel,
    * separate from the background, and the code beside it — not this colour — is what
-   * carries the meaning. */
-  --country-us: #9dc2ea;
-  /* The same edge for any other domicile. */
-  --country-intl: #8d9fe0;
+   * carries the meaning. A clear blue rather than a pastel: the pastel it replaces
+   * (#9dc2ea) measured 1.85:1 on the page, under the 3:1 non-text floor, so at 3 px it
+   * read as a rendering artefact instead of a stripe (operator's instruction,
+   * 2026-11-02: "slightly more prominent blue color differentiation"). #1d6fb8 is
+   * 5.23:1 on the page and 4.53:1 on the direct-position tint. */
+  --country-us: #1d6fb8;
+  /* The same edge for any other domicile. Pulled away from blue toward periwinkle so the
+   * two ends of the axis are told apart by hue rather than by staring: the pair's CIE Lab
+   * separation is 35.9, against 19.8 for the two pastels it replaces. */
+  --country-intl: #7a5fd0;
 
   /* The current section's pill: `--surface` mixed 20% darker, per the operator's
    * instruction of 2026-11-02 ("20% darker pill"). It is a token rather than a
@@ -83,11 +89,14 @@
      * quiet. Both keep `--fg` and `--muted` above AA (lib/theme.test.ts). */
     --tint-direct: #1d1930;
     --tint-direct-hover: #262038;
-    /* The two geography edges, darkened until they read as a quiet stripe on #0d1117
-     * instead of glowing. No contrast pair is added for them: a 3px stripe is not
-     * text, and the code beside it uses `--muted`. */
-    --country-us: #2b4a6d;
-    --country-intl: #2f3a6e;
+    /* The two geography edges: same hues, lifted until they read as a stripe on #0d1117
+     * instead of disappearing into it. The dark scheme had the same problem as the light
+     * one — #2b4a6d measured 2.08:1 on the page — so these are brighter, and
+     * `lib/theme.test.ts` now holds them to the 3:1 non-text floor on every background a
+     * ledger row can have. #4f9ad8 is 6.26:1 on the page and 5.63:1 on the tint; #a08aec
+     * is 6.62:1 and 5.95:1. */
+    --country-us: #4f9ad8;
+    --country-intl: #a08aec;
     /* 20% in the opposite direction, and deliberately: on a #0d1117 page a darker pill
      * moves *toward* the page and erases the block the light scheme just gained, so the
      * dark scheme gets the same 20% step away from `--surface` instead. #151b22 at 120%
@@ -651,18 +660,27 @@ table.ledger tbody tr[data-direct="true"]:hover {
 
 /* Geography is a second, independent axis (operator's instruction, 2026-11-02). The
  * row's *background* means position kind — a stock you hold directly — and one
- * background cannot carry two meanings, so a country gets its own channel: a 3px edge
- * on the first cell plus the code as text in the row's second line. A row can carry
- * both. The stripe is on the cell rather than the row because a `tr` border is
- * unreliable under `border-collapse: separate`, and `inset` box-shadow costs no layout.
- * An untagged row gets nothing: a company whose filings disagree has no country, and a
- * default edge would be a guess. */
+ * background cannot carry two meanings, so a country gets its own channel: an edge on
+ * the first cell plus the code as text in the row's second line. A row can carry both.
+ * The stripe is on the cell rather than the row because a `tr` border is unreliable
+ * under `border-collapse: separate`, and `inset` box-shadow costs no layout.
+ *
+ * **6px, not 3px** (operator's instruction, 2026-11-02, same day: the domiciles were
+ * "hard to tell apart"). Two things were wrong and both are fixed here: the width, and
+ * a palette whose US edge measured 1.85:1 on the page — a stripe under the 3:1 non-text
+ * floor is a suggestion, not a signal. The cell's own 0.75rem left padding leaves 6px of
+ * gap, so the wider edge never touches the company name, and `lib/theme.test.ts` holds
+ * both edges to 3:1 on every background a row can have (`--bg`, `--surface`, both direct
+ * tints) in both schemes.
+ *
+ * An untagged row still gets nothing: a company whose filings disagree has no country,
+ * and a default edge would be a guess. */
 table.ledger tbody tr[data-country="US"] > :first-child {
-  box-shadow: inset 3px 0 0 var(--country-us);
+  box-shadow: inset 6px 0 0 var(--country-us);
 }
 
 table.ledger tbody tr[data-country]:not([data-country="US"]) > :first-child {
-  box-shadow: inset 3px 0 0 var(--country-intl);
+  box-shadow: inset 6px 0 0 var(--country-intl);
 }
 
 table.ledger tbody th {
