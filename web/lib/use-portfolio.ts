@@ -19,6 +19,7 @@ import { useSyncExternalStore } from "react";
 import { isComplete, totalAmount } from "./fragment";
 import { getServerSnapshot, getSnapshot, subscribe, write } from "./fragment-store";
 import { convertMode, equalise as equaliseEntries } from "./portfolio-weights";
+import { moveItem } from "./reorder";
 import {
   FULL_ALLOCATION_BP,
   type EntryKind,
@@ -41,6 +42,15 @@ export interface PortfolioState {
   unallocatedBp: number;
   add: (kind: EntryKind, key: string) => void;
   remove: (kind: EntryKind, key: string) => void;
+  /**
+   * Move one entry to a 0-based position in the list.
+   *
+   * The order is the visitor's, not the app's: it is what the builder shows and what
+   * the link reproduces (`fragment.ts`). `toIndex` is clamped, and moving an entry to
+   * where it already is writes nothing, so a drag that ends where it started does not
+   * touch the URL.
+   */
+  move: (kind: EntryKind, key: string, toIndex: number) => void;
   setAmount: (kind: EntryKind, key: string, amount: number) => void;
   equalise: () => void;
   clear: () => void;
@@ -99,6 +109,19 @@ export function usePortfolio(): PortfolioState {
     [entries, mode],
   );
 
+  const move = useCallback((kind: EntryKind, key: string, toIndex: number) => {
+    // Read the *current* snapshot rather than the closure's `entries`: a pointer drag
+    // can fire several moves before React re-renders, and a stale list would reorder
+    // the wrong row. `write` clears the snapshot cache, so each call sees its own
+    // predecessor.
+    const current = getSnapshot().portfolio;
+    const from = current.entries.findIndex((entry) => isSame(entry, kind, key));
+    if (from < 0) return;
+    const to = Math.max(0, Math.min(current.entries.length - 1, toIndex));
+    if (to === from) return;
+    write({ mode: current.mode, entries: moveItem(current.entries, from, to) });
+  }, []);
+
   const setAmount = useCallback(
     (kind: EntryKind, key: string, amount: number) => {
       const max = ceiling(mode);
@@ -150,6 +173,7 @@ export function usePortfolio(): PortfolioState {
     unallocatedBp: mode === "bp" ? Math.max(0, FULL_ALLOCATION_BP - total) : 0,
     add,
     remove,
+    move,
     setAmount,
     equalise,
     clear,

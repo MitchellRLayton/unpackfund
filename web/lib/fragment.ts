@@ -20,6 +20,13 @@
  *
  * v1 and v2 still decode, forever, into the fund-only portfolio they always meant.
  * Nothing is ever re-encoded into an older version.
+ *
+ * **The array order is the visitor's order.** The builder used to sort entries by
+ * kind and key on both encode and decode, so a portfolio came back alphabetical and
+ * a typed list could never be read the way it was typed. The order is now part of
+ * the portfolio: it is what the builder shows, what the visitor can drag, and what
+ * the link reproduces. Two portfolios that differ only in order are different
+ * links, which is correct — the order is information the visitor supplied.
  */
 
 import {
@@ -78,15 +85,6 @@ function fromBase64Url(encoded: string): string {
   return new TextDecoder().decode(bytes);
 }
 
-/** Sorted by kind, then key, so the same portfolio always produces the same string. */
-export function sortEntries(entries: PortfolioEntry[]): PortfolioEntry[] {
-  return [...entries].sort((a, b) => {
-    const kindOrder = a.kind.localeCompare(b.kind);
-    if (kindOrder !== 0) return kindOrder;
-    return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
-  });
-}
-
 /** The entries' total in their own unit: basis points, or cents. */
 export function totalAmount(entries: PortfolioEntry[]): number {
   return entries.reduce((sum, entry) => sum + entry.amount, 0);
@@ -107,13 +105,11 @@ export function isComplete(mode: EntryMode, entries: PortfolioEntry[]): boolean 
 }
 
 export function encodePortfolio(portfolio: Portfolio): string {
+  // No sorting: the entries are written in the order the visitor sees them, which
+  // is also the order they will see when the link is opened again.
   const payload = [
     portfolio.mode,
-    sortEntries(portfolio.entries).map((entry) => [
-      KIND_CODE[entry.kind],
-      entry.key,
-      entry.amount,
-    ]),
+    portfolio.entries.map((entry) => [KIND_CODE[entry.kind], entry.key, entry.amount]),
   ];
   return `${FRAGMENT_VERSION}.${toBase64Url(JSON.stringify(payload))}`;
 }
@@ -160,7 +156,8 @@ function parsePortfolioEntries(raw: unknown, mode: EntryMode): PortfolioEntry[] 
   // shares would sum past the whole, and every weight would be a guess about what
   // the visitor meant.
   if (mode === "bp" && totalAmount(entries) > FULL_ALLOCATION_BP) return null;
-  return sortEntries(entries);
+  // Payload order, not sorted: the link is the portfolio's order (see the header).
+  return entries;
 }
 
 export interface Comparison {
@@ -218,7 +215,7 @@ function parseLegacyEntries(values: unknown): PortfolioEntry[] | null {
     seen.add(ticker);
     entries.push({ kind: "fund", key: ticker, amount: weightBp });
   }
-  return sortEntries(entries);
+  return entries;
 }
 
 /** The fund-only view of a portfolio, which is what `/compare` renders. */

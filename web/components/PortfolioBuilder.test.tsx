@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PortfolioBuilder } from "@/components/PortfolioBuilder";
+import { decodePortfolio } from "@/lib/fragment";
 import { write } from "@/lib/fragment-store";
 import type { ReleaseDescriptor } from "@/lib/types";
 
@@ -239,5 +240,100 @@ describe("PortfolioBuilder — a release that predates stocks", () => {
         shards: { A: {}, B: {}, S: {}, Z: {} },
       };
     }
+  });
+});
+
+/** The tickers in the portfolio list, top to bottom, as the visitor sees them. */
+function rowTickers(): string[] {
+  const list = document.querySelector(".portfolio-list");
+  if (!list) return [];
+  return Array.from(list.querySelectorAll("li .ticker")).map(
+    (cell) => cell.textContent ?? "",
+  );
+}
+
+function addFunds(...tickers: string[]): void {
+  for (const ticker of tickers) {
+    fireEvent.click(screen.getByRole("button", { name: `Add ${ticker}` }));
+  }
+}
+
+describe("PortfolioBuilder — the order is the visitor's", () => {
+  it("shows funds in the order they were added, never re-sorted", () => {
+    render(<PortfolioBuilder />);
+    // Alphabetical order would be QQQ, VOO, VTI — the old behaviour, and the reason
+    // a portfolio typed as "my core fund first" came back unrecognisable.
+    addFunds("QQQ", "VTI", "VOO");
+    expect(rowTickers()).toEqual(["QQQ", "VTI", "VOO"]);
+
+    const decoded = decodePortfolio(window.location.hash);
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    expect(decoded.portfolio.entries.map((entry) => entry.key)).toEqual([
+      "QQQ",
+      "VTI",
+      "VOO",
+    ]);
+  });
+
+  it("reorders with the arrow keys and says where the row went", () => {
+    render(<PortfolioBuilder />);
+    addFunds("QQQ", "VTI", "VOO");
+
+    const handle = screen.getByRole("button", { name: "Reorder VTI" });
+    handle.focus();
+    fireEvent.keyDown(handle, { key: "ArrowUp" });
+
+    expect(rowTickers()).toEqual(["VTI", "QQQ", "VOO"]);
+    // The announcement is the only thing a screen-reader visitor gets: "moved" alone
+    // would leave them re-reading the list to find out where.
+    expect(screen.getByText("VTI moved to position 1 of 3")).toBeTruthy();
+    // Focus stays on the same handle, so a second press keeps moving the same row.
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Reorder VTI" }),
+    );
+  });
+
+  it("jumps to either end with Home and End", () => {
+    render(<PortfolioBuilder />);
+    addFunds("QQQ", "VTI", "VOO");
+
+    const qqq = screen.getByRole("button", { name: "Reorder QQQ" });
+    qqq.focus();
+    fireEvent.keyDown(qqq, { key: "End" });
+    expect(rowTickers()).toEqual(["VTI", "VOO", "QQQ"]);
+
+    fireEvent.keyDown(qqq, { key: "Home" });
+    expect(rowTickers()).toEqual(["QQQ", "VTI", "VOO"]);
+  });
+
+  it("writes the dragged order into the link, so it survives a reload", () => {
+    render(<PortfolioBuilder />);
+    addFunds("QQQ", "VTI", "VOO");
+
+    const vti = screen.getByRole("button", { name: "Reorder VTI" });
+    vti.focus();
+    fireEvent.keyDown(vti, { key: "ArrowDown" });
+
+    // The link is the portfolio: re-read what the visitor would get on reload.
+    const decoded = decodePortfolio(window.location.hash);
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    expect(decoded.portfolio.entries.map((entry) => entry.key)).toEqual([
+      "QQQ",
+      "VOO",
+      "VTI",
+    ]);
+  });
+
+  it("offers no handle when there is nothing to reorder", () => {
+    render(<PortfolioBuilder />);
+    addFunds("QQQ");
+    expect(screen.getByRole("button", { name: "Reorder QQQ" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    // The hint would describe an interaction that cannot happen yet.
+    expect(screen.queryByText(/Drag a handle/)).toBeNull();
   });
 });
