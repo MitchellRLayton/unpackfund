@@ -51,6 +51,8 @@ Defined once in `app/globals.css` as custom properties, light and dark through `
 | `--tint-direct` / `--tint-direct-hover` | `#f2ecff` / `#e9e0fd`       | `#1d1930` / `#262038`        | the ledger row of a stock you hold directly      |
 | `--country-us`                          | `#3b6ea5`                   | `#6c9bd2`                    | the row's left edge for a US-domiciled company   |
 | `--country-intl`                        | `#9c7025`                   | `#d9a54a`                    | the row's left edge for any other domicile       |
+| `--country-us-ink`                      | `#35638f`                   | `#6c9bd2`                    | the `In VT` bracket on a US company's row (text) |
+| `--country-intl-ink`                    | `#7f5a1c`                   | `#d9a54a`                    | the same bracket for any other domicile          |
 | `--pill-bg`                             | `#c5c6c7`                   | `#192028`                    | the current section's pill (20% off `--surface`) |
 | `--pill-shadow`                         | `0 1px 2px rgb(0 0 0 / 8%)` | `0 1px 2px rgb(0 0 0 / 45%)` | the current section's pill, under the bar        |
 
@@ -106,6 +108,19 @@ the row's second line. The rules:
   saturation one step darker, 4.41:1 on the page and 3.48:1 at worst, and at L\* 50.4 it sits closer to the blue's
   45.4 than the recommendation's ochre did (61.3, visibly paler than the blue it was paired with). Dark-scheme values
   are the recommendation's, unchanged: both pass with room to spare.
+- **The difference against the benchmark wears the same two inks** (operator's instruction, 2026-11-02: "the delta of
+  plus or minus against benchmark VT … in the same color code as the US vs international"). The bracket in `In VT`
+  — `4.06% (-2.54%)` — is the one cell where a reader compares two numbers rather than reading one, so it is where the
+  domicile is worth repeating: the row's ink at the start and at the comparison, and "which names am I light on, and
+  are they American or not" can be scanned down a column instead of across every row. It is a second use of the pair,
+  not a new hue, a new column or a new metric, and the meaning is still in words: the sign is rendered, the caption says
+  which way round it is, and the code is spelled out. The inks (`--country-*-ink`) are **one step darker than the
+  stripes** because text answers to 4.5:1 where a 6 px bar answers to 3:1 — the stripe values measure 4.18:1 (blue) and
+  3.48:1 (ochre) on the darkest row background and would fail as text, which `lib/theme.test.ts` proves by listing them
+  in `TEXT_PAIRS` rather than `UI_PAIRS`. `#35638f` is 6.30:1 on the page and 4.96:1 at worst, `#7f5a1c` 6.21:1 and
+  4.89:1; separation survives the darkening (69.6 dE, and 70.8 / 67.9 / 53.3 simulated). In the dark scheme the
+  stripes already clear 4.5:1, so there the ink and the edge are the same value. A row with no agreed domicile keeps
+  `--muted`: an ink for "unknown" would be a default, which is the one thing this channel refuses to do.
 - **A further split uses two ochre shades, never a third hue** (operator, 2026-11-02: developed against emerging
   markets is the next step). A third hue makes the reader compare three colours instead of two and loses the
   US-versus-international read at a glance. The constraint: the second recommended ochre `#8c6420` is 4.14:1 at worst and

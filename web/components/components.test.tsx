@@ -63,7 +63,7 @@ function row(
 const COUNTRY_SENTENCE =
   " The country beside a company is the domicile its holders' filings agree on by value;" +
   " the row's left edge repeats it in colour — blue for the United States, ochre" +
-  " elsewhere — and a company whose filings do not agree carries no country.";
+  " elsewhere; a company whose filings do not agree carries no country.";
 
 const vt: BenchmarkFacts = {
   ticker: "VT",
@@ -383,6 +383,36 @@ describe("the country channel", () => {
     expect(container.querySelector("caption")?.textContent).toContain(COUNTRY_SENTENCE);
   });
 
+  it("colours the bracket with the row's domicile, and says so in the caption", () => {
+    // The operator's instruction (2026-11-02): the plus-or-minus against VT should read in
+    // the same colour code as the US-versus-international channel. This holds the two ends
+    // of it together — every bracket carries the hook, and the row it sits in carries the
+    // geography attribute the stylesheet keys the ink off, so the colour and the edge can
+    // never disagree — while the inks themselves are checked for contrast in
+    // `lib/theme.test.ts`.
+    const withBenchmark = [
+      row("c_1", "NVIDIA Corp", 0.075, 1, 0.04, "US"),
+      row("c_2", "Taiwan Semiconductor", 0.05, 1, 0.01, "TW"),
+      row("c_3", "Undecided Co", 0.02, 1, 0),
+    ];
+    const { container } = render(<LedgerTable rows={withBenchmark} benchmark={vt} />);
+    const brackets = [...container.querySelectorAll<HTMLSpanElement>("tbody span.delta")];
+    expect(brackets).toHaveLength(3);
+    expect(
+      brackets.map((span) => span.closest("tr")?.getAttribute("data-country") ?? null),
+    ).toEqual(["US", "TW", null]);
+    // Still a signed number rather than a colour: the sign is text, and the row with no
+    // agreed domicile keeps the quiet ink.
+    expect(brackets.map((span) => span.textContent)).toEqual([
+      "(+3.50%)",
+      "(+4.00%)",
+      "(+2.00%)",
+    ]);
+    expect(container.querySelector("caption")?.textContent).toContain(
+      "the bracketed difference in the In VT column wears the same ink",
+    );
+  });
+
   it("carries a direct position and a country on the same row, one channel each", () => {
     // The combination the two axes exist for: a stock you hold directly that also has
     // a decided domicile. The background keeps meaning position kind and the edge
@@ -409,6 +439,9 @@ describe("the country channel", () => {
     const caption = container.querySelector("caption")?.textContent ?? "";
     expect(caption).not.toContain("country");
     expect(caption).not.toContain("shaded");
+    // No geography, no ink promised: the caption cannot describe a colour code the table
+    // is not using.
+    expect(caption).not.toContain("wears the same ink");
   });
 });
 
