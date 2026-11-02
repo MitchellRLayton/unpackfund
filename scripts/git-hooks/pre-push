@@ -1,0 +1,77 @@
+#!/bin/sh
+# pre-push: refuse to publish commits that cannot be attributed to a session.
+#
+# commit-msg already runs on every local commit; this is the second lock, for the
+# commits that never met it — made with --no-verify, made before the rule existed, or
+# made by a tool that wrote its own message.
+#
+# Commits authored before PROVENANCE_SINCE are exempt: work that was already in flight
+# when the rule landed must not be retroactively blocked. New commits are not.
+#
+# Installed by scripts/git-setup.sh (core.hooksPath = scripts/git-hooks).
+
+set -eu
+
+PROVENANCE_SINCE="2026-11-02T00:00:00Z"
+zero="0000000000000000000000000000000000000000"
+
+status=0
+checked=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue          # branch deletion
+  case "$remote_ref" in
+    refs/heads/*) : ;;
+    *) continue ;;                                 # tags and anything else
+  esac
+
+  if [ "$remote_sha" = "$zero" ]; then
+    # New branch: everything not already reachable from a remote ref.
+    range=$(git rev-list "$local_sha" --not --remotes 2>/dev/null || true)
+  else
+    range=$(git rev-list "$remote_sha..$local_sha" 2>/dev/null || true)
+  fi
+  [ -n "$range" ] || continue
+
+  # Only commits authored after the rule took effect are enforced.
+  recent=$(git rev-list --since="$PROVENANCE_SINCE" $range 2>/dev/null || true)
+
+  for c in $recent; do
+    checked=$((checked + 1))
+    subject=$(git log -1 --format=%s "$c")
+    case "$subject" in
+      "Merge "*) continue ;;
+    esac
+    missing=""
+    for key in Session Worktree Agent; do
+      value=$(git log -1 --format="%(trailers:key=$key,valueonly,separator=,)" "$c")
+      [ -n "$value" ] || missing="$missing $key"
+    done
+    if [ -n "$missing" ]; then
+      short=$(git log -1 --format=%h "$c")
+      echo "pre-push: $short does not say which session made it (missing:$missing)" >&2
+      echo "          $subject" >&2
+      status=1
+    fi
+  done
+done
+
+if [ "$status" -ne 0 ]; then
+  {
+    echo ""
+    echo "pre-push: refusing to push unattributed commits."
+    echo "  Every commit authored after $PROVENANCE_SINCE needs Session:, Worktree: and Agent:"
+    echo "  trailers (AGENTS.md, \"Commit provenance\")."
+    echo ""
+    echo "  Fix the branch (unpushed, so it is safe to rewrite):"
+    echo "    git rebase -i --root   # or: git rebase -i origin/main"
+    echo "  and rewrite each message with:"
+    echo "    scripts/session-provenance.sh commit -m \"<the same message>\"   # after 'git commit --amend -m'"
+    echo ""
+    echo "  Or check what is missing first:"
+    echo "    scripts/session-provenance.sh check --range origin/main..HEAD"
+  } >&2
+  exit 1
+fi
+
+exit 0
