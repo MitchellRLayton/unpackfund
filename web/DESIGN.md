@@ -52,6 +52,8 @@ Defined once in `app/globals.css` as custom properties, light and dark through `
 | `--country-us`                          | `#3b6ea5`                   | `#6c9bd2`                    | the row's left edge for a US-domiciled company   |
 | `--country-dm`                          | `#9c7025`                   | `#d9a54a`                    | the edge for a developed market outside the US   |
 | `--country-em`                          | `#4a3410`                   | `#8b6d40`                    | the edge for an emerging market                  |
+| `--country-us-ink`                      | `#35638f`                   | `#6c9bd2`                    | the `In VT` bracket on a US company's row (text) |
+| `--country-intl-ink`                    | `#7f5a1c`                   | `#d9a54a`                    | the same bracket for any other domicile          |
 | `--pill-bg`                             | `#c5c6c7`                   | `#192028`                    | the current section's pill (20% off `--surface`) |
 | `--pill-shadow`                         | `0 1px 2px rgb(0 0 0 / 8%)` | `0 1px 2px rgb(0 0 0 / 45%)` | the current section's pill, under the bar        |
 
@@ -108,16 +110,34 @@ the row's second line. The rules:
   saturation one step darker, 4.41:1 on the page and 3.48:1 at worst, and at L\* 50.4 it sits closer to the blue's
   45.4 than the recommendation's ochre did (61.3, visibly paler than the blue it was paired with). Dark-scheme values
   are the recommendation's, unchanged: both pass with room to spare.
+- **The difference against the benchmark wears the same ink** (operator's instruction, 2026-11-02: "the delta of
+  plus or minus against benchmark VT … in the same color code as the US vs international"). The bracket in `In VT`
+  — `4.06% (-2.54%)` — is the one cell where a reader compares two numbers rather than reading one, so it is where the
+  domicile is worth repeating: the row's ink at the start and at the comparison, and "which names am I light on, and
+  are they American or not" can be scanned down a column instead of across every row. It is a second use of the pair,
+  not a new hue, a new column or a new metric, and the meaning is still in words: the sign is rendered, the caption says
+  which way round it is, and the code is spelled out. The inks (`--country-*-ink`) are **one step darker than the
+  stripes** because text answers to 4.5:1 where a 6 px bar answers to 3:1 — the stripe values measure 4.18:1 (blue) and
+  3.48:1 (ochre) on the darkest row background and would fail as text, which `lib/theme.test.ts` proves by listing them
+  in `TEXT_PAIRS` rather than `UI_PAIRS`. `#35638f` is 6.30:1 on the page and 4.96:1 at worst, `#7f5a1c` 6.21:1 and
+  4.89:1; separation survives the darkening (69.6 dE, and 70.8 / 67.9 / 53.3 simulated). In the dark scheme the blue and
+  the developed ochre already clear 4.5:1, so there the ink and the edge are the same value. A row with no agreed
+  domicile keeps `--muted`: an ink for "unknown" would be a default, which is the one thing this channel refuses to do.
 - **The developed/emerging split is two shades of the ochre, never a third hue** (shipped 2026-11-02 on the
   operator's instruction). A third hue would make the reader compare three colours instead of two and lose the
   US-versus-international read at a glance. The binding constraint is the 3:1 floor: two ochres that each clear it on
-  every row background are confined to roughly L\* 18–54 in the light scheme, which caps their separation near dE 37.
+  every row background are confined to roughly L\* 18-54 in the light scheme, which caps their separation near dE 37.
   The shipped pair sits at the ends of that band — `#4a3410` at L\* 23.5 against `#9c7025` at 50.4 — measuring
   **dE 34.2 normally and 30.0 at worst in simulation** (deuteranopia 34.2, protanopia 33.6, tritanopia 30.0), at
   9.24:1 on the darkest row background. Dark: `#8b6d40` against `#d9a54a`, **33.2 / 26.4**, 3.24:1 at worst. Emerging
-  is the deeper shade in both schemes, so the meaning does not flip at night. `lib/theme.test.ts` holds all three inks
+  is the deeper shade in both schemes, so the meaning does not flip at night. `lib/theme.test.ts` holds all three edges
   and all three pairs: 40 uncorrected between blue and either ochre, 30 between the two ochres (40 is unreachable at
   this contrast budget, not waived), and 25 after simulation for every pair.
+- **The bracket ink did not gain a third tier** (decided with the split, 2026-11-02). It stays American-or-not: a third
+  text ink cannot clear both floors at once — above 4.5:1 the two ochre inks are confined to L\* 18-42, which caps their
+  separation at dE ~22, under the 25 the colour-vision gate requires — and the emerging stripe is itself 3.24:1 in the
+  dark scheme, so a matching ink could not be text at all. So the bracket reinforces the primary axis and the 6 px edge
+  carries the developed/emerging one, which is the axis a reader scans for. The token comment records the same reason.
 - **Absence means no answer.** A company the filings disagree about — or one held only by funds that file no country —
   is absent from the map, and its row carries no edge and no tag. A default would be a guess. The caption sentence
   appears only when a row actually carries a code, and a release that publishes no country object renders exactly as

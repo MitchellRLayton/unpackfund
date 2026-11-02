@@ -153,6 +153,33 @@ function deltaE(a: string, b: string): number {
   ["muted", "tint-direct", "secondary text on a shaded row"],
   ["fg", "tint-direct-hover", "body text on a shaded row under the pointer"],
   ["muted", "tint-direct-hover", "secondary text on a shaded row under the pointer"],
+  // The bracketed difference in the `In VT` column, painted in the row's geography ink
+  // (operator's instruction, 2026-11-02). It is text, so it answers to 4.5:1 on every
+  // background a ledger row can have — the same four the edges are held to at 3:1. This
+  // is why the text inks are a step darker than the stripes; the stripe tokens
+  // (`country-us`, `country-dm`, `country-em`) would fail here on the tinted rows and are
+  // deliberately not listed. The ink stays a two-group channel — American or not — even
+  // though the edge now has three tiers: the comment at the token says why.
+  ["country-us-ink", "bg", "the bracket on a US company's row"],
+  ["country-us-ink", "surface", "the bracket on a US company's row, hovered"],
+  ["country-us-ink", "tint-direct", "the bracket on a US company held directly"],
+  [
+    "country-us-ink",
+    "tint-direct-hover",
+    "the bracket on a US direct row under the pointer",
+  ],
+  ["country-intl-ink", "bg", "the bracket on an international company's row"],
+  [
+    "country-intl-ink",
+    "surface",
+    "the bracket on an international company's row, hovered",
+  ],
+  ["country-intl-ink", "tint-direct", "the bracket on an international direct row"],
+  [
+    "country-intl-ink",
+    "tint-direct-hover",
+    "the bracket on an international direct row under the pointer",
+  ],
 ];
 
 /**
@@ -247,19 +274,21 @@ describe("automatic light/dark", () => {
 
     it(`keeps every pair of geography inks apart for colour-blind readers in ${name}`, () => {
       // Each entry: the two tokens, the separation uncorrected vision must show, and why.
-      // The simulated floor is the same for all three pairs — 25 is the point below which
-      // two inks read as one colour — and the uncorrected floors differ by what the pair
-      // is. Blue against either ochre clears 40 with room (81.7 and 64.4 in the light
-      // scheme). The two ochres cannot: both must clear the 3:1 non-text floor on every
-      // row background, which confines them to roughly L* 18-54 and caps their separation
-      // at about dE 37. Their floor is 30 — still two clearly different tones, measured at
-      // 34.2 and 33.2 — because 40 is unreachable by construction, not because it was
-      // lowered for convenience. Loosening any of these numbers is an escalation, not an
-      // edit.
+      // The simulated floor is the same for every pair — 25 is where two inks read as one
+      // colour — and the uncorrected floor differs by what the pair is. Blue against
+      // either ochre clears 40 with room (81.7 and 64.4 in the light scheme). The two
+      // ochres cannot: both must clear the 3:1 non-text floor on every row background,
+      // which confines them to roughly L* 18-54 and caps their separation at about dE 37.
+      // Their floor is 30 — still two clearly different tones, measured at 34.2 and 33.2 —
+      // because 40 is unreachable by construction, not because it was lowered for
+      // convenience. The bracket's text ink is a two-group channel (American or not; see
+      // the token comment for why it did not gain a third ink), so it contributes one pair
+      // at the same 40 as the blue-versus-ochre edges.
       const INK_PAIRS: Array<[string, string, number, string]> = [
         ["country-us", "country-dm", 40, "blue against the developed ochre"],
         ["country-us", "country-em", 40, "blue against the emerging ochre"],
         ["country-dm", "country-em", 30, "the two ochres against each other"],
+        ["country-us-ink", "country-intl-ink", 40, "the two bracket inks"],
       ];
       const MIN_SIMULATED_SEPARATION = 25;
       const background = theme["bg"];
@@ -287,7 +316,7 @@ describe("automatic light/dark", () => {
                 `${left} -> ${simulatedLeft} and ${right} -> ${simulatedRight}`,
             );
           }
-          // An ink that reaches the floor only because the simulated background moved
+          // A pair that reached the floor only because the simulated background moved
           // would still be a stripe a reader cannot find.
           const simulatedBackground = simulate(background, matrix);
           for (const [ink, simulated] of [
@@ -306,4 +335,18 @@ describe("automatic light/dark", () => {
       expect(failures).toEqual([]);
     });
   }
+
+  it("paints the bracket from the row's geography attribute, not from a second class", () => {
+    // `LedgerTable` writes `span.delta` and the row's `data-country`; these three rules do
+    // the mapping, so the ink and the 6 px edge cannot disagree about what a row is. A
+    // rename on either side would drop the colour silently — the table would keep working
+    // and the operator would see a plain number again — which is what this holds.
+    expect(CSS).toMatch(/\.delta\s*\{[^}]*color:\s*var\(--muted\)/);
+    expect(CSS).toMatch(
+      /tr\[data-country="US"\]\s+\.delta\s*\{[^}]*color:\s*var\(--country-us-ink\)/,
+    );
+    expect(CSS).toMatch(
+      /tr\[data-country\]:not\(\[data-country="US"\]\)\s+\.delta\s*\{[^}]*color:\s*var\(--country-intl-ink\)/,
+    );
+  });
 });

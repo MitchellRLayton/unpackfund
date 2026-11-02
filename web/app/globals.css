@@ -78,6 +78,21 @@
    * background — a stripe that is darker and quieter, never a second hue. */
   --country-em: #4a3410;
 
+  /* The same two hues as **text**, for the bracketed difference in the `In VT` column
+   * (operator's instruction, 2026-11-02: "I want the delta of plus or minus against
+   * benchmark VT to be in the same color code as the US vs international"). The inks are
+   * one step darker than the stripes because they answer to a stricter floor: a stripe is
+   * a graphic (3:1) and this is 13 px text (4.5:1), and the stripes measure 4.18:1 (blue)
+   * and 3.48:1 (ochre) on the darkest row background — enough for a 6 px bar, not enough
+   * for a number a reader has to compare. Same hue, same relationship, and matched in
+   * weight: #35638f is 6.30:1 on the page and **4.96:1** at worst (the direct-position
+   * hover tint), #7f5a1c 6.21:1 and **4.89:1**, so neither domicile is the hard one to
+   * read. Separation is untouched by the darkening — 69.6 dE normally, 70.8 / 67.9 / 53.3
+   * simulated for deuteranopia / protanopia / tritanopia — so a red-green reader still
+   * sees two inks rather than one (`lib/theme.test.ts`). */
+  --country-us-ink: #35638f;
+  --country-intl-ink: #7f5a1c;
+
   /* The current section's pill: `--surface` mixed 20% darker, per the operator's
    * instruction of 2026-11-02 ("20% darker pill"). It is a token rather than a
    * `color-mix()` at the use site so the theme test can check its contrast: #f6f8f9 at
@@ -136,6 +151,17 @@
     --country-us: #6c9bd2;
     --country-dm: #d9a54a;
     --country-em: #8b6d40;
+    /* In this scheme the stripes clear the 4.5:1 text floor for the blue and the developed
+     * ochre — 5.39:1 and 7.01:1 on the worst row background — but the *emerging* stripe
+     * does not (3.24:1), so the text ink stays a **two-group** channel: American, and
+     * everything else, at the developed ochre's value. A third ink would have to be
+     * lighter than the emerging stripe in this scheme and darker than it in the light one,
+     * and in the light scheme two ochre inks above 4.5:1 are confined to L* 18-42, which
+     * caps their separation at dE ~22 — under the 25 the colour-vision gate requires. So
+     * the bracket reinforces the primary axis ("is this row American?") and the 6 px edge
+     * carries the developed/emerging one, which is the axis a reader scans for. */
+    --country-us-ink: #6c9bd2;
+    --country-intl-ink: #d9a54a;
     /* 20% in the opposite direction, and deliberately: on a #0d1117 page a darker pill
      * moves *toward* the page and erases the block the light scheme just gained, so the
      * dark scheme gets the same 20% step away from `--surface` instead. #151b22 at 120%
@@ -746,6 +772,31 @@ table.ledger tbody tr[data-tier="DM"] > :first-child {
 
 table.ledger tbody tr[data-tier="EM"] > :first-child {
   box-shadow: inset 6px 0 0 var(--country-em);
+}
+
+/* The bracketed difference in the `In VT` column wears the row's own geography ink
+ * (operator's instruction, 2026-11-02). It is the second use of the same pair on purpose:
+ * the edge repeats the country at the start of the row, and this repeats it at the one
+ * cell where a reader is comparing two numbers rather than reading one — so "which names
+ * am I light on, and are they American or not" can be scanned by column instead of by
+ * crossing back to the first cell on every line. That is what makes the same two inks
+ * worth spending twice; it is not a new hue, a new column, or a new metric.
+ *
+ * The meaning still lives in words: the sign is rendered (`+3.29%` / `-2.54%`), the caption
+ * says which way round it is, and the country code is spelled out beside the name. A row
+ * whose filings do not agree on a domicile keeps `--muted`: an ink for "unknown" would be
+ * a default, and the absence of a country is the honest answer (`static-xray-frontend`
+ * §4a, §8). */
+.delta {
+  color: var(--muted);
+}
+
+table.ledger tbody tr[data-country="US"] .delta {
+  color: var(--country-us-ink);
+}
+
+table.ledger tbody tr[data-country]:not([data-country="US"]) .delta {
+  color: var(--country-intl-ink);
 }
 
 table.ledger tbody th {

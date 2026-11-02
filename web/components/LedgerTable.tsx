@@ -143,6 +143,15 @@ export function LedgerTable({
               " the United States, ochre for developed markets elsewhere, a deeper" +
               " ochre for emerging ones — and stays blank where the filings do not" +
               " agree, or where the country is neither developed nor emerging." +
+              // Only when there is a bracket to colour: the column is absent without a
+              // benchmark, and a sentence about an ink with nothing wearing it is noise.
+              (benchmark
+                ? " The bracketed difference in the In " +
+                  benchmark.ticker +
+                  " column is coloured the same way for an American row against any" +
+                  " other, a step darker because a number needs more contrast than a" +
+                  " stripe."
+                : "") +
               " Developed and emerging follow the FTSE country classification, as of " +
               TIER_AS_OF +
               "."
@@ -273,7 +282,14 @@ export function LedgerTable({
                     ) : (
                       <>
                         {formatShare(benchmarkWeight)}{" "}
-                        <span className="muted">{formatSignedShare(delta)}</span>
+                        {/* The bracket wears the row's geography ink — blue for a US
+                          company, ochre for an international one — repeating the edge at
+                          the one cell where two numbers are compared (operator's
+                          instruction, 2026-11-02). The class carries no meaning of its
+                          own: the stylesheet keys it off `data-country` on the row, the
+                          sign is in the text, and the direction is a sentence in the
+                          caption (`static-xray-frontend` §4a, §8). */}
+                        <span className="delta">{formatSignedShare(delta)}</span>
                       </>
                     )}
                   </td>

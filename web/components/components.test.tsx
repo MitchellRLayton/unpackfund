@@ -65,8 +65,7 @@ const COUNTRY_SENTENCE =
   " The row's left edge repeats it in colour — blue for the United States, ochre for" +
   " developed markets elsewhere, a deeper ochre for emerging ones — and stays blank" +
   " where the filings do not agree, or where the country is neither developed nor" +
-  " emerging. Developed and emerging follow the FTSE country classification, as of" +
-  " 2026-11-02.";
+  " emerging.";
 
 const vt: BenchmarkFacts = {
   ticker: "VT",
@@ -407,7 +406,44 @@ describe("the country channel", () => {
 
   it("explains the tag and the edge in the caption, word for word", () => {
     const { container } = render(<LedgerTable rows={rows} />);
-    expect(container.querySelector("caption")?.textContent).toContain(COUNTRY_SENTENCE);
+    const caption = container.querySelector("caption")?.textContent ?? "";
+    expect(caption).toContain(COUNTRY_SENTENCE);
+    // Named, not implied: a colour that encodes a publisher's judgement has to say whose
+    // judgement and which vintage, or the reader cannot check it against the fund page.
+    expect(caption).toContain(
+      "Developed and emerging follow the FTSE country classification, as of 2026-11-02",
+    );
+  });
+
+  it("colours the bracket with the row's domicile, and says so in the caption", () => {
+    // The operator's instruction (2026-11-02): the plus-or-minus against VT should read in
+    // the same colour code as the US-versus-international channel. This holds the two ends
+    // of it together — every bracket carries the hook, and the row it sits in carries the
+    // geography attribute the stylesheet keys the ink off, so the colour and the edge can
+    // never disagree — while the inks themselves are checked for contrast in
+    // `lib/theme.test.ts`.
+    const withBenchmark = [
+      row("c_1", "NVIDIA Corp", 0.075, 1, 0.04, "US"),
+      row("c_2", "Taiwan Semiconductor", 0.05, 1, 0.01, "TW"),
+      row("c_3", "Undecided Co", 0.02, 1, 0),
+    ];
+    const { container } = render(<LedgerTable rows={withBenchmark} benchmark={vt} />);
+    const brackets = [...container.querySelectorAll<HTMLSpanElement>("tbody span.delta")];
+    expect(brackets).toHaveLength(3);
+    expect(
+      brackets.map((span) => span.closest("tr")?.getAttribute("data-country") ?? null),
+    ).toEqual(["US", "TW", null]);
+    // Still a signed number rather than a colour: the sign is text, and the row with no
+    // agreed domicile keeps the quiet ink.
+    expect(brackets.map((span) => span.textContent)).toEqual([
+      "(+3.50%)",
+      "(+4.00%)",
+      "(+2.00%)",
+    ]);
+    expect(container.querySelector("caption")?.textContent).toContain(
+      "The bracketed difference in the In VT column is coloured the same way for an" +
+        " American row against any other",
+    );
   });
 
   it("carries a direct position and a country on the same row, one channel each", () => {
@@ -437,6 +473,9 @@ describe("the country channel", () => {
     const caption = container.querySelector("caption")?.textContent ?? "";
     expect(caption).not.toContain("country");
     expect(caption).not.toContain("shaded");
+    // No geography, no ink promised: the caption cannot describe a colour code the table
+    // is not using.
+    expect(caption).not.toContain("wears the same ink");
   });
 });
 
