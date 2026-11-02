@@ -12,8 +12,16 @@ import { usePathname } from "next/navigation";
  */
 export function SiteNav() {
   const pathname = usePathname();
-  const on = (prefix: string) =>
-    prefix === "/" ? pathname === "/" : Boolean(pathname?.startsWith(prefix));
+  // A section owns a path *segment*, not a string prefix: `/c` is Companies, but
+  // `/compare` starts with the same two characters and used to light up both. The
+  // background makes a second lit label impossible to miss, so the match has to be
+  // the boundary (`SiteNav.test.tsx` holds this).
+  const on = (raw: string) => {
+    const prefix = raw !== "/" && raw.endsWith("/") ? raw.slice(0, -1) : raw;
+    return prefix === "/"
+      ? pathname === "/"
+      : Boolean(pathname === prefix || pathname?.startsWith(`${prefix}/`));
+  };
 
   return (
     <nav className="site-nav" aria-label="Sections">

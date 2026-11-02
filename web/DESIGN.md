@@ -23,11 +23,14 @@ provenance of every number visible without a click.
    and does not score it ([ADR-0015](../../docs/04-decisions/ADR-0015-vt-benchmark.md)).
 3. **No colour-only meaning.** Coverage bands are text (`93.3% of weight covered`) with a chip as reinforcement; the
    sorted column is marked with `aria-sort` and a drawn arrow.
-4. **Quiet chrome.** One accent colour, used for the primary action and the current nav item only. Rules are 1 px,
-   surfaces are flat, corners are 2 px. Density over decoration: a 2rem row height holds 1,125 companies and still reads.
+4. **Quiet chrome.** One accent colour, used for the primary action only. Rules are 1 px, surfaces are flat, corners
+   are 2 px. Density over decoration: a 2rem row height holds 1,125 companies and still reads.
    The one exception is attribution: a company row always names every fund that holds it, as chips that wrap, so a
    portfolio with five or more funds grows the row by a line instead of truncating to `+N more`. Attribution outranks
    uniform density — a hidden fund is a wrong answer, a taller row is not.
+   The second is the current-section pill in the header — a light grey block with a soft shadow and a 0.4 rem radius
+   (see _The frozen header_): "which part of the app am I in" is a location, and a location is worth a shape rather than
+   a bolder font.
 5. **Numbers are tabular.** `font-variant-numeric: tabular-nums` on every weight, count, and metric so columns align
    without a grid of spans.
 
@@ -35,18 +38,19 @@ provenance of every number visible without a click.
 
 Defined once in `app/globals.css` as custom properties, light and dark through `prefers-color-scheme`.
 
-| Token                                   | Light                 | Dark                  | Use                                            |
-| --------------------------------------- | --------------------- | --------------------- | ---------------------------------------------- |
-| `--bg`                                  | `#ffffff`             | `#0d1117`             | page                                           |
-| `--surface`                             | `#f6f8f9`             | `#151b22`             | table header, notices                          |
-| `--fg`                                  | `#11181c`             | `#e8edf0`             | body text                                      |
-| `--muted`                               | `#55636b`             | `#9aa7b0`             | labels, notes, secondary values                |
-| `--rule`                                | `#d7dde1`             | `#232b33`             | hairlines, table rules                         |
-| `--accent`                              | `#0f6d78`             | `#5ec8d4`             | primary action, current nav item               |
-| `--warn` / `--warn-soft`                | `#7a4b00` / `#fdf3e2` | `#f0b429` / `#2e2413` | warnings, partial coverage                     |
-| `--tint-direct` / `--tint-direct-hover` | `#f2ecff` / `#e9e0fd` | `#1d1930` / `#262038` | the ledger row of a stock you hold directly    |
-| `--country-us`                          | `#9dc2ea`             | `#2b4a6d`             | the row's left edge for a US-domiciled company |
-| `--country-intl`                        | `#8d9fe0`             | `#2f3a6e`             | the row's left edge for any other domicile     |
+| Token                                   | Light                       | Dark                         | Use                                            |
+| --------------------------------------- | --------------------------- | ---------------------------- | ---------------------------------------------- |
+| `--bg`                                  | `#ffffff`                   | `#0d1117`                    | page                                           |
+| `--surface`                             | `#f6f8f9`                   | `#151b22`                    | table header, notices                          |
+| `--fg`                                  | `#11181c`                   | `#e8edf0`                    | body text                                      |
+| `--muted`                               | `#55636b`                   | `#9aa7b0`                    | labels, notes, secondary values                |
+| `--rule`                                | `#d7dde1`                   | `#232b33`                    | hairlines, table rules                         |
+| `--accent`                              | `#0f6d78`                   | `#5ec8d4`                    | primary action                                 |
+| `--warn` / `--warn-soft`                | `#7a4b00` / `#fdf3e2`       | `#f0b429` / `#2e2413`        | warnings, partial coverage                     |
+| `--tint-direct` / `--tint-direct-hover` | `#f2ecff` / `#e9e0fd`       | `#1d1930` / `#262038`        | the ledger row of a stock you hold directly    |
+| `--country-us`                          | `#9dc2ea`                   | `#2b4a6d`                    | the row's left edge for a US-domiciled company |
+| `--country-intl`                        | `#8d9fe0`                   | `#2f3a6e`                    | the row's left edge for any other domicile     |
+| `--pill-shadow`                         | `0 1px 2px rgb(0 0 0 / 8%)` | `0 1px 2px rgb(0 0 0 / 45%)` | the current section's pill, under the bar      |
 
 **Row shading (operator's instruction, 2026-11-02).** A company the visitor holds as a stock, not only through a fund, gets
 a pastel light-purple row — quiet enough that the numbers still lead, distinct enough to find the single-stock positions at
@@ -88,6 +92,25 @@ the row's second line. The rules:
   company's holders' N-PORT filings decided by **value-weighted majority**, published only at ≥ 80% agreement. The
   browser does not aggregate, vote, or infer one — it looks the code up (`web/lib/aggregate.ts`), because the rule that
   decided it lives in the pipeline and only there.
+
+## The frozen header (operator's instruction, 2026-11-02)
+
+The header is `position: sticky; top: 0` on **every** screen: the section you are in is a location, so it stays on
+screen while the page scrolls under it. The rules that keep it from becoming decoration:
+
+- **Opaque, with a rule and nothing else.** `--bg` plus the 1 px `--rule` seam. No translucency, no blur, no shadow: a
+  bar that tints the rows of a dense table as they pass reads as a rendering fault, and on a page whose whole job is
+  legible numbers a stray tint is one more thing to doubt.
+- **The current section is a block, not a bold word.** `aria-current="page"` (unchanged, so a screen reader still
+  announces it), `--fg` at weight 600, `--surface` behind it, `--pill-shadow` under it, 0.4 rem corners. The colour is
+  reinforcement; the attribute is the meaning (rule 3).
+- **Every label carries the pill's padding.** Otherwise the row shifts sideways the moment you change section, and the
+  nav overflows at 320 px. With the padding and `flex-wrap` the bar takes two rows on a narrow phone and holds one line
+  above 400 px.
+- **One segment, one pill.** A section matches a path _segment_ (`/c` must not claim `/compare`), which the background
+  makes non-negotiable: two lit labels would say the visitor is in two places at once. `components/SiteNav.test.tsx`
+  holds it.
+- **The skip link sits above the bar** (`z-index: 30` against the header's `20`), or the first Tab would land behind it.
 
 ## Allocation: 100% is a statement, not a clamp (operator's instruction, 2026-11-02)
 
