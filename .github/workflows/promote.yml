@@ -8,12 +8,23 @@
 # Order, and it is deliberate (cloudflare-workers-r2-deploy §5):
 #   1. the data pointer moves first — the app reads it, and the pages discover their
 #      numbers through it;
-#   2. then the Worker that serves the pages, from the *same artifact* day 1 built, so a
-#      promotion cannot publish pages nobody reviewed;
+#   2. then the Worker, in two pieces: the *app* is rebuilt from this run's checkout, and
+#      the *fund pages* are taken from the artifact day 1 built, so a promotion cannot
+#      publish pages nobody reviewed — and cannot publish code older than `main` either;
 #   3. then retention, so the prune runs only after a successful promotion.
 # A failure at (2) leaves fresh data with pages one day old, which is visible and
 # recoverable; the reverse (new pages, old data) would show a fund page the app disagrees
 # with.
+#
+# **Why the app is rebuilt here (fixed 2026-11-02).** The artifact's `web/out` is a whole
+# site compiled by day 1, whose checkout is whatever `main` was when that run started — up
+# to a day older than the code a merge published, and in the observed case 79 minutes
+# older. Deploying it whole therefore republished an app bundle from before two merges:
+# at 18:39 on 2026-11-02 a promotion put a pre-VT build over production, and the column
+# added at 18:21 disappeared until the promote→deploy-site hand-off rebuilt it at 18:45.
+# The artifact is trustworthy for what day 1 *generated* (the 9k fund pages, their
+# stylesheet, sitemap, robots); it is not a source of truth for code. So: build the app
+# from this checkout, copy the generated pages over it, deploy the pair.
 #
 # Refuses, rather than guesses, when: there is no staged candidate, the candidate is
 # already live, the candidate is more than 3 days old (day 1 has been failing), or the
@@ -91,6 +102,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
+      # Node is here only to rebuild the app (see the header); the pointer move, the
+      # promotion and the prune are Python. Same three setup steps `deploy-site.yml` uses,
+      # so the two publishers cannot drift on the toolchain.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
 
       - name: Install the pipeline
         run: |
@@ -172,17 +193,67 @@ jobs:
           # then writes the one mutable object. It re-uploads nothing.
           python -m pipeline.release promote "${ARGS[@]}"
 
+      # The app is rebuilt, not downloaded. `pnpm build` is the same command
+      # `deploy-site.yml` runs, from this run's checkout of `main`; nothing here can
+      # make it older than the last merge.
+      - name: Install the site
+        if: ${{ !inputs.skip_deploy && steps.resolve.outputs.already_live != 'true' }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the app from this commit
+        if: ${{ !inputs.skip_deploy && steps.resolve.outputs.already_live != 'true' }}
+        run: pnpm build
+
       - uses: actions/download-artifact@v4
         if: ${{ !inputs.skip_deploy && steps.resolve.outputs.already_live != 'true' }}
         with:
           name: site
-          path: web/out
+          path: artifacts/site
           # Cross-run: the artifact belongs to the refresh run resolved above, not this one.
           run-id: ${{ steps.site.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           if-no-files-found: error
 
-      - name: Deploy the site that day 1 built
+      - name: Take day 1's generated pages over this build
+        if: ${{ !inputs.skip_deploy && steps.resolve.outputs.already_live != 'true' }}
+        run: |
+          set -euo pipefail
+          # The app build must be whole before anything is layered on it.
+          if [ ! -f web/out/index.html ]; then
+            echo "::error::the app build produced no index.html; nothing to deploy"
+            exit 1
+          fi
+          # The artifact is a *whole site* compiled by day 1. Only the files day 1
+          # generated are taken from it — its fund pages and their stylesheet.
+          # Everything else in it is a code bundle of unknown age (see the header) and is
+          # discarded; `web/out` keeps this run's build.
+          for PATHNAME in f fund-page.css; do
+            if [ ! -e "artifacts/site/$PATHNAME" ]; then
+              echo "::error::the site artifact has no $PATHNAME; day 1 did not finish the pages"
+              exit 1
+            fi
+            rm -rf "web/out/$PATHNAME"
+            cp -a "artifacts/site/$PATHNAME" "web/out/$PATHNAME"
+          done
+          # The generator writes the sitemap and robots file only when it renders the
+          # release as indexable, and the three move together (fund_pages.build). So take
+          # them when day 1 wrote them, and otherwise leave the build's own — a site that
+          # is `noindex` must not ship a sitemap.
+          for PATHNAME in sitemap.xml robots.txt; do
+            if [ -e "artifacts/site/$PATHNAME" ]; then
+              rm -rf "web/out/$PATHNAME"
+              cp -a "artifacts/site/$PATHNAME" "web/out/$PATHNAME"
+            fi
+          done
+          PAGES=$(find web/out/f -name index.html | wc -l | tr -d ' ')
+          echo "fund pages from day 1: $PAGES"
+          echo "files to deploy: $(find web/out -type f | wc -l)"
+          # The same floor `deploy-site.yml` enforces: a generator change that writes
+          # nothing must fail the promotion, not publish an app without its pages.
+          test "$PAGES" -ge 8000
+          test "$(find web/out -type f | wc -l)" -le 20000
+
+      - name: Deploy this commit's app with day 1's pages
         if: ${{ !inputs.skip_deploy && steps.resolve.outputs.already_live != 'true' }}
         env:
           # wrangler's env var name is CLOUDFLARE_API_TOKEN; the repository secret is
@@ -192,15 +263,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          # The download above fails the run rather than warning, so reaching this without
-          # index.html means the artifact was empty. Refuse: the pointer is already live by
-          # now, and shipping nothing leaves pages a day behind the data.
-          if [ ! -f web/out/index.html ]; then
-            echo "::error::the site artifact is empty; production still serves the previous pages"
-            exit 1
-          fi
-          echo "files to deploy: $(find web/out -type f | wc -l)"
-          test "$(find web/out -type f | wc -l)" -le 20000
+          # Reached only past the overlay's guards, so `web/out` is an app build with
+          # day 1's pages in it. The pointer is already live by now; shipping nothing
+          # would leave the pages a day behind the data.
           npx --yes ${{ env.WRANGLER }} deploy --config wrangler.prod.jsonc
 
       - name: Smoke the live surfaces
@@ -219,6 +284,27 @@ jobs:
             | python -c "import json,sys;print(json.load(sys.stdin).get('as_of',''))")
           echo "live pointer now: $LIVE"
           test "$LIVE" = "${{ steps.resolve.outputs.staged }}"
+          # …and the page must be *this* build. Asset names are content-hashed, so every
+          # chunk named by the local build appearing in the served HTML is proof the
+          # deployment landed; one missing means production is serving some other version,
+          # which is the failure that made a promoted site lose a merged feature on
+          # 2026-11-02. Compare the whole set, not one name: entry chunks that did not
+          # change between two builds carry the same name and would hide the difference.
+          if [ "${{ inputs.skip_deploy }}" != "true" ]; then
+            SERVED=$(curl -fsS --retry 3 "$SITE_HOST/x/?probe=$(date +%s)")
+            MISSING=0
+            for CHUNK in $(grep -o '/_next/static/chunks/[a-z0-9_.-]*\.js' web/out/x/index.html | sort -u); do
+              if ! printf '%s' "$SERVED" | grep -qF "$CHUNK"; then
+                echo "not in the served page: $CHUNK"
+                MISSING=1
+              fi
+            done
+            if [ "$MISSING" != "0" ]; then
+              echo "::error::production is serving another version; the served /x/ lacks this build's chunks"
+              exit 1
+            fi
+            echo "served /x/ names this build's chunks"
+          fi
 
       # Free operations only: DeleteObject is not billed, so a prune never touches the ops
       # budget — it moves GB-month, which is the whole point (ADR-0011).
