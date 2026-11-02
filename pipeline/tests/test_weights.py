@@ -307,6 +307,24 @@ def test_the_live_defect_resolves_by_lei_end_to_end():
     assert "duplicate_company" in vector.warnings
 
 
+def test_a_cusip_in_the_ticker_field_is_not_published():
+    """FXED's American Financial Group row files the CUSIP as its ticker.
+
+    ``<ticker value="025932872"/>`` is the row's CUSIP, and the release gate refuses to
+    publish a CUSIP at all. The row keeps its identity in ``company_id``; the symbol
+    field is dropped rather than passed through.
+    """
+    holdings = [_holding("American Financial Group Inc/OH", 100.0, ticker="025932872")]
+    vector = weights.build_vector(
+        holdings, _dana_index(), 200.0, lag_days=10
+    )
+    row = vector.holdings[0]
+    assert row.ticker is None, "a CUSIP-shaped ticker must not reach the artifact"
+    # Resolution is unaffected: the index answers "which company" before publication
+    # asks "which string". The live FXED row resolves by name and publishes no symbol.
+    assert vector.rung_counts.get("cusip", 0) == 0
+
+
 # --- metrics ----------------------------------------------------------------
 
 

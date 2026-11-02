@@ -76,6 +76,24 @@ def _mf_map() -> dict[str, tuple[str, str, str]]:
 
 
 @lru_cache(maxsize=1)
+def _series_symbols() -> dict[str, tuple[str, ...]]:
+    """seriesId → every symbol the fund ticker file reports for that series.
+
+    A series is a portfolio and its symbols are its share classes, so this is what
+    turns "resolve one ticker" into a complete alias set. Without it a build from an
+    explicit ticker list publishes no ``aliases.json`` at all — 13,118 share-class
+    symbols silently absent, and a visitor typing one gets "not a fund we publish"
+    for a fund that is on the site. The alias set belongs to the series, not to how
+    the series was selected.
+    """
+    grouped: dict[str, list[str]] = {}
+    for symbol, (_cik, series, _class_id) in _mf_map().items():
+        if series:
+            grouped.setdefault(series, []).append(symbol)
+    return {series: tuple(sorted(set(symbols))) for series, symbols in grouped.items()}
+
+
+@lru_cache(maxsize=1)
 def _overrides() -> dict[str, tuple[str, str | None, str | None]]:
     """ticker → (cik, series_id, registrant). ``#`` comment lines are skipped."""
     if not OVERRIDES.exists():
@@ -118,7 +136,13 @@ def resolve(ticker: str) -> FundRef:
     for candidate in (symbol, f"{symbol}.X"):  # the mf file suffixes some lines
         if candidate in mf:
             cik, series, _class_id = mf[candidate]
-            return FundRef(symbol, cik, series, "company_tickers_mf")
+            return FundRef(
+                symbol,
+                cik,
+                series,
+                "company_tickers_mf",
+                symbols=_series_symbols().get(series, ()) if series else (),
+            )
 
     raise LookupError(
         f"{symbol}: not in company_tickers_mf.json and no override row — add "
@@ -129,6 +153,7 @@ def resolve(ticker: str) -> FundRef:
 def _clear_caches() -> None:
     """Drop the parsed SEC maps. For tests and for a long-lived process."""
     _mf_map.cache_clear()
+    _series_symbols.cache_clear()
     _overrides.cache_clear()
 
 
@@ -153,8 +178,9 @@ def _primary_symbol(symbols: list[str]) -> str | None:
     the row. Shortest wins, then alphabetical: the exchange-traded class is
     almost always the shortest symbol, and where it is not, the rule is at least
     deterministic and visible rather than "whichever row the file listed first".
-    Aliases are a known gap (``[open]`` in the day log): the loader accepts one
-    ticker per series today.
+    Aliases are not a gap any more: ``resolve`` now carries the series' full symbol
+    list, so a build from an explicit ticker list publishes the same alias set as a
+    full universe walk.
     """
     usable = {cleaned for symbol in symbols if (cleaned := clean_symbol(symbol))}
     if not usable:

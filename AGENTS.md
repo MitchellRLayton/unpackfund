@@ -197,11 +197,13 @@ not optional extras:
 They are a safety net for the rules above, and `--no-verify` is never the way past
 them: fix the commit, not the hook.
 
-`git-setup.sh` points `core.hooksPath` at the **canonical clone's** absolute
-`scripts/git-hooks/`, so every worktree runs those hooks even when its own tree predates
-them — a relative path would be resolved inside the committing worktree, where an older
-tree has no hook file and git skips it silently. The consequence for a branch that edits
-a hook: git runs the canonical copy, not yours. Test the edited one explicitly:
+`git-setup.sh` sets `core.hooksPath` to this clone's **absolute** `scripts/git-hooks/`
+when the tree it runs from contains all three hooks — then every worktree of the clone runs
+that one copy, whatever its own tree says. When a hook is missing from the tree it runs
+from, it leaves the path **relative** and prints which ones: an absolute path aimed at a
+tree without the hooks would disable enforcement everywhere instead of in one place, and
+just as quietly. A branch that edits a hook therefore tests against the canonical copy, not
+its own; run the edited one explicitly:
 
 ```bash
 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath \

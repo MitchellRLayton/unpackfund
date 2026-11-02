@@ -650,7 +650,16 @@ $(git -C "$GIT_ROOT" for-each-ref --format='%(refname:short)' refs/remotes/origi
         say "live: origin/main ($_origin) is the deployed commit"
       else
         _since="$(git -C "$GIT_ROOT" rev-list --count "${_dsha}..origin/main" 2>/dev/null || printf '?')"
-        say "live: origin/main has $_since commit(s) after the last deploy-site run"
+        # "9 commits after the last deploy" sounds like the site is stale. Most landings are
+        # docs or scripts, which cannot deploy — say which case this is, or the line becomes
+        # noise and stops being read.
+        _unshipped="$(git -C "$GIT_ROOT" diff --name-only "${_dsha}..origin/main" 2>/dev/null | grep -E "$DEPLOY_PATHS" || true)"
+        if [ -n "$_unshipped" ]; then
+          say "live: origin/main has $_since commit(s) after the last deploy-site run, and they touch a deploy path — the site is behind:"
+          printf '%s\n' "$_unshipped" | sed 's/^/       /'
+        else
+          say "live: origin/main has $_since commit(s) after the last deploy-site run; none touch a deploy path, so the site is current"
+        fi
       fi
     else
       say "last deploy-site: unknown (gh unavailable or offline)"
@@ -723,8 +732,15 @@ cmd_pr() {
   if [ "$_dry" -eq 0 ]; then
     _up="$(git -C "$_top" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
     if [ -z "$_up" ]; then
-      die "branch $_branch has no upstream. Push it first:
-    GIT_TERMINAL_PROMPT=0 perl -e 'alarm 90; exec @ARGV' git push -u origin $_branch"
+      # `git push origin <branch>` — the form AGENTS.md recommends — does not set an
+      # upstream, so @{u} is empty even though the branch is on the remote. Use the
+      # remote-tracking ref when it exists and points at HEAD.
+      if git -C "$_top" rev-parse --verify --quiet "origin/$_branch" >/dev/null; then
+        _up="origin/$_branch"
+      else
+        die "branch $_branch is not on the remote. Push it first:
+    GIT_TERMINAL_PROMPT=0 perl -e 'alarm 90; exec @ARGV' git push origin $_branch"
+      fi
     fi
     _ahead="$(git -C "$_top" rev-list --count "$_up..HEAD")"
     [ "$_ahead" = "0" ] || die "$_ahead commit(s) are not pushed — push $_branch before opening the PR"

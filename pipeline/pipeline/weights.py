@@ -58,6 +58,11 @@ class FundHolding:
     weight_bp: int
     is_company_exposure: bool
     merged_rows: int = 0
+    #: The row's own identifiers, kept for **fund edges only** and never published
+    #: (CUSIP is licensed; ISIN/LEI never leave the pipeline). A fund position is
+    #: resolved through these, not through its label — see ``fund_lookthrough``.
+    lei: str | None = None
+    isin: str | None = None
 
 
 @dataclass
@@ -121,6 +126,21 @@ def allocate_bp(fractions: list[float]) -> list[int]:
         for index in order[: -remainder]:
             floors[index] -= 1
     return floors
+
+
+def _publishable_ticker(value: str | None) -> str | None:
+    """The as-filed symbol, unless the filer put a licensed identifier in that field.
+
+    It happens: FXED's American Financial Group row files ``<ticker value="025932872"/>``,
+    which is the row's CUSIP, not a symbol. The release refuses to publish a CUSIP at
+    all (`identifiers.is_licensed` is the same predicate the validator uses), so the
+    field is dropped rather than passed through — the row keeps its identity in
+    ``company_id``, which is the thing the ledger sums on.
+    """
+    text = (value or "").strip().upper()
+    if not text or identifiers.is_licensed(text):
+        return None
+    return text
 
 
 def _label(as_filed: str | None, issuer_legal_name: str | None) -> str:
@@ -281,13 +301,30 @@ def build_vector(
 
         # Unmapped rows merge on identity of their own, so a fund with 500 distinct
         # unknown issuers does not collapse into one line called "unmapped".
+        #
+        # A **fund edge** merges on its identifier rather than its label: filers
+        # write the registrant in ``<name>`` ("ISHARES TRUST") and the series in
+        # ``<title>``, so a name-keyed row merges every distinct series of one trust
+        # into a single line. That both loses the per-sleeve weights the look-through
+        # budget is made of and discards the LEIs that would resolve them.
+        fund_key: str | None = None
+        if classification.category == classify.FUND:
+            fund_key = (
+                (holding.lei or "").strip().upper()
+                or (holding.isin or "").strip().upper()
+                or (holding.name or "unknown").strip().upper()
+            )
         key = (
             company_id
             if company_id
             else (
-                "unmapped",
-                (holding.name or "unknown").strip().upper(),
-                classification.category,
+                ("fund", fund_key)
+                if fund_key
+                else (
+                    "unmapped",
+                    (holding.name or "unknown").strip().upper(),
+                    classification.category,
+                )
             )
         )
         group = groups.get(key)
@@ -302,14 +339,16 @@ def build_vector(
                 # row's identity is the LEI, not a symbol — so an issuer-namespace
                 # row carries no ticker.
                 "ticker": (
-                    (index.symbol(company_id) if issuer_row else holding.ticker)
-                    or index.symbol(company_id)
-                ),
+                    None if issuer_row else _publishable_ticker(holding.ticker)
+                )
+                or index.symbol(company_id),
                 "category": classification.category,
                 "is_company_exposure": classification.is_company_exposure,
                 "fraction": 0.0,
                 "rows": 0,
                 "largest": 0.0,
+                "lei": (holding.lei or "").strip().upper() or None,
+                "isin": (holding.isin or "").strip().upper() or None,
             }
             groups[key] = group
         group["fraction"] += fraction
@@ -319,7 +358,11 @@ def build_vector(
             group["category"] = classification.category
             group["is_company_exposure"] = classification.is_company_exposure
             if holding.ticker and not issuer_row:
-                group["ticker"] = holding.ticker
+                group["ticker"] = _publishable_ticker(holding.ticker) or group["ticker"]
+            if holding.lei:
+                group["lei"] = holding.lei.strip().upper()
+            if holding.isin:
+                group["isin"] = holding.isin.strip().upper()
 
     # Allocate in fraction order (largest remainder depends on it), then sort the
     # published rows by weight so two runs cannot differ in layout.
@@ -339,6 +382,8 @@ def build_vector(
                 weight_bp=weight,
                 is_company_exposure=row["is_company_exposure"],
                 merged_rows=row["rows"],
+                lei=row.get("lei") if row["category"] == classify.FUND else None,
+                isin=row.get("isin") if row["category"] == classify.FUND else None,
             )
         )
     # Sorted by the *published* name: redaction can give two rows the same name,
