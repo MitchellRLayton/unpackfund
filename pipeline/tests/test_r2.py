@@ -141,5 +141,25 @@ def test_public_reader_sends_a_user_agent_the_edge_does_not_block():
     assert headers["cache-control"] == "no-cache"
 
 
+def test_public_reader_retries_the_edges_own_52x_answers(monkeypatch):
+    """One 520 must not cost a night: a Cloudflare edge error is retried like a 503."""
+    responses = [FakeResponse(b"edge", status=520), FakeResponse(b"ok")]
+    slept: list = []
+    monkeypatch.setattr(r2.time, "sleep", slept.append)
+
+    def opener(request, timeout=None):
+        return responses.pop(0)
+
+    reader = r2.PublicReader("https://data.example", opener=opener)
+    response = reader.fetch("releases/2026-11-02.7/funds/BNDC.json")
+    assert response.status == 200
+    assert response.body == b"ok"
+    assert slept == [r2.PUBLIC_BACKOFF_S[0]]
+
+
+def test_public_retry_set_covers_the_edges_own_error_space():
+    assert {520, 521, 522, 523, 524} <= set(r2.PUBLIC_RETRY_STATUSES)
+
+
 def test_empty_payload_hash_is_the_constant():
     assert EMPTY_PAYLOAD_SHA256 == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
