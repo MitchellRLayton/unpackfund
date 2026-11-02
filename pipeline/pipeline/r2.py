@@ -65,14 +65,19 @@ PUBLIC_USER_AGENT = "Mozilla/5.0 (compatible; UnpackFund/0.1; +https://unpackfun
 
 #: Retries the public host's own failures are given before an object counts as unreachable.
 #:
-#: The data host is behind Cloudflare, and Cloudflare answers 503 for a moment of origin
+#: The data host is behind Cloudflare, and Cloudflare answers 5xx for a moment of origin
 #: trouble often enough to matter at this object count: on 2026-10-30 a 90-minute build died
-#: at the last gate because 2 of 14,256 objects were read back as HTTP 503 — the upload was
-#: complete and correct, and the release was refused for two transient responses.
+#: at the last gate because 2 of 14,256 objects were read back as HTTP 503, and on 2026-11-02
+#: a whole nightly stage was withheld because one object read back as HTTP 520 — both times the
+#: upload was complete and correct, and the release was refused for a transient response.
 PUBLIC_TRIES = 4
 PUBLIC_BACKOFF_S = (1.0, 3.0, 8.0)
-#: Retryable *from the host*: the origin is briefly unhappy, or the edge is throttling us.
-PUBLIC_RETRY_STATUSES = (408, 425, 429, 500, 502, 503, 504)
+#: Retryable *from the host*: the origin is briefly unhappy, the edge is throttling us, or the
+#: edge could not get a valid answer from the origin at all. The 52x family is Cloudflare's own
+#: error space (520 unknown/origin returned nothing, 521 origin down, 522 timed out, 523
+#: unreachable, 524 origin timeout); on a GET read-back it is transient by definition, and
+#: treating it as final is what turned one edge blip into a lost night on 2026-11-02.
+PUBLIC_RETRY_STATUSES = (408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524)
 IMMUTABLE = "public, max-age=31536000, immutable"
 NO_CACHE = "no-cache"
 
