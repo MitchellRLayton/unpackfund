@@ -732,8 +732,15 @@ cmd_pr() {
   if [ "$_dry" -eq 0 ]; then
     _up="$(git -C "$_top" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
     if [ -z "$_up" ]; then
-      die "branch $_branch has no upstream. Push it first:
-    GIT_TERMINAL_PROMPT=0 perl -e 'alarm 90; exec @ARGV' git push -u origin $_branch"
+      # `git push origin <branch>` — the form AGENTS.md recommends — does not set an
+      # upstream, so @{u} is empty even though the branch is on the remote. Use the
+      # remote-tracking ref when it exists and points at HEAD.
+      if git -C "$_top" rev-parse --verify --quiet "origin/$_branch" >/dev/null; then
+        _up="origin/$_branch"
+      else
+        die "branch $_branch is not on the remote. Push it first:
+    GIT_TERMINAL_PROMPT=0 perl -e 'alarm 90; exec @ARGV' git push origin $_branch"
+      fi
     fi
     _ahead="$(git -C "$_top" rev-list --count "$_up..HEAD")"
     [ "$_ahead" = "0" ] || die "$_ahead commit(s) are not pushed — push $_branch before opening the PR"
