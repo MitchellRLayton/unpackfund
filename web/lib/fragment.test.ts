@@ -33,21 +33,46 @@ function encodeBase64Url(text: string): string {
 }
 
 describe("v3 encode/decode", () => {
-  it("round-trips a five-fund portfolio exactly", () => {
+  it("round-trips a five-fund portfolio exactly, in the order given", () => {
     const decoded = decodePortfolio(`#${encodePortfolio(portfolio(fiveFunds))}`);
     expect(decoded.ok).toBe(true);
     if (!decoded.ok) return;
     expect(decoded.portfolio.mode).toBe("bp");
-    expect(decoded.portfolio.entries).toEqual(
-      [...fiveFunds].sort((a, b) => a.key.localeCompare(b.key)),
-    );
+    // QQQ, AVUV, VOO, SPY, ARKK — not alphabetical. The builder shows the order the
+    // visitor typed, and the link must reproduce it rather than re-sorting it.
+    expect(decoded.portfolio.entries).toEqual(fiveFunds);
     expect(decoded.complete).toBe(true);
   });
 
-  it("produces one URL for one portfolio, whatever order it was built in", () => {
-    const a = encodePortfolio(portfolio(fiveFunds));
-    const b = encodePortfolio(portfolio([...fiveFunds].reverse()));
-    expect(a).toBe(b);
+  it("treats the order as part of the portfolio, not as noise to normalise", () => {
+    const forward = encodePortfolio(portfolio(fiveFunds));
+    const backward = encodePortfolio(portfolio([...fiveFunds].reverse()));
+    expect(forward).not.toBe(backward);
+
+    const decoded = decodePortfolio(backward);
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    expect(decoded.portfolio.entries.map((entry) => entry.key)).toEqual([
+      "ARKK",
+      "SPY",
+      "VOO",
+      "AVUV",
+      "QQQ",
+    ]);
+  });
+
+  it("keeps a dragged order that is neither alphabetical nor kind-sorted", () => {
+    // A stock between two funds: the old sort put every fund before every security.
+    const dragged: PortfolioEntry[] = [
+      { kind: "fund", key: "VTI", amount: 1000 },
+      { kind: "security", key: "AMZN", amount: 2000 },
+      { kind: "fund", key: "AVUV", amount: 3000 },
+      { kind: "cash", key: "CASH", amount: 4000 },
+    ];
+    const decoded = decodePortfolio(encodePortfolio(portfolio(dragged)));
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    expect(decoded.portfolio.entries).toEqual(dragged);
   });
 
   it("keeps the mode, because a $ link is not a % link", () => {
@@ -88,9 +113,25 @@ describe("v3 encode/decode", () => {
   });
 
   it("decodes a golden URL, so the format cannot drift unnoticed", () => {
+    // Regenerated 2026-11-02 when the order became part of the portfolio: the old
+    // golden was the same five funds alphabetised, which is exactly the behaviour the
+    // builder no longer has. Decoding either one still works; only the writer changed.
     expect(encodePortfolio(portfolio(fiveFunds))).toBe(
-      "v3.WyJicCIsW1siZiIsIkFSS0siLDIwMDBdLFsiZiIsIkFWVVYiLDIwMDBdLFsiZiIsIlFRUSIsMjAwMF0sWyJmIiwiU1BZIiwyMDAwXSxbImYiLCJWT08iLDIwMDBdXV0",
+      "v3.WyJicCIsW1siZiIsIlFRUSIsMjAwMF0sWyJmIiwiQVZVViIsMjAwMF0sWyJmIiwiVk9PIiwyMDAwXSxbImYiLCJTUFkiLDIwMDBdLFsiZiIsIkFSS0siLDIwMDBdXV0",
     );
+    // The old golden, unchanged, still opens as the alphabetical list it always was.
+    const legacyGolden = decodePortfolio(
+      "#v3.WyJicCIsW1siZiIsIkFSS0siLDIwMDBdLFsiZiIsIkFWVVYiLDIwMDBdLFsiZiIsIlFRUSIsMjAwMF0sWyJmIiwiU1BZIiwyMDAwXSxbImYiLCJWT08iLDIwMDBdXV0",
+    );
+    expect(legacyGolden.ok).toBe(true);
+    if (!legacyGolden.ok) return;
+    expect(legacyGolden.portfolio.entries.map((entry) => entry.key)).toEqual([
+      "ARKK",
+      "AVUV",
+      "QQQ",
+      "SPY",
+      "VOO",
+    ]);
   });
 
   it("carries a stock and cash in the same list as a fund", () => {
@@ -100,15 +141,16 @@ describe("v3 encode/decode", () => {
       { kind: "cash", key: "CASH", amount: 100 },
     ]);
     expect(encodePortfolio(mixed)).toBe(
-      "v3.WyJicCIsW1siYyIsIkNBU0giLDEwMF0sWyJmIiwiVlQiLDkwMDBdLFsicyIsIkFNWk4iLDkwMF1dXQ",
+      "v3.WyJicCIsW1siZiIsIlZUIiw5MDAwXSxbInMiLCJBTVpOIiw5MDBdLFsiYyIsIkNBU0giLDEwMF1dXQ",
     );
     const decoded = decodePortfolio(encodePortfolio(mixed));
     expect(decoded.ok).toBe(true);
     if (!decoded.ok) return;
+    // The order the visitor has, not a kind order: fund, then the stock, then cash.
     expect(decoded.portfolio.entries.map((entry) => entry.kind)).toEqual([
-      "cash",
       "fund",
       "security",
+      "cash",
     ]);
   });
 });

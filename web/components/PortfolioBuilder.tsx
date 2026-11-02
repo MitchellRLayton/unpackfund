@@ -15,10 +15,14 @@
  *
  * The app never suggests a fund it cannot load, and never claims a stock exists in a
  * release that does not list it.
+ *
+ * The list is shown in the order the visitor gave it — typed order, then whatever they
+ * dragged it into. Nothing here sorts: the order is theirs, it is stored in the URL
+ * with the amounts (`fragment.ts`), and a reorder is a normal edit of that link.
  */
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { AmountInput } from "@/components/AmountInput";
 import { Notice } from "@/components/Notice";
@@ -30,6 +34,7 @@ import { accepts, isCarriable, normaliseSymbol, refusal } from "@/lib/securities
 import { USD_NOTIONAL_CENTS } from "@/lib/portfolio-weights";
 import { usePortfolio } from "@/lib/use-portfolio";
 import { useRelease, useTickers } from "@/lib/use-release";
+import { useReorderList } from "@/lib/use-reorder";
 import {
   CASH_KEY,
   FULL_ALLOCATION_BP,
@@ -52,6 +57,23 @@ export function PortfolioBuilder() {
   const release = useRelease();
   const tickers = useTickers(release.status === "ready" ? release.data : null);
   const portfolio = usePortfolio();
+  const moveHolding = useCallback(
+    (from: number, to: number) => {
+      const entry = portfolio.entries[from];
+      if (!entry) return;
+      // The store owns the order; this only names the row that moved.
+      portfolio.move(entry.kind, entry.key, to);
+    },
+    [portfolio],
+  );
+  const reorder = useReorderList({
+    count: portfolio.entries.length,
+    labelAt: (index) => {
+      const entry = portfolio.entries[index];
+      return entry ? entryLabel(entry) : "";
+    },
+    onMove: moveHolding,
+  });
   const [input, setInput] = useState("");
   // A submit that has to wait for the alias map must not let a second Enter press
   // add the same holding twice; the button is disabled while it is in flight.
@@ -430,6 +452,16 @@ export function PortfolioBuilder() {
         <>
           <h2>Your portfolio</h2>
 
+          {portfolio.entries.length > 1 ? (
+            <p className="muted reorder-hint" id="reorder-hint">
+              Drag a handle — or focus it and press the up and down arrow keys — to change
+              the order.
+            </p>
+          ) : null}
+          <p className="sr-only" role="status" aria-live="polite">
+            {reorder.announcement}
+          </p>
+
           <div
             className="mode-toggle"
             role="group"
@@ -458,9 +490,25 @@ export function PortfolioBuilder() {
             </span>
           </div>
 
-          <ul className="portfolio-list">
-            {portfolio.entries.map((entry) => (
-              <li key={`${entry.kind}-${entry.key}`}>
+          <ul className="portfolio-list" ref={reorder.listRef}>
+            {portfolio.entries.map((entry, index) => (
+              <li
+                key={`${entry.kind}-${entry.key}`}
+                className={reorder.draggingIndex === index ? "is-dragging" : undefined}
+              >
+                <button
+                  type="button"
+                  className="drag-handle"
+                  {...reorder.handleProps(index)}
+                  disabled={portfolio.entries.length < 2}
+                  aria-label={`Reorder ${removeLabel(entry)}`}
+                  aria-describedby={
+                    portfolio.entries.length > 1 ? "reorder-hint" : undefined
+                  }
+                  title="Drag to reorder"
+                >
+                  <span aria-hidden="true">⠿</span>
+                </button>
                 <span className="portfolio-list__name">
                   <span className="ticker">{entryLabel(entry)}</span>
                   {entry.kind === "security" ? (

@@ -300,11 +300,20 @@ button.quiet:hover {
 
 .portfolio-list li {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 0.75rem;
+  /* handle · name · amount · Remove — four columns, so the handle never lands in an
+     implicit second row next to a wrapped amount. */
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 0.6rem;
   align-items: center;
   padding: 0.45rem 0;
   border-bottom: 1px solid var(--rule);
+}
+
+/* The row a visitor is dragging: lifted off the rule, not hidden behind it. */
+.portfolio-list li.is-dragging {
+  background: var(--surface);
+  border-radius: 4px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
 }
 
 .portfolio-list .ticker {
@@ -312,13 +321,49 @@ button.quiet:hover {
   font-weight: 600;
 }
 
-/* The name and its note share the first grid cell: a fourth child would land in an
+/* The name and its note share the first grid cell: anything else would land in an
    implicit second row and push Remove onto its own line. */
 .portfolio-list__name {
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
   min-width: 0;
+}
+
+/* Drag handle. `touch-action: none` is what stops a touch drag scrolling the page
+   instead, and the horizontal padding is a bigger hit target than the glyph. */
+.drag-handle {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: grab;
+  font: inherit;
+  line-height: 1;
+  padding: 0.3rem 0.35rem;
+  touch-action: none;
+}
+
+.drag-handle:hover:not(:disabled) {
+  color: var(--fg);
+}
+
+.drag-handle:active:not(:disabled) {
+  cursor: grabbing;
+}
+
+.drag-handle:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.portfolio-list li.is-dragging .drag-handle {
+  color: var(--fg);
+  cursor: grabbing;
+}
+
+.reorder-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
 }
 
 .weight-input {
@@ -441,6 +486,12 @@ table.ledger {
 
   .portfolio-list li {
     gap: 0.5rem;
+  }
+
+  /* The handle is the newest column and the narrowest screen is the one that cannot
+     spare 8 px, so it shrinks before the ticker does. */
+  .drag-handle {
+    padding: 0.3rem 0.2rem;
   }
 
   .weight-input input {
