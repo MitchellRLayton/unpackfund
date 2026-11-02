@@ -84,8 +84,47 @@ const TEXT_PAIRS: Array<[fg: string, bg: string, why: string]> = [
   ["muted", "tint-direct-hover", "secondary text on a shaded row under the pointer"],
 ];
 
-function pairs(theme: Record<string, string>): Array<[string, string, string]> {
-  return TEXT_PAIRS.map(([fg, bg, why]) => {
+/**
+ * Non-text pairs, held to 3:1 — AA for a graphical object (WCAG 2.2 SC 1.4.11). The
+ * geography edges are exactly that: a stripe whose job is to be found while scanning a
+ * table, painted over the row's own colour rather than over the page, which is why every
+ * background a ledger row can have is listed.
+ *
+ * These were excluded from this file when the channel shipped, on the reasoning that "a
+ * 3px stripe is not text". The operator then could not tell the two domiciles apart, and
+ * the US edge measured 1.85:1 on the page: the exclusion had removed the only check that
+ * would have caught it (operator's instruction, 2026-11-02, "slightly more prominent blue
+ * color differentiation"). A graphic that carries a distinction gets a gate, or the next
+ * palette tweak quietly makes it invisible again.
+ */
+const UI_PAIRS: Array<[fg: string, bg: string, why: string]> = [
+  ["country-us", "bg", "the US geography edge on a plain row"],
+  ["country-us", "surface", "the US geography edge on a hovered row"],
+  ["country-us", "tint-direct", "the US geography edge on a direct-position row"],
+  [
+    "country-us",
+    "tint-direct-hover",
+    "the US geography edge on a direct-position row under the pointer",
+  ],
+  ["country-intl", "bg", "the international geography edge on a plain row"],
+  ["country-intl", "surface", "the international geography edge on a hovered row"],
+  [
+    "country-intl",
+    "tint-direct",
+    "the international geography edge on a direct-position row",
+  ],
+  [
+    "country-intl",
+    "tint-direct-hover",
+    "the international geography edge on a direct-position row under the pointer",
+  ],
+];
+
+function pairs(
+  theme: Record<string, string>,
+  list: Array<[string, string, string]> = TEXT_PAIRS,
+): Array<[string, string, string]> {
+  return list.map(([fg, bg, why]) => {
     const foreground = theme[fg];
     const background = theme[bg];
     if (!foreground || !background) {
@@ -113,6 +152,15 @@ describe("automatic light/dark", () => {
     it(`meets WCAG AA text contrast in ${name}`, () => {
       const failures = pairs(theme)
         .filter(([fg, bg]) => contrast(fg, bg) < 4.5)
+        .map(
+          ([fg, bg, why]) => `${why}: ${fg} on ${bg} = ${contrast(fg, bg).toFixed(2)}:1`,
+        );
+      expect(failures).toEqual([]);
+    });
+
+    it(`keeps the geography edges at 3:1 in ${name}`, () => {
+      const failures = pairs(theme, UI_PAIRS)
+        .filter(([fg, bg]) => contrast(fg, bg) < 3)
         .map(
           ([fg, bg, why]) => `${why}: ${fg} on ${bg} = ${contrast(fg, bg).toFixed(2)}:1`,
         );

@@ -49,8 +49,8 @@ Defined once in `app/globals.css` as custom properties, light and dark through `
 | `--warn` / `--warn-soft`                | `#7a4b00` / `#fdf3e2`       | `#f0b429` / `#2e2413`        | warnings, partial coverage                       |
 | `--ok`                                  | `#17693a`                   | `#6fce8f`                    | the ledger gate once the total is exactly 100%   |
 | `--tint-direct` / `--tint-direct-hover` | `#f2ecff` / `#e9e0fd`       | `#1d1930` / `#262038`        | the ledger row of a stock you hold directly      |
-| `--country-us`                          | `#9dc2ea`                   | `#2b4a6d`                    | the row's left edge for a US-domiciled company   |
-| `--country-intl`                        | `#8d9fe0`                   | `#2f3a6e`                    | the row's left edge for any other domicile       |
+| `--country-us`                          | `#1d6fb8`                   | `#4f9ad8`                    | the row's left edge for a US-domiciled company   |
+| `--country-intl`                        | `#7a5fd0`                   | `#a08aec`                    | the row's left edge for any other domicile       |
 | `--pill-bg`                             | `#c5c6c7`                   | `#192028`                    | the current section's pill (20% off `--surface`) |
 | `--pill-shadow`                         | `0 1px 2px rgb(0 0 0 / 8%)` | `0 1px 2px rgb(0 0 0 / 45%)` | the current section's pill, under the bar        |
 
@@ -75,7 +75,7 @@ day-4 windowing pass.
 
 Geography is a second axis on the ledger, and it is a **separate channel** because one background cannot carry two
 meanings: the row _background_ keeps meaning position kind — a company the visitor holds directly as a stock, purple —
-and geography is drawn as a 3 px **left edge on the row's first cell** plus the two-letter country code as **text** in
+and geography is drawn as a **6 px left edge on the row's first cell** plus the two-letter country code as **text** in
 the row's second line. The rules:
 
 - **Text carries the meaning; colour reinforces it.** The code is real text in the row (`US`, `TW`), so a screen
@@ -84,8 +84,17 @@ the row's second line. The rules:
   Blue is the United States, periwinkle everywhere else; that mapping is stated in the caption, never implied by hue.
 - **A row can be both.** A stock held directly that also has a decided domicile keeps its purple background and gains
   the edge: `data-direct` and `data-country` sit side by side on the same `<tr>`, and neither channel borrows the
-  other's encoding. The 3 px stripe is an inset `box-shadow` on the first cell rather than a `tr` border, which is
+  other's encoding. The stripe is an inset `box-shadow` on the first cell rather than a `tr` border, which is
   unreliable under `border-collapse: separate`, and inset shadow costs no layout.
+- **Wide and strong enough to be found (operator's instruction, 2026-11-02, "slightly wider … more prominent").** The
+  channel first shipped as a 3 px pastel edge, and the operator could not tell the domiciles apart. The measurement
+  agreed: `#9dc2ea` on the page is **1.85:1**, under the 3:1 non-text floor, so at 3 px the edge was a suggestion
+  rather than a signal. The edge is now **6 px** (the cell's own 0.75 rem left padding leaves 6 px of gap to the
+  company name, so nothing moves) and the two inks are pulled apart in hue as well as strength: `#1d6fb8` US blue and
+  `#7a5fd0` periwinkle measure 5.23:1 and 4.80:1 on the page, 4.53:1 and 4.16:1 on the direct-position tint, and their
+  CIE Lab separation is **35.9** against 19.8 for the pastels. Dark scheme: `#4f9ad8` / `#a08aec` at 6.26:1 / 6.62:1
+  (5.63:1 / 5.95:1 on the tint). `lib/theme.test.ts` holds every edge to 3:1 on every background a row can have —
+  `--bg`, `--surface`, both direct tints — in both schemes, so this cannot silently fade again.
 - **Absence means no answer.** A company the filings disagree about — or one held only by funds that file no country —
   is absent from the map, and its row carries no edge and no tag. A default would be a guess. The caption sentence
   appears only when a row actually carries a code, and a release that publishes no country object renders exactly as
