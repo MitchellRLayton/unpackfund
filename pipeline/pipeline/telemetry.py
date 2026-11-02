@@ -183,6 +183,7 @@ def nightly_record(
     *,
     kind: str = "build",
     status: str | None = None,
+    release: str = "",
     run_id: str = "",
     run_url: str = "",
     at: dt.datetime | None = None,
@@ -204,7 +205,8 @@ def nightly_record(
         "status": status or ("failed" if failures else "ok"),
         "run_id": run_id or None,
         "run_url": run_url or None,
-        "release": upload.get("release") or summary.get("release"),
+        # A promotion knows its release from the pointer, not from artifacts it never wrote.
+        "release": release or upload.get("release") or summary.get("release"),
         "objects": len(upload.get("objects") or []) or None,
         "bytes": upload.get("total_bytes"),
         "failures": failures,
@@ -285,7 +287,8 @@ def main(argv: list[str] | None = None) -> int:
     write.add_argument("--ledger", choices=sorted(LEDGERS), required=True)
     write.add_argument("--report", type=Path, help="verify-live's printed report (verify-live ledger)")
     write.add_argument("--artifacts", type=Path, default=Path("artifacts"), help="the run's artifacts directory (nightly ledger)")
-    write.add_argument("--kind", default="build", choices=("build", "idle", "failed", "dry-run"))
+    write.add_argument("--kind", default="build", choices=("build", "idle", "failed", "promote", "dry-run"))
+    write.add_argument("--release", default="", help="the release this run promoted (overrides the artifacts)")
     write.add_argument("--status", default="", help="ok | failed — defaults to the record's own verdict")
     write.add_argument("--run-id", default="")
     write.add_argument("--run-url", default="")
@@ -312,7 +315,12 @@ def main(argv: list[str] | None = None) -> int:
     else:
         status = args.status or None
         record = nightly_record(
-            args.artifacts, kind=args.kind, status=status, run_id=args.run_id, run_url=args.run_url
+            args.artifacts,
+            kind=args.kind,
+            status=status,
+            release=args.release,
+            run_id=args.run_id,
+            run_url=args.run_url,
         )
     line = json.dumps(record, sort_keys=True)
     if args.dry_run:
