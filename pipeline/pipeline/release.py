@@ -149,6 +149,29 @@ def sha256_hex(body: bytes) -> str:
 NOT_PUBLISHED = {"build-summary.json", "upload-report.json"}
 
 
+def _described_objects(name: str, descriptor: object) -> list[tuple[str, dict]]:
+    """Every ``{path, bytes, sha256}`` entry a descriptor family describes.
+
+    Two shapes exist: a single object (``tickers``, ``catalogue``, ``manifest``) and
+    a family of them keyed by ticker (``benchmarks.files``). A family is checked the
+    same way a single object is — the point of listing a hash in the descriptor is
+    that somebody compares it, and a nested entry that nothing read would be a hash
+    published for nobody.
+    """
+    if not isinstance(descriptor, dict):
+        return []
+    if "path" in descriptor and isinstance(descriptor.get("path"), str):
+        return [(name, descriptor)]
+    files = descriptor.get("files")
+    if not isinstance(files, dict):
+        return []
+    return [
+        (f"{name}.files.{key}", entry)
+        for key, entry in files.items()
+        if isinstance(entry, dict) and isinstance(entry.get("path"), str)
+    ]
+
+
 def read_release(
     release: Path,
 ) -> tuple[dict, list[tuple[str, bytes, str]], dict]:
@@ -206,16 +229,18 @@ def read_release(
     # The release descriptor must describe the bytes next to it, or the pointer
     # would publish a claim the release does not support.
     for name, descriptor in (release_document.get("objects") or {}).items():
-        if not isinstance(descriptor, dict) or "path" not in descriptor:
-            continue
-        relative = descriptor["path"]
-        if relative not in digests:
-            raise ReleaseError(f"release.json objects.{name} names {relative}, which is not in the release")
-        body, digest = digests[relative]
-        if digest != descriptor.get("sha256") or len(body) != descriptor.get("bytes"):
-            raise ReleaseError(
-                f"release.json objects.{name}: {relative} does not match its descriptor; rebuild the release"
-            )
+        for label, entry in _described_objects(name, descriptor):
+            relative = entry["path"]
+            if relative not in digests:
+                raise ReleaseError(
+                    f"release.json objects.{label} names {relative}, which is not in the release"
+                )
+            body, digest = digests[relative]
+            if digest != entry.get("sha256") or len(body) != entry.get("bytes"):
+                raise ReleaseError(
+                    f"release.json objects.{label}: {relative} does not match its descriptor; "
+                    "rebuild the release"
+                )
 
     order = ["release.json", "manifest.json"]
     objects: list[tuple[str, bytes, str]] = [

@@ -77,8 +77,19 @@ def sample_document(
     )
 
 
-def write_release(root: Path, documents: list[dict], release_id: str = FIXTURE_RELEASE_ID) -> Path:
-    """Write ``documents`` as a release directory, the way ``build.py`` does."""
+def write_release(
+    root: Path,
+    documents: list[dict],
+    release_id: str = FIXTURE_RELEASE_ID,
+    benchmarks: tuple[str, ...] = (),
+) -> Path:
+    """Write ``documents`` as a release directory, the way ``build.py`` does.
+
+    ``benchmarks`` names the tickers to pre-roll into ``benchmarks/{T}.json``. The
+    sample release pre-rolls its own fund, which is not the production benchmark
+    (``benchmarks.BENCHMARK_TICKERS``): the point is the code path, and a fixture
+    that hard-coded VT could only run if the fixture were VT.
+    """
     release_dir = root / "releases" / release_id
     (release_dir / "funds").mkdir(parents=True, exist_ok=True)
     files = []
@@ -111,9 +122,12 @@ def write_release(root: Path, documents: list[dict], release_id: str = FIXTURE_R
         # does; the target is the fixture fund, which is always published.
         aliases={"TESTX": documents[0]["ticker"]} if documents else {},
         etf_classifier=classify.ETF_CLASSIFIER,
+        benchmarks=benchmarks,
     )
     return release_dir
 
 
 def write_sample_release(root: Path) -> Path:
-    return write_release(root, [sample_document()])
+    # One benchmark object, so `pnpm data:validate --fixtures` exercises the compact
+    # object's descriptor entry, hash gate and rollup check offline.
+    return write_release(root, [sample_document()], benchmarks=("TEST",))

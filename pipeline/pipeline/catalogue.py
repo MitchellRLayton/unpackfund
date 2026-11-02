@@ -14,6 +14,7 @@ large one:
     catalogue.json          ticker -> name, issuer, ETF flag, coverage
     companies/index.json    company_id -> name, ticker, holder count (search)
     companies/{id}.json     company_id -> [[ticker, weight_bp], …] (reverse X-Ray)
+    benchmarks/{T}.json     one configured benchmark's traced weights, pre-rolled
     manifest.json           the full file inventory, for audits and `release verify`
 
 Two rules keep the shards honest:
@@ -34,6 +35,7 @@ import math
 from pathlib import Path
 from typing import Any, Iterable
 
+from . import benchmarks as benchmarks_mod
 from .artifact import canonical_bytes, sha256_hex
 
 #: Tickers that do not start with a letter share one shard.
@@ -229,6 +231,7 @@ def write_release_objects(
     manifest_payload: bytes,
     aliases: dict[str, str] | None = None,
     etf_classifier: str = "",
+    benchmarks: Iterable[str] = benchmarks_mod.BENCHMARK_TICKERS,
 ) -> dict:
     """Write the objects a browser reads and describe them in ``release.json``.
 
@@ -279,6 +282,22 @@ def write_release_objects(
     for company_id, document in company_shards.items():
         write(f"companies/{company_id}.json", document)
 
+    # The compact benchmark (ADR-0015): one fund's weights pre-rolled to companies,
+    # so `/x` fetches 43 kB instead of 1.58 MB for the table's comparison column.
+    # Written with this module's compact encoder, not the fund document's indented
+    # one — see `benchmarks.canonical_bytes` for why that is not a drift.
+    benchmark_entries: dict[str, dict] = {}
+    for ticker, document in sorted(
+        benchmarks_mod.build_benchmark_documents(documents, benchmarks).items()
+    ):
+        relative = f"benchmarks/{ticker}.json"
+        body = benchmarks_mod.canonical_bytes(document)
+        target = release_dir / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(body)
+        sizes[relative] = len(body)
+        benchmark_entries[ticker] = object_entry(relative, body)
+
     release_document = release_object(
         header={
             key: value
@@ -303,6 +322,19 @@ def write_release_objects(
                 "object": alias_entry,
                 "count": len(alias_entries),
             },
+            # Optional by presence: a release that pre-rolls no benchmark simply
+            # omits the family, and the app falls back to the fund document it can
+            # always fetch (the contract's dual-read rule, skill §8).
+            **(
+                {
+                    "benchmarks": {
+                        "prefix": "benchmarks/",
+                        "files": benchmark_entries,
+                    }
+                }
+                if benchmark_entries
+                else {}
+            ),
         },
     )
     release_payload = encode(release_document)
@@ -316,7 +348,11 @@ def write_release_objects(
         f"{len(shard_entries)} index shard(s), {len(company_shards):,} company shard(s) "
         f"({sum(size for path, size in sizes.items() if path.startswith('companies/')) / 1e6:.1f} MB), "
         f"{len(alias_entries):,} alias(es) ({sizes['aliases.json'] / 1e3:.0f} kB), "
-        f"pointer {len(release_payload) / 1e3:.1f} kB"
+        + "".join(
+            f"benchmark {ticker} {sizes[f'benchmarks/{ticker}.json'] / 1e3:.0f} kB, "
+            for ticker in benchmark_entries
+        )
+        + f"pointer {len(release_payload) / 1e3:.1f} kB"
     )
     return {
         "summary": summary,

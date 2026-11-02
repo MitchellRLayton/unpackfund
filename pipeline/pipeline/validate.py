@@ -26,6 +26,7 @@ from .identifiers import LICENSED_ID_RE, is_licensed
 from .gleif import is_issuer_id, is_sec_company_id, LEI_RE
 
 from . import paths
+from . import benchmarks as benchmarks_mod
 from .artifact import LARGE_FUND_BYTES, MAX_FUND_BYTES, SCHEMA_VERSION
 from .fund_lookthrough import MAX_DEPTH, RUNG_LEI, RUNG_SYMBOL
 from .fund_lookthrough import MIN_UNRESOLVED_WARNING_BP
@@ -445,6 +446,115 @@ def _check_fund_of_funds_release(funds: list[dict], report: Report) -> None:
         report.ok("fund_of_funds", f"{flattened} funds flattened, {components} sleeves named")
 
 
+def _check_benchmarks(release_dir: Path, funds: list[dict], report: Report) -> None:
+    """The compact benchmark is derived, so the release has to prove the derivation.
+
+    A rollup nobody recomputes is a number with two sources of truth: the fund
+    document would say one thing and the column another, and the column is the one
+    a reader sees. Every weight is recomputed here from the fund document beside it
+    with the same rule the builder used, and the object is rejected if the two
+    disagree by a single basis point.
+    """
+    descriptor_path = release_dir / "release.json"
+    if not descriptor_path.exists():
+        report.fail("benchmarks", "release.json is missing, so no benchmark is described")
+        return
+    try:
+        descriptor = json.loads(descriptor_path.read_text())
+    except (OSError, ValueError) as error:
+        report.fail("benchmarks", f"release.json is unreadable: {error}")
+        return
+    family = ((descriptor.get("objects") or {}).get("benchmarks") or {})
+    advertised = {
+        str(ticker).upper(): entry
+        for ticker, entry in (family.get("files") or {}).items()
+        if isinstance(entry, dict)
+    }
+    directory = release_dir / "benchmarks"
+    on_disk = {path.stem.upper(): path for path in directory.glob("*.json")} if directory.is_dir() else {}
+    fund_by_ticker = {str(fund.get("ticker", "")).upper(): fund for fund in funds}
+
+    for ticker in sorted(set(advertised) - set(on_disk)):
+        report.fail("benchmarks.present", f"{ticker} is described but benchmarks/{ticker}.json does not exist")
+    for ticker in sorted(set(on_disk) - set(advertised)):
+        report.fail(
+            "benchmarks.described",
+            f"benchmarks/{ticker}.json is published but release.json does not describe it",
+        )
+
+    for ticker in sorted(set(on_disk) & set(advertised)):
+        label = f"benchmarks/{ticker}.json"
+        path = on_disk[ticker]
+        payload = path.read_bytes()
+        entry = advertised[ticker]
+        digest = hashlib.sha256(payload).hexdigest()
+        if digest != entry.get("sha256") or len(payload) != entry.get("bytes"):
+            report.fail("benchmarks.descriptor", f"{label} does not match its descriptor")
+        if len(payload) > benchmarks_mod.MAX_BENCHMARK_BYTES:
+            report.fail(
+                "benchmarks.size",
+                f"{label} is {len(payload):,} B, over the {benchmarks_mod.MAX_BENCHMARK_BYTES:,} B ceiling "
+                "— the object exists to be smaller than the fund document it replaces",
+            )
+        source = fund_by_ticker.get(ticker)
+        if source is None:
+            report.fail("benchmarks.source", f"{label} has no fund document in this release")
+            continue
+        try:
+            document = json.loads(payload)
+        except ValueError:
+            report.fail("benchmarks.schema", f"{label} is not valid JSON")
+            continue
+        if not isinstance(document, dict) or document.get("kind") != benchmarks_mod.KIND:
+            report.fail("benchmarks.schema", f"{label} kind is {document.get('kind')!r}")
+            continue
+        if document.get("schema_version") != benchmarks_mod.SCHEMA_VERSION:
+            report.fail("benchmarks.schema", f"{label} schema_version {document.get('schema_version')!r}")
+        if str(document.get("ticker", "")).upper() != ticker:
+            report.fail("benchmarks.ticker", f"{label} names {document.get('ticker')!r}")
+        for field in ("fund_id", "name", "as_of", "filed_at", "lag_days", "coverage_pct", "source_url"):
+            if document.get(field) != source.get(field):
+                report.fail(
+                    "benchmarks.provenance",
+                    f"{label} {field} {document.get(field)!r} != fund document {source.get(field)!r} "
+                    "— the provenance belongs to the filing and is copied, never recomputed",
+                )
+        weights = document.get("weights")
+        if not isinstance(weights, dict) or not weights:
+            report.fail("benchmarks.weights", f"{label} has no weights")
+            continue
+        if any(not isinstance(value, int) or value == 0 for value in weights.values()):
+            report.fail(
+                "benchmarks.weights",
+                f"{label} carries a zero or non-integer weight; zero rows are dropped, never stored",
+            )
+        if any(value < 0 for value in weights.values()):
+            report.warn("benchmarks.weights", f"{label} carries a negative weight (a short in the benchmark)")
+        expected = benchmarks_mod.rollup(source)
+        if weights != expected:
+            missing = sorted(set(expected) - set(weights))[:3]
+            extra = sorted(set(weights) - set(expected))[:3]
+            differing = sorted(
+                company_id
+                for company_id in set(expected) & set(weights)
+                if expected[company_id] != weights[company_id]
+            )[:3]
+            report.fail(
+                "benchmarks.rollup",
+                f"{label} disagrees with the fund document: missing {missing}, extra {extra}, "
+                f"differing {[(c, weights[c], expected[c]) for c in differing]}",
+            )
+            continue
+        source_bytes = len((release_dir / f"funds/{source.get('ticker')}.json").read_bytes())
+        if source_bytes and len(payload) * 2 >= source_bytes:
+            report.warn(
+                "benchmarks.size",
+                f"{label} is {len(payload):,} B against the fund document's {source_bytes:,} B "
+                "— the saving it exists for is gone",
+            )
+        report.ok("benchmarks.rollup", f"{label} matches the fund document ({len(weights):,} companies)")
+
+
 def _published_files(release_dir: Path, manifest: dict) -> list[Path]:
     """The objects this release actually publishes, plus the manifest itself.
 
@@ -837,6 +947,7 @@ def validate(release_dir: Path) -> int:
         _check_fund(document, report)
     _check_fund_of_funds_release(funds, report)
     _check_catalogue(release_dir, manifest, funds, report)
+    _check_benchmarks(release_dir, funds, report)
     _check_cusip(release_dir, manifest, report)
     _check_lei(release_dir, manifest, report)
     _check_budget(release_dir, report)
