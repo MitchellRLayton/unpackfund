@@ -60,6 +60,10 @@ function contrast(a: string, b: string): number {
 const TEXT_PAIRS: Array<[fg: string, bg: string, why: string]> = [
   ["fg", "bg", "body text"],
   ["fg", "surface", "text on a raised surface"],
+  // The current section's pill is a darker step of `--surface` (operator's instruction,
+  // 2026-11-02), so it needs its own pair: a future darkening must fail here rather than
+  // in a reader's eyes.
+  ["fg", "pill-bg", "the current section's label on its pill"],
   ["muted", "bg", "secondary text"],
   ["muted", "surface", "secondary text on a raised surface"],
   ["accent", "bg", "links and accent labels"],

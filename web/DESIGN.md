@@ -38,19 +38,20 @@ provenance of every number visible without a click.
 
 Defined once in `app/globals.css` as custom properties, light and dark through `prefers-color-scheme`.
 
-| Token                                   | Light                       | Dark                         | Use                                            |
-| --------------------------------------- | --------------------------- | ---------------------------- | ---------------------------------------------- |
-| `--bg`                                  | `#ffffff`                   | `#0d1117`                    | page                                           |
-| `--surface`                             | `#f6f8f9`                   | `#151b22`                    | table header, notices                          |
-| `--fg`                                  | `#11181c`                   | `#e8edf0`                    | body text                                      |
-| `--muted`                               | `#55636b`                   | `#9aa7b0`                    | labels, notes, secondary values                |
-| `--rule`                                | `#d7dde1`                   | `#232b33`                    | hairlines, table rules                         |
-| `--accent`                              | `#0f6d78`                   | `#5ec8d4`                    | primary action                                 |
-| `--warn` / `--warn-soft`                | `#7a4b00` / `#fdf3e2`       | `#f0b429` / `#2e2413`        | warnings, partial coverage                     |
-| `--tint-direct` / `--tint-direct-hover` | `#f2ecff` / `#e9e0fd`       | `#1d1930` / `#262038`        | the ledger row of a stock you hold directly    |
-| `--country-us`                          | `#9dc2ea`                   | `#2b4a6d`                    | the row's left edge for a US-domiciled company |
-| `--country-intl`                        | `#8d9fe0`                   | `#2f3a6e`                    | the row's left edge for any other domicile     |
-| `--pill-shadow`                         | `0 1px 2px rgb(0 0 0 / 8%)` | `0 1px 2px rgb(0 0 0 / 45%)` | the current section's pill, under the bar      |
+| Token                                   | Light                       | Dark                         | Use                                              |
+| --------------------------------------- | --------------------------- | ---------------------------- | ------------------------------------------------ |
+| `--bg`                                  | `#ffffff`                   | `#0d1117`                    | page                                             |
+| `--surface`                             | `#f6f8f9`                   | `#151b22`                    | table header, notices                            |
+| `--fg`                                  | `#11181c`                   | `#e8edf0`                    | body text                                        |
+| `--muted`                               | `#55636b`                   | `#9aa7b0`                    | labels, notes, secondary values                  |
+| `--rule`                                | `#d7dde1`                   | `#232b33`                    | hairlines, table rules                           |
+| `--accent`                              | `#0f6d78`                   | `#5ec8d4`                    | primary action                                   |
+| `--warn` / `--warn-soft`                | `#7a4b00` / `#fdf3e2`       | `#f0b429` / `#2e2413`        | warnings, partial coverage                       |
+| `--tint-direct` / `--tint-direct-hover` | `#f2ecff` / `#e9e0fd`       | `#1d1930` / `#262038`        | the ledger row of a stock you hold directly      |
+| `--country-us`                          | `#9dc2ea`                   | `#2b4a6d`                    | the row's left edge for a US-domiciled company   |
+| `--country-intl`                        | `#8d9fe0`                   | `#2f3a6e`                    | the row's left edge for any other domicile       |
+| `--pill-bg`                             | `#c5c6c7`                   | `#192028`                    | the current section's pill (20% off `--surface`) |
+| `--pill-shadow`                         | `0 1px 2px rgb(0 0 0 / 8%)` | `0 1px 2px rgb(0 0 0 / 45%)` | the current section's pill, under the bar        |
 
 **Row shading (operator's instruction, 2026-11-02).** A company the visitor holds as a stock, not only through a fund, gets
 a pastel light-purple row — quiet enough that the numbers still lead, distinct enough to find the single-stock positions at
@@ -102,8 +103,14 @@ screen while the page scrolls under it. The rules that keep it from becoming dec
   bar that tints the rows of a dense table as they pass reads as a rendering fault, and on a page whose whole job is
   legible numbers a stray tint is one more thing to doubt.
 - **The current section is a block, not a bold word.** `aria-current="page"` (unchanged, so a screen reader still
-  announces it), `--fg` at weight 600, `--surface` behind it, `--pill-shadow` under it, 0.4 rem corners. The colour is
+  announces it), `--fg` at weight 600, `--pill-bg` behind it, `--pill-shadow` under it, 0.4 rem corners. The colour is
   reinforcement; the attribute is the meaning (rule 3).
+- **The pill is a step off `--surface`, not `--surface` itself** (operator's instruction, 2026-11-02: "20% darker
+  pill"). `--pill-bg` is `--surface` mixed 80/20 with black — `#f6f8f9` → `#c5c6c7`, which is 1.71:1 against the page
+  instead of 1.04:1, so the block is visible without becoming a second accent; body text on it measures 10.48:1. Table
+  headers and notices keep the quiet `--surface`. In the dark scheme the 20% goes the other way (`#151b22` → `#192028`):
+  darkening a pill on a `#0d1117` page moves it _toward_ the page and erases the block, so the same distance away from
+  `--surface` is the faithful translation, and `lib/theme.test.ts` checks `--fg` on `--pill-bg` in both schemes.
 - **Every label carries the pill's padding.** Otherwise the row shifts sideways the moment you change section, and the
   nav overflows at 320 px. With the padding and `flex-wrap` the bar takes two rows on a narrow phone and holds one line
   above 400 px.
