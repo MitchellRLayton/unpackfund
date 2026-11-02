@@ -34,13 +34,34 @@ echo "git-setup: credential.helper -> !gh auth git-credential"
 # 2. The guards: secrets and large files (pre-commit), provenance trailers
 #    (commit-msg), and the same trailers at the push boundary (pre-push).
 #
-# Absolute, not `scripts/git-hooks`: a relative hooksPath is resolved inside whichever
-# worktree is committing, and a worktree whose tree predates the hook simply has no
-# file there — git then skips it without a word. That is how seven concurrent sessions
-# would each keep running with no provenance check until they next merged main. One
-# absolute path means every worktree runs the canonical clone's hooks.
-git config --local core.hooksPath "$(pwd -P)/scripts/git-hooks"
-echo "git-setup: core.hooksPath -> $(pwd -P)/scripts/git-hooks (pre-commit, commit-msg, pre-push)"
+# Which path, and why it is not a constant.
+#
+# A *relative* hooksPath is resolved inside whichever worktree is committing, so a
+# worktree whose tree predates the hooks has no file there and git skips it in silence.
+# An *absolute* one makes every worktree run this clone's copy — but only if this tree
+# actually contains the hooks; point it at a tree that does not and you have replaced
+# "some worktrees are unenforced" with "no worktree is enforced", which is worse and just
+# as quiet.
+#
+# So: absolute when this tree can back it, relative otherwise, and say which and why.
+_present=""
+_missing=""
+for _h in pre-commit commit-msg pre-push; do
+  if [ -f "scripts/git-hooks/$_h" ]; then _present="$_present $_h"; else _missing="$_missing $_h"; fi
+done
+if [ -z "$_missing" ]; then
+  git config --local core.hooksPath "$(pwd -P)/scripts/git-hooks"
+  echo "git-setup: core.hooksPath -> $(pwd -P)/scripts/git-hooks ($(echo $_present))"
+  echo "git-setup: every worktree of this clone now runs these hooks, whatever its own tree says"
+else
+  git config --local core.hooksPath scripts/git-hooks
+  echo "git-setup: core.hooksPath -> scripts/git-hooks ($(echo $_present))" >&2
+  echo "git-setup: WARNING this checkout does not contain:$_missing" >&2
+  echo "           Those hooks cannot run from this tree, and git says nothing when a hook is" >&2
+  echo "           missing. Left relative on purpose, so a worktree that does have them still" >&2
+  echo "           runs its own. Update this checkout (git checkout main && git pull) and" >&2
+  echo "           re-run git-setup.sh to switch to the absolute path." >&2
+fi
 
 # 3. Prove the credential path is actually fast, rather than assuming it.
 start=$(date +%s)
