@@ -27,6 +27,12 @@
  * short or over, and "View the ledger" waits for exactly 100% — a look-through weight
  * is a share of the whole, so the numbers behind that link only mean something once
  * there is a whole (2026-11-02, operator's instruction).
+ *
+ * **Adding a holding is not an edit to the holdings already there.** A new row arrives at
+ * 0.00% and the amounts that were already typed are left alone; only a list that is still
+ * the app's own even split keeps following its count (first fund 100%, second 50/50,
+ * third 33.34/33.33/33.33). That is what `isEqualSplit` decides, and the notice a `kept`
+ * add writes is the sentence that stops a 0.00% row from looking like a failed add.
  */
 
 import Link from "next/link";
@@ -40,7 +46,7 @@ import { formatCents, formatFundList, formatWeightBp } from "@/lib/format";
 import { POPULAR_ORDER } from "@/lib/popular";
 import { accepts, isCarriable, normaliseSymbol, refusal } from "@/lib/securities";
 import { USD_NOTIONAL_CENTS } from "@/lib/portfolio-weights";
-import { usePortfolio } from "@/lib/use-portfolio";
+import { usePortfolio, type AddOutcome } from "@/lib/use-portfolio";
 import { useRelease, useTickers } from "@/lib/use-release";
 import { useReorderList } from "@/lib/use-reorder";
 import {
@@ -117,11 +123,31 @@ export function PortfolioBuilder() {
   // when there is a whole. Dollars are their own total, so they always are.
   const ledgerOpen = mode === "usd" || portfolio.complete;
 
-  /** Every add path clears the undo offers: they belong to the portfolio they changed. */
-  function addEntry(kind: EntryKind, key: string) {
+  /**
+   * Every add path clears the undo offers: they belong to the portfolio they changed.
+   *
+   * Returns what the store did to the amounts already there. A row that arrives at
+   * 0.00% while the portfolio is whole gets a sentence here: the operator asked for
+   * exactly this (adding a fund must not move the weights they typed), and an add that
+   * silently contributes nothing otherwise reads as an add that failed.
+   */
+  function addEntry(kind: EntryKind, key: string, body?: string): AddOutcome {
     setCleared(null);
     setConverted(null);
-    portfolio.add(kind, key);
+    const outcome = portfolio.add(kind, key);
+    if (outcome === "kept") {
+      setMessage({
+        tone: "info",
+        title: `Added ${kind === "cash" ? "cash" : key} at 0.00%`,
+        body: [
+          body,
+          "Your other rows kept the amounts you gave them. Set this row's amount to give it weight.",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      });
+    }
+    return outcome;
   }
 
   /**
@@ -182,13 +208,12 @@ export function PortfolioBuilder() {
     if (typed.length === 0 || adding) return;
 
     if (typed.toLowerCase() === "cash" || typed.toLowerCase() === "cash position") {
-      addEntry("cash", CASH_KEY);
+      const body =
+        "Set the amount it represents. Cash is part of your money but has no company behind it.";
+      if (addEntry("cash", CASH_KEY, body) !== "kept") {
+        setMessage({ tone: "info", title: "Added cash", body });
+      }
       setInput("");
-      setMessage({
-        tone: "info",
-        title: "Added cash",
-        body: "Set the amount it represents. Cash is part of your money but has no company behind it.",
-      });
       return;
     }
 
@@ -255,12 +280,14 @@ export function PortfolioBuilder() {
         }
         // The confirmation step: a symbol is a label, and the reader should see the
         // company the release resolved it to before it enters their portfolio.
-        setMessage({
-          tone: "info",
-          title: `Added ${ticker} — ${row[1]}`,
-          body: `Held directly. ${row[2] ?? "Exchange not filed"} · company ${row[0]}. Its weight is yours, not a fund's.`,
-        });
-        addEntry("security", ticker);
+        const detail = `Held directly. ${row[2] ?? "Exchange not filed"} · company ${row[0]}. Its weight is yours, not a fund's.`;
+        if (addEntry("security", ticker, detail) !== "kept") {
+          setMessage({
+            tone: "info",
+            title: `Added ${ticker} — ${row[1]}`,
+            body: detail,
+          });
+        }
         return;
       }
 
@@ -304,13 +331,17 @@ export function PortfolioBuilder() {
   }
 
   function addFund(ticker: string, body?: string) {
-    addEntry("fund", ticker);
+    const outcome = addEntry("fund", ticker, body);
     setInput("");
-    setMessage(
-      body
-        ? { tone: "info", title: `Added ${ticker}`, body }
-        : { tone: "info", title: `Added ${ticker}` },
-    );
+    // `kept` already wrote a sentence naming the 0.00% row; anything else is a plain
+    // "Added", with the share-class note when there is one.
+    if (outcome !== "kept") {
+      setMessage(
+        body
+          ? { tone: "info", title: `Added ${ticker}`, body }
+          : { tone: "info", title: `Added ${ticker}` },
+      );
+    }
   }
 
   return (

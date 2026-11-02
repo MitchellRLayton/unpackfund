@@ -169,6 +169,29 @@ export function equalise(entries: PortfolioEntry[]): PortfolioEntry[] {
   }));
 }
 
+/**
+ * Whether the amounts are still exactly the split the app itself produced.
+ *
+ * The builder has one automatic behaviour: a portfolio it started (empty, or the even
+ * split every first row receives) keeps following its own count. This is how a set of
+ * amounts is recognised as still being in that state — `equalise` totals 10,000 by
+ * construction, so a set that matches it is both evenly spread *and* whole.
+ *
+ * A total of exactly 100% is **not** the test. `60/40` is whole, was typed by the
+ * visitor, and must survive the next added row untouched; re-splitting it is the
+ * "adding a fund resets my portfolio" complaint of 2026-11-02. Requiring both
+ * conditions also keeps `25/25` (even, but short) out: re-splitting that would move
+ * two rows in order to fund a third.
+ */
+export function isEqualSplit(entries: PortfolioEntry[]): boolean {
+  if (entries.length === 0) return false;
+  const even = equalise(entries);
+  // Same length by construction (`equalise` maps one entry to one entry), so the
+  // index is always in range; read through a guard so a future caller passing a
+  // different shape fails a test rather than crashing on `undefined.amount`.
+  return entries.every((entry, index) => entry.amount === (even[index]?.amount ?? -1));
+}
+
 /** The label a key carries in the UI: cash is a word, not a symbol. */
 export function entryLabel(entry: { kind: PortfolioEntry["kind"]; key: string }): string {
   return entry.kind === "cash" || entry.key === CASH_KEY ? "Cash" : entry.key;

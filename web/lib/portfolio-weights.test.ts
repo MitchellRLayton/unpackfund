@@ -7,6 +7,7 @@ import {
   convertMode,
   entryLabel,
   equalise,
+  isEqualSplit,
   splitPortfolio,
   USD_NOTIONAL_CENTS,
 } from "./portfolio-weights";
@@ -217,5 +218,44 @@ describe("small helpers", () => {
     expect(entryLabel({ kind: "cash", key: "CASH" })).toBe("Cash");
     expect(entryLabel({ kind: "fund", key: "VT" })).toBe("VT");
     expect(entryLabel({ kind: "security", key: "AMZN" })).toBe("AMZN");
+  });
+
+  /**
+   * The one predicate that decides whether an added row may touch the amounts already
+   * there. Whole is not the test: `60/40` is a portfolio the visitor composed, and the
+   * operator's 2026-11-02 report is that adding a fund re-split it to `33.33` each.
+   */
+  it("recognises the app's own even split, and a whole portfolio typed by hand as not", () => {
+    expect(isEqualSplit([])).toBe(false);
+    expect(isEqualSplit([entry("fund", "AAA", 10_000)])).toBe(true);
+    expect(isEqualSplit([entry("fund", "AAA", 5_000), entry("fund", "BBB", 5_000)])).toBe(
+      true,
+    );
+    // The remainder 10,000/n leaves with the first rows: this is `equalise`'s own shape.
+    expect(
+      isEqualSplit([
+        entry("fund", "AAA", 3_334),
+        entry("fund", "BBB", 3_333),
+        entry("fund", "CCC", 3_333),
+      ]),
+    ).toBe(true);
+
+    // Whole, but the visitor's: 60/40 must survive the next added row untouched.
+    expect(isEqualSplit([entry("fund", "AAA", 6_000), entry("fund", "BBB", 4_000)])).toBe(
+      false,
+    );
+    // Even, but short. Re-splitting would move two rows in order to fund a third, and
+    // the third would still not be a share of a whole.
+    expect(isEqualSplit([entry("fund", "AAA", 2_500), entry("fund", "BBB", 2_500)])).toBe(
+      false,
+    );
+    // Same amounts, wrong order for the remainder: 3,333/3,334 is not what it writes.
+    expect(
+      isEqualSplit([
+        entry("fund", "AAA", 3_333),
+        entry("fund", "BBB", 3_334),
+        entry("fund", "CCC", 3_333),
+      ]),
+    ).toBe(false);
   });
 });

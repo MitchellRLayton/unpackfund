@@ -193,6 +193,91 @@ describe("PortfolioBuilder — stocks, cash, and units", () => {
   });
 });
 
+describe("PortfolioBuilder — adding a holding never re-weights the ones already there", () => {
+  /**
+   * The operator's report (2026-11-02): a portfolio of hand-set, varying weights that
+   * adds up to 100%, then a fourth fund is added, and every row snaps back to an even
+   * split. Typed weights are input, not a default to be recomputed.
+   */
+  it("keeps a hand-weighted 100% portfolio byte for byte", () => {
+    render(<PortfolioBuilder />);
+    fireEvent.click(screen.getByRole("button", { name: "Add QQQ" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add VTI" }));
+    // 50/50 is the app's default; 60/40 is the visitor's.
+    fireEvent.change(screen.getByLabelText("Amount for QQQ, in percent"), {
+      target: { value: "60" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount for VTI, in percent"), {
+      target: { value: "40" },
+    });
+    // Leaving the fields is what shows the number the store kept, rather than the
+    // half-typed text; it is also the state a visitor is in when they add the next fund.
+    fireEvent.blur(screen.getByLabelText("Amount for QQQ, in percent"));
+    fireEvent.blur(screen.getByLabelText("Amount for VTI, in percent"));
+    expect(screen.getByText("100.00%")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add VOO" }));
+
+    // Both typed amounts are still exactly what was typed…
+    expect(screen.getByDisplayValue("60.00")).toBeTruthy();
+    expect(screen.getByDisplayValue("40.00")).toBeTruthy();
+    expect(screen.queryByDisplayValue("33.33")).toBeNull();
+    expect(screen.queryByDisplayValue("33.34")).toBeNull();
+    // …the new row is honestly empty, so the total is still exactly 100% and the
+    // ledger link stays live.
+    expect(screen.getByDisplayValue("0.00")).toBeTruthy();
+    expect(screen.getByText("100.00%")).toBeTruthy();
+    expect(screen.getByText("fully allocated")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "View the ledger" }).getAttribute("aria-disabled"),
+    ).toBeNull();
+    // And the URL carries the three amounts, so a reload cannot re-split them either.
+    const decoded = decodePortfolio(window.location.hash);
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    expect(decoded.portfolio.entries.map((entry) => [entry.key, entry.amount])).toEqual([
+      ["QQQ", 6000],
+      ["VTI", 4000],
+      ["VOO", 0],
+    ]);
+  });
+
+  it("names the 0.00% row instead of leaving an add that looks like it failed", () => {
+    render(<PortfolioBuilder />);
+    fireEvent.click(screen.getByRole("button", { name: "Add QQQ" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add VTI" }));
+    fireEvent.change(screen.getByLabelText("Amount for QQQ, in percent"), {
+      target: { value: "70" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount for VTI, in percent"), {
+      target: { value: "30" },
+    });
+    fireEvent.blur(screen.getByLabelText("Amount for QQQ, in percent"));
+    fireEvent.blur(screen.getByLabelText("Amount for VTI, in percent"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Add VOO" }));
+
+    expect(screen.getByText("Added VOO at 0.00%")).toBeTruthy();
+    expect(
+      screen.getByText(/Your other rows kept the amounts you gave them/),
+    ).toBeTruthy();
+    expect(screen.getByDisplayValue("70.00")).toBeTruthy();
+    expect(screen.getByDisplayValue("30.00")).toBeTruthy();
+  });
+
+  it("still splits a portfolio the app itself spread, so the default survives", () => {
+    render(<PortfolioBuilder />);
+    fireEvent.click(screen.getByRole("button", { name: "Add QQQ" }));
+    // One row at 100% is the app's own split, not a typed one: the second row halves it.
+    fireEvent.click(screen.getByRole("button", { name: "Add VTI" }));
+    expect(screen.getAllByDisplayValue("50.00")).toHaveLength(2);
+    // And so does the third, remainder included.
+    fireEvent.click(screen.getByRole("button", { name: "Add VTV" }));
+    expect(screen.getByDisplayValue("33.34")).toBeTruthy();
+    expect(screen.getAllByDisplayValue("33.33")).toHaveLength(2);
+  });
+});
+
 describe("PortfolioBuilder — 100% is a statement, not a clamp", () => {
   it("keeps the amount that was typed and never moves the other rows", () => {
     render(<PortfolioBuilder />);
