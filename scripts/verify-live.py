@@ -163,6 +163,55 @@ def check_pages(site: str, catalogue: dict, sample: list[str], problems: Problem
         print(f"ok   pages          /f/{ticker}/ {got}% mapped = catalogue {want}%")
 
 
+def pick_handoff(runs: list[dict]) -> dict:
+    """Which `deploy-site` run proves the hand-off, tolerating a superseded lane.
+
+    `deploy-site` runs in one concurrency group and rebuilds every page from the live pointer,
+    so a hand-off that fires while a newer push is deploying is *cancelled* by design — the
+    newer run rebuilds the same pages and the promotion still reached the site. Judging the
+    newest run alone turned that into a red `verify-live` on 2026-11-02 (two merges four
+    minutes apart), which is worse than a missing check: it cries wolf on the busiest days.
+
+    Preference order, strongest evidence first:
+
+    1. a `workflow_run` deploy-site run that succeeded — the hand-off itself;
+    2. the same, still running — inconclusive, not red;
+    3. any other deploy-site run that succeeded after the promotion — the site was rebuilt
+       anyway, but by a push rather than by the promotion, so the caller says so;
+    4. nothing — the hand-off did not reach the site.
+
+    Returns `{"proof": run | None, "kind": "handoff" | "rebuild" | None, "newest": run,
+    "in_flight": run | None}`.
+    """
+    newest = max(runs, key=lambda r: r["created_at"])
+    handoffs = [r for r in runs if r.get("event") == "workflow_run"]
+    succeeded = [r for r in handoffs if r.get("conclusion") == "success"]
+    if succeeded:
+        return {
+            "proof": max(succeeded, key=lambda r: r["created_at"]),
+            "kind": "handoff",
+            "newest": newest,
+            "in_flight": None,
+        }
+    flying = [r for r in handoffs if r.get("status") in ("queued", "in_progress", "waiting", "pending")]
+    if flying:
+        return {
+            "proof": None,
+            "kind": None,
+            "newest": newest,
+            "in_flight": max(flying, key=lambda r: r["created_at"]),
+        }
+    rebuilt = [r for r in runs if r.get("conclusion") == "success"]
+    if rebuilt:
+        return {
+            "proof": max(rebuilt, key=lambda r: r["created_at"]),
+            "kind": "rebuild",
+            "newest": newest,
+            "in_flight": None,
+        }
+    return {"proof": None, "kind": None, "newest": newest, "in_flight": None}
+
+
 def check_handoff(repo: str, problems: Problems) -> None:
     try:
         workflow = gh_api(f"/repos/{repo}/actions/workflows/deploy-site.yml")
@@ -201,32 +250,52 @@ def check_handoff(repo: str, problems: Problems) -> None:
         return
 
     try:
-        handoffs = gh_api(
-            f"/repos/{repo}/actions/workflows/deploy-site.yml/runs"
-            f"?event=workflow_run&per_page=20"
+        # Both events: `workflow_run` is the hand-off itself, `push` is the deploy that may
+        # have superseded it — and both rebuild every page from the live pointer.
+        deploy_runs = gh_api(
+            f"/repos/{repo}/actions/workflows/deploy-site.yml/runs?per_page=30"
         )["workflow_runs"]
     except (RuntimeError, KeyError) as exc:
         problems.add(f"handoff: cannot list deploy-site runs ({exc})")
         return
 
-    after = [r for r in handoffs if iso(r["created_at"]) >= promoted_at]
+    after = [r for r in deploy_runs if iso(r["created_at"]) >= promoted_at]
     if not after:
         problems.add(
             f"handoff: promotion {promote['id']} succeeded at {promote['created_at']} but no "
-            f"`deploy-site` run with event `workflow_run` exists after it — the hand-off did "
-            f"not fire (site pages are complete; app code may be a day stale)"
+            f"`deploy-site` run exists after it — the hand-off did not fire (site pages are "
+            f"complete; app code may be a day stale)"
         )
         return
-    run = max(after, key=lambda r: r["created_at"])
-    if run.get("conclusion") != "success":
+    picked = pick_handoff(after)
+    proof, newest, in_flight = picked["proof"], picked["newest"], picked["in_flight"]
+    if proof is None and in_flight is not None:
+        print(
+            f"skip handoff        deploy-site run {in_flight['id']} from promotion "
+            f"{promote['id']} is still `{in_flight.get('status')}`; nothing to judge yet"
+        )
+        return
+    if proof is None:
         problems.add(
-            f"handoff: the hand-off fired as run {run['id']} but concluded "
-            f"`{run.get('conclusion')}` — {run['html_url']}"
+            f"handoff: the newest deploy-site run after promotion {promote['id']} is "
+            f"{newest['id']}, concluded `{newest.get('conclusion')}` — {newest['html_url']}"
         )
         return
+    if picked["kind"] == "rebuild":
+        print(
+            f"ok   handoff        promotion {promote['id']} ({promote['created_at']}) -> no "
+            f"hand-off run survived, but deploy-site run {proof['id']} "
+            f"({proof['created_at']}, event `{proof.get('event')}`) rebuilt the site after it"
+        )
+        return
+    superseded = (
+        ""
+        if proof["id"] == newest["id"]
+        else f" (run {newest['id']} was `{newest.get('conclusion')}` — a superseded lane, not a failure)"
+    )
     print(
         f"ok   handoff        promotion {promote['id']} ({promote['created_at']}) -> "
-        f"deploy-site run {run['id']} ({run['created_at']}), success"
+        f"deploy-site run {proof['id']} ({proof['created_at']}), success{superseded}"
     )
 
 
