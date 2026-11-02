@@ -16,6 +16,7 @@ import {
   loadBenchmark,
   loadCatalogue,
   loadCompany,
+  loadCompanyCountries,
   loadCompanyIndex,
   loadFund,
   loadRelease,
@@ -302,6 +303,45 @@ export function useBenchmark(
     return { status: "loading", data: null, error: null };
   }
   return answer.state;
+}
+
+/**
+ * The company→country map: `{}` when the release publishes none, or the published map.
+ *
+ * Independent of both other channels the ledger reads: a release may carry a benchmark
+ * and no countries, countries and no benchmark, both, or neither, and each degrades on
+ * its own. Nothing waits on this object — a country tag is additive, so a late map must
+ * not hold the table hostage the way a permanently-pending ticker once did. A failure is
+ * a fourth state, not a crash: with `data: null` the ledger simply shows no tag, which is
+ * the same thing it shows for a release that answers nothing, and never a guess.
+ */
+export function useCountries(
+  release: ReleaseDescriptor | null,
+): LoadState<Record<string, string>> {
+  const [state, setState] = useState<LoadState<Record<string, string>>>({
+    status: "loading",
+    data: null,
+    error: null,
+  });
+
+  useEffect(() => {
+    if (!release) return;
+    let cancelled = false;
+    loadCompanyCountries(release)
+      .then((countries) => {
+        if (cancelled) return;
+        setState({ status: "ready", data: countries, error: null });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setState({ status: "error", data: null, error: toError(error) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [release]);
+
+  return state;
 }
 
 export function useCompanyIndex(

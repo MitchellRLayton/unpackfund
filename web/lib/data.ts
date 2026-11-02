@@ -30,6 +30,7 @@ import {
   type FundAliases,
   type BenchmarkRollup,
   type CompanyIndex,
+  type CompanyCountries,
   type CompanyShard,
   type FundDocument,
   type FundIndexShard,
@@ -469,6 +470,55 @@ export async function loadCompany(
     );
   }
   return document;
+}
+
+/**
+ * `companies/countries.json`: the country code per company, hash-checked.
+ *
+ * `{}` when the descriptor does not name the object — that is every release published
+ * before `2026-11-02.6`, and its absence is a valid release, not an error: the ledger
+ * then shows no country tag, no edge, and no caption sentence, and fetches nothing
+ * (`data-contract-and-release` §8).
+ *
+ * When the object is named, it is fetched through the same descriptor-checked path as
+ * every other release object, so the bytes are verified against the descriptor's
+ * `sha256` before a single code is read. A country is a claim about a company; a claim
+ * assembled from bytes nobody verified is worse than no tag at all.
+ *
+ * The `kind` is checked rather than `as_of`: the descriptor's hash already binds these
+ * bytes to this release, so an `as_of` comparison would add no protection and would
+ * refuse a valid object whose stamp is spelled differently. Values are returned as
+ * published — the browser does not validate, normalise, vote, or infer a code, because
+ * the rule that decided one lives in the pipeline and only there
+ * (`lookthrough-math-and-qa` §2). No cache: one fetch per ledger page, and a copy would
+ * be a second thing to invalidate.
+ */
+export async function loadCompanyCountries(
+  release: ReleaseDescriptor,
+  fetchImpl: FetchImpl = fetch,
+): Promise<Record<string, string>> {
+  const descriptor = release.objects.companies?.countries;
+  if (!descriptor) return {};
+  const document = await loadDescribed<CompanyCountries>(
+    release,
+    descriptor,
+    "company countries",
+    fetchImpl,
+  );
+  if (
+    !document ||
+    document.kind !== "company_countries" ||
+    typeof document.companies !== "object" ||
+    document.companies === null ||
+    Array.isArray(document.companies)
+  ) {
+    throw new DataError(
+      "schema",
+      "The company countries are not the object this app expects.",
+      `${descriptor.path}: kind ${document?.kind ?? "missing"}, release ${release.as_of}.`,
+    );
+  }
+  return document.companies;
 }
 
 /**

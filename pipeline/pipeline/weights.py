@@ -64,6 +64,11 @@ class FundHolding:
     #: resolved through these, not through its label — see ``fund_lookthrough``.
     lei: str | None = None
     isin: str | None = None
+    #: The filing's own ``invCountry`` for this company, carried **only** so the
+    #: release can decide a company's country by value across every fund that holds
+    #: it (``company_countries``). It is never published on a holding row: a fund's
+    #: row-level country is the fund's view, and the ledger needs the company's.
+    country: str | None = None
 
 
 #: One row reduced to what the category split and the per-class coverage need:
@@ -418,6 +423,7 @@ def build_vector(
                 "largest": 0.0,
                 "lei": (holding.lei or "").strip().upper() or None,
                 "isin": (holding.isin or "").strip().upper() or None,
+                "country": None,
             }
             groups[key] = group
         group["fraction"] += fraction
@@ -432,6 +438,9 @@ def build_vector(
                 group["lei"] = holding.lei.strip().upper()
             if holding.isin:
                 group["isin"] = holding.isin.strip().upper()
+            # Same rule as the label and the identifier: the largest row speaks for
+            # the merged company, so two runs on the same filing cannot disagree.
+            group["country"] = (holding.inv_country or "").strip().upper() or group["country"]
 
     # Allocate in fraction order (largest remainder depends on it), then sort the
     # published rows by weight so two runs cannot differ in layout.
@@ -453,6 +462,7 @@ def build_vector(
                 merged_rows=row["rows"],
                 lei=row.get("lei") if row["category"] == classify.FUND else None,
                 isin=row.get("isin") if row["category"] == classify.FUND else None,
+                country=row.get("country"),
             )
         )
     # Sorted by the *published* name: redaction can give two rows the same name,

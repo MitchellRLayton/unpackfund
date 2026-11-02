@@ -344,6 +344,59 @@ describe("the benchmark column", () => {
   });
 });
 
+describe("countries", () => {
+  // The same shape as the first case in `buildLedger`: two funds at 50% each, three
+  // companies. The map answers for two of them (X is US, Z is Taiwan) and says nothing
+  // about Y — either the filings disagree or every holder files no country. Absence is
+  // a no-answer: the row reports `null`, never a default domicile.
+  //
+  //   A: 50%. X 5000bp, Y 3000bp, cash 2000bp.   B: 50%. X 2000bp, Z 8000bp.
+  //   X = 0.5·0.50 + 0.5·0.20 = 0.350   Y = 0.5·0.30 = 0.150   Z = 0.5·0.80 = 0.400
+  const mapped = fund({
+    ticker: "A",
+    holdings: [holding("c_x", 5000, "X"), holding("c_y", 3000, "Y"), holding(null, 2000)],
+  });
+  const other = fund({
+    ticker: "B",
+    holdings: [holding("c_x", 2000, "X"), holding("c_z", 8000, "Z")],
+  });
+  const countries = { c_x: "US", c_z: "TW" };
+  function ledgerWith(countriesInput?: Record<string, string> | null) {
+    return buildLedger({
+      funds: [mapped, other],
+      weights: fractions({ A: 5000, B: 5000 }),
+      ...(countriesInput === undefined ? {} : { countries: countriesInput }),
+    });
+  }
+
+  it("carries the published code onto the row it names, and nothing inferred", () => {
+    const ledger = ledgerWith(countries);
+    const byId = Object.fromEntries(ledger.rows.map((row) => [row.company_id, row]));
+
+    expect(byId.c_x?.country).toBe("US");
+    expect(byId.c_z?.country).toBe("TW");
+    // A lookup, not arithmetic: the weights the codes ride along with are unchanged.
+    expect(byId.c_x?.weight).toBeCloseTo(0.35, 12);
+  });
+
+  it("leaves a company the map does not answer as null, never as a guess", () => {
+    const ledger = ledgerWith(countries);
+    const y = ledger.rows.find((row) => row.company_id === "c_y");
+    expect(y).toHaveProperty("country");
+    expect(y?.country).toBeNull();
+  });
+
+  it("reports null on every row when the release publishes no countries at all", () => {
+    // The state every release before `2026-11-02.6` is in, and the state a release
+    // that publishes a benchmark but no country object is in: the question is
+    // unanswered on every row rather than answered with a default.
+    const absent = ledgerWith();
+    expect(absent.rows).toHaveLength(3);
+    expect(absent.rows.every((row) => row.country === null)).toBe(true);
+    expect(ledgerWith(null).rows.every((row) => row.country === null)).toBe(true);
+  });
+});
+
 describe("direct holdings and cash", () => {
   // The operator's own example: 90% VT, 10% Amazon held directly. VT files Amazon at
   // 228 bp of its NAV and 97.8% coverage, so the filed contribution is

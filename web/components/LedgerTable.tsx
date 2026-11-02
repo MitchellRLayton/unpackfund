@@ -104,6 +104,9 @@ export function LedgerTable({
   // Only a portfolio that holds a stock directly gets the sentence, and only then
   // is a shaded row on screen to explain.
   const anyDirect = rows.some((entry) => entry.held_directly);
+  // The country sentence follows the same rule as the shading one: a caption that
+  // explains a tag no row carries is noise, so it appears only when a row has one.
+  const anyCountry = rows.some((entry) => Boolean(entry.country));
 
   return (
     <div className="table-wrap">
@@ -132,6 +135,12 @@ export function LedgerTable({
           {anyDirect
             ? " The shaded rows are companies you hold directly, as a stock, rather" +
               " than only through a fund."
+            : ""}
+          {anyCountry
+            ? " The country beside a company is the domicile its holders' filings" +
+              " agree on by value; the row's left edge repeats it in colour — blue for" +
+              " the United States, periwinkle elsewhere — and a company whose filings" +
+              " do not agree carries no country."
             : ""}
         </caption>
         <thead>
@@ -180,10 +189,15 @@ export function LedgerTable({
           {visible.map((row) => {
             const benchmarkWeight = row.benchmark_weight;
             const delta = benchmarkDelta(row.weight, benchmarkWeight);
+            // The two axes, side by side and independent: `data-direct` makes the row's
+            // background mean position kind, and `data-country` makes a 3px edge on the
+            // first cell mean geography. A row can carry both; neither borrows the
+            // other's encoding.
             return (
               <tr
                 key={row.company_id}
                 data-direct={row.held_directly ? "true" : undefined}
+                data-country={row.country ?? undefined}
               >
                 <th scope="row">
                   {onSelect ? (
@@ -221,6 +235,19 @@ export function LedgerTable({
                         </span>
                       ))}
                     </span>
+                    {/* The code is text as well as colour: a screen reader reads
+                      "US", a printed page keeps it, and a reader in forced-colours
+                      mode loses nothing (`static-xray-frontend` §8). No tooltip — a
+                      meaning that lives behind hover is a meaning half the readers
+                      never get. A company the filings do not agree on renders nothing
+                      here: no tag is the honest answer, and a default would be a
+                      guess. */}
+                    {row.country ? (
+                      <>
+                        {" "}
+                        <span className="country-tag">{row.country}</span>
+                      </>
+                    ) : null}
                   </span>
                 </th>
                 <td className="numeric">{formatShare(row.weight)}</td>

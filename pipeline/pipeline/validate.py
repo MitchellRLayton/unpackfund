@@ -27,6 +27,7 @@ from .gleif import is_issuer_id, is_sec_company_id, LEI_RE
 
 from . import paths
 from . import benchmarks as benchmarks_mod
+from . import company_countries as company_countries_mod
 from .artifact import LARGE_FUND_BYTES, MAX_FUND_BYTES, SCHEMA_VERSION
 from .classify import CATEGORY_ORDER
 from .fund_lookthrough import MAX_DEPTH, RUNG_LEI, RUNG_SYMBOL, SLEEVE_MIXED
@@ -696,6 +697,142 @@ def _check_benchmarks(release_dir: Path, funds: list[dict], report: Report) -> N
         report.ok("benchmarks.rollup", f"{label} matches the fund document ({len(weights):,} companies)")
 
 
+def _check_company_countries(release_dir: Path, report: Report) -> None:
+    """The country map is an inference, so the release has to show its work.
+
+    Two things are checked, and both are real failures rather than warnings:
+
+    1. **The map is a projection of the company shards.** Every company's shard
+       carries its own ``country``, and ``companies/countries.json`` is the same
+       decision pre-rolled for the ledger. The two are written from one dict at build
+       time, so a disagreement means a second writer exists — which is exactly how a
+       column and its source start telling different stories.
+    2. **Both halves are present or absent together.** A release whose shards carry
+       countries but whose object is missing would publish a fact no page can show; a
+       release with an object and no shard country would show a tag no company record
+       backs. Either is a release-level mistake, not a consumer's problem to paper over.
+
+    ``counts`` is recomputed from the two sources rather than trusted, because it is
+    the number a reader quotes when they ask how much of the release is placed.
+    """
+    descriptor_path = release_dir / "release.json"
+    if not descriptor_path.exists():
+        report.fail("countries", "release.json is missing, so no country map is described")
+        return
+    try:
+        descriptor = json.loads(descriptor_path.read_text())
+    except (OSError, ValueError) as error:
+        report.fail("countries", f"release.json is unreadable: {error}")
+        return
+    entry = ((descriptor.get("objects") or {}).get("companies") or {}).get("countries")
+    path = release_dir / "companies" / "countries.json"
+    published = path.exists()
+
+    decided: dict[str, str] = {}
+    shards = 0
+    for shard_path in sorted((release_dir / "companies").glob("*.json")):
+        if shard_path.name in {"index.json", "countries.json"}:
+            continue
+        try:
+            shard = json.loads(shard_path.read_text())
+        except (OSError, ValueError):
+            report.fail("countries.shard", f"{shard_path.name} is unreadable")
+            continue
+        shards += 1
+        country = shard.get("country")
+        if country is None:
+            continue
+        company_id = shard.get("company_id") or shard_path.stem
+        if not company_countries_mod.is_country_code(country):
+            report.fail(
+                "countries.shard",
+                f"{shard_path.name} carries country {country!r}, which is not ISO alpha-2",
+            )
+            continue
+        decided[company_id] = country
+
+    if not published:
+        if entry is not None:
+            report.fail("countries.present", "release.json describes companies/countries.json, which does not exist")
+        if decided:
+            report.fail(
+                "countries.described",
+                f"{len(decided):,} company shard(s) carry a country but the release publishes no "
+                "companies/countries.json — the ledger cannot read a fact the shards carry",
+            )
+        else:
+            report.ok("companies.countries", "no country map published (a valid release)")
+        return
+    if entry is None:
+        report.fail("countries.described", "companies/countries.json is published but release.json does not describe it")
+        return
+
+    payload = path.read_bytes()
+    if hashlib.sha256(payload).hexdigest() != (entry or {}).get("sha256") or len(payload) != (entry or {}).get("bytes"):
+        report.fail("countries.descriptor", "companies/countries.json does not match its descriptor")
+    if len(payload) > company_countries_mod.MAX_COUNTRIES_BYTES:
+        report.fail(
+            "countries.size",
+            f"companies/countries.json is {len(payload):,} B, over the "
+            f"{company_countries_mod.MAX_COUNTRIES_BYTES:,} B ceiling",
+        )
+    try:
+        document = json.loads(payload)
+    except ValueError:
+        report.fail("countries.schema", "companies/countries.json is not valid JSON")
+        return
+    if not isinstance(document, dict) or document.get("kind") != company_countries_mod.KIND:
+        report.fail("countries.schema", f"kind is {document.get('kind')!r}, expected {company_countries_mod.KIND!r}")
+        return
+    if document.get("schema_version") != company_countries_mod.SCHEMA_VERSION:
+        report.fail("countries.schema", f"schema_version {document.get('schema_version')!r}")
+    if document.get("as_of") != (descriptor.get("as_of") or document.get("as_of")):
+        report.fail("countries.as_of", f"{document.get('as_of')!r} != release as_of {descriptor.get('as_of')!r}")
+
+    published_map = document.get("companies")
+    if not isinstance(published_map, dict):
+        report.fail("countries.map", "companies is not an object")
+        return
+    for company_id, country in published_map.items():
+        if not company_countries_mod.is_country_code(country):
+            report.fail("countries.map", f"{company_id} carries {country!r}, which is not ISO alpha-2")
+    if published_map != decided:
+        missing = sorted(set(decided) - set(published_map))[:3]
+        extra = sorted(set(published_map) - set(decided))[:3]
+        differing = sorted(
+            company_id
+            for company_id in set(published_map) & set(decided)
+            if published_map[company_id] != decided[company_id]
+        )[:3]
+        report.fail(
+            "countries.projection",
+            f"companies/countries.json is not the projection of the company shards: "
+            f"missing {missing}, extra {extra}, differing {[(c, published_map[c], decided[c]) for c in differing]}",
+        )
+        return
+
+    counts = document.get("counts") or {}
+    us = sum(1 for code in published_map.values() if code == "US")
+    expected = {
+        "companies": shards,
+        "with_country": len(published_map),
+        "us": us,
+        "non_us": len(published_map) - us,
+        "undecided": shards - len(published_map),
+    }
+    for name, value in expected.items():
+        if counts.get(name) != value:
+            report.fail("countries.counts", f"counts.{name} {counts.get(name)!r} != recomputed {value:,}")
+    if not isinstance(counts.get("invalid_rows"), int) or counts.get("invalid_rows", -1) < 0:
+        report.fail("countries.counts", f"counts.invalid_rows {counts.get('invalid_rows')!r} is not a count")
+    if not report.failures:
+        report.ok(
+            "companies.countries",
+            f"{len(published_map):,} of {shards:,} companies placed ({us:,} US), "
+            f"{counts.get('invalid_rows', 0):,} unusable row(s) discarded at build time",
+        )
+
+
 def _published_files(release_dir: Path, manifest: dict) -> list[Path]:
     """The objects this release actually publishes, plus the manifest itself.
 
@@ -1179,6 +1316,7 @@ def validate(release_dir: Path) -> int:
     _check_fund_of_funds_release(funds, report)
     _check_catalogue(release_dir, manifest, funds, report)
     _check_benchmarks(release_dir, funds, report)
+    _check_company_countries(release_dir, report)
     _check_cusip(release_dir, manifest, report)
     _check_lei(release_dir, manifest, report)
     _check_budget(release_dir, report)

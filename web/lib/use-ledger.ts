@@ -48,6 +48,7 @@ export function useLedger(
   direct: DirectHolding[] = [],
   cash = 0,
   benchmark: BenchmarkComparison | null = null,
+  countries: Record<string, string> | null = null,
 ): LedgerState {
   const [state, setState] = useState<LedgerState>({
     ledger: null,
@@ -129,6 +130,7 @@ export function useLedger(
         direct,
         cash,
         benchmark,
+        countries,
       };
       worker.postMessage(request);
       return;
@@ -136,7 +138,7 @@ export function useLedger(
 
     const started = performance.now();
     try {
-      const ledger = buildLedger({ funds, weights, direct, cash, benchmark });
+      const ledger = buildLedger({ funds, weights, direct, cash, benchmark, countries });
       setState({
         ledger,
         error: null,
@@ -152,6 +154,9 @@ export function useLedger(
     }
     // `weightsKey`/`fundKey`/`directKey`/`benchmarkKey` pin the effect to the data
     // actually used, so a new object with identical contents does not re-aggregate.
+    // The country map is compared by identity instead of by a JSON key: it arrives
+    // once from `useCountries` and is never rebuilt, and stringifying ~5,000 entries on
+    // every render would cost more than the aggregation it guards.
   }, [
     fundKey,
     weightsKey,
@@ -163,6 +168,7 @@ export function useLedger(
     direct,
     cash,
     benchmark,
+    countries,
   ]);
   return state;
 }

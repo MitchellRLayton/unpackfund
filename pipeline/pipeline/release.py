@@ -149,27 +149,33 @@ def sha256_hex(body: bytes) -> str:
 NOT_PUBLISHED = {"build-summary.json", "upload-report.json"}
 
 
-def _described_objects(name: str, descriptor: object) -> list[tuple[str, dict]]:
-    """Every ``{path, bytes, sha256}`` entry a descriptor family describes.
+#: How deep a descriptor block may nest before the walk refuses to follow it. Three
+#: is one more than any shape uses (``benchmarks.files.TEST``), so a deeper tree is a
+#: mistake rather than a future feature.
+MAX_DESCRIPTOR_DEPTH = 3
 
-    Two shapes exist: a single object (``tickers``, ``catalogue``, ``manifest``) and
-    a family of them keyed by ticker (``benchmarks.files``). A family is checked the
-    same way a single object is — the point of listing a hash in the descriptor is
-    that somebody compares it, and a nested entry that nothing read would be a hash
-    published for nobody.
+
+def _described_objects(
+    name: str, descriptor: object, depth: int = 0
+) -> list[tuple[str, dict]]:
+    """Every ``{path, bytes, sha256}`` entry a descriptor block describes.
+
+    Three shapes exist: a single object (``tickers``, ``catalogue``, ``manifest``), a
+    family keyed by ticker (``benchmarks.files``), and a single object *inside* a
+    family block (``companies.countries``, beside ``companies.index``). The walk is
+    therefore recursive: the point of listing a hash in the descriptor is that
+    somebody compares it, and an entry nothing reads is a hash published for nobody —
+    which is what the two-shape version silently did for the ``companies`` block.
     """
-    if not isinstance(descriptor, dict):
+    if not isinstance(descriptor, dict) or depth > MAX_DESCRIPTOR_DEPTH:
         return []
-    if "path" in descriptor and isinstance(descriptor.get("path"), str):
+    if isinstance(descriptor.get("path"), str):
         return [(name, descriptor)]
-    files = descriptor.get("files")
-    if not isinstance(files, dict):
-        return []
-    return [
-        (f"{name}.files.{key}", entry)
-        for key, entry in files.items()
-        if isinstance(entry, dict) and isinstance(entry.get("path"), str)
-    ]
+    found: list[tuple[str, dict]] = []
+    for key, child in descriptor.items():
+        if isinstance(child, dict):
+            found.extend(_described_objects(f"{name}.{key}", child, depth + 1))
+    return found
 
 
 def read_release(

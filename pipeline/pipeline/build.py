@@ -44,6 +44,7 @@ from . import (
     catalogue,
     classify,
     companies,
+    company_countries,
     filings,
     fund_lookthrough,
     manifest as manifest_mod,
@@ -123,6 +124,14 @@ class FundBuild:
     vector: weights.WeightVector | None = None
     #: The fund's own ``genInfo/seriesLei`` — the key a parent's holding row uses.
     series_lei: str | None = None
+    #: ``company_id -> (invCountry, abs weight_bp)`` for this fund's mapped rows: one
+    #: fund's contribution to the release-wide country vote. Folded into the tally
+    #: and dropped as soon as the fund lands (``_walk``), because 8,500 of these at
+    #: once would be the largest object the build holds.
+    countries: dict[str, tuple[str, int]] = field(default_factory=dict)
+    #: Rows whose ``invCountry`` was present but not an alpha-2 code. Published as the
+    #: object's ``invalid_rows`` so a release cannot hide what it discarded.
+    invalid_country_rows: int = 0
 
 
 @dataclass(frozen=True)
@@ -307,6 +316,7 @@ def build_fund(
             f"{MAX_FUND_BYTES:,}-byte budget"
         )
 
+    _countries, _invalid_country_rows = company_countries.fund_votes(vector.holdings)
     stats = {
         "collateral_usd": collateral.usd,
         "rungs": dict(vector.rung_counts),
@@ -333,6 +343,8 @@ def build_fund(
         evidence=evidence,
         vector=vector,
         series_lei=filing.series_lei,
+        countries=_countries,
+        invalid_country_rows=_invalid_country_rows,
     )
 
 
@@ -422,6 +434,7 @@ def _walk(
     issuers: gleif.IssuerIndex | None = None,
     fund_leis: Mapping[str, str] | None = None,
     series_out: dict[str, str] | None = None,
+    votes: company_countries.Tally | None = None,
 ) -> tuple[list[FundBuild], list[dict[str, str]]]:
     """Build every fund once, collecting the artifacts and the failures.
 
@@ -453,6 +466,13 @@ def _walk(
             if series_out is not None and build.series_lei:
                 series_out[build.series_lei] = build.ticker
         else:
+            # The evidence pass sets ``votes=None``: it sees every filing twice over two
+            # passes, and a fund counted in both would double its own vote.
+            if votes is not None and build.countries:
+                votes.add_fund(
+                    build.countries, build.stats.get("net_assets"), build.invalid_country_rows
+                )
+                build.countries = {}
             builds.append(build)
         if log and done % log == 0:
             elapsed = time.monotonic() - started
@@ -752,6 +772,10 @@ def build_release(
             "so a row is a fund position only when its filer says so"
         )
 
+    # One tally for the release-wide country vote (``company_countries``): every
+    # fund's mapped rows arrive on this thread as it lands, so the votes are folded in
+    # a single deterministic order and no per-fund map is retained.
+    country_tally = company_countries.Tally()
     builds, failures = _walk(
         refs,
         index,
@@ -762,6 +786,7 @@ def build_release(
         started=started,
         issuers=issuers,
         fund_leis=fund_leis or None,
+        votes=country_tally,
     )
 
     if failures and on_error == "fail":
@@ -832,6 +857,12 @@ def build_release(
     # entries at day-4 scale, 0.42 MB gzipped, on nobody's critical path); these
     # are the catalogue, the per-letter hash shards, and the reverse X-Ray shards.
     new_aliases = aliases
+    countries, country_stats = company_countries.decide(country_tally)
+    _log(
+        f"country: {len(countries):,} of {country_tally.companies():,} companies decided "
+        f"({country_stats['below_floor']:,} below the floor, "
+        f"{country_tally.invalid_rows:,} row(s) with an unusable invCountry)"
+    )
     browser_objects = catalogue.write_release_objects(
         release_dir,
         release=release,
@@ -842,6 +873,8 @@ def build_release(
         aliases=new_aliases,
         etf_classifier=classify.ETF_CLASSIFIER,
         securities_source=securities_source,
+        countries=countries,
+        invalid_country_rows=country_tally.invalid_rows,
     )
     elapsed = time.monotonic() - started
     _log(

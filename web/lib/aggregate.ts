@@ -52,6 +52,16 @@ export interface AggregateInput {
    * holds nothing.
    */
   benchmark?: BenchmarkComparison | null;
+  /**
+   * `company_id → ISO-3166-1 alpha-2` from the release's `companies/countries.json`.
+   *
+   * Absent (or `null`) means the release publishes no country object, and every row
+   * then reports `country: null` — the question is unanswered, which is not the same as
+   * "no country" and must never render as a default. This is a **lookup**, not a
+   * computation: the browser does not aggregate, vote, or infer a code, because the rule
+   * that decided one lives in the pipeline (`data-contract-and-release` §5).
+   */
+  countries?: Record<string, string> | null;
 }
 
 /** Companies rarely exceed this many in one portfolio; the guard is for sanity. */
@@ -63,6 +73,7 @@ export function buildLedger({
   direct = [],
   cash = 0,
   benchmark = null,
+  countries = null,
 }: AggregateInput): Ledger {
   interface Accumulator {
     name: string;
@@ -218,6 +229,9 @@ export function buildLedger({
       // company"), never a stand-in for "not loaded" — that is `null`, and it only
       // happens when the release publishes no benchmark at all.
       benchmark_weight: benchmark === null ? null : (benchmark.weights[companyId] ?? 0),
+      // A lookup into the release's map, nothing more: a company the pipeline could not
+      // decide stays `null` and renders as no tag, never as a default domicile.
+      country: countries?.[companyId] ?? null,
       holder_count: company.fundTickers.size,
       held_directly: company.heldDirectly,
       sources: company.sources

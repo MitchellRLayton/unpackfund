@@ -29,6 +29,13 @@
   --tint-direct: #f2ecff;
   --tint-direct-hover: #e9e0fd;
 
+  /* The row's left edge for a US-domiciled company. Geography is a second channel,
+   * separate from the background, and the code beside it — not this colour — is what
+   * carries the meaning. */
+  --country-us: #9dc2ea;
+  /* The same edge for any other domicile. */
+  --country-intl: #8d9fe0;
+
   --font-sans:
     system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -55,6 +62,11 @@
      * quiet. Both keep `--fg` and `--muted` above AA (lib/theme.test.ts). */
     --tint-direct: #1d1930;
     --tint-direct-hover: #262038;
+    /* The two geography edges, darkened until they read as a quiet stripe on #0d1117
+     * instead of glowing. No contrast pair is added for them: a 3px stripe is not
+     * text, and the code beside it uses `--muted`. */
+    --country-us: #2b4a6d;
+    --country-intl: #2f3a6e;
   }
 }
 
@@ -563,6 +575,22 @@ table.ledger tbody tr[data-direct="true"]:hover {
   background: var(--tint-direct-hover);
 }
 
+/* Geography is a second, independent axis (operator's instruction, 2026-11-02). The
+ * row's *background* means position kind — a stock you hold directly — and one
+ * background cannot carry two meanings, so a country gets its own channel: a 3px edge
+ * on the first cell plus the code as text in the row's second line. A row can carry
+ * both. The stripe is on the cell rather than the row because a `tr` border is
+ * unreliable under `border-collapse: separate`, and `inset` box-shadow costs no layout.
+ * An untagged row gets nothing: a company whose filings disagree has no country, and a
+ * default edge would be a guess. */
+table.ledger tbody tr[data-country="US"] > :first-child {
+  box-shadow: inset 3px 0 0 var(--country-us);
+}
+
+table.ledger tbody tr[data-country]:not([data-country="US"]) > :first-child {
+  box-shadow: inset 3px 0 0 var(--country-intl);
+}
+
 table.ledger tbody th {
   font-weight: 500;
 }
@@ -596,6 +624,23 @@ th[aria-sort="ascending"] .sort-button::after {
   display: block;
   font-size: 0.78rem;
   color: var(--muted);
+}
+
+/* The country code, as text: the same size as the note it sits in, tabular, and boxed
+ * with a hairline so it reads as a tag rather than as another word in the attribution.
+ * `--muted` is the ink at rest and it is already the pair `lib/theme.test.ts` checks
+ * against `--bg`, `--surface` and both direct-row tints, so the tag cannot become
+ * unreadable on the row it annotates. */
+.country-tag {
+  display: inline-block;
+  padding: 0 0.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  vertical-align: baseline;
 }
 
 .chip {
