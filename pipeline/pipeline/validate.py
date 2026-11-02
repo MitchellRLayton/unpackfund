@@ -33,6 +33,13 @@ REPO_ROOT = paths.REPO_ROOT
 #: A published fund ticker: upper-case, starts alphanumeric, short.
 TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,9}$")
 
+#: A published company id: ``c_`` + 10-digit CIK, or ``l_`` + 16 hex (companies.py).
+COMPANY_ID_RE = re.compile(r"^(?:c_\d{10}|l_[0-9a-f]{16})$")
+
+#: The statuses a typed-symbol row may carry. Everything that is not ``ok`` is a
+#: refusal with the reason the UI names; the client owns the message.
+_SECURITY_STATUSES = frozenset({"ok", "fund", "pfd", "wnt", "unit", "rgt", "twin"})
+
 REQUIRED_FIELDS = (
     "schema_version",
     "ticker",
@@ -520,6 +527,7 @@ def _check_catalogue(release_dir: Path, manifest: dict, funds: list[dict], repor
 
     _check_reverse_index(release_dir, manifest, by_ticker, report)
     _check_aliases(release_dir, manifest, tickers, report)
+    _check_securities(release_dir, manifest, tickers, report)
 
 
 def _check_aliases(
@@ -562,6 +570,95 @@ def _check_aliases(
         report.fail("aliases.shape", f"{len(bad)} alias(es) are not tickers, e.g. {bad[:3]}")
     if not report.failures:
         report.ok("aliases", f"{len(targets):,} share-class ticker(s) resolve to a published fund")
+
+
+def _check_securities(
+    release_dir: Path, manifest: dict, tickers: list[str], report: Report
+) -> None:
+    """``securities/{L}.json``: the typed-symbol object is complete and well-formed.
+
+    Optional — a release built before ADR-0014 has no such object and stays valid,
+    which is what keeps the pointer move atomic across a code deploy. When it *is*
+    present, the checks are the ones a wrong entry would break: a symbol that does
+    not survive the fragment regex cannot be typed back, a value that is not
+    ``[company_id, name, exchange, status]`` makes the client read ``undefined``,
+    and a symbol published twice means the shard order decides identity.
+    """
+    descriptor_path = release_dir / "release.json"
+    if not descriptor_path.is_file():
+        report.fail("release.json", "release.json is missing")
+        return
+    declared = (json.loads(descriptor_path.read_text()).get("objects") or {}).get("securities")
+    directory = release_dir / "securities"
+    if not directory.is_dir():
+        if declared:
+            report.fail("securities", "release.json describes a securities object but securities/ is missing")
+        return
+    if not declared:
+        report.fail("securities", "securities/ exists but release.json does not describe it")
+        return
+
+    published = set(tickers)
+    seen: dict[str, str] = {}
+    duplicates: list[str] = []
+    bad_shape: list[str] = []
+    bad_id: list[str] = []
+    bad_status: list[str] = []
+    unknown_status: list[str] = []
+    refused_funds: list[str] = []
+    for path in sorted(directory.glob("*.json")):
+        document = json.loads(path.read_text())
+        if document.get("as_of") != manifest.get("as_of"):
+            report.fail("securities.as_of", f"{path.name}: {document.get('as_of')!r}")
+        for symbol, value in (document.get("securities") or {}).items():
+            if symbol in seen:
+                duplicates.append(symbol)
+            seen[symbol] = path.stem
+            if not TICKER_RE.match(symbol):
+                bad_shape.append(symbol)
+            if not isinstance(value, list) or len(value) != 4:
+                bad_shape.append(symbol)
+                continue
+            company, _name, _exchange, status = value
+            if not COMPANY_ID_RE.match(str(company)):
+                bad_id.append(symbol)
+            if status not in _SECURITY_STATUSES:
+                unknown_status.append(f"{symbol}:{status}")
+            if status == "fund" and symbol not in published:
+                refused_funds.append(symbol)
+    if duplicates:
+        report.fail("securities.duplicate", f"{len(duplicates)} symbol(s) in two shards, e.g. {duplicates[:3]}")
+    if bad_shape:
+        report.fail("securities.shape", f"{len(bad_shape)} malformed row(s), e.g. {bad_shape[:3]}")
+    if bad_id:
+        report.fail("securities.company", f"{len(bad_id)} bad company_id, e.g. {bad_id[:3]}")
+    if unknown_status:
+        report.fail("securities.status", f"{len(unknown_status)} unknown status, e.g. {unknown_status[:3]}")
+    if refused_funds:
+        # A symbol is only refused *as a fund* when the release publishes that fund;
+        # otherwise the fund path would have accepted it and the label would lie.
+        report.fail(
+            "securities.fund",
+            f"{len(refused_funds)} symbol(s) refused as a fund but not published, e.g. {refused_funds[:3]}",
+        )
+    if declared.get("count") != len(seen):
+        report.fail("securities.count", f"descriptor says {declared.get('count')}, found {len(seen)}")
+    declared_shards = declared.get("shards") or {}
+    if sorted(declared_shards) != sorted(path.stem for path in directory.glob("*.json")):
+        report.fail("securities.shards", "descriptor shard map disagrees with the files on disk")
+    for shard, entry in declared_shards.items():
+        path = directory / f"{shard}.json"
+        if not path.is_file():
+            continue
+        body = path.read_bytes()
+        if entry.get("bytes") != len(body) or entry.get("sha256") != hashlib.sha256(body).hexdigest():
+            report.fail("securities.hash", f"{path.name} does not match the bytes the descriptor names")
+    if not report.failures:
+        report.ok(
+            "securities",
+            f"{len(seen):,} symbol(s) across {len(list(directory.glob('*.json')))} shard(s), "
+            f"{len(published & set(seen)):,} refused as funds",
+        )
 
 
 def _check_reverse_index(

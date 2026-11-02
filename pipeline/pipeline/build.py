@@ -44,6 +44,8 @@ from . import (
     companies,
     filings,
     manifest as manifest_mod,
+    sec,
+    securities,
     universe,
     weights,
 )
@@ -485,6 +487,7 @@ def build_release(
     progress_every: int = 0,
     identity: bool = True,
     issuer_namespace: bool = True,
+    securities_source: dict | None = None,
 ) -> Path:
     started = time.monotonic()
     index = CompanyIndex.load()
@@ -634,6 +637,7 @@ def build_release(
         manifest_payload=payload,
         aliases=new_aliases,
         etf_classifier=classify.ETF_CLASSIFIER,
+        securities_source=securities_source,
     )
     elapsed = time.monotonic() - started
     _log(
@@ -749,6 +753,12 @@ def main(argv: list[str] | None = None) -> int:
         "measuring what the namespace is worth, with identity frozen",
     )
     parser.add_argument(
+        "--no-securities",
+        action="store_true",
+        help="skip the typed-symbol object (securities/), so a release without it can "
+        "be built — the app then refuses a stock ticker with 'not in this release'",
+    )
+    parser.add_argument(
         "--progress-every",
         type=int,
         default=0,
@@ -765,6 +775,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     on_error = args.on_error or ("fail" if spec.startswith("tickers:") else "skip")
 
+    securities_source = None
+    if not args.no_securities:
+        # One request, 1.0 MB, cached for the same six hours as the other index
+        # files. It is the only thing a typed stock ticker needs (ADR-0014).
+        try:
+            securities_source = securities.fetch_document()
+        except (sec.SecError, ValueError) as error:
+            _log(f"securities: unavailable ({error}); the release will not carry a symbol object")
     try:
         refs = resolve_universe(
             spec, limit=args.limit, top=args.top, from_summary=args.from_summary
@@ -780,6 +798,7 @@ def main(argv: list[str] | None = None) -> int:
             progress_every=max(0, args.progress_every),
             identity=not args.no_identity,
             issuer_namespace=not args.no_issuers,
+            securities_source=securities_source,
         )
     except (GateError, NportParseError, LookupError, filings.NoFilingError) as error:
         _log(f"FAILED: {type(error).__name__}: {error}")

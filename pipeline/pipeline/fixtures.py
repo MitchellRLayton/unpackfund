@@ -77,7 +77,13 @@ def sample_document(
     )
 
 
-def write_release(root: Path, documents: list[dict], release_id: str = FIXTURE_RELEASE_ID) -> Path:
+def write_release(
+    root: Path,
+    documents: list[dict],
+    release_id: str = FIXTURE_RELEASE_ID,
+    *,
+    securities_source: dict | None = None,
+) -> Path:
     """Write ``documents`` as a release directory, the way ``build.py`` does."""
     release_dir = root / "releases" / release_id
     (release_dir / "funds").mkdir(parents=True, exist_ok=True)
@@ -111,6 +117,7 @@ def write_release(root: Path, documents: list[dict], release_id: str = FIXTURE_R
         # does; the target is the fixture fund, which is always published.
         aliases={"TESTX": documents[0]["ticker"]} if documents else {},
         etf_classifier=classify.ETF_CLASSIFIER,
+        securities_source=securities_source,
     )
     return release_dir
 
