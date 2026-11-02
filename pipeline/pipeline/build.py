@@ -30,6 +30,7 @@ behaviour, and publishing uses it: a release must be clean.
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import sys
 import time
@@ -144,6 +145,35 @@ class Collateral:
     usd: float
 
 
+#: How many cash rows a fund may have before the collateral search stops enumerating
+#: subsets of them. Funds hold one to five cash instruments; the cap exists so a pathological
+#: schedule cannot turn a gate into a combinatorial search.
+COLLATERAL_SUBSET_CAP = 10
+
+
+def _collateral_shapes(cash: list[Holding]) -> list[list[Holding]]:
+    """The cash subsets that could be the lending collateral, simplest first.
+
+    A fund that lends securities receives cash collateral and invests it, and the filing
+    shows that investment beside the fund's own liquidity. "Every cash row" is therefore
+    only one of the shapes a collateral position takes: a repo program's collateral is one
+    repo row next to a money-market sweep, and a fund that splits collateral across two
+    tranches has two. Every subset is tried, smallest first, and the caller still requires
+    both bands to pass — a wrong shape cannot be accepted by being tried, only by
+    reconciling. The measured case is Transamerica's IIBAX/IIBPX: $1.73B of borrowings, a
+    repo row that matches them, and a sweep of their own, which summed every cash row and
+    saw leverage where the filing shows a lending program.
+    """
+    ordered = sorted(cash, key=lambda row: (-(row.val_usd or 0.0), row.name))
+    if len(ordered) > COLLATERAL_SUBSET_CAP:
+        return [ordered, ordered[:1], ordered[1:]]
+    return [
+        list(shape)
+        for size in range(1, len(ordered) + 1)
+        for shape in itertools.combinations(ordered, size)
+    ]
+
+
 def lending_collateral(filing: NportFiling) -> Collateral:
     net = filing.net_assets or 0.0
     liabilities = filing.total_liabilities or 0.0
@@ -160,13 +190,15 @@ def lending_collateral(filing: NportFiling) -> Collateral:
     ]
     if not cash:
         return Collateral(frozenset(), 0.0)
-    cash_usd = sum(holding.val_usd or 0.0 for holding in cash)
     filed_total = sum(holding.val_usd or 0.0 for holding in filing.holdings)
-    if abs(cash_usd - liabilities) / liabilities > COLLATERAL_BAND:
-        return Collateral(frozenset(), 0.0)
-    if abs((filed_total - cash_usd) - net) / net > COLLATERAL_BAND:
-        return Collateral(frozenset(), 0.0)
-    return Collateral(frozenset(id(holding) for holding in cash), cash_usd)
+    for shape in _collateral_shapes(cash):
+        cash_usd = sum(holding.val_usd or 0.0 for holding in shape)
+        if abs(cash_usd - liabilities) / liabilities > COLLATERAL_BAND:
+            continue
+        if abs((filed_total - cash_usd) - net) / net > COLLATERAL_BAND:
+            continue
+        return Collateral(frozenset(id(holding) for holding in shape), cash_usd)
+    return Collateral(frozenset(), 0.0)
 
 
 def build_fund(
