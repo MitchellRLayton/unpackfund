@@ -51,14 +51,18 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `(function(){try{
 if(location.pathname!=="/"&&location.pathname!=="/index.html")return;
-var s=sessionStorage.getItem("unpackfund.intro.session");
-var l=localStorage.getItem("unpackfund.intro.last");
 var m=/[?&]intro=(force|off)/.exec(location.search);
-var play=m&&m[1]==="off"?false
-:matchMedia("(prefers-reduced-motion: reduce)").matches?false
-:location.hash.length>1?false
-:m&&m[1]==="force"?true
-:s===null&&(l===null||Date.now()-parseFloat(l)>=864e5);
+var play=false;
+if(m&&m[1]==="force")play=true;
+else if(!(m&&m[1]==="off")
+&&!matchMedia("(prefers-reduced-motion: reduce)").matches
+&&location.hash.length<2
+&&!document.hidden
+&&sessionStorage.getItem("unpackfund.intro.session")===null){
+var d=new Date();
+var day=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+play=localStorage.getItem("unpackfund.intro.day")!==day;
+}
 if(play)document.documentElement.dataset.intro="play";
 }catch(e){}})();`,
           }}

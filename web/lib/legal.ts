@@ -44,7 +44,7 @@ export const CONTACT_EMAIL = "unfetteredaccess@duck.com";
  * drafted. Set 2026-10-30, the promotion date; the pre-flight gate (P15) exists
  * so a promotion cannot ship a policy still dated to a draft.
  */
-export const EFFECTIVE_DATE = "October 30, 2026";
+export const EFFECTIVE_DATE = "November 3, 2026";
 
 /**
  * Bumped by hand when the method changes; the page and the copy must move together.
@@ -83,5 +83,11 @@ export const METHODOLOGY_VERSION = "1.3.0";
  * site now reads a jurisdiction out of the GLEIF golden copy (CC0) rather than only
  * using it for entity identity, and the methodology says a company with no place at all
  * is marked rather than left blank.
+ *
+ * 1.4.0 (2026-11-03): the privacy policy's storage paragraph describes what the
+ * first-visit film actually writes — a session mark and the local date of the last
+ * play, where it previously said the site wrote nothing to local storage. A date
+ * replaced the earlier rolling timestamp, which is less data and a plainer sentence.
+ * No new collection, no new third party; the policy is being made true again.
  */
-export const LEGAL_COPY_VERSION = "1.3.0";
+export const LEGAL_COPY_VERSION = "1.4.0";

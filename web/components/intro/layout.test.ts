@@ -1,260 +1,262 @@
 /**
- * The film's two pieces of testable arithmetic: the field's data contract and its geometry.
+ * The film's geometry: where the two words sit, how the scan moves, and how a dot finds its
+ * label.
  *
- * Everything else in `web/components/intro` is DOM and choreography, which this suite cannot
- * judge — a timeline that reads well is a review, not a test. What *can* be pinned down is
- * what the packing guarantees (a distribution, not a pile) and what the data contract
- * accepts, and both of those are where a regression is expensive and silent.
+ * The film cannot be judged frame by frame in a test, but the arithmetic that a frame is made
+ * of can be. Three properties matter most: the word is 60% of the frame on a laptop and 80%
+ * on a phone (the brief's one hard size rule); the scan is fast–slow–fast and monotonic, or
+ * the counter it drives runs backwards; and a label lands on the right dot, because "the 12
+ * largest companies get labels as the bar passes" is a factual claim about the picture, not a
+ * decoration.
  */
 
 import { describe, expect, it } from "vitest";
 
 import {
-  CLUSTER_COUNT,
-  DOT_MAX_R,
-  DOT_MIN_R,
-  expandCompanies,
-  layoutField,
+  FALLBACK_METRICS,
+  capField,
+  edgeDot,
+  isPortrait,
+  labelAnchors,
+  labelBudget,
+  layoutFilm,
+  scanEase,
+  timeForScan,
 } from "./layout";
-import { clusterOf, formatFiledLine, labelByCompany, parseField } from "./types";
+import { RECORD_FLOATS, type Caption, type DotField } from "./types";
 
-/** A small, deterministic stand-in for the baked field: no network, no 1,004-row fixture. */
-function syntheticCompanies(count: number): Array<{ k: "a" | "b" | "s"; w: number }> {
-  return Array.from({ length: count }, (_, index) => {
-    const spread = (index * 37) % 11;
-    const weight = 40 + spread * 130;
-    const kind: "a" | "b" | "s" = index % 9 === 0 ? "a" : index % 13 === 0 ? "b" : "s";
-    return { k: kind, w: weight };
-  });
+const LAPTOP = { width: 1440, height: 900 };
+const PHONE = { width: 390, height: 844 };
+
+function caption(overrides: Partial<Caption> = {}): Caption {
+  return {
+    schema: 1,
+    release: "2026-10-31",
+    generated_at: "2026-11-03T00:00:00.000Z",
+    a: {
+      ticker: "VTI",
+      name: "Vanguard Total Stock Market ETF",
+      filed_at: "2026-08-28",
+      as_of: "2026-06-30",
+      companies: 3639,
+    },
+    b: {
+      ticker: "VOO",
+      name: "Vanguard S&P 500 ETF",
+      filed_at: "2026-08-27",
+      as_of: "2026-06-30",
+      companies: 3703,
+    },
+    shared: 3081,
+    labels: [],
+    metrics: FALLBACK_METRICS,
+    ...overrides,
+  };
 }
 
-function field() {
-  const companies = syntheticCompanies(40);
-  const labels = new Map<number, string>([
-    [0, "NVDA"],
-    [13, "AAPL"],
-    [18, "MSFT"],
-  ]);
-  const { dots, pairs } = expandCompanies(companies, labels);
-  return { companies, dots, pairs };
+/** A synthetic field: `count` companies, weights rising, positions spread across the word. */
+function field(
+  count: number,
+  weightOf: (index: number) => number = (i) => i + 1,
+): DotField {
+  const raw = new Float32Array(count * RECORD_FLOATS);
+  for (let index = 0; index < count; index += 1) {
+    const at = index * RECORD_FLOATS;
+    const t = count === 1 ? 0.5 : index / (count - 1);
+    raw[at] = weightOf(index);
+    raw[at + 1] = 0.02 + t * 1.7;
+    raw[at + 2] = -0.3 + t * 0.2;
+    raw[at + 3] = Number.NaN;
+    raw[at + 4] = Number.NaN;
+    raw[at + 5] = t;
+    raw[at + 6] = 0;
+  }
+  return { count, raw };
 }
 
-describe("expandCompanies", () => {
-  it("spills one dot per held position and pairs the companies both funds hold", () => {
-    const { companies, dots, pairs } = field();
-    const shared = companies.filter((company) => company.k === "s").length;
-    const onlyA = companies.filter((company) => company.k === "a").length;
-    const onlyB = companies.filter((company) => company.k === "b").length;
-
-    expect(dots).toHaveLength(shared * 2 + onlyA + onlyB);
-    expect(pairs).toHaveLength(shared);
-    expect(dots.filter((dot) => dot.fund === 0)).toHaveLength(shared + onlyA);
-    expect(dots.filter((dot) => dot.fund === 1)).toHaveLength(shared + onlyB);
+describe("layoutFilm", () => {
+  it("gives a laptop a 60%-wide word, centred, with the second word below it", () => {
+    const layout = layoutFilm(LAPTOP);
+    expect(layout.portrait).toBe(false);
+    expect(layout.a.width).toBeCloseTo(LAPTOP.width * 0.6, 6);
+    expect(layout.a.left).toBeCloseTo((LAPTOP.width - layout.a.width) / 2, 6);
+    expect(layout.b.top).toBeGreaterThan(layout.a.top + layout.a.height);
+    expect(layout.b.width).toBeLessThan(layout.a.width);
+    expect(layout.axis).toBe("x");
+    expect(layout.rule.width).toBeGreaterThan(0);
+    expect(layout.rule.top).toBeGreaterThan(layout.a.top);
   });
 
-  it("puts the label on the first half of a shared company, and on nothing else", () => {
-    const { dots, pairs } = field();
-    const labelled = dots.filter((dot) => dot.label !== null);
-    // Company 13 is held by one fund only, so its label is dropped: the film prints the
-    // twelve biggest companies the *pair* has in common, and a one-fund row is not one.
-    expect(labelled.map((dot) => dot.label).sort()).toEqual(["MSFT", "NVDA"]);
-    for (const [first] of pairs) {
-      expect(dots[first]!.fund).toBe(0);
-      expect(dots[first]!.shared).toBe(true);
-    }
-    // A first-fund dot that is not shared carries no label unless the map gave it one.
-    expect(dots[0]!.label).toBe("NVDA");
-    expect(dots[1]!.label).toBeNull();
-  });
-});
-
-describe("layoutField", () => {
-  it("is deterministic: the same field packs to the same pixels", () => {
-    const { dots, pairs } = field();
-    const first = layoutField(dots, pairs, false);
-    const second = layoutField(dots, pairs, false);
-    expect(second.dots).toEqual(first.dots);
-    expect(second.line).toEqual(first.line);
-    expect(second.circleSlot).toBe(first.circleSlot);
+  it("gives a phone an 80%-wide word and a top-to-bottom scan", () => {
+    const layout = layoutFilm(PHONE);
+    expect(layout.portrait).toBe(true);
+    expect(layout.a.width).toBeCloseTo(PHONE.width * 0.8, 6);
+    expect(layout.axis).toBe("y");
+    expect(layout.scanStartPct).toBeGreaterThanOrEqual(0);
+    expect(layout.scanEndPct).toBeLessThanOrEqual(100);
+    expect(layout.scanEndPct).toBeGreaterThan(layout.scanStartPct);
+    expect(layout.b.top).toBeGreaterThan(layout.a.top + layout.a.height);
+    expect(layout.rule.top).toBeLessThan(PHONE.height);
   });
 
-  it("gives every dot a finite home inside the reported bounds", () => {
-    const { dots, pairs } = field();
-    const geometry = layoutField(dots, pairs, false);
-    expect(geometry.dots).toHaveLength(dots.length);
-    for (const dot of geometry.dots) {
-      expect(Number.isFinite(dot.x)).toBe(true);
-      expect(Number.isFinite(dot.y)).toBe(true);
-      expect(dot.x).toBeGreaterThanOrEqual(geometry.bounds.minX - 0.01);
-      expect(dot.x).toBeLessThanOrEqual(geometry.bounds.maxX + 0.01);
-      expect(dot.y).toBeGreaterThanOrEqual(geometry.bounds.minY - 0.01);
-      expect(dot.y).toBeLessThanOrEqual(geometry.bounds.maxY + 0.01);
-    }
+  it("prefers a measured advance over the baked one", () => {
+    const baked = layoutFilm(LAPTOP);
+    const measured = layoutFilm(LAPTOP, FALLBACK_METRICS, { a: 2.4 });
+    expect(measured.a.fontSize).toBeLessThan(baked.a.fontSize);
+    expect(measured.a.width).toBeCloseTo(LAPTOP.width * 0.6, 6);
   });
 
-  it("scales dot area with weight, and keeps the encoding after the field is scaled", () => {
-    const { dots, pairs } = field();
-    const geometry = layoutField(dots, pairs, false);
-    const radii = geometry.dots.map((dot) => dot.r);
-    // `r` is reported in scaled world units, so the band is DOT_MIN_R…DOT_MAX_R times the
-    // field's own scale factor — the property that must hold is the ordering, not the bound.
-    expect(Math.min(...radii)).toBeGreaterThan(DOT_MIN_R);
-    expect(Math.max(...radii)).toBeGreaterThan(Math.min(...radii) * 2);
-    const byWeight = dots
-      .map((dot, index) => ({ weight: dot.weightBp, r: geometry.dots[index]!.r }))
-      .sort((left, right) => left.weight - right.weight);
-    for (let index = 1; index < byWeight.length; index += 1) {
-      expect(byWeight[index]!.r).toBeGreaterThanOrEqual(byWeight[index - 1]!.r - 0.001);
-    }
+  it("treats a square-ish frame as landscape and a tall one as portrait", () => {
+    expect(isPortrait({ width: 900, height: 900 })).toBe(false);
+    expect(isPortrait({ width: 390, height: 844 })).toBe(true);
   });
 
-  it("does not let two companies interpenetrate", () => {
-    const { dots, pairs } = field();
-    const geometry = layoutField(dots, pairs, false);
-    const paired = new Set(pairs.flat());
-    let worst = Number.POSITIVE_INFINITY;
-    let worstPair: [number, number] = [-1, -1];
-    for (let a = 0; a < geometry.dots.length; a += 1) {
-      if (paired.has(a)) continue;
-      for (let b = a + 1; b < geometry.dots.length; b += 1) {
-        if (paired.has(b)) continue;
-        const dotA = geometry.dots[a]!;
-        const dotB = geometry.dots[b]!;
-        const distance = Math.hypot(dotA.x - dotB.x, dotA.y - dotB.y);
-        const ratio = distance / (dotA.r + dotB.r);
-        if (ratio < worst) {
-          worst = ratio;
-          worstPair = [a, b];
-        }
-      }
-    }
-    // `gap()` in layout.ts aims for (ra + rb) * 0.55 + 1.2, so centres should never sit
-    // closer than half the sum of the radii; anything under that is a visible collision.
-    expect(
-      worst,
-      `closest pair ${worstPair[0]}/${worstPair[1]} at ${worst.toFixed(3)} of (ra + rb)`,
-    ).toBeGreaterThan(0.5);
+  it("survives a zero-size viewport, because the film may be measured before layout", () => {
+    const layout = layoutFilm({ width: 0, height: 0 });
+    expect(Number.isFinite(layout.a.width)).toBe(true);
+    expect(layout.a.width).toBeGreaterThan(0);
   });
 
-  it("compresses every surviving company onto one line, once", () => {
-    const { dots, pairs } = field();
-    const geometry = layoutField(dots, pairs, false);
-    // One slot per company, not per dot: the 40 dots of a shared company land as one tick.
-    const survivors = dots.length - pairs.length;
-    expect(geometry.line).toHaveLength(survivors);
-    expect(geometry.lineOwner).toHaveLength(survivors);
-    expect(new Set(geometry.lineOwner).size).toBe(survivors);
-    for (const slot of geometry.line) {
-      expect(slot.y).toBe(0);
-      expect(slot.r).toBeGreaterThan(0);
-    }
-    // Left to right, in the order the survivors are indexed.
-    const xs = geometry.line.map((slot) => slot.x);
-    expect([...xs].sort((left, right) => left - right)).toEqual(xs);
-    expect(geometry.circleSlot).toBeGreaterThanOrEqual(0);
-    expect(geometry.circleSlot).toBeLessThan(geometry.line.length);
-  });
-
-  it("uses the same eleven patches in portrait and in landscape", () => {
-    const { dots, pairs } = field();
-    const wide = layoutField(dots, pairs, false);
-    const tall = layoutField(dots, pairs, true);
-    expect(wide.clusterCenters).toHaveLength(CLUSTER_COUNT);
-    expect(tall.clusterCenters).toHaveLength(CLUSTER_COUNT);
-    // Portrait is a narrower, taller frame: its bounds must not be wider than the wide one's.
-    expect(tall.bounds.maxX - tall.bounds.minX).toBeLessThanOrEqual(
-      wide.bounds.maxX - wide.bounds.minX + 0.01,
-    );
-  });
-});
-
-describe("the data contract", () => {
-  const companies = syntheticCompanies(6);
-
-  it("formats a filing date the way the caption prints it", () => {
-    expect(formatFiledLine("2026-08-28")).toBe("filed 28 AUG 2026");
-    expect(formatFiledLine("2026-01-05")).toBe("filed 05 JAN 2026");
-    // A bad date is shown, not thrown: a broken artifact must still be legible on screen.
-    expect(formatFiledLine("2026-13-01")).toBe("filed 2026-13-01");
-    expect(formatFiledLine("")).toBe("filed ");
-  });
-
-  it("maps cluster groups into a fixed range, deterministically", () => {
-    for (let index = 0; index < 200; index += 1) {
-      const cluster = clusterOf(index);
-      expect(Number.isInteger(cluster)).toBe(true);
-      expect(cluster).toBeGreaterThanOrEqual(0);
-      expect(cluster).toBeLessThan(CLUSTER_COUNT);
-      expect(clusterOf(index)).toBe(cluster);
-    }
-  });
-
-  it("joins the twelve labels to their companies by weight, skipping single-fund rows", () => {
-    const labels = [
-      { name: "NVIDIA CORP", ticker: "NVDA", weight: companies[0]!.w },
-      { name: "APPLE INC", ticker: "AAPL", weight: companies[13 % companies.length]!.w },
-      { name: "NOT HELD", ticker: "NOPE", weight: 99999 },
-    ];
-    const map = labelByCompany(companies, labels);
-    expect(map.get(0)).toBe("NVDA");
-    expect([...map.values()]).not.toContain("NOPE");
-  });
-
-  it("accepts the baked shape and rejects a different one", () => {
-    const valid = {
-      schema: 1,
-      release: "2026-11-03.1",
-      generated_at: "2026-11-03T00:00:00Z",
-      pair: ["SPY", "VOO"],
-      funds: [
-        {
-          ticker: "SPY",
-          name: "SPDR S&P 500 ETF TRUST",
-          as_of: "2026-09-30",
-          filed_at: "2026-08-28",
-          lag_days: 33,
-          coverage_pct: 100,
-          holdings: 501,
-        },
-        {
-          ticker: "VOO",
-          name: "VANGUARD 500 INDEX FUND",
-          as_of: "2026-09-30",
-          filed_at: "2026-08-28",
-          lag_days: 33,
-          coverage_pct: 99.7,
-          holdings: 503,
-        },
-      ],
-      totals: { held: 1004, distinct: 504, shared: 500 },
-      labels: [{ name: "NVIDIA CORP", ticker: "NVDA", weight: companies[0]!.w }],
-      companies,
+  it("falls back to a rule under the words when the bake's line is impossible", () => {
+    const broken = {
+      ...FALLBACK_METRICS,
+      rule: { width: 40, y: -900 },
     };
+    const layout = layoutFilm(LAPTOP, broken);
+    expect(layout.rule.top).toBeGreaterThan(layout.b.top);
+    expect(layout.rule.width).toBeGreaterThan(0);
+  });
+});
 
-    const parsed = parseField(valid);
-    expect(parsed.companies).toHaveLength(companies.length);
-    expect(parsed.funds[0].ticker).toBe("SPY");
-
-    expect(() => parseField({ ...valid, schema: 2 })).toThrow(/schema/);
-    expect(() => parseField({ ...valid, pair: ["SPY"] })).toThrow(/pair/);
-    expect(() => parseField({ ...valid, companies: [{ k: "x", w: 1 }] })).toThrow();
-    expect(() => parseField({ ...valid, totals: { held: 1, distinct: 1 } })).toThrow(
-      /shared/,
-    );
+describe("scanEase", () => {
+  it("starts and ends at the ends", () => {
+    expect(scanEase(0)).toBe(0);
+    expect(scanEase(1)).toBe(1);
+    expect(scanEase(-1)).toBe(0);
+    expect(scanEase(2)).toBe(1);
   });
 
-  it("expands the baked counts to the arithmetic the film relies on", () => {
-    // The shape of the real artifact: 500 companies both funds hold, 3 only the second, 1
-    // only the first. 1,004 dots in, 504 survivors out — the odometer's two numbers.
-    const real = [
-      ...Array.from({ length: 500 }, () => ({ k: "s" as const, w: 120 })),
-      ...Array.from({ length: 3 }, () => ({ k: "b" as const, w: 40 })),
-      { k: "a" as const, w: 20 },
+  it("never moves backwards", () => {
+    let previous = -1;
+    for (let step = 0; step <= 400; step += 1) {
+      const value = scanEase(step / 400);
+      expect(value).toBeGreaterThanOrEqual(previous);
+      previous = value;
+    }
+  });
+
+  it("is fast out of the gate, slow through the middle, and fast into the end", () => {
+    const first = (scanEase(0.2) - scanEase(0)) / 0.2;
+    const middle = (scanEase(0.6) - scanEase(0.4)) / 0.2;
+    const last = (scanEase(1) - scanEase(0.8)) / 0.2;
+    expect(first).toBeGreaterThan(middle * 3);
+    expect(last).toBeGreaterThan(middle * 3);
+  });
+
+  it("is invertible, so a label can be placed where the bar reaches it", () => {
+    for (let step = 0; step <= 20; step += 1) {
+      const p = step / 20;
+      expect(scanEase(timeForScan(p))).toBeCloseTo(p, 6);
+    }
+    expect(timeForScan(0)).toBe(0);
+    expect(timeForScan(1)).toBe(1);
+  });
+});
+
+describe("capField", () => {
+  it("keeps the heaviest companies and maps their old indices", () => {
+    const capped = capField(field(10), 4);
+    expect(capped.field.count).toBe(4);
+    expect(Array.from(capped.field.raw.filter((_, at) => at % 7 === 0))).toEqual([
+      7, 8, 9, 10,
+    ]);
+    expect(Array.from(capped.indexMap)).toEqual([-1, -1, -1, -1, -1, -1, 0, 1, 2, 3]);
+  });
+
+  it("leaves a field under the cap untouched", () => {
+    const small = field(6);
+    const capped = capField(small, 2000);
+    expect(capped.field).toBe(small);
+    expect(Array.from(capped.indexMap)).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+});
+
+describe("labelAnchors", () => {
+  it("joins a label to its dot by the bake's record index", () => {
+    const layout = layoutFilm(LAPTOP);
+    const labels = [
+      { name: "NVIDIA", ticker: "NVDA", weight: 6.21, index: 4 },
+      { name: "Apple", ticker: "AAPL", weight: 5.94, index: 1 },
     ];
-    const { dots, pairs } = expandCompanies(real, new Map());
-    expect(dots).toHaveLength(1004);
-    expect(pairs).toHaveLength(500);
-    expect(dots.filter((dot) => dot.fund === 0)).toHaveLength(501);
-    expect(dots.filter((dot) => dot.fund === 1)).toHaveLength(503);
+    const anchors = labelAnchors(field(12), caption({ labels }), layout);
+    expect(anchors.map((anchor) => anchor.ticker)).toEqual(["NVDA", "AAPL"]);
+    for (const anchor of anchors) {
+      expect(anchor.threshold).toBeGreaterThanOrEqual(0);
+      expect(anchor.threshold).toBeLessThanOrEqual(1);
+      expect(anchor.left).toBeGreaterThanOrEqual(0);
+      expect(anchor.left).toBeLessThan(LAPTOP.width);
+    }
+  });
+
+  it("falls back to a rank match when the bake predates the index field", () => {
+    const layout = layoutFilm(LAPTOP);
+    const labels = [
+      { name: "NVIDIA", ticker: "NVDA", weight: 6.21 },
+      { name: "Apple", ticker: "AAPL", weight: 5.94 },
+    ];
+    const anchors = labelAnchors(field(12), caption({ labels }), layout);
+    const heaviest = layout.a.left + 0.82 * layout.a.fontSize;
+    expect(anchors[0]?.ticker).toBe("NVDA");
+    expect(anchors[0]?.left).toBeGreaterThan(heaviest);
+    expect(anchors[1]?.left).toBeLessThan(anchors[0]!.left);
+  });
+
+  it("prints twelve labels on a laptop and six on a phone", () => {
+    // Twelve 56 px labels overlap each other and the letters once the word is 312 px wide;
+    // six stay legible, and they are the six heaviest because the bake sorts by weight.
+    expect(labelBudget(false)).toBe(12);
+    expect(labelBudget(true)).toBe(6);
+    const labels = Array.from({ length: 12 }, (_, index) => ({
+      name: `Company ${index}`,
+      ticker: `T${index}`,
+      weight: 100 - index,
+      index,
+    }));
+    const laptop = labelAnchors(field(12), caption({ labels }), layoutFilm(LAPTOP));
+    const phone = labelAnchors(field(12), caption({ labels }), layoutFilm(PHONE));
+    expect(laptop.map((anchor) => anchor.ticker)).toHaveLength(12);
+    expect(phone.map((anchor) => anchor.ticker)).toEqual([
+      "T0",
+      "T1",
+      "T2",
+      "T3",
+      "T4",
+      "T5",
+    ]);
+    for (const anchor of phone) {
+      expect(anchor.left).toBeGreaterThanOrEqual(0);
+      expect(anchor.left + 56).toBeLessThanOrEqual(PHONE.width);
+    }
+  });
+
+  it("prints nothing when there is no field", () => {
+    const empty: DotField = { count: 0, raw: new Float32Array(0) };
+    const layout = layoutFilm(LAPTOP);
+    expect(labelAnchors(empty, caption({ labels: [] }), layout)).toEqual([]);
+  });
+});
+
+describe("edgeDot", () => {
+  it("finds a dot at the right-hand edge of the word for the hold beat's wink", () => {
+    const layout = layoutFilm(LAPTOP);
+    const dot = edgeDot(field(12), layout);
+    expect(dot).not.toBeNull();
+    expect(dot!.x).toBeGreaterThan(layout.a.left + layout.a.width * 0.5);
+    expect(dot!.y).toBeGreaterThan(layout.a.top);
+  });
+
+  it("is null without a field, so the film can wink at nothing", () => {
+    const layout = layoutFilm(LAPTOP);
+    expect(edgeDot({ count: 0, raw: new Float32Array(0) }, layout)).toBeNull();
   });
 });

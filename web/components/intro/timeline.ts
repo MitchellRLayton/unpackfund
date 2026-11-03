@@ -1,1113 +1,480 @@
 /**
- * THE FILM'S TIMELINE.
+ * timeline.ts — the score. One GSAP master timeline, seven beats, 9.0 seconds.
  *
- * One GSAP timeline, 7.5 s, six beats, no cuts. Beat windows, from the approved animatic:
+ * The beats are declared once, in `BEATS`, and every tween is placed at an absolute time
+ * relative to a beat (`T("scan", 0.4)`), never relative to the previous tween. That is the
+ * whole reason this file is readable: you can look at `T("twice", 0.15)` and know the second
+ * the cue lands on, without replaying the arithmetic from the top.
  *
- *   paper     0.00-1.25   page, grain, ledger grid, ticker types itself
- *   parcel    1.25-2.50   card folds out of the ticker, string draws, knot slips
- *   spill     2.50-3.75   three creases open, light, one dot per held position
- *   merge     3.75-5.00   second card, fusion, odometer
- *   pullback  5.00-6.25   camera eases back, field becomes a ledger line, circle, h1
- *   handoff   6.25-7.50   line becomes the real input, the page's own chrome returns
+ * **Overlap.** Two rules hold the edit together, and `overlapHealth` asserts both:
  *
- * EVERY CUE IS A FRACTION OF ITS BEAT. `T("spill", 0.4)` is 40% of the way through the spill
- * beat, whatever the story table says that beat is worth, and a negative fraction reaches
- * back into the beat before it — which is how the ~200 ms overlaps are built rather than
- * hoped for. Re-timing the run is an edit to `STORY`; the choreography follows.
+ * 1. A beat's first cue starts `ENTER_LEAD` *before* the beat's nominal start. That is the
+ *    hand-off: the incoming move is already running while the outgoing one is still settling,
+ *    which is why nothing ever sits on a held frame waiting for the next idea.
+ * 2. A beat's last cue ends exactly on the beat's nominal end. So consecutive beats overlap by
+ *    exactly `ENTER_LEAD` — 200 ms, inside the 150–250 ms the brief asks for.
  *
- * Two things differ from the animatic, both of them count-driven:
+ * **The setters.** The letter reveal, the scan, the dot field, the camera, the glow and the
+ * collapse are all driven through `FilmScreen`. The timeline never reaches into the renderer,
+ * and the screen never knows what time it is; the seam between them is this file.
  *
- * 1. **The dots are not tweened.** The animatic made one tween per dot, which at 120 dots was
- *    fine and at 1,004 would be 4,000 tweens. Instead the timeline drives the *chrome* and
- *    declares each dot's schedule as numbers (`planDots`), and a single `onUpdate` pass
- *    samples all 1,004 dots from the timeline's clock, writing only `transform` and
- *    `opacity`. Dots that have nothing to do on a frame write nothing at all. The merge
- *    flash is a class toggle per pair, not a colour tween.
- * 2. **The stagger follows the count.** A pour that took 68 dots × 8.8 ms in the animatic
- *    would take 4.4 s over 501, so the spread is a share of the beat and the per-dot stagger
- *    is that share divided by the number of dots. The arcs, easings, overlaps and impact
- *    timings are the animatic's.
+ * **The skip.** `skip()` jumps the timeline to its last frame. It is not a cut to black: every
+ * cue still renders, in one tick, so the visitor lands on the final composition — rule,
+ * headline, page — exactly as if the film had played. `hooks.runHandoff` is called on the way
+ * through and has to be idempotent; that is what makes a skip and a completed film converge.
  */
 
 import { gsap } from "gsap";
-import { DrawSVGPlugin } from "gsap/DrawSVGPlugin";
-import { ScrambleTextPlugin } from "gsap/ScrambleTextPlugin";
-import { SplitText } from "gsap/SplitText";
 
-import { clamp } from "./layout";
-import { pencilLoop, type Scene } from "./scene";
+import { scanEase } from "./layout";
+import type { FilmScreen } from "./screen";
 
-gsap.registerPlugin(DrawSVGPlugin, ScrambleTextPlugin, SplitText);
+export type BeatId = "dark" | "ticker" | "scan" | "hold" | "twice" | "lights" | "handoff";
 
-export type BeatId = "paper" | "parcel" | "spill" | "merge" | "pullback" | "handoff";
-
-export type Beat = { id: BeatId; label: string; start: number; end: number };
-
-export const STORY: readonly Beat[] = [
-  { id: "paper", label: "Paper", start: 0.0, end: 1.25 },
-  { id: "parcel", label: "Parcel", start: 1.25, end: 2.5 },
-  { id: "spill", label: "Spill", start: 2.5, end: 3.75 },
-  { id: "merge", label: "Merge", start: 3.75, end: 5.0 },
-  { id: "pullback", label: "Pull-back", start: 5.0, end: 6.25 },
-  { id: "handoff", label: "Handoff", start: 6.25, end: 7.5 },
-];
-
-export const TOTAL = STORY[STORY.length - 1]!.end;
-
-const BEAT = Object.fromEntries(STORY.map((b) => [b.id, b])) as Record<BeatId, Beat>;
-
-/** A point inside a beat, as a fraction of that beat's length. */
-export function T(id: BeatId, fraction: number): number {
-  const b = BEAT[id];
-  return b.start + fraction * (b.end - b.start);
+export interface Beat {
+  readonly id: BeatId;
+  /** Nominal start, in seconds. */
+  readonly start: number;
+  /** Nominal end, in seconds. */
+  readonly end: number;
 }
-
-export type BeatWindow = {
-  id: BeatId;
-  label: string;
-  storyStart: number;
-  storyEnd: number;
-  contentStart: number;
-  contentEnd: number;
-  /** How much this beat overlaps the beat before it, in seconds. */
-  overlap: number;
-};
 
 /**
- * The page's own furniture, which the film hides and then hands back.
+ * The seven beats of the brief, to the millisecond:
  *
- * Every one of these is painted before the film runs and must survive it: the film sets an
- * inline `opacity` on each, and `play.ts` restores exactly what it set. `subtitle` is absent
- * whenever the workspace has not loaded a portfolio, and `form` is the add field (or its
- * form), which a phone may not have at all.
+ * dark 0.0–0.9 · ticker 0.9–1.8 · scan 1.8–3.6 · hold 3.6–4.4
+ * twice 4.4–6.4 · lights 6.4–7.6 · handoff 7.6–9.0
  */
-export type PageRefs = {
-  header: HTMLElement | null;
-  eyebrow: HTMLElement | null;
-  h1: HTMLElement | null;
-  subtitle: HTMLElement | null;
-  form: HTMLElement | null;
-  footer: HTMLElement | null;
-};
+export const BEATS: readonly Beat[] = [
+  { id: "dark", start: 0, end: 0.9 },
+  { id: "ticker", start: 0.9, end: 1.8 },
+  { id: "scan", start: 1.8, end: 3.6 },
+  { id: "hold", start: 3.6, end: 4.4 },
+  { id: "twice", start: 4.4, end: 6.4 },
+  { id: "lights", start: 6.4, end: 7.6 },
+  { id: "handoff", start: 7.6, end: 9 },
+];
 
-/** The subset that exists on this page: a reveal tween must not be handed a `null` target. */
-function present(targets: Array<HTMLElement | null>): HTMLElement[] {
-  return targets.filter((target): target is HTMLElement => target !== null);
+/** Total running time, and the one number the tests and the film agree on. */
+export const TOTAL_SECONDS = 9;
+
+/** How early an incoming beat's first cue starts: the overlap between beats. */
+export const ENTER_LEAD = 0.2;
+
+/** The overlap band the brief asks for, in seconds. */
+export const MIN_OVERLAP = 0.15;
+export const MAX_OVERLAP = 0.25;
+
+/**
+ * How long the `twice` dots take to fly from VTI to VOO, in ms.
+ *
+ * This is the whole beat — 4.4 to 6.4 — because the renderer converts its 60 ms impact squash
+ * into a fraction of this value (`squashWindow(beatMs)`). Shorter than the beat, and the squash
+ * is shorter than 60 ms too.
+ */
+export const TWICE_GLIDE_MS = 2000;
+
+/** The VOO label's typing time, in ms. */
+export const TYPE_MS = 440;
+
+/** Absolute time of a fraction through a beat. The only way a cue is placed. */
+export function T(beat: BeatId, fraction = 0): number {
+  const found = BEATS.find((entry) => entry.id === beat);
+  if (found === undefined) throw new Error(`timeline: unknown beat "${beat}"`);
+  return found.start + (found.end - found.start) * fraction;
 }
 
-export type TimelineHandle = {
-  tl: gsap.core.Timeline;
-  windows: BeatWindow[];
-  /** The frame the dots were last sampled at; exposed for review, not used in production. */
-  time: () => number;
-  seek: (time: number) => void;
-  destroy: () => void;
-};
+/** What the score actually did inside a beat: its first cue and the last cue's end. */
+export interface BeatWindow {
+  readonly beat: BeatId;
+  readonly first: number;
+  readonly last: number;
+}
 
-class BeatBuilder {
-  private firstAt = Number.POSITIVE_INFINITY;
-  private lastAt = Number.NEGATIVE_INFINITY;
+/**
+ * The two checks the brief makes on the edit, as one function so a test can run it.
+ *
+ * A beat window must start no later than its nominal start, end exactly on its nominal end,
+ * and overlap the beat before it by 150–250 ms.
+ */
+export function overlapHealth(windows: readonly BeatWindow[]): {
+  ok: boolean;
+  problems: string[];
+} {
+  const problems: string[] = [];
+  if (windows.length !== BEATS.length) {
+    problems.push(`expected ${BEATS.length} beat windows, got ${windows.length}`);
+  }
+  for (const [index, window] of windows.entries()) {
+    const beat = BEATS[index];
+    if (beat === undefined || window.beat !== beat.id) {
+      problems.push(`window ${index} is "${window.beat}", expected "${beat?.id ?? "?"}"`);
+      continue;
+    }
+    if (window.first > beat.start + 0.001) {
+      problems.push(
+        `${beat.id} first cue at ${window.first.toFixed(3)}, after ${beat.start}`,
+      );
+    }
+    if (Math.abs(window.last - beat.end) > 0.001) {
+      problems.push(
+        `${beat.id} last cue ends at ${window.last.toFixed(3)}, not ${beat.end}`,
+      );
+    }
+    if (index === 0) continue;
+    const overlap = (BEATS[index - 1]?.end ?? 0) - window.first;
+    if (overlap < MIN_OVERLAP - 0.001 || overlap > MAX_OVERLAP + 0.001) {
+      problems.push(
+        `${beat.id} overlaps by ${(overlap * 1000).toFixed(0)} ms, outside ` +
+          `${MIN_OVERLAP * 1000}–${MAX_OVERLAP * 1000} ms`,
+      );
+    }
+  }
+  return { ok: problems.length === 0, problems };
+}
 
-  constructor(
-    readonly id: BeatId,
-    readonly label: string,
-    private readonly tl: gsap.core.Timeline,
-    readonly storyStart: number,
-    readonly storyEnd: number,
-  ) {}
+/** The film asks the page to do these things; `play.ts` owns what they mean. */
+export interface FilmHooks {
+  /** The rule and the headline are about to be handed over: name them for a swap. */
+  prepareHandoff(): void;
+  /** Take the last frame over the page. Must be idempotent: a skip calls it too. */
+  runHandoff(): void;
+  /** A foley cue for the sound module; silent unless the visitor turned sound on. */
+  cue(name: "hum" | "whir" | "click"): void;
+  /** The timeline reached its last frame (not called when `skip()` cut it short). */
+  onFinish(): void;
+}
 
-  /**
-   * Every call takes an ABSOLUTE time on the master timeline, because the beats overlap: a
-   * beat cannot own a local 0 and still reach into the one before it. Callers get that
-   * absolute time from `T()`.
-   */
-  /**
-   * A staggered tween on n targets runs for `duration + stagger × (n − 1)`. The window has to
-   * know that, or a beat looks shorter than it plays and the overlap column lies.
-   */
-  private track(
-    at: number,
-    duration: number,
-    vars: gsap.TweenVars,
-    targets: gsap.TweenTarget,
-  ): void {
-    const count = Array.isArray(targets) ? targets.length : 1;
-    const stagger = typeof vars.stagger === "number" ? vars.stagger : 0;
-    this.firstAt = Math.min(this.firstAt, at);
-    this.lastAt = Math.max(this.lastAt, at + duration + stagger * Math.max(0, count - 1));
+export interface TimelineHandle {
+  readonly timeline: gsap.core.Timeline;
+  /** What the score did in each beat, for the overlap assertion and the tests. */
+  readonly windows: BeatWindow[];
+  play(): void;
+  /** Jump to the final frame. Every cue renders; the film does not cut away. */
+  skip(): void;
+  destroy(): void;
+}
+
+/**
+ * A timeline plus a log of where each cue landed.
+ *
+ * GSAP can say when a tween starts; it cannot say which *beat* the tween belongs to, and the
+ * overlap check needs both. So cues are added through this builder, which tags each one with
+ * the beat that was open when it was added. `windows()` then reports, per beat, the first cue
+ * and the last cue's end — the two numbers the brief constrains.
+ */
+class Score {
+  private beat: BeatId = "dark";
+  private readonly log: Array<{ beat: BeatId; start: number; end: number }> = [];
+
+  constructor(readonly timeline: gsap.core.Timeline) {}
+
+  enter(beat: BeatId): this {
+    this.beat = beat;
+    return this;
+  }
+
+  private record(start: number, duration: number): void {
+    this.log.push({ beat: this.beat, start, end: start + Math.max(0, duration) });
+  }
+
+  set(target: gsap.TweenTarget, vars: gsap.TweenVars, at: number): this {
+    this.record(at, 0);
+    this.timeline.set(target, vars, at);
+    return this;
+  }
+
+  to(target: gsap.TweenTarget, vars: gsap.TweenVars, at: number): this {
+    this.record(at, typeof vars.duration === "number" ? vars.duration : 0);
+    this.timeline.to(target, vars, at);
+    return this;
   }
 
   fromTo(
-    targets: gsap.TweenTarget,
-    fromVars: gsap.TweenVars,
-    toVars: gsap.TweenVars,
-    at: number = this.storyStart,
+    target: gsap.TweenTarget,
+    from: gsap.TweenVars,
+    to: gsap.TweenVars,
+    at: number,
   ): this {
-    this.tl.fromTo(targets, fromVars, toVars, at);
-    this.track(at, Number(toVars.duration ?? 0), toVars, targets);
+    this.record(at, typeof to.duration === "number" ? to.duration : 0);
+    this.timeline.fromTo(target, from, to, at);
     return this;
   }
 
-  to(
-    targets: gsap.TweenTarget,
-    vars: gsap.TweenVars,
-    at: number = this.storyStart,
-  ): this {
-    this.tl.to(targets, vars, at);
-    this.track(at, Number(vars.duration ?? 0), vars, targets);
+  call(fn: () => void, at: number): this {
+    this.record(at, 0);
+    this.timeline.call(fn, undefined, at);
     return this;
   }
 
-  set(
-    targets: gsap.TweenTarget,
-    vars: gsap.TweenVars,
-    at: number = this.storyStart,
-  ): this {
-    this.tl.set(targets, vars, at);
-    return this;
-  }
-
-  /**
-   * Reserve a stretch of the beat for work the timeline does not tween — the sampled dots.
-   * Without it a beat's measured window would stop at its last GSAP tween and the overlap
-   * column would report a beat as ending half a second before the field finishes filling.
-   */
+  /** Mark a stretch a beat owns that is not a tween (a CSS transition, say). */
   span(at: number, duration: number): this {
-    this.tl.to({}, { duration }, at);
-    this.track(at, duration, { duration }, {});
+    this.record(at, duration);
     return this;
   }
 
-  window(): BeatWindow {
-    return {
-      id: this.id,
-      label: this.label,
-      storyStart: this.storyStart,
-      storyEnd: this.storyEnd,
-      contentStart: Number.isFinite(this.firstAt) ? this.firstAt : this.storyStart,
-      contentEnd: Number.isFinite(this.lastAt) ? this.lastAt : this.storyStart,
-      overlap: 0,
-    };
+  windows(): BeatWindow[] {
+    return BEATS.map((beat) => {
+      const cues = this.log.filter((entry) => entry.beat === beat.id);
+      if (cues.length === 0)
+        return { beat: beat.id, first: beat.start, last: beat.start };
+      return {
+        beat: beat.id,
+        first: Math.min(...cues.map((entry) => entry.start)),
+        last: Math.max(...cues.map((entry) => entry.end)),
+      };
+    });
   }
 }
 
-export function buildTimeline(
-  scene: Scene,
-  refs: PageRefs,
-  options: { onFinish: () => void },
-): TimelineHandle {
-  const tl = gsap.timeline({ paused: true, defaults: { ease: "power2.out" } });
-  const { geometry, metrics } = scene;
-  const portrait = metrics.portrait;
-
-  const beat = (index: number): BeatBuilder => {
-    const s = STORY[index]!;
-    return new BeatBuilder(s.id, s.label, tl, s.start, s.end);
-  };
-  const paper = beat(0);
-  const parcel = beat(1);
-  const spill = beat(2);
-  const merge = beat(3);
-  const pullback = beat(4);
-  const handoff = beat(5);
-
-  // The camera starts slightly tighter than unit and settles back later.
-  const cameraStart = { x: 0, y: -metrics.vh * 0.045, k: metrics.unit * 1.05 };
-
-  // Initial state. Every property a tween touches gets an explicit from-value later; this is
-  // only the state before the timeline exists.
-  gsap.set(scene.world, {
-    x: cameraStart.x,
-    y: cameraStart.y,
-    scale: cameraStart.k,
-    transformOrigin: "50% 50%",
-  });
-  scene.cards.forEach((card) => {
-    gsap.set(card.root, { xPercent: -50, yPercent: -50, opacity: 0 });
-  });
-  gsap.set(scene.cards[0]!.root, { x: geometry.cardA.x, y: geometry.cardA.y });
-  gsap.set(scene.cards[1]!.root, {
-    x: geometry.cardB.x + (portrait ? 0 : 360),
-    y: geometry.cardB.y + (portrait ? 300 : 12),
-  });
-  gsap.set(scene.ledger, { opacity: 0 });
-  gsap.set(scene.circleSvg, { opacity: 0 });
-  gsap.set(scene.made, { opacity: 0 });
-  gsap.set(
-    present([refs.header, refs.eyebrow, refs.h1, refs.form, refs.footer, refs.subtitle]),
-    {
-      opacity: 0,
-    },
-  );
-
-  // SplitText after fonts are ready, so the headline breaks where the real h1 breaks.
-  const split =
-    refs.h1 === null ? null : SplitText.create(refs.h1, { type: "lines", mask: "lines" });
-  if (split !== null) gsap.set(split.lines, { yPercent: 116 });
-
-  // ---------------------------------------------------------------- paper
-  // 0.00-1.25. The page arrives, the grid and grain settle, and the ticker types itself
-  // across the middle of the frame, then underlines.
-  paper.fromTo(scene.root, { opacity: 0 }, { opacity: 1, duration: 0.16 }, T("paper", 0));
-  paper.fromTo(scene.paper, { opacity: 0 }, { opacity: 1, duration: 0.3 }, T("paper", 0));
-  paper.fromTo(
-    scene.grid,
-    { opacity: 0 },
-    { opacity: 1, duration: 0.48 },
-    T("paper", 0.02),
-  );
-  paper.fromTo(
-    scene.grain,
-    { opacity: 0 },
-    { opacity: 0.55, duration: 0.46 },
-    T("paper", 0.02),
-  );
-  paper.fromTo(
-    scene.ticker,
-    { opacity: 0 },
-    { opacity: 1, duration: 0.12 },
-    T("paper", 0.1),
-  );
-  paper.fromTo(
-    scene.ticker,
-    { y: 9 },
-    { y: 0, duration: 0.4, ease: "power3.out" },
-    T("paper", 0.1),
-  );
-  paper.to(
-    scene.tickerText,
-    {
-      duration: 0.6,
-      ease: "none",
-      scrambleText: {
-        text: scene.field.pair.join(" · "),
-        chars: "upperCase",
-        speed: 0.55,
-      },
-    },
-    T("paper", 0.12),
-  );
-  paper.fromTo(
-    scene.tickerRule,
-    { scaleX: 0, transformOrigin: "50% 50%" },
-    { scaleX: 1, duration: 0.24, ease: "expo.out" },
-    T("paper", 0.76),
-  );
-  paper.fromTo(
-    scene.skip,
-    { opacity: 0 },
-    { opacity: 1, duration: 0.22 },
-    T("paper", 0.32),
-  );
-  // The filings the run is reading are on screen for the whole of it.
-  paper.fromTo(
-    scene.caption,
-    { opacity: 0 },
-    { opacity: 1, duration: 0.3 },
-    T("paper", 0.24),
-  );
-
-  // --------------------------------------------------------------- parcel
-  // 1.25-2.50. The ticker folds into a card, the string draws, the knot takes a tug and slips,
-  // and the parcel hangs there wound down.
-  parcel.to(scene.ticker, { opacity: 0, y: -7, duration: 0.14 }, T("parcel", -0.2));
-  parcel.fromTo(
-    scene.cards[0]!.root,
-    { opacity: 0, y: geometry.cardA.y + 14, scale: 0.93, rotation: -3 },
-    {
-      opacity: 1,
-      y: geometry.cardA.y,
-      scale: 1,
-      rotation: 0,
-      duration: 0.36,
-      ease: "expo.out",
-    },
-    T("parcel", -0.16),
-  );
-  parcel.fromTo(
-    scene.cards[0]!.creases,
-    { scaleX: 0, transformOrigin: "50% 50%" },
-    { scaleX: 1, duration: 0.22, stagger: 0.06, ease: "expo.out" },
-    T("parcel", -0.08),
-  );
-  parcel.fromTo(
-    scene.cards[0]!.stringPaths,
-    { drawSVG: "0%" },
-    { drawSVG: "100%", duration: 0.4, stagger: 0.03, ease: "power2.inOut" },
-    T("parcel", 0.04),
-  );
-  parcel.fromTo(
-    scene.cards[0]!.knot,
-    { scale: 0, opacity: 0 },
-    { scale: 1, opacity: 1, duration: 0.2, ease: "power2.out" },
-    T("parcel", 0.2),
-  );
-  // Anticipation: a small lean away from the knot, then the slip.
-  parcel.to(
-    scene.cards[0]!.root,
-    {
-      x: geometry.cardA.x - 4,
-      y: geometry.cardA.y - 3,
-      rotation: -0.8,
-      duration: 0.14,
-      ease: "power2.in",
-    },
-    T("parcel", 0.44),
-  );
-  parcel.to(
-    scene.cards[0]!.root,
-    {
-      x: geometry.cardA.x + 0.5,
-      y: geometry.cardA.y,
-      rotation: 0.35,
-      duration: 0.1,
-      ease: "power2.out",
-    },
-    T("parcel", 0.56),
-  );
-  parcel.to(
-    scene.cards[0]!.knot,
-    { x: 5, y: 7, rotation: 14, opacity: 0, duration: 0.2, ease: "power2.in" },
-    T("parcel", 0.6),
-  );
-  parcel.to(
-    scene.cards[0]!.stringPaths,
-    { y: 20, rotation: 3, opacity: 0, duration: 0.24, ease: "power1.in" },
-    T("parcel", 0.62),
-  );
-  // The parcel hangs there, wound down, until the card opens on the next breath.
-  parcel.to(scene.cards[0]!.root, { rotation: -0.3, duration: 0.25 }, T("parcel", 0.8));
-
-  // ---------------------------------------------------------------- spill
-  // 2.50-3.75. Three creases open, light comes out of the seam, and one dot per holding pours
-  // onto the page.
-  spill.fromTo(
-    scene.cards[0]!.bands,
-    { y: 0, rotation: 0, opacity: 1 },
-    {
-      y: (i: number) => (i - 1) * 13,
-      rotation: (i: number) => (i - 1) * 2.4,
-      opacity: (i: number) => (i === 1 ? 0.98 : 0.9),
-      duration: 0.3,
-      stagger: 0.06,
-      ease: "expo.out",
-    },
-    T("spill", -0.16),
-  );
-  spill.to(scene.cards[0]!.creases, { opacity: 0, duration: 0.2 }, T("spill", -0.06));
-  spill.fromTo(
-    scene.cards[0]!.seam,
-    { scaleX: 0, transformOrigin: "50% 50%" },
-    { scaleX: 1, duration: 0.2, ease: "expo.out" },
-    T("spill", -0.04),
-  );
-  spill.fromTo(
-    scene.cards[0]!.seam,
-    { opacity: 0 },
-    { opacity: 0.8, duration: 0.2 },
-    T("spill", -0.04),
-  );
-  // The card stays open while the field fills, then lets go.
-  spill.to(scene.cards[0]!.root, { opacity: 0, duration: 0.3 }, T("spill", 0.76));
-
-  const plan = planDots(scene);
-  spill.span(plan.spillStartA, plan.spillEndA - plan.spillStartA);
-
-  // Twelve labels scramble in once the field is mostly settled.
-  const labelled = scene.dots
-    .filter((dot) => dot.label !== null)
-    .sort((x, y) => y.spec.weightBp - x.spec.weightBp);
-  labelled.forEach((dot, rank) => {
-    const label = dot.label!;
-    const at = T("spill", 0.42) + rank * 0.026;
-    spill.fromTo(label, { opacity: 0 }, { opacity: 1, duration: 0.14, ease: "none" }, at);
-    spill.to(
-      label,
-      {
-        duration: 0.2,
-        ease: "none",
-        scrambleText: { text: dot.labelText ?? "", chars: "upperCase", speed: 0.4 },
-      },
-      at,
-    );
-  });
-
-  // ---------------------------------------------------------------- merge
-  // 3.75-5.00. The second card slides in and spills; the companies both funds hold reach for
-  // each other and fuse; the odometer rolls to the distinct total.
-  const cardB = scene.cards[1]!.root;
-  merge.to(
-    cardB,
-    {
-      x: geometry.cardB.x,
-      y: geometry.cardB.y,
-      rotation: 1.5,
-      opacity: 1,
-      duration: 0.4,
-      ease: "expo.out",
-    },
-    T("merge", -0.16),
-  );
-  merge.fromTo(
-    scene.cards[1]!.stringPaths,
-    { drawSVG: "0%" },
-    { drawSVG: "100%", duration: 0.3, stagger: 0.02, ease: "power2.inOut" },
-    T("merge", -0.06),
-  );
-  merge.to(
-    cardB,
-    {
-      x: geometry.cardB.x - 3,
-      y: geometry.cardB.y - 2,
-      duration: 0.1,
-      ease: "power2.in",
-    },
-    T("merge", 0.02),
-  );
-  merge.to(
-    cardB,
-    { x: geometry.cardB.x, y: geometry.cardB.y, duration: 0.1, ease: "power2.out" },
-    T("merge", 0.1),
-  );
-  merge.fromTo(
-    scene.cards[1]!.bands,
-    { y: 0, rotation: 0 },
-    {
-      y: (i: number) => (i - 1) * 11,
-      rotation: (i: number) => (i - 1) * 2,
-      duration: 0.26,
-      stagger: 0.05,
-      ease: "expo.out",
-    },
-    T("merge", 0.14),
-  );
-  merge.fromTo(
-    scene.cards[1]!.seam,
-    { scaleX: 0, opacity: 0 },
-    { scaleX: 1, opacity: 0.8, duration: 0.2, ease: "expo.out" },
-    T("merge", 0.18),
-  );
-  merge.to(cardB, { opacity: 0, duration: 0.28 }, T("merge", 0.3));
-  merge.to(
-    labelled.map((dot) => dot.label!),
-    { opacity: 0, duration: 0.26 },
-    T("merge", 0.18),
-  );
-  merge.span(plan.spillStartB, plan.fuseEnd - plan.spillStartB);
-
-  // The odometer: every held position before the fusion, every company after it.
-  rollCounter(merge, scene, {
-    from: scene.field.totals.held,
-    to: scene.field.totals.distinct,
-    start: T("merge", 0.36),
-    duration: 0.4,
-  });
-  merge.fromTo(
-    scene.counter,
-    { opacity: 0, y: 10 },
-    { opacity: 1, y: 0, duration: 0.22 },
-    T("merge", 0.36),
-  );
-  merge.to(scene.counter, { opacity: 0, duration: 0.25 }, T("merge", 0.8));
-
-  // ------------------------------------------------------------- pull-back
-  // 5.00-6.25. The camera eases back, the field compresses onto one ledger line, a pencil
-  // loops one company, and the real headline rises by line.
-  const lineCentre = metrics.input.top + metrics.input.height / 2;
-  const cameraEnd = {
-    x: 0,
-    y: lineCentre - metrics.vh / 2,
-    k: metrics.unit * (portrait ? 0.8 : 0.72),
-  };
-  pullback.to(
-    scene.world,
-    {
-      x: cameraEnd.x,
-      y: cameraEnd.y,
-      scale: cameraEnd.k,
-      duration: 0.9,
-      ease: "expo.inOut",
-    },
-    T("pullback", -0.16),
-  );
-  // The film's paper is the page's paper, so letting it go is not a cut: the grid and the
-  // grain lift and the product's own page is what is left.
-  pullback.to(
-    [scene.paper, scene.grid, scene.grain],
-    { opacity: 0, duration: 0.34, ease: "power1.inOut" },
-    T("pullback", 0.36),
-  );
-
-  // The field becomes a register: every survivor lands on one line, as a tick.
-  const lineWidthPx = geometry.lineWidth * cameraEnd.k;
-  const ledgerLeft = metrics.vw / 2 - lineWidthPx / 2;
-  gsap.set(scene.ledger, {
-    width: `${lineWidthPx}px`,
-    height: "1px",
-    left: `${ledgerLeft}px`,
-    top: `${lineCentre}px`,
-    transformOrigin: "50% 50%",
-  });
-  pullback.span(plan.lineStart, plan.lineEnd - plan.lineStart);
-  pullback.fromTo(
-    scene.ledger,
-    { opacity: 0, scaleX: 0 },
-    { opacity: 1, scaleX: 1, duration: 0.34, ease: "expo.out" },
-    T("pullback", 0.4),
-  );
-
-  // The pencil loop, around the biggest company on the line.
-  const circleTarget = geometry.line[geometry.circleSlot]!;
-  const circlePoint = {
-    x: metrics.vw / 2 + circleTarget.x * cameraEnd.k,
-    y: lineCentre,
-  };
-  scene.circlePath.setAttribute("d", pencilLoop(circlePoint, 11, 7.5));
-  gsap.set(scene.circlePath, {
-    transformOrigin: `${circlePoint.x}px ${circlePoint.y}px`,
-  });
-  pullback.fromTo(
-    scene.circleSvg,
-    { opacity: 0 },
-    { opacity: 1, duration: 0.1 },
-    T("pullback", 0.56),
-  );
-  pullback.fromTo(
-    scene.circlePath,
-    { drawSVG: "0%" },
-    { drawSVG: "100%", duration: 0.34, ease: "power2.inOut" },
-    T("pullback", 0.6),
-  );
-  // One overshoot, at the close of the loop: the hand presses a little too far.
-  pullback.fromTo(
-    scene.circlePath,
-    { scale: 1.035, rotation: -1.2 },
-    { scale: 1, rotation: 0, duration: 0.2, ease: "power2.out" },
-    T("pullback", 0.84),
-  );
-
-  // The headline is the real h1, revealed by line.
-  pullback.to(present([refs.h1]), { opacity: 1, duration: 0.02 }, T("pullback", 0.64));
-  if (split !== null) {
-    pullback.to(
-      split.lines,
-      { yPercent: 0, duration: 0.38, stagger: 0.06, ease: "expo.out" },
-      T("pullback", 0.64),
-    );
-  }
-  // The eyebrow and the subtitle are the rest of that block, so they land with it — before
-  // the input, which is what makes the sequence read as "the page, then the field".
-  pullback.to(
-    present([refs.eyebrow, refs.subtitle]),
-    { opacity: 1, duration: 0.4 },
-    T("pullback", 0.72),
-  );
-  pullback.to(scene.caption, { opacity: 0, duration: 0.28 }, T("pullback", 0.68));
-  pullback.to(scene.skip, { opacity: 0, duration: 0.2 }, T("pullback", 0.76));
-  pullback.span(plan.fadeStart, plan.fadeDur);
-
-  // --------------------------------------------------------------- handoff
-  // 6.25-7.50. The ledger line becomes the real input, the headline is already the real h1,
-  // and the page's own chrome comes back.
-  const input = metrics.input;
-  handoff.to(
-    scene.ledger,
-    {
-      left: input.left,
-      top: input.top,
-      width: input.width,
-      height: input.height,
-      backgroundColor: "rgba(0, 0, 0, 0)",
-      borderWidth: 1,
-      borderRadius: 6,
-      duration: 0.5,
-      ease: "expo.out",
-    },
-    T("handoff", -0.16),
-  );
-  // The pencil lifts before the box is drawn, so the two never overlap.
-  handoff.to(scene.circleSvg, { opacity: 0, duration: 0.16 }, T("handoff", -0.1));
-  handoff.to(scene.ledger, { opacity: 0, duration: 0.2 }, T("handoff", 0.08));
-  handoff.to(present([refs.form]), { opacity: 1, duration: 0.3 }, T("handoff", 0.16));
-  handoff.to(
-    present([refs.header, refs.footer]),
-    { opacity: 1, duration: 0.4, stagger: 0.05 },
-    T("handoff", 0.4),
-  );
-  handoff.fromTo(
-    scene.made,
-    { opacity: 0 },
-    { opacity: 1, duration: 0.4, ease: "power2.out" },
-    T("handoff", 0.4),
-  );
-  handoff.to(
-    scene.root,
-    { opacity: 0, duration: 0.2, ease: "power1.in" },
-    T("handoff", 0.84),
-  );
-
-  const windows: BeatWindow[] = [paper, parcel, spill, merge, pullback, handoff].map(
-    (builder, index, all) => {
-      const window = builder.window();
-      if (index > 0)
-        window.overlap = all[index - 1]!.window().contentEnd - window.contentStart;
-      return window;
-    },
-  );
-
-  // One pass per rendered frame, sampling every dot from the timeline's clock. This is the
-  // whole of the field's animation: 1,004 dots, no tweens.
-  const render = (): void => {
-    renderDots(plan, tl.time());
-  };
-  renderDots(plan, 0);
-  tl.eventCallback("onUpdate", render);
-  tl.eventCallback("onComplete", () => {
-    render();
-    options.onFinish();
-  });
-
-  return {
-    tl,
-    windows,
-    time: () => tl.time(),
-    seek: (time) => {
-      tl.pause();
-      tl.time(clamp(time, 0, TOTAL));
-      render();
-    },
-    destroy: () => {
-      tl.kill();
-      split?.revert();
-    },
-  };
-}
-
-// ---------------------------------------------------------------- the dots
-
 /**
- * One dot's schedule, as numbers.
- *
- * The field's whole animation is these four windows per dot, sampled from the timeline clock:
- * pour (out of its card's seam), fuse (pairs only), line (survivors only), fade (all). Nothing
- * here is a tween, so a frame costs 1,004 small arithmetic checks and writes only for the dots
- * that are actually travelling.
+ * Build and return the score. The timeline is paused; the caller decides when it starts, and
+ * calls `play()` at the exact moment the first frame becomes visible.
  */
-type DotTrack = {
-  el: HTMLDivElement;
-  /** The accent overlay, on the half of a shared pair that survives the fusion. */
-  flash: HTMLDivElement | null;
-  /** The half that the fusion consumes: it slides to the midpoint and fades out. */
-  vanishing: boolean;
-  /** Where the dot is drawn while it is parked, before the ledger line. */
-  restX: number;
-  restY: number;
-  restScale: number;
-  pourAt: number;
-  pourDur: number;
-  apex: number;
-  seamX: number;
-  seamY: number;
-  homeX: number;
-  homeY: number;
-  /** Fusion window; Infinity for a dot with no partner. */
-  fuseAt: number;
-  midX: number;
-  midY: number;
-  /** The fused dot's radius as a scale of its own: areas add, not radii. */
-  fuseScale: number;
-  /** Line window; Infinity for a dot that does not survive. */
-  lineAt: number;
-  lineX: number;
-  lineScale: number;
-  /** 0 = seam, 1 = home, 2 = fused, 3 = line, 4 = gone; -1 = never written. */
-  parked: number;
-  flashOn: boolean;
-};
+export function buildTimeline(screen: FilmScreen, hooks: FilmHooks): TimelineHandle {
+  const timeline = gsap.timeline({
+    paused: true,
+    defaults: { ease: "none" },
+    onComplete: hooks.onFinish,
+  });
+  const score = new Score(timeline);
+  const { refs } = screen;
 
-export type DotPlan = {
-  tracks: DotTrack[];
-  spillStartA: number;
-  spillEndA: number;
-  spillStartB: number;
-  fuseEnd: number;
-  lineStart: number;
-  lineEnd: number;
-  fadeStart: number;
-  fadeDur: number;
-};
+  const scanProxy = { value: 0 };
+  const twiceProxy = { value: 0 };
+  const glowProxy = { value: 0 };
+  const cameraProxy = { value: 0 };
+  const collapseProxy = { value: 0 };
+  const typeProxy = { value: 0 };
 
-const FUSE_SLIDE = 0.18;
-const FUSE_SQUASH = 0.03;
-const FUSE_SETTLE = 0.07;
-const FUSE_SHRINK = 0.12;
-const FUSE_TOTAL = FUSE_SLIDE + FUSE_SQUASH + FUSE_SETTLE;
-const FLASH_AT = 0.16;
-const FLASH_FOR = 0.24;
-const LINE_DUR = 0.45;
-/**
- * The world is a 1000 × 1000 box whose origin is its centre, and a dot is a `left: 0; top: 0`
- * element moved by `transform`. So every world coordinate the geometry hands out has to be
- * shifted by half the box on its way to the DOM — the cards and the ticker get this from their
- * own `left: 500px; top: 500px` in CSS, and the dots get it here, in the one place that writes
- * their transform.
- */
-const WORLD_CENTRE = 500;
-/** How much of a beat one fund's pour is spread across. */
-const POUR_SPREAD = 0.3;
+  const renderScan = (): void => {
+    screen.setScan(scanEase(scanProxy.value));
+  };
+  const renderGlow = (): void => {
+    screen.setGlow(glowProxy.value);
+  };
+  const renderTwice = (): void => {
+    screen.setTwice(twiceProxy.value);
+  };
+  const renderCollapse = (): void => {
+    screen.setCollapse(collapseProxy.value);
+  };
+  const renderCamera = (): void => {
+    screen.setCamera(cameraProxy.value);
+  };
+  const renderType = (): void => {
+    const ticker = refs.bTicker;
+    const count = Math.min(
+      ticker.length,
+      Math.floor(typeProxy.value * ticker.length + 1e-6),
+    );
+    refs.bTyped.textContent = ticker.slice(0, count);
+  };
 
-export function planDots(scene: Scene): DotPlan {
-  const { geometry } = scene;
-  const beatLength = STORY[2]!.end - STORY[2]!.start;
-  const pourA = T("spill", -0.02);
-  const pourB = T("merge", 0.06);
+  // The renderer wants the glide length before its first twice frame; the field may not exist
+  // yet, so the screen holds the value until it does.
+  screen.setTwiceBeat(TWICE_GLIDE_MS);
 
-  const aDots = scene.dots.filter((dot) => dot.spec.fund === 0);
-  const bDots = scene.dots.filter((dot) => dot.spec.fund === 1);
-  const staggerA = aDots.length > 1 ? (beatLength * POUR_SPREAD) / (aDots.length - 1) : 0;
-  const staggerB = bDots.length > 1 ? (beatLength * POUR_SPREAD) / (bDots.length - 1) : 0;
+  // ── dark 0.0–0.9 ────────────────────────────────────────────────────────────────────────
+  // A near-black table. The grain, the thin edge of cool light and the caption arrive in that
+  // order, each a little slower than the last, so the frame fills without seeming to load.
+  score
+    .enter("dark")
+    .set(refs.grain, { autoAlpha: 0 }, 0)
+    .set(refs.edge, { autoAlpha: 0, scaleY: 0.3 }, 0)
+    .set(refs.caption, { autoAlpha: 0 }, 0)
+    .set(refs.tools, { autoAlpha: 0 }, 0)
+    .set(refs.scanBar, { autoAlpha: 0, scaleY: 0.6 }, 0)
+    .set(refs.counter, { autoAlpha: 0 }, 0)
+    .set(refs.shared, { autoAlpha: 0 }, 0)
+    .set(refs.bLabel, { autoAlpha: 0 }, 0)
+    .set(refs.note, { autoAlpha: 0, rotate: -4 }, 0)
+    .set(refs.rule, { autoAlpha: 0, scaleX: 0.9 }, 0)
+    .set(refs.headline, { autoAlpha: 0, clipPath: "inset(0 100% 0 0)" }, 0)
+    .set(refs.wink, { autoAlpha: 0 }, 0)
+    .set(refs.flash, { opacity: 0 }, 0)
+    .call(() => {
+      screen.setScan(0);
+      screen.setGlow(0);
+      screen.setCamera(0);
+    }, 0)
+    .to(refs.grain, { autoAlpha: 0.55, duration: 0.5 }, 0.04)
+    .to(refs.edge, { autoAlpha: 1, scaleY: 1, duration: 0.6, ease: "power2.out" }, 0.1)
+    .to(refs.caption, { autoAlpha: 1, duration: 0.34 }, 0.28)
+    .to(refs.tools, { autoAlpha: 1, duration: 0.2 }, 0.4)
+    .call(() => hooks.cue("hum"), T("dark", 0.03))
+    .to(refs.caption, { opacity: 0.92, duration: 0.3 }, 0.6);
 
-  // Pour order: largest first, so the field fills from its heaviest companies outward.
-  const rank = new Map<number, number>();
-  [...aDots]
-    .sort((x, y) => y.spec.weightBp - x.spec.weightBp)
-    .forEach((dot, index) => rank.set(dot.index, index));
-  [...bDots]
-    .sort(
-      (x, y) =>
-        Number(y.spec.shared) - Number(x.spec.shared) ||
-        y.spec.weightBp - x.spec.weightBp,
+  // ── ticker 0.9–1.8 ──────────────────────────────────────────────────────────────────────
+  // VTI rises as solid matte letters at 60% of the frame, then settles once from a 6% squeeze.
+  // The camera is still finishing its push-in, and both land together. The word rises whole
+  // rather than letter by letter: splitting it into inline boxes drops the font's kerning and
+  // the word would no longer be the 1.934 em the dot field was baked against.
+  score
+    .enter("ticker")
+    .fromTo(
+      refs.wordA,
+      { yPercent: 112, autoAlpha: 0 },
+      { yPercent: 0, autoAlpha: 1, duration: 0.52, ease: "expo.out" },
+      0.7,
     )
-    .forEach((dot, index) => rank.set(dot.index, index));
-
-  const count = scene.dots.length;
-  const pourAt = new Float64Array(count);
-  const pourDur = new Float64Array(count);
-  const apex = new Float64Array(count);
-  scene.dots.forEach((dot) => {
-    const fundA = dot.spec.fund === 0;
-    const seam = fundA ? geometry.seamA : geometry.seamB;
-    const distance = Math.hypot(dot.home.x - seam.x, dot.home.y - seam.y);
-    const first = fundA ? pourA : pourB;
-    const stagger = fundA ? staggerA : staggerB;
-    const travel = fundA
-      ? clamp(0.34 + distance / 1400, 0.34, 0.55)
-      : clamp(0.3 + distance / 1600, 0.3, 0.5);
-    pourAt[dot.index] = first + (rank.get(dot.index) ?? 0) * stagger;
-    pourDur[dot.index] = travel;
-    apex[dot.index] = clamp(distance * 0.21, fundA ? 24 : 18, fundA ? 150 : 120);
-  });
-
-  // The fusion follows the pour, left to right, and never reaches a dot that is still in the
-  // air: each pair's turn waits for the later of its two halves to land.
-  const fuseAt = new Float64Array(count).fill(Number.POSITIVE_INFINITY);
-  const fuseStagger =
-    scene.pairs.length > 1 ? (beatLength * 0.28) / (scene.pairs.length - 1) : 0;
-  scene.pairs.forEach(([a, b], pairIndex) => {
-    const landed = Math.max(pourAt[b]! + pourDur[b]!, pourAt[a]! + pourDur[a]!);
-    const at = Math.max(T("merge", 0.24) + pairIndex * fuseStagger, landed + 0.04);
-    fuseAt[a] = at;
-    fuseAt[b] = at;
-  });
-
-  const lineSlot = new Map<number, number>();
-  geometry.lineOwner.forEach((owner, slot) => lineSlot.set(owner, slot));
-  const lineStagger = 0.25 / Math.max(1, geometry.line.length - 1);
-  const lineStart = T("pullback", 0);
-  const fadeStart = T("pullback", 0.84);
-  const fadeDur = 0.2;
-
-  let spillEndA = pourA;
-  let spillEndB = pourB;
-  let fuseEnd = T("merge", 0.24);
-
-  const tracks: DotTrack[] = scene.dots.map((dot) => {
-    const fundA = dot.spec.fund === 0;
-    const seam = fundA ? geometry.seamA : geometry.seamB;
-    const pairIndex = scene.pairs.findIndex(
-      ([a, b]) => a === dot.index || b === dot.index,
+    .fromTo(
+      refs.wordA,
+      { scale: 0.94 },
+      { scale: 1, duration: 0.45, ease: "back.out(1.8)" },
+      1.35,
+    )
+    .fromTo(
+      cameraProxy,
+      { value: 0.26 },
+      { value: 0, duration: 0.55, ease: "power2.out", onUpdate: renderCamera },
+      1.25,
     );
-    const pair = pairIndex < 0 ? null : scene.pairs[pairIndex]!;
-    const merge = pairIndex < 0 ? null : geometry.pairs[pairIndex]!;
-    const keeper = pair !== null && pair[0] === dot.index;
 
-    const slot = lineSlot.get(dot.index) ?? -1;
-    const lineAt = slot < 0 ? Number.POSITIVE_INFINITY : lineStart + slot * lineStagger;
+  // ── scan 1.8–3.6 ────────────────────────────────────────────────────────────────────────
+  // The light bar sweeps left to right: fast out of the gate, unhurried through the middle,
+  // quick again at the end. Behind it the letters turn translucent and fill with dots, twelve
+  // labels land as it passes, and the counter rolls. It ends on a small mechanical bump — the
+  // bar hitting its stop — rather than on a fade.
+  score
+    .enter("scan")
+    .to(refs.scanBar, { autoAlpha: 1, scaleY: 1, duration: 0.22 }, 1.6)
+    .to(scanProxy, { value: 1, duration: 1.72, ease: "none", onUpdate: renderScan }, 1.62)
+    .call(() => hooks.cue("whir"), T("scan", 0))
+    .to(refs.counter, { autoAlpha: 1, duration: 0.26 }, 1.9)
+    .to(refs.scanBar, { x: 7, duration: 0.1, ease: "power2.out" }, 3.34)
+    .to(refs.scanBar, { autoAlpha: 0, duration: 0.16 }, 3.44)
+    .to(refs.scanBar, { x: 0, duration: 0.16, ease: "back.out(2.4)" }, 3.44);
 
-    if (fundA) spillEndA = Math.max(spillEndA, pourAt[dot.index]! + pourDur[dot.index]!);
-    else spillEndB = Math.max(spillEndB, pourAt[dot.index]! + pourDur[dot.index]!);
-    if (merge !== null) fuseEnd = Math.max(fuseEnd, fuseAt[dot.index]! + FUSE_TOTAL);
+  // ── hold 3.6–4.4 ────────────────────────────────────────────────────────────────────────
+  // Stillness. The ticker takes one breath of glow, the counter lands, and one dot near an
+  // edge winks — once, so nothing in the film flashes more than three times a second.
+  score
+    .enter("hold")
+    .to(
+      glowProxy,
+      { value: 1, duration: 0.7, ease: "power2.out", onUpdate: renderGlow },
+      3.4,
+    )
+    .set(refs.counterValue, { scale: 1.06 }, 3.4)
+    .to(refs.counterValue, { scale: 1, duration: 0.26, ease: "power2.out" }, 3.44)
+    .set(refs.wink, { autoAlpha: 0, scale: 0.5 }, 4)
+    .to(refs.wink, { autoAlpha: 1, scale: 1.15, duration: 0.14, ease: "power2.out" }, 4)
+    .to(refs.wink, { autoAlpha: 0, scale: 1.7, duration: 0.26, ease: "power2.in" }, 4.14);
 
-    return {
-      el: dot.el,
-      flash: keeper ? dot.flash : null,
-      vanishing: pair !== null && !keeper,
-      restX: keeper && merge !== null ? merge.mid.x : dot.home.x,
-      restY: keeper && merge !== null ? merge.mid.y : dot.home.y,
-      restScale: keeper && merge !== null ? merge.r / dot.r : 1,
-      pourAt: pourAt[dot.index]!,
-      pourDur: pourDur[dot.index]!,
-      apex: apex[dot.index]!,
-      seamX: seam.x,
-      seamY: seam.y,
-      homeX: dot.home.x,
-      homeY: dot.home.y,
-      fuseAt: fuseAt[dot.index]!,
-      midX: merge === null ? dot.home.x : merge.mid.x,
-      midY: merge === null ? dot.home.y : merge.mid.y,
-      fuseScale: merge === null ? 1 : merge.r / dot.r,
-      lineAt,
-      lineX: dot.line === null ? 0 : dot.line.x,
-      lineScale: dot.line === null ? 1 : dot.line.r / dot.r,
-      parked: -1,
-      flashOn: false,
-    };
-  });
+  // ── twice 4.4–6.4 ───────────────────────────────────────────────────────────────────────
+  // VOO is typed in small mono under VTI — clean keystrokes, no scramble. Then VOO's companies
+  // lift out of VTI as the same dots, coral-tinted, and fly down to spell the second word,
+  // biggest first. The renderer does the flying; the score moves the one value that drives it,
+  // after giving the typing a head start.
+  score
+    .enter("twice")
+    .set(refs.bLabel, { autoAlpha: 1 }, 4.2)
+    .set(refs.bCaret, { autoAlpha: 1 }, 4.2)
+    .set(typeProxy, { value: 0 }, 4.2)
+    .call(renderType, 4.2)
+    .to(
+      typeProxy,
+      { value: 1, duration: TYPE_MS / 1000, ease: "none", onUpdate: renderType },
+      4.24,
+    )
+    .to(refs.bCaret, { autoAlpha: 0, duration: 0.2 }, 4.64)
+    .to(
+      twiceProxy,
+      { value: 1, duration: TWICE_GLIDE_MS / 1000, ease: "none", onUpdate: renderTwice },
+      4.4,
+    )
+    .to(refs.note, { autoAlpha: 1, duration: 0.4 }, 5.1)
+    .to(refs.note, { rotate: -2.2, duration: 0.6, ease: "power2.out" }, 5.1)
+    .to(refs.notePath, { strokeDashoffset: 0, duration: 0.55, ease: "power2.inOut" }, 5.2)
+    .fromTo(
+      refs.shared,
+      { y: 6 },
+      { autoAlpha: 1, y: 0, duration: 0.4, ease: "power2.out" },
+      5.7,
+    )
+    .to(refs.counterValue, { scale: 1.03, duration: 0.15 }, 6.1)
+    .to(refs.counterValue, { scale: 1, duration: 0.15 }, 6.25);
+
+  // ── lights 6.4–7.6 ──────────────────────────────────────────────────────────────────────
+  // The room lights come on: one soft flash, and the table colour eases to the site's paper
+  // from a registered `@property` so the midpoint is a real colour, not a muddy mix (that
+  // transition is the CSS one, so `span` is here just so the overlap check sees it). Both
+  // words collapse along curves onto one thin rule while the camera pulls back.
+  score
+    .enter("lights")
+    .to(
+      cameraProxy,
+      { value: -0.86, duration: 1.1, ease: "power1.inOut", onUpdate: renderCamera },
+      6.2,
+    )
+    .to(
+      collapseProxy,
+      { value: 1, duration: 1.02, ease: "none", onUpdate: renderCollapse },
+      6.2,
+    )
+    .set(refs.flash, { opacity: 0 }, 6.4)
+    .to(refs.flash, { opacity: 0.14, duration: 0.1 }, 6.4)
+    .call(() => {
+      // The room lights come on first; the chrome turns over once the paper is mostly there,
+      // so the captions are never dark-on-dark in between.
+      screen.warmSky();
+      hooks.cue("click");
+    }, 6.42)
+    .call(() => screen.lightUp(), 7.02)
+    .span(6.42, 0.86)
+    .to(refs.flash, { opacity: 0, duration: 0.35 }, 6.5)
+    .to(refs.wordA, { autoAlpha: 0, duration: 0.35 }, 6.95)
+    .to(refs.openWord, { autoAlpha: 0, duration: 0.35 }, 6.95)
+    .to(refs.labels, { autoAlpha: 0, duration: 0.3 }, 6.95)
+    .to(refs.bLabel, { autoAlpha: 0, duration: 0.3 }, 6.95)
+    .to(refs.note, { autoAlpha: 0, duration: 0.3 }, 6.95)
+    .to(refs.grain, { autoAlpha: 0, duration: 0.5 }, 6.95)
+    .to(refs.edge, { autoAlpha: 0, duration: 0.5 }, 6.95)
+    .to(refs.dotsLayer, { autoAlpha: 0, duration: 0.3 }, 7.16)
+    .set(refs.rule, { autoAlpha: 0 }, 7.02)
+    .to(refs.rule, { autoAlpha: 1, duration: 0.3, ease: "power2.out" }, 7.05)
+    .set(refs.headline, { autoAlpha: 1 }, 7.2)
+    .fromTo(
+      refs.headline,
+      { y: 10 },
+      { clipPath: "inset(0 0% 0 0)", y: 0, duration: 0.4, ease: "power2.inOut" },
+      7.2,
+    );
+
+  // ── handoff 7.6–9.0 ─────────────────────────────────────────────────────────────────────
+  // The overlays go first — caption, counter, Skip, sound — so the last frame is only the rule
+  // and the headline. Then the swap: `runHandoff` hands those two to the page, which names the
+  // real h1 and a hairline over the input's edge, so the rule becomes the field's underline and
+  // the headline becomes the page's own h1. The score keeps running to 9.0, so the film's last
+  // frame and the page's first are the same frame.
+  score
+    .enter("handoff")
+    .call(hooks.prepareHandoff, 7.4)
+    .to([refs.caption, refs.counter, refs.tools], { autoAlpha: 0, duration: 0.22 }, 7.6)
+    .call(hooks.runHandoff, 8.36)
+    // The swap runs from 8.36 to about 8.9: the last 0.64 s of the brief's handoff *is* the
+    // transition, so there is nothing left to animate. This no-op holds the score open to 9.0
+    // so the timeline's own duration is the film's duration, and a skip lands on the frame the
+    // page takes over from.
+    .span(8.86, 0.14)
+    .call(() => undefined, TOTAL_SECONDS);
 
   return {
-    tracks,
-    spillStartA: pourA,
-    spillEndA,
-    spillStartB: pourB,
-    fuseEnd,
-    lineStart,
-    lineEnd: lineStart + Math.max(0, geometry.line.length - 1) * lineStagger + LINE_DUR,
-    fadeStart,
-    fadeDur,
-  };
-}
-
-const outCubic = (p: number): number => 1 - (1 - p) ** 3;
-const inQuad = (p: number): number => p * p;
-const inOutCubic = (p: number): number =>
-  p < 0.5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2;
-const backOut = (p: number, overshoot: number): number => {
-  const c1 = 1.70158 * overshoot;
-  const c3 = c1 + 1;
-  const q = p - 1;
-  return 1 + c3 * q * q * q + c1 * q * q;
-};
-const lerp = (from: number, to: number, p: number): number => from + (to - from) * p;
-
-/**
- * Sample every dot at time `t` and write the ones that are not simply parked.
- *
- * The rule that keeps 1,004 divs at 60 fps is the `parked` check: a dot writes its transform
- * when it starts and stops being somewhere, and on the frames it is actually travelling.
- * Through most of the film the field is standing still and costs a few comparisons a frame.
- */
-function renderDots(plan: DotPlan, t: number): void {
-  const tracks = plan.tracks;
-  for (let i = 0; i < tracks.length; i += 1) {
-    const track = tracks[i]!;
-    // One toggle per pair, on the frame the flash window opens and on the frame it closes.
-    flash(track, t);
-
-    if (t < track.pourAt) {
-      park(track, 0, track.seamX, track.seamY, 0, 0);
-      continue;
-    }
-    if (t < track.pourAt + track.pourDur) {
-      pour(track, (t - track.pourAt) / track.pourDur);
-      continue;
-    }
-    if (track.vanishing) {
-      if (t < track.fuseAt) park(track, 1, track.homeX, track.homeY, 1, 1);
-      else if (t < track.fuseAt + FUSE_TOTAL) fuseAway(track, t - track.fuseAt);
-      else park(track, 4, track.midX, track.midY, 0.55, 0);
-      continue;
-    }
-    if (t < track.fuseAt) {
-      park(track, 1, track.homeX, track.homeY, 1, 1);
-      continue;
-    }
-    if (t < track.fuseAt + FUSE_TOTAL) {
-      fuse(track, t - track.fuseAt);
-      continue;
-    }
-    if (t < track.lineAt) {
-      park(track, 2, track.restX, track.restY, track.restScale, 1);
-      continue;
-    }
-    if (t < track.lineAt + LINE_DUR) {
-      line(track, (t - track.lineAt) / LINE_DUR);
-      continue;
-    }
-    if (t < plan.fadeStart) {
-      park(track, 3, track.lineX, 0, track.lineScale, 1);
-      continue;
-    }
-    if (t < plan.fadeStart + plan.fadeDur) {
-      track.parked = -1;
-      track.el.style.opacity = (1 - (t - plan.fadeStart) / plan.fadeDur).toFixed(3);
-      continue;
-    }
-    park(track, 4, track.lineX, 0, track.lineScale, 0);
-  }
-}
-
-function write(
-  track: DotTrack,
-  x: number,
-  y: number,
-  scaleX: number,
-  opacity: number,
-  scaleY: number = scaleX,
-): void {
-  const el = track.el;
-  const left = (x + WORLD_CENTRE).toFixed(2);
-  const top = (y + WORLD_CENTRE).toFixed(2);
-  el.style.transform =
-    scaleX === scaleY
-      ? `translate3d(${left}px, ${top}px, 0) scale(${scaleX.toFixed(4)})`
-      : `translate3d(${left}px, ${top}px, 0) scale(${scaleX.toFixed(4)}, ${scaleY.toFixed(4)})`;
-  el.style.opacity = opacity >= 1 ? "1" : opacity <= 0 ? "0" : opacity.toFixed(3);
-}
-
-function park(
-  track: DotTrack,
-  state: number,
-  x: number,
-  y: number,
-  scale: number,
-  opacity: number,
-): void {
-  if (track.parked === state) return;
-  track.parked = state;
-  write(track, x, y, scale, opacity);
-}
-
-/** Out of the card's seam and onto its home, on an arc that overshoots its landing. */
-function pour(track: DotTrack, p: number): void {
-  const x = lerp(track.seamX, track.homeX, outCubic(clamp(p / 0.62, 0, 1)));
-  const firstLeg = 0.45;
-  const rise = track.apex * (1 - outCubic(clamp(p / firstLeg, 0, 1)));
-  const fall =
-    track.apex * (1 - backOut(clamp((p - firstLeg) / (1 - firstLeg), 0, 1), 1.7));
-  const land = p < firstLeg ? rise : fall;
-  const grow = clamp((p * track.pourDur) / 0.22, 0, 1);
-  const scale = backOut(grow, 2.6);
-  track.parked = -1;
-  write(track, x, track.homeY - land, scale, clamp(scale, 0, 1));
-}
-
-/** Both halves of a pair meet at the midpoint; this is the half that survives, and takes it. */
-function fuse(track: DotTrack, dt: number): void {
-  if (dt < FUSE_SLIDE) {
-    const e = inOutCubic(dt / FUSE_SLIDE);
-    track.parked = -1;
-    write(
-      track,
-      lerp(track.homeX, track.midX, e),
-      lerp(track.homeY, track.midY, e),
-      1,
-      1,
-    );
-    return;
-  }
-  track.parked = -1;
-  if (dt < FUSE_SLIDE + FUSE_SQUASH) {
-    // The 30 ms squash: the dot lands wide and flat, then swells back to its fused area.
-    const e = outCubic((dt - FUSE_SLIDE) / FUSE_SQUASH);
-    write(track, track.midX, track.midY, 1 + 0.34 * e, 1, 1 - 0.34 * e);
-    return;
-  }
-  const e = outCubic(clamp((dt - FUSE_SLIDE - FUSE_SQUASH) / FUSE_SETTLE, 0, 1));
-  write(
-    track,
-    track.midX,
-    track.midY,
-    lerp(1.34, track.fuseScale, e),
-    1,
-    lerp(0.66, track.fuseScale, e),
-  );
-}
-
-function fuseAway(track: DotTrack, dt: number): void {
-  track.parked = -1;
-  if (dt < FUSE_SLIDE) {
-    const e = inOutCubic(dt / FUSE_SLIDE);
-    write(
-      track,
-      lerp(track.homeX, track.midX, e),
-      lerp(track.homeY, track.midY, e),
-      1,
-      1,
-    );
-    return;
-  }
-  const e = inQuad(clamp((dt - FUSE_SLIDE) / FUSE_SHRINK, 0, 1));
-  write(track, track.midX, track.midY, 1 - 0.45 * e, 1 - e);
-}
-
-/** The accent moment: one class toggle per pair, faded by CSS, never a colour tween per dot. */
-function flash(track: DotTrack, t: number): void {
-  const overlay = track.flash;
-  if (overlay === null) return;
-  const on = t >= track.fuseAt + FLASH_AT && t < track.fuseAt + FLASH_AT + FLASH_FOR;
-  if (on === track.flashOn) return;
-  track.flashOn = on;
-  overlay.classList.toggle("is-fusing", on);
-}
-
-/** The field becomes a register: every survivor slides onto one line, shrinking to a tick. */
-function line(track: DotTrack, p: number): void {
-  const e = inOutCubic(clamp(p, 0, 1));
-  track.parked = -1;
-  write(
-    track,
-    lerp(track.restX, track.lineX, e),
-    lerp(track.restY, 0, e),
-    lerp(track.restScale, track.lineScale, e),
-    1,
-  );
-}
-
-/** Roll an odometer from `from` to `to`; each digit falls through its own strip. */
-function rollCounter(
-  builder: BeatBuilder,
-  scene: Scene,
-  options: { from: number; to: number; start: number; duration: number },
-): void {
-  const strips = scene.counterStrips;
-  const lineHeight = scene.counterSlots[0]?.clientHeight || 44;
-  const digits = String(options.from).padStart(strips.length, "0").split("").map(Number);
-  const finals = String(options.to).padStart(strips.length, "0").split("").map(Number);
-  strips.forEach((strip, index) => {
-    const startDigit = digits[index] ?? 0;
-    const endDigit = finals[index] ?? 0;
-    const startPosition = 30 + startDigit;
-    // Counting down: every digit falls forward through its strip, wrapping at 0, which is what
-    // a real odometer does when the number decreases.
-    const stepsDown = (startDigit - endDigit + 10) % 10 || 10;
-    gsap.set(strip, { y: -startPosition * lineHeight });
-    builder.to(
-      strip,
-      {
-        y: -(startPosition - stepsDown) * lineHeight,
-        duration: options.duration,
-        ease: "power2.inOut",
-      },
-      options.start,
-    );
-  });
-  // 1,004 becomes 504, not 0504: the leading slot is a blank once the roll has landed.
-  const leading = scene.counterSlots[0];
-  if (leading && String(options.to).length < String(options.from).length) {
-    builder.to(leading, { opacity: 0, duration: 0.12 }, options.start + options.duration);
-  }
-}
-
-/** The brief's overlap contract, measured from the real cues rather than asserted. */
-export function overlapHealth(windows: BeatWindow[]): {
-  ok: boolean;
-  min: number;
-  max: number;
-} {
-  const overlaps = windows.slice(1).map((window) => window.overlap);
-  return {
-    ok: overlaps.every((overlap) => overlap >= 0.15 && overlap <= 0.25),
-    min: Math.min(...overlaps),
-    max: Math.max(...overlaps),
+    timeline,
+    get windows(): BeatWindow[] {
+      return score.windows();
+    },
+    play(): void {
+      timeline.play(0);
+    },
+    skip(): void {
+      // Not a cut: every cue between here and 9.0 renders in one tick, so the visitor lands on
+      // the frame the film was heading for.
+      timeline.progress(1);
+    },
+    destroy(): void {
+      timeline.kill();
+    },
   };
 }

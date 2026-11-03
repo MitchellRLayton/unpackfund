@@ -1,63 +1,77 @@
 /**
- * The seam between the film and the page.
+ * play.ts — the seam between the film and the page.
  *
- * `play(host, { reduced })` is the whole contract. It fetches the baked field, builds the
- * stage inside the curtain the server painted, runs the 7.5 s film, and then *always* puts
- * everything back: the nodes it added, the inline styles it set on the page's own elements,
- * the GSAP globals it registered. It resolves `"done"` when the film reached its last frame
- * and `"skipped"` when the visitor (or their settings) cut it short, and it never rejects —
- * a film that throws is a film that traps the visitor behind a sheet of paper.
+ * `play(host, opts)` is the whole contract. It builds the stage inside the curtain the server
+ * painted, fetches the two baked artifacts, runs the 9.0 s film, and then always puts back what
+ * it touched: the nodes it added, the inline styles it set on the page's own elements, the
+ * shadow it put on the input. It resolves `"done"` when the film reached the page and
+ * `"skipped"` when the visitor (or their settings) cut it short, and it never rejects — a film
+ * that throws is a film that traps the visitor behind a sheet of paper.
  *
  * The host is not this module's to remove: `IntroCurtain` paints it, adopts it, and drops it
  * once this promise settles. Everything here lives under one `.intro` div inside it, which is
  * what makes the teardown a single `remove()`.
  *
- * The page's furniture is hidden here rather than in CSS, and it is the only thing that hides
- * it: the handoff fades in the *real* header, title block and input at the same geometry the
- * film morphed to, so what the visitor sees resolve is the page itself and not a picture of
- * it. This file is therefore the sole owner of those elements' inline `opacity`, and every
- * value it sets is restored from a recorded prior value, not assumed to have been empty.
+ * **The page is never hidden.** The curtain is already opaque paper and already covers the
+ * workspace, so the film paints its dark table over the curtain rather than over the page, and
+ * the page's own header, headline and input stay in the DOM, at their real geometry, the whole
+ * time. That is what makes the handoff a *swap* rather than a reveal: the film's rule and
+ * headline are named for a View Transition, and the real h1 and a hairline over the input's
+ * border are given the same names in the transition's update callback, so the browser animates
+ * one into the other. The page is the thing that was behind the film all along.
+ *
+ * **Two ways to finish, one frame.** A completed film and a skip converge on
+ * `applyFinalFrame()`: the stage is removed, the curtain cleared, the page named for the
+ * swap. `runHandoff` is therefore idempotent, and `skip()` is a jump to the last frame rather
+ * than a cut away from it.
  */
-
-import { gsap } from "gsap";
 
 import "./intro.css";
 
-import { buildScene, type Scene } from "./scene";
-import { T, buildTimeline, type PageRefs, type TimelineHandle } from "./timeline";
-import { parseField } from "./types";
+import { createFoley, type Foley } from "./sound";
+import { buildScreen, type FilmData, type FilmScreen } from "./screen";
+import { buildTimeline, T, TOTAL_SECONDS, type TimelineHandle } from "./timeline";
+import { parseCaption, parseDots, type Caption, type DotField } from "./types";
 
 export type PlayResult = "done" | "skipped";
 
 export interface PlayOptions {
-  reduced: boolean;
+  /**
+   * A replay. The session gate decided to run the film again from the visitor's own key, so
+   * this module reads and writes no storage — it never does, in either case.
+   */
+  forced?: boolean;
+  /** Called at the instant playback actually begins. Never called on a skip. */
+  onStart?: () => void;
 }
 
-/** The only network request the film makes. */
-const FIELD_URL = "/intro/field.json";
+/** The two requests the film makes. Both are same-origin static files. */
+const CAPTION_URL = "/intro/caption.json";
+const DOTS_URL = "/intro/dots.bin";
 
-/**
- * The host is the sheet `layout.tsx` painted before any JavaScript ran, and it is opaque
- * paper so that the first frame of a first visit is never the workspace. The film's own
- * stage covers exactly the same rect with the same paper, so from the moment the paper
- * starts to lift, the host's sheet is a second opaque layer in front of the page — and the
- * page is the thing the handoff is revealing. Clearing it there (and only there: the set is
- * pinned to the paper fade, so every frame before it keeps the pre-paint sheet) is what lets
- * the real header, headline and input come through. The prior inline value is put back on
- * teardown like every other property this file touches.
- */
-const CURTAIN_CLEAR_AT = T("pullback", 0.36);
+/** How long the film waits for its webfonts before it starts anyway. */
+const FONT_WAIT_MS = 340;
 
-/** How long the film waits for webfonts before it builds anyway. */
-const FONT_TIMEOUT_MS = 1200;
+/** A hard stop on the artifact fetch: the film plays without dots rather than wait. */
+const DATA_TIMEOUT_MS = 2400;
 
-/** An inline style this module set and must put back exactly as it found it. */
-type Restore = {
-  el: HTMLElement;
-  opacity: string;
-  pointerEvents: string | null;
-  /** Whether the element had a `style` attribute before the film touched it. */
-  hadStyle: boolean;
+/** The add-field's id. `HoldingsPane` owns it; this is a read, not a dependency. */
+const INPUT_ID = "add-holding";
+
+/** The page's real headline, the handoff's other half. */
+const PAGE_HEADLINE = "h1.title";
+
+/** View Transition names. Both halves of each pair must carry the same name. */
+const RULE_NAME = "intro-rule";
+const HEADLINE_NAME = "intro-headline";
+
+/** The foley score, placed on the same clock as the timeline. */
+const FOLEY_SCORE = {
+  humStart: T("dark", 0.04),
+  humEnd: T("handoff", 0.2),
+  whirStart: T("scan", 0),
+  whirEnd: T("scan", 1),
+  clickAt: T("lights", 0.02),
 };
 
 function prefersReducedMotion(): boolean {
@@ -67,177 +81,122 @@ function prefersReducedMotion(): boolean {
   );
 }
 
-export async function play(host: HTMLElement, opts: PlayOptions): Promise<PlayResult> {
-  // Belt and braces: the session gate already refuses to start the film for a visitor who
-  // asked for less motion, but a film that only respects that in one place is one refactor
-  // away from not respecting it at all.
-  if (opts.reduced || prefersReducedMotion()) return "skipped";
-
-  const restores: Restore[] = [];
-  const curtainBackground = host.style.backgroundColor;
-  const curtainHadStyle = host.hasAttribute("style");
-  let scene: Scene | null = null;
-  let handle: TimelineHandle | null = null;
-  let grain: gsap.core.Tween | null = null;
-  let settled = false;
-  let skipRequested = false;
-  let outcome: PlayResult = "skipped";
-  let resolveOutcome: (result: PlayResult) => void = () => {};
-  const finished = new Promise<PlayResult>((resolve) => {
-    resolveOutcome = resolve;
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, Math.max(0, ms));
   });
+}
 
-  const input = document.querySelector<HTMLElement>("#add-holding");
-  const page: PageRefs = {
-    header: document.querySelector<HTMLElement>(".site-header"),
-    eyebrow: document.querySelector<HTMLElement>(".eyebrow"),
-    h1: document.querySelector<HTMLElement>("h1.title"),
-    subtitle: document.querySelector<HTMLElement>("p.subtitle"),
-    form: input,
-    footer: document.querySelector<HTMLElement>(".site-footer"),
-  };
-
-  const hide = (el: HTMLElement | null, lockPointer: boolean): void => {
-    if (el === null) return;
-    restores.push({
-      el,
-      opacity: el.style.opacity,
-      pointerEvents: lockPointer ? el.style.pointerEvents : null,
-      hadStyle: el.hasAttribute("style"),
-    });
-    el.style.opacity = "0";
-    if (lockPointer) el.style.pointerEvents = "none";
-  };
-
-  const finish = (result: PlayResult): void => {
-    if (settled) return;
-    settled = true;
-    resolveOutcome(result);
-  };
-
-  const teardown = (): void => {
-    window.removeEventListener("keydown", onKey, true);
-    grain?.kill();
-    grain = null;
-    // Kill the timeline before touching inline styles, so GSAP cannot write over the restore.
-    handle?.destroy();
-    handle = null;
-    scene?.root.remove();
-    scene = null;
-    // The sheet the layout painted goes back exactly as it was: the host outlives the film
-    // (its owner removes it), and a transparent sheet left behind would flash the page on a
-    // re-render or a second attempt.
-    host.style.backgroundColor = curtainBackground;
-    if (!curtainHadStyle && host.getAttribute("style") === "")
-      host.removeAttribute("style");
-    for (let index = restores.length - 1; index >= 0; index -= 1) {
-      const item = restores[index]!;
-      if (item.opacity === "") item.el.style.removeProperty("opacity");
-      else item.el.style.opacity = item.opacity;
-      if (item.pointerEvents !== null) {
-        if (item.pointerEvents === "") item.el.style.removeProperty("pointer-events");
-        else item.el.style.pointerEvents = item.pointerEvents;
-      }
-      // An element with no `style` attribute to begin with must go back to having none: an
-      // empty `style=""` left behind is a visible diff in the markup and a lie about state.
-      if (!item.hadStyle && item.el.getAttribute("style") === "")
-        item.el.removeAttribute("style");
-    }
-    restores.length = 0;
-  };
-
-  function skip(): void {
-    if (settled) return;
-    skipRequested = true;
-    if (handle !== null) {
-      // Not a cut: the same timeline, run to its last frame in one frame, so the page arrives
-      // already revealed instead of appearing out of a half-drawn field.
-      handle.tl.pause();
-      handle.tl.progress(1);
-    }
-    finish("skipped");
-  }
-
-  function onKey(event: KeyboardEvent): void {
-    if (event.metaKey || event.ctrlKey || event.altKey) return;
-    if (event.key !== "Escape" && event.key !== " " && event.key !== "Spacebar") return;
-    event.preventDefault();
-    skip();
-  }
-
-  // The page is hidden before anything is built, so no frame of it can appear under the film.
-  hide(page.header, true);
-  hide(page.eyebrow, false);
-  hide(page.h1, false);
-  hide(page.subtitle, false);
-  hide(page.form, false);
-  hide(page.footer, true);
-
+/**
+ * Wait for the film's webfonts, but never past `deadline`.
+ *
+ * The letters are the bake's letters (see `screen.ts`), and a fallback face would be the wrong
+ * width for the dots, so this is worth a few hundred milliseconds. It is not worth the film not
+ * starting: past the deadline the stage is built and the film runs with whatever the browser
+ * has, which is also slower than the dark beat that follows.
+ */
+async function untilFonts(deadline: number): Promise<void> {
   try {
-    // Fonts first: SplitText must break the headline where the real font breaks it, and the
-    // card's mono ticker must not reflow mid-animation. A slow font must not hold the film.
-    if (document.fonts) {
-      await Promise.race([
-        document.fonts.ready,
-        new Promise<void>((resolve) => window.setTimeout(resolve, FONT_TIMEOUT_MS)),
-      ]);
-    }
-    if (!host.isConnected) {
-      finish("skipped");
-      outcome = "skipped";
-      return outcome;
-    }
-
-    const response = await fetch(FIELD_URL);
-    if (!response.ok) throw new Error(`field ${response.status}`);
-    const field = parseField(await response.json());
-    if (settled) {
-      // Skipped while the field was in flight: nothing was built, nothing to undo.
-      outcome = await finished;
-      return outcome;
-    }
-
-    const built = buildScene(host, field, input);
-    scene = built;
-
-    handle = buildTimeline(built, page, {
-      onFinish: () => {
-        if (!skipRequested) finish("done");
-      },
-    });
-
-    // The host's sheet and the film's paper are the same paper; from the frame the film
-    // starts lifting its own, the host's must stop covering the page it is revealing.
-    handle.tl.set(host, { backgroundColor: "transparent" }, CURTAIN_CLEAR_AT);
-
-    // The grain drifts, so the paper is never quite still. It moves by exactly one tile and
-    // repeats, which loops seamlessly and stays on the compositor.
-    grain = gsap.to(built.grain, {
-      x: 180,
-      y: 180,
-      duration: 7,
-      repeat: -1,
-      ease: "none",
-    });
-
-    built.skip.addEventListener("click", skip);
-    window.addEventListener("keydown", onKey, true);
-    handle.tl.play();
-
-    outcome = await finished;
-    return outcome;
+    if (!("fonts" in document)) return;
+    const remaining = (): number => Math.max(0, deadline - performance.now());
+    const race = (work: Promise<unknown>): Promise<unknown> =>
+      Promise.race([work.catch(() => undefined), delay(remaining())]);
+    await race(document.fonts.ready);
+    await race(document.fonts.load('800 48px "Intro Newsreader"'));
   } catch {
-    // A failed chunk, a malformed field, a browser that will not paint: the page comes back
-    // and the visitor never knows a film was attempted.
-    outcome = "skipped";
-    return outcome;
-  } finally {
-    const focusable =
-      outcome === "done" && (scene?.metrics.hasInput ?? false) ? input : null;
-    teardown();
-    // Only a film that reached its handoff gets to place the caret: a skip must not steal
-    // focus from wherever the visitor already was.
-    if (focusable !== null && focusable.isConnected) focusWhenReachable(focusable);
+    /* a font that will not load is a font the film does without */
+  }
+}
+
+async function fetchText(url: string, signal: AbortSignal): Promise<string | null> {
+  try {
+    const response = await fetch(url, { signal, credentials: "same-origin" });
+    if (!response.ok) return null;
+    return await response.text();
+  } catch {
+    return null;
+  }
+}
+
+async function fetchBinary(
+  url: string,
+  signal: AbortSignal,
+): Promise<ArrayBuffer | null> {
+  try {
+    const response = await fetch(url, { signal, credentials: "same-origin" });
+    if (!response.ok) return null;
+    return await response.arrayBuffer();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch and parse both artifacts. Every failure is local: a missing caption is a captionless
+ * film, a corrupt `dots.bin` is a dotless one, and neither is an error the visitor sees.
+ */
+async function loadFilm(signal: AbortSignal): Promise<FilmData> {
+  const [captionText, dotsBuffer] = await Promise.all([
+    fetchText(CAPTION_URL, signal),
+    fetchBinary(DOTS_URL, signal),
+  ]);
+
+  let caption: Caption | null = null;
+  let dots: DotField | null = null;
+
+  if (captionText !== null) {
+    try {
+      caption = parseCaption(JSON.parse(captionText) as unknown);
+    } catch {
+      caption = null;
+    }
+  }
+  if (dotsBuffer !== null) {
+    try {
+      dots = parseDots(dotsBuffer);
+    } catch {
+      dots = null;
+    }
+  }
+
+  return { caption, dots };
+}
+
+/** A hairline over the input's bottom border: the rule's half of the View Transition pair. */
+function makeUnderline(input: HTMLElement): HTMLDivElement | null {
+  const rect = input.getBoundingClientRect();
+  if (rect.width < 8 || rect.height < 8) return null;
+  const line = document.createElement("div");
+  line.setAttribute("aria-hidden", "true");
+  line.dataset.introHandoff = "rule";
+  line.style.cssText = [
+    "position:fixed",
+    `left:${rect.left.toFixed(2)}px`,
+    `top:${(rect.bottom - 1).toFixed(2)}px`,
+    `width:${rect.width.toFixed(2)}px`,
+    "height:2px",
+    "border-radius:1px",
+    "background:var(--rule-strong, currentColor)",
+    "pointer-events:none",
+    "z-index:70",
+  ].join(";");
+  document.body.appendChild(line);
+  return line;
+}
+
+/** Remove any handoff artifact a previous play left behind (a doubled name aborts a swap). */
+function resetStaleArtifacts(): void {
+  try {
+    for (const node of document.querySelectorAll<HTMLElement>("[data-intro-handoff]")) {
+      node.remove();
+    }
+    for (const element of document.querySelectorAll<HTMLElement>(
+      `${PAGE_HEADLINE}, #${INPUT_ID}`,
+    )) {
+      element.style.removeProperty("view-transition-name");
+    }
+  } catch {
+    /* an unnameable page is a handoff without a morph, not a broken film */
   }
 }
 
@@ -245,9 +204,9 @@ export async function play(host: HTMLElement, opts: PlayOptions): Promise<PlayRe
  * Focus the add field, the way the last line of the brief asks.
  *
  * `IntroCurtain` holds the page `inert` while the film runs and lifts it when this promise
- * settles, which means a focus call made from in here is dropped on the floor on the first
- * try. One zero-delay retry lands after the mount has released the page; the guard means a
- * visitor who has already clicked elsewhere is never dragged away from it.
+ * settles, which means a focus call made from in here is dropped on the floor on the first try.
+ * One zero-delay retry lands after the curtain's release; the guard means a visitor who has
+ * already clicked elsewhere is never dragged away from it.
  */
 function focusWhenReachable(input: HTMLElement): void {
   const attempt = (): void => {
@@ -256,4 +215,329 @@ function focusWhenReachable(input: HTMLElement): void {
   };
   attempt();
   if (document.activeElement !== input) window.setTimeout(attempt, 0);
+}
+
+/**
+ * Run the film.
+ *
+ * The visitor's own way out — a click, a tap, a key, a wheel, a scroll — is `requestSkip`,
+ * which jumps the score to its last frame. Nothing in this function rejects and nothing in it
+ * removes `host`; both are the contract with `IntroCurtain`.
+ */
+export async function play(
+  host: HTMLElement,
+  opts: PlayOptions = {},
+): Promise<PlayResult> {
+  if (typeof window === "undefined" || typeof document === "undefined") return "skipped";
+  // Belt and braces: the session gate already refuses to start the film for a visitor who asked
+  // for less motion, but a film that only respects that in one place is one refactor away from
+  // not respecting it at all.
+  if (prefersReducedMotion()) return "skipped";
+  if (!host.isConnected) return "skipped";
+
+  resetStaleArtifacts();
+
+  const abort = new AbortController();
+  const data = loadFilm(abort.signal);
+  const dataTimer = window.setTimeout(() => abort.abort(), DATA_TIMEOUT_MS);
+
+  let screen: FilmScreen | null = null;
+  let handle: TimelineHandle | null = null;
+  let foley: Foley | null = null;
+  let skipped = false;
+  let disposed = false;
+  let result: PlayResult | null = null;
+  let resolvePlay: (value: PlayResult) => void = () => {};
+  const finished = new Promise<PlayResult>((resolve) => {
+    resolvePlay = resolve;
+  });
+  const settle = (value: PlayResult): void => {
+    if (result !== null) return;
+    result = value;
+    resolvePlay(value);
+  };
+
+  // ---- the handoff ---------------------------------------------------------
+  let handoffStarted = false;
+  let handoffSettled = false;
+  let handoffAnimating = false;
+  let handoffTimer = 0;
+  let pageHeadline: HTMLElement | null = null;
+  let pageInput: HTMLElement | null = null;
+  let underlay: HTMLDivElement | null = null;
+
+  const cleanupHandoff = (): void => {
+    handoffAnimating = false;
+    if (underlay !== null) {
+      underlay.remove();
+      underlay = null;
+    }
+    try {
+      pageHeadline?.style.removeProperty("view-transition-name");
+    } catch {
+      /* the page moved on */
+    }
+  };
+
+  const applyFinalFrame = (): void => {
+    if (disposed) return;
+    try {
+      screen?.destroy();
+    } catch {
+      /* a stage that failed to build has nothing to remove */
+    }
+    screen = null;
+    // The curtain was opaque paper; the last frame of the film is the same paper, so clearing
+    // its background is what lets the real page through underneath the (now empty) host.
+    try {
+      host.style.backgroundColor = "transparent";
+    } catch {
+      /* best effort */
+    }
+  };
+
+  const finishHandoff = (): void => {
+    if (handoffSettled) return;
+    handoffSettled = true;
+    settle(skipped ? "skipped" : "done");
+  };
+
+  const prepareHandoff = (): void => {
+    try {
+      screen?.refs.rule.style.setProperty("view-transition-name", RULE_NAME);
+      screen?.refs.headline.style.setProperty("view-transition-name", HEADLINE_NAME);
+    } catch {
+      /* a browser that refuses the name simply does not morph */
+    }
+  };
+
+  const runHandoff = (): void => {
+    if (handoffStarted) return;
+    handoffStarted = true;
+    pageHeadline = document.querySelector<HTMLElement>(PAGE_HEADLINE);
+    pageInput = document.getElementById(INPUT_ID);
+
+    const headline = pageHeadline;
+    const input = pageInput;
+    if (
+      skipped ||
+      headline === null ||
+      input === null ||
+      typeof document.startViewTransition !== "function"
+    ) {
+      applyFinalFrame();
+      finishHandoff();
+      return;
+    }
+
+    try {
+      handoffAnimating = true;
+      const transition = document.startViewTransition(() => {
+        applyFinalFrame();
+        try {
+          underlay = makeUnderline(input);
+          if (underlay !== null) underlay.style.viewTransitionName = RULE_NAME;
+          headline.style.viewTransitionName = HEADLINE_NAME;
+        } catch {
+          /* the morph degrades to the crossfade */
+        }
+        // The names must survive until the new snapshot is taken, so this transition is
+        // finished by its `ready` promise, not here.
+      });
+      void transition.ready.then(finishHandoff).catch(finishHandoff);
+      void transition.finished.then(cleanupHandoff).catch(cleanupHandoff);
+      handoffTimer = window.setTimeout(() => {
+        cleanupHandoff();
+        applyFinalFrame();
+        finishHandoff();
+      }, 1600);
+    } catch {
+      applyFinalFrame();
+      finishHandoff();
+    }
+  };
+
+  // ---- the visitor's way out ----------------------------------------------
+  const listeners: Array<() => void> = [];
+  const listen = (
+    target: EventTarget,
+    type: string,
+    handler: (event: Event) => void,
+    options?: AddEventListenerOptions,
+  ): void => {
+    target.addEventListener(type, handler, options);
+    listeners.push(() => target.removeEventListener(type, handler, options));
+  };
+
+  const isStageControl = (event: Event): boolean => {
+    const target = event.target;
+    return target instanceof Element && target.closest(".intro__tools") !== null;
+  };
+
+  const requestSkip = (): void => {
+    if (skipped || disposed) return;
+    skipped = true;
+    try {
+      if (handle !== null) handle.skip();
+      else {
+        applyFinalFrame();
+        finishHandoff();
+      }
+    } catch {
+      try {
+        applyFinalFrame();
+      } catch {
+        /* nothing left to remove */
+      }
+      finishHandoff();
+    }
+    // If the score was not there to run its cues, the final frame still has to land.
+    window.setTimeout(() => {
+      if (!handoffStarted) {
+        applyFinalFrame();
+        finishHandoff();
+      }
+    }, 120);
+  };
+
+  const onPointer = (event: Event): void => {
+    if (isStageControl(event)) return;
+    requestSkip();
+  };
+
+  const onKey = (event: Event): void => {
+    if (!(event instanceof KeyboardEvent)) return;
+    if (event.key === "Escape") {
+      requestSkip();
+      return;
+    }
+    // Enter/Space on the Skip or sound button belong to that button, not to the film.
+    if (isStageControl(event)) return;
+    if (
+      event.key === "Tab" ||
+      event.key === "Shift" ||
+      event.key === "Control" ||
+      event.key === "Alt" ||
+      event.key === "Meta"
+    ) {
+      return;
+    }
+    requestSkip();
+  };
+
+  let guard = 0;
+
+  try {
+    await untilFonts(performance.now() + FONT_WAIT_MS);
+    if (disposed) return "skipped";
+
+    screen = buildScreen(host);
+    const stage = screen;
+    foley = createFoley(FOLEY_SCORE);
+
+    handle = buildTimeline(stage, {
+      prepareHandoff,
+      runHandoff,
+      onFinish: () => {
+        if (skipped) {
+          applyFinalFrame();
+          finishHandoff();
+          return;
+        }
+        // The handoff has its own promise; this is the safety net for a browser that never
+        // fired the View Transition's `ready`.
+        if (!handoffStarted) runHandoff();
+        settle("done");
+      },
+      cue: (name) => {
+        foley?.hit(name);
+      },
+    });
+
+    listen(document, "pointerdown", onPointer, { capture: true, passive: true });
+    listen(document, "keydown", onKey, { capture: true });
+    listen(window, "wheel", onPointer, { passive: true });
+    listen(window, "touchstart", onPointer, { passive: true });
+    listen(document, "scroll", onPointer, { capture: true, passive: true });
+    listen(stage.refs.skip, "click", requestSkip);
+    listen(stage.refs.sound, "click", (event) => {
+      event.stopPropagation();
+      if (foley === null) return;
+      const on = foley.toggle(handle?.timeline.time() ?? 0);
+      stage.setSound(on);
+    });
+
+    void data.then((payload) => {
+      window.clearTimeout(dataTimer);
+      if (disposed || screen !== stage) return;
+      try {
+        stage.attach(payload);
+      } catch {
+        /* a broken artifact is a film without dots, not a broken film */
+      }
+    });
+
+    guard = window.setTimeout(
+      () => {
+        applyFinalFrame();
+        finishHandoff();
+      },
+      (TOTAL_SECONDS + 2.5) * 1000,
+    );
+
+    opts.onStart?.();
+    handle.play();
+    await finished;
+  } catch {
+    try {
+      applyFinalFrame();
+    } catch {
+      /* nothing left to remove */
+    }
+    settle("skipped");
+  } finally {
+    disposed = true;
+    window.clearTimeout(dataTimer);
+    window.clearTimeout(guard);
+    abort.abort();
+    for (const removeListener of listeners.splice(0)) {
+      try {
+        removeListener();
+      } catch {
+        /* the target went away */
+      }
+    }
+    try {
+      handle?.destroy();
+    } catch {
+      /* already dead */
+    }
+    handle = null;
+    try {
+      screen?.destroy();
+    } catch {
+      /* already dead */
+    }
+    screen = null;
+    try {
+      foley?.destroy();
+    } catch {
+      /* already closed */
+    }
+    foley = null;
+    if (handoffTimer) window.clearTimeout(handoffTimer);
+    // A transition in flight owns its own names and underlay; removing them before its new
+    // snapshot would abort the swap, so it finishes the job itself.
+    if (!handoffAnimating) cleanupHandoff();
+  }
+
+  // The closure above is the only writer of `result`; TypeScript cannot see through it.
+  const outcome = (result as PlayResult | null) ?? "skipped";
+  const input = pageInput;
+  if (input !== null) {
+    if (outcome === "done" || document.activeElement === document.body) {
+      focusWhenReachable(input);
+    }
+  }
+  return outcome;
 }

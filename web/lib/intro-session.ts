@@ -1,89 +1,130 @@
 /**
- * When the first-visit intro plays — one decision, in one place, testable without a browser.
+ * When the first-visit film plays — one decision, in one place, testable without a browser.
  *
- * The intro is a 7.5-second film that explains the product. That is a good trade on a
- * first visit and a bad one on a refresh, so it plays at most **once per browser session**
- * and at most **once a day**, and it never plays at all for someone who asked for reduced
- * motion or who arrived on a link that already carries a portfolio.
+ * The film is nine seconds that explain the product. That is a good trade on a first visit
+ * and a bad one on a refresh, so the rule is **once per calendar day, per browser**: a
+ * visitor who comes back after lunch sees the site, and a visitor who comes back tomorrow
+ * sees the film again.
  *
  * Two marks implement it, both first-party, both local, neither transmitted anywhere:
  *
- * - `sessionStorage` — "this tab has already seen it". It dies with the tab, so a refresh,
- *   a back-button, and a second visit in the same tab all stay silent. This is the mark
- *   that answers *"do not play it again over and over"*.
- * - `localStorage` — "the last time it was shown". It survives the tab, so opening a
- *   fresh tab five minutes later does not replay the film. `COOLDOWN_MS` is how long that
- *   silence lasts; after it, a new session gets the film again. This is the mark that
- *   answers *"when may we show it again"*.
+ * - `sessionStorage` — "this session has already decided". It dies with the tab, so a
+ *   refresh, a back-button and a second visit in the same tab all stay silent, and a
+ *   session that runs past midnight does not replay.
+ * - `localStorage` — the **local date** of the last play, `YYYY-MM-DD`. A date, not a
+ *   timestamp: a rolling 24 hours would mean a visit at 11 pm blocks the next evening,
+ *   which is not what "once a day" means to anyone. It is also less data than a timestamp.
  *
- * Neither contains an identifier, a portfolio, or anything derived from the visitor: one
- * key holds a boolean, the other a single timestamp. They are the only two values the site
- * ever writes to storage, and `web/app/privacy/page.tsx` says so.
+ * Neither contains an identifier, a portfolio, or anything derived from the visitor. They
+ * are the only two values the site ever writes to storage, and `web/app/privacy/page.tsx`
+ * says so.
  *
- * The decision is a pure function of the marks, the clock, and the URL, so the matrix in
- * `intro-session.test.ts` is the specification. The browser half (`read`, `mark`) is a thin
+ * The decision is a pure function of the marks, the date, the URL and the tab's visibility,
+ * so the matrix in `intro-session.test.ts` is the specification. The browser half is a thin
  * adapter that must never throw — Safari in private mode and a locked-down profile both
- * make storage throw on access, and a privacy setting must degrade to "show it once per
- * tab" rather than to a blank page.
+ * make storage throw on access, and a privacy setting must degrade to "no film" rather than
+ * to a blank page.
  */
 
-/** How long a visitor goes without seeing the film again, at most once a day. */
-export const COOLDOWN_MS = 24 * 60 * 60 * 1000;
-
+export const DAY_KEY = "unpackfund.intro.day";
 export const SESSION_KEY = "unpackfund.intro.session";
-export const LAST_KEY = "unpackfund.intro.last";
+/** The rolling-timestamp key this replaced. Deleted on first run. */
+export const LEGACY_LAST_KEY = "unpackfund.intro.last";
 
 /** Why the film is, or is not, playing. Returned so the mount can log nothing and test everything. */
 export type IntroDecision =
-  | { play: true; reason: "first-visit" | "cooldown-elapsed" | "forced" }
+  | { play: true; reason: "first-visit" | "new-day" | "forced"; writeSession: boolean }
   | {
       play: false;
-      reason: "seen-this-session" | "cooldown" | "reduced-motion" | "deep-link" | "off";
+      reason:
+        | "off"
+        | "reduced-motion"
+        | "deep-link"
+        | "hidden"
+        | "seen-this-session"
+        | "storage-blocked"
+        | "already-today";
     };
 
 export interface IntroSnapshot {
-  /** `null` when the tab has not seen the film, or when storage is unavailable. */
-  session: number | null;
-  /** `null` when the film has never been shown on this browser, or storage is unavailable. */
-  last: number | null;
-  now: number;
+  /** The raw session mark, or `null`. */
+  session: string | null;
+  /** The raw stored day, or `null`. */
+  day: string | null;
+  /** Today, as the visitor's own calendar sees it. */
+  today: string;
   /** The visitor asked the operating system for less motion. */
   reduced: boolean;
   /** The URL already carries a portfolio, so this is a return visit with something to see. */
   deepLink: boolean;
-  /** `?intro=force` / `?intro=off`, for review. Both are ignored by the decision below. */
+  /** The tab was in the background when the page loaded. */
+  hidden: boolean;
+  /** `?intro=force` / `?intro=off`, for review. */
   knob: "force" | "off" | null;
+  /** `false` when localStorage throws on read — a private window, a locked-down profile. */
+  storageReadable: boolean;
 }
 
 /**
  * The whole policy, with no browser in it.
  *
- * Order matters and is deliberate: an explicit `off`, a deep link, and a reduced-motion
- * preference each beat a forced replay, because each of them is the visitor speaking and
- * `force` is only ever a reviewer's convenience.
+ * The order is the brief's, and each step is there for a reason:
+ *
+ * 1. The bypasses come first and write nothing, so a visitor who asked for less motion, or
+ *    who arrived on a link with a portfolio in it, does not burn the day's one showing.
+ * 2. A session that has already decided stays decided — that is what stops a refresh.
+ * 3. The session mark is written *before* the day is read, so two tabs opened at the same
+ *    moment cannot both play. The caller undoes it if the film never starts.
+ * 4. Unreadable storage means no film, not a film on every page load.
+ * 5. The day is the only thing that decides between "today" and "not today".
+ *
+ * A forced play (the review knob, or the U key) reads and writes neither key.
  */
 export function decideIntro(snapshot: IntroSnapshot): IntroDecision {
-  const { session, last, now, reduced, deepLink, knob } = snapshot;
+  const { session, day, today, reduced, deepLink, hidden, knob, storageReadable } =
+    snapshot;
 
   if (knob === "off") return { play: false, reason: "off" };
   if (reduced) return { play: false, reason: "reduced-motion" };
   if (deepLink) return { play: false, reason: "deep-link" };
+  if (hidden) return { play: false, reason: "hidden" };
 
-  if (knob === "force") return { play: true, reason: "forced" };
+  if (knob === "force") return { play: true, reason: "forced", writeSession: false };
 
   if (session !== null) return { play: false, reason: "seen-this-session" };
 
-  if (last === null) return { play: true, reason: "first-visit" };
+  if (!storageReadable) return { play: false, reason: "storage-blocked" };
 
-  if (now - last >= COOLDOWN_MS) return { play: true, reason: "cooldown-elapsed" };
+  if (day === today) return { play: false, reason: "already-today" };
 
-  return { play: false, reason: "cooldown" };
+  return {
+    play: true,
+    reason: day === null ? "first-visit" : "new-day",
+    writeSession: true,
+  };
+}
+
+/**
+ * Today as the visitor's own calendar sees it, `YYYY-MM-DD`.
+ *
+ * Built from the local getters, never `toISOString()`: that is UTC, and a visitor in
+ * Auckland at 9 am would be told it is still yesterday, so the film would play twice in
+ * one of their days and not at all in another.
+ */
+export function localDay(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 /** A storage that may throw on every touch, which is exactly what a private window is. */
 export interface SafeStore {
   get(key: string): string | null;
   set(key: string, value: string): void;
+  remove(key: string): void;
+  /** `false` when the store throws on a read, which is what a private window does. */
+  readable(): boolean;
 }
 
 export function safeStore(read: () => Storage | undefined): SafeStore {
@@ -102,20 +143,25 @@ export function safeStore(read: () => Storage | undefined): SafeStore {
         // A full quota or a private window: the film simply plays once per tab instead.
       }
     },
+    remove(key) {
+      try {
+        read()?.removeItem(key);
+      } catch {
+        // Nothing to do; the mark was never written.
+      }
+    },
+    readable() {
+      try {
+        const store = read();
+        if (!store) return false;
+        // A read is the only way to tell a blocked store from an empty one.
+        store.getItem(DAY_KEY);
+        return true;
+      } catch {
+        return false;
+      }
+    },
   };
-}
-
-/**
- * Read the marks as a number of milliseconds, or `null`.
- *
- * A value that is not a finite positive number is treated as absent rather than as "now":
- * a corrupt value must not silence the film forever, and it must not make it play on a
- * reload either, so `Number.parseFloat` plus `Number.isFinite` is the whole guard.
- */
-export function parseStamp(raw: string | null): number | null {
-  if (raw === null) return null;
-  const value = Number.parseFloat(raw);
-  return Number.isFinite(value) && value > 0 ? value : null;
 }
 
 /** The URL the visitor landed on decides whether a portfolio is already in view. */
@@ -131,11 +177,23 @@ export function readKnob(search: string): "force" | "off" | null {
   return value === "force" || value === "off" ? value : null;
 }
 
-/** Write both marks. Called once, after the film has finished or been skipped. */
-export function markSeen(
-  stores: { session: SafeStore; last: SafeStore },
-  now: number,
-): void {
-  stores.session.set(SESSION_KEY, String(now));
-  stores.last.set(LAST_KEY, String(now));
+/** Step 3 of the decision: this session has now decided, whatever it decided. */
+export function markSession(store: SafeStore): void {
+  store.set(SESSION_KEY, "1");
+}
+
+/** Undo step 3 when the film never started, so a slow load does not burn the session. */
+export function clearSession(store: SafeStore): void {
+  store.remove(SESSION_KEY);
+}
+
+/** Written when playback starts, not when it ends: a visitor who closes the tab halfway
+ * through has still seen it, and replaying it on the next load is what this prevents. */
+export function markDay(store: SafeStore, today: string): void {
+  store.set(DAY_KEY, today);
+}
+
+/** The rolling-timestamp key from the previous build. One line, once, on first run. */
+export function clearLegacy(store: SafeStore): void {
+  store.remove(LEGACY_LAST_KEY);
 }

@@ -1,442 +1,432 @@
 /**
- * Where everything sits, in world units (0,0 = the centre of the stage).
+ * The film's geometry: two word boxes, the rule they collapse onto, the axis the scan
+ * travels, and the twelve labels' anchors — all as numbers, computed once from the viewport.
  *
- * The field is packed as *units*: a single company, or a shared company's two halves tied
- * together as one double-dot. Units are seeded by area on a phyllotaxis spiral — which is
- * already a dense disc — grouped into eleven patches, then relaxed until nothing overlaps.
- * That is what makes it read as a packed bubble field rather than a scatter, and it is
- * deterministic: no `Math.random`, no clock, same field on every load.
+ * Everything here is pure and viewport-in. The screen turns it into inline styles and the
+ * renderer turns it into clip-space uniforms; both need to agree to the pixel, because the
+ * dots *are* the letters after the scan passes, and a two-pixel disagreement reads as a
+ * mistake rather than as a style.
  *
- * Ported from the approved animatic unchanged in structure. Four things are retuned for the
- * real field's scale (1,004 dots where the animatic drew 120), and nothing else:
+ * Two of the numbers carry a decision rather than a measurement:
  *
- * 1. A dot's radius comes from its filed weight on a square-root scale, clamped to
- *    2.2–11 world units — small enough that 1,004 of them read as a stipple rather than a
- *    pile of bubbles.
- * 2. The unit gap and the separation padding scale with the radii instead of being the
- *    animatic's fixed 4 and 3 units, which were a third of a 12-unit dot and would swallow
- *    a 3-unit one.
- * 3. The fit into the stage is capped at 2.4× (the animatic used 3.6×) because the packed
- *    field is proportionally smaller when every dot is smaller.
- * 4. The ledger line's tick radius follows the line's own step, so 504 ticks read as a
- *    ruled line rather than as 504 overlapping discs.
- *
- * The relaxation keeps the animatic's two terms — separate every overlapping pair, pull each
- * unit 1% back toward its patch centre — but runs them in sequence rather than interleaved;
- * see the comment at the loop for why. It compares squared distances before taking a square
- * root, because 504 units is a quarter of a million pair tests per pass.
+ * - The word width is 60% of the frame on a landscape viewport and 80% on a portrait one.
+ *   That is the brief, and it is also the only way "VTI" survives a 390 px phone at a legible
+ *   size: at 60% the caps are 8% of the height, at 80% they are 13%.
+ * - The scan runs left→right on a landscape frame and top→bottom on a portrait one. The axis
+ *   is one value, because the mask, the bar and the label thresholds must all agree about it.
  */
 
-import { clusterOf, type DotSpec } from "./types";
+import {
+  RECORD_FLOATS,
+  dotRecord,
+  type Caption,
+  type CaptionMetrics,
+  type DotField,
+} from "./types";
 
-export type Vec = { x: number; y: number };
-export type Packed = { x: number; y: number; r: number };
-
-export type MergeGeometry = {
-  a: Vec;
-  b: Vec;
-  mid: Vec;
-  rA: number;
-  rB: number;
-  /** The fused dot's radius: the two areas added, not the two radii. */
-  r: number;
-};
-
-/** One slot on the compressed ledger line: a surviving company, one tick. */
-export type LineSlot = { x: number; y: number; r: number };
-
-export type FieldGeometry = {
-  /** Pre-merge home of every dot, indexed like the dot list. */
-  dots: Packed[];
-  /** Per shared pair: where each half sits, and where they fuse. */
-  pairs: MergeGeometry[];
-  /** The compressed ledger line: one slot per surviving dot. */
-  line: LineSlot[];
-  lineWidth: number;
-  /** Index into `dots` of the survivor each line slot belongs to. */
-  lineOwner: number[];
-  /** Which line slot the pencil circle loops. */
-  circleSlot: number;
-  /** The seam each card spills from. */
-  seamA: Vec;
-  seamB: Vec;
-  cardA: Vec;
-  cardB: Vec;
-  clusterCenters: Vec[];
-  bounds: { minX: number; minY: number; maxX: number; maxY: number };
-};
-
-/** The eleven patches the field is seeded into. They no longer mean a sector. */
-export const CLUSTER_COUNT = 11;
-
-/** A dot's radius, in world units, before the field is fitted to the stage. */
-export const DOT_MIN_R = 2.2;
-export const DOT_MAX_R = 11;
-
-const GOLDEN = Math.PI * (3 - Math.sqrt(5));
-
-export const clamp = (value: number, low: number, high: number): number =>
-  Math.min(high, Math.max(low, value));
-
-/** Area-proportional radius from filed weight, with a floor and a ceiling. */
-function radiusFor(weightBp: number, maxWeight: number): number {
-  const share = Math.sqrt(clamp(weightBp / maxWeight, 0, 1));
-  return DOT_MIN_R + (DOT_MAX_R - DOT_MIN_R) * share;
+/** A rectangle in viewport CSS pixels. */
+export interface Rect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 }
 
-/** Half the distance between a shared pair's two centres. */
-function gap(ra: number, rb: number): number {
-  return (ra + rb) * 0.55 + 1.2;
+/** A word, placed: its em box, the font size that fills it, and its metrics in px. */
+export interface WordBox extends Rect {
+  /** The font size the box was sized for. */
+  fontSize: number;
+  /** Advance width in em units (measured when the font is present, else baked). */
+  advance: number;
+  /** Height of the em box above the baseline, in px. */
+  ascent: number;
+  /** Depth below the baseline, in px. */
+  descent: number;
 }
 
-type Unit = {
-  /** Dot indices this unit covers: one, or a shared pair's two halves. */
-  dots: number[];
-  /** Bounding radius, used for separation. */
-  r: number;
-  /** Area-equivalent radius, used for spacing. */
-  area: number;
-  cluster: number;
-  x: number;
-  y: number;
-  /** Patch centre this unit belongs to, for the cohesion term. */
-  home: Vec;
+/** Where the twelve mono labels sit, and when the bar reaches them. */
+export interface LabelAnchor {
+  ticker: string;
+  name: string;
+  left: number;
+  top: number;
+  /** Scan progress (0..1) at which the bar passes this label's company. */
+  threshold: number;
+}
+
+/** Everything the stage needs to place itself, for one viewport. */
+export interface FilmLayout {
+  viewport: { width: number; height: number };
+  portrait: boolean;
+  a: WordBox;
+  b: WordBox;
+  rule: Rect;
+  /** The axis the scan travels: x on landscape, y on portrait. */
+  axis: "x" | "y";
+  /** Where the scan starts and ends, as percentages of the frame along `axis`. */
+  scanStartPct: number;
+  scanEndPct: number;
+  /** The same start and length in px, for turning a label's position into a threshold. */
+  scanStartPx: number;
+  scanExtentPx: number;
+}
+
+export interface Viewport {
+  width: number;
+  height: number;
+}
+
+/**
+ * The bake's metrics for a bake that is not here yet.
+ *
+ * They are Newsreader's proportions, not a measurement of the artifact: a film that is
+ * waiting for `/intro/caption.json` must still lay out at the right size, and when the
+ * artifact arrives the metrics it brings replace these. `rule.y` deliberately puts the rule
+ * below the baseline, which is where the collapse is asked to land.
+ */
+export const FALLBACK_METRICS: CaptionMetrics = {
+  unitsPerEm: 1000,
+  a: { advance: 1.93, ascender: 0.77, descender: 0.23 },
+  b: { advance: 2.41, ascender: 0.77, descender: 0.23 },
+  rule: { width: 2.6, y: 0.62 },
 };
 
-export function layoutField(
-  dots: readonly DotSpec[],
-  pairs: ReadonlyArray<readonly [number, number]>,
-  portrait: boolean,
-): FieldGeometry {
-  const maxWeight = Math.max(...dots.map((dot) => dot.weightBp), 1);
-  const radii = dots.map((dot) => radiusFor(dot.weightBp, maxWeight));
+/** The word's target width, as a share of the frame. */
+const WORD_WIDTH = { landscape: 0.6, portrait: 0.8 } as const;
+/** B's font size relative to A's. */
+const B_SCALE = { landscape: 0.54, portrait: 0.66 } as const;
+/** A's em-box top, as a share of the frame height. */
+const A_TOP = { landscape: 0.36, portrait: 0.18 } as const;
+/** Space between A's box and B's box. */
+const AB_GAP = { landscape: 0.055, portrait: 0.065 } as const;
+/** The scan's bleed past the word box, on each side. */
+const SCAN_BLEED = { landscape: 0.05, portrait: 0.035 } as const;
+/** A label's assumed box, in px, for choosing its side of the dot. */
+const LABEL_WIDTH = 56;
+const LABEL_HEIGHT = 17;
+/** Labels per frame: the brief's twelve, and the six a phone can hold without collisions. */
+const LABELS_LANDSCAPE = 12;
+const LABELS_PORTRAIT = 6;
 
-  // ---- units: a lone company, or two halves of one shared company.
-  const pairOf = new Map<number, number>();
-  pairs.forEach(([a, b], index) => {
-    pairOf.set(a, index);
-    pairOf.set(b, index);
-  });
-  const used = new Set<number>();
-  const units: Unit[] = [];
-  dots.forEach((dot, index) => {
-    if (used.has(index)) return;
-    const partner = pairOf.get(index);
-    if (partner === undefined) {
-      units.push({
-        dots: [index],
-        r: radii[index]!,
-        area: radii[index]!,
-        cluster: dot.cluster,
-        x: 0,
-        y: 0,
-        home: { x: 0, y: 0 },
-      });
-      used.add(index);
-      return;
-    }
-    const pair = pairs[partner]!;
-    const other = pair[0] === index ? pair[1] : pair[0];
-    const ra = radii[index]!;
-    const rb = radii[other]!;
-    // Area-equivalent radius of the two together, then widened for the gap.
-    const area = Math.sqrt(ra * ra + rb * rb);
-    units.push({
-      dots: [index, other],
-      r: gap(ra, rb) + Math.max(ra, rb),
-      area,
-      cluster: dot.cluster,
-      x: 0,
-      y: 0,
-      home: { x: 0, y: 0 },
-    });
-    used.add(index);
-    used.add(other);
-  });
+/** A word's metrics in px at a given font size, with the descender's sign normalised. */
+export function wordBoxMetrics(
+  metrics: { advance: number; ascender: number; descender: number },
+  fontSize: number,
+): { advance: number; ascent: number; descent: number } {
+  const advance =
+    Number.isFinite(metrics.advance) && metrics.advance > 0.2 ? metrics.advance : 1.9;
+  const ascentRaw = Number.isFinite(metrics.ascender) ? Math.abs(metrics.ascender) : 0.75;
+  const descentRaw = Number.isFinite(metrics.descender)
+    ? Math.abs(metrics.descender)
+    : 0.25;
+  const ascent = (ascentRaw > 0.1 ? ascentRaw : 0.75) * fontSize;
+  const descent = (descentRaw > 0.02 ? descentRaw : 0.25) * fontSize;
+  return { advance, ascent, descent };
+}
 
-  // ---- patch centres, biggest patch in the middle.
-  const byCluster = new Map<number, Unit[]>();
-  units.forEach((unit) => {
-    const list = byCluster.get(unit.cluster) ?? [];
-    list.push(unit);
-    byCluster.set(unit.cluster, list);
-  });
-  const clusterIds = [...byCluster.keys()].sort((a, b) => {
-    const areaOf = (id: number): number =>
-      (byCluster.get(id) ?? []).reduce((sum, unit) => sum + unit.area * unit.area, 0);
-    return areaOf(b) - areaOf(a);
-  });
+/** Portrait is decided by the frame, not by a media query: the film owns its own stage. */
+export function isPortrait(viewport: Viewport): boolean {
+  return viewport.height > viewport.width * 1.05;
+}
 
-  const centres: Vec[] = [];
-  let clusterArea = 0;
-  clusterIds.forEach((id, rank) => {
-    const list = byCluster.get(id)!;
-    const area = list.reduce((sum, unit) => sum + unit.area * unit.area * Math.PI, 0);
-    const offset = clusterArea + area / 2;
-    const radius = Math.sqrt(offset / Math.PI) * 1.12;
-    const angle = rank * GOLDEN;
-    centres.push({ x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
-    clusterArea += area;
-    list.forEach((unit) => {
-      unit.home = centres[centres.length - 1]!;
-    });
-  });
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
-  // A wide frame wants a wide field: squash the seed, then let the relaxation pull toward
-  // the squashed centres, so the dots stay perfectly round.
-  const squash = portrait ? 0.96 : 0.66;
-  centres.forEach((centre) => {
-    centre.y *= squash;
-  });
+/**
+ * Place the two words, the rule, and the scan, for one viewport.
+ *
+ * `advance` is the measured advance of each word (em units). The film measures it from the
+ * real font once it is loaded, because the baked number is only as good as the font stack
+ * that rendered it; the baked metrics remain the fallback and the source of `ascender`,
+ * `descender` and the rule.
+ */
+export function layoutFilm(
+  viewport: Viewport,
+  metrics: CaptionMetrics = FALLBACK_METRICS,
+  advance: { a?: number; b?: number } = {},
+): FilmLayout {
+  const width = Math.max(240, viewport.width);
+  const height = Math.max(320, viewport.height);
+  const portrait = isPortrait({ width, height });
 
-  // ---- seed each patch's units on their own phyllotaxis spiral.
-  clusterIds.forEach((_id, clusterRank) => {
-    const list = byCluster.get(clusterIds[clusterRank]!)!;
-    const centre = centres[clusterRank]!;
-    list.sort((a, b) => b.area - a.area);
-    let placed = 0;
-    list.forEach((unit, index) => {
-      const offset = placed + (unit.area * unit.area * Math.PI) / 2;
-      const radius = Math.sqrt(offset / Math.PI) * 1.03;
-      const angle = index * GOLDEN + clusterRank;
-      unit.x = centre.x + Math.cos(angle) * radius;
-      unit.y = centre.y + Math.sin(angle) * radius;
-      unit.home = { x: centre.x, y: centre.y };
-      placed += unit.area * unit.area * Math.PI;
-    });
-  });
-
-  // ---- relax.
-  //
-  // The animatic interleaved the two terms — separate every overlapping pair, then pull each
-  // unit 1% back toward its patch centre — for a fixed 320 passes. At 1,004 dots that
-  // equilibrium still leaves 200 pairs interpenetrating by up to 11 world units: the pull is
-  // permanent, so the field settles *into* overlap instead of out of it. Two interpenetrating
-  // dots at 22% ink read as one darker dot, which would quietly lie about how many positions
-  // the field holds, so the terms are run in sequence instead: settle (both terms, so the
-  // patches keep their shape) and then separate until nothing overlaps. Same algorithm, same
-  // shape, no interpenetration.
-  const PAD = 1.2;
-  const separate = (): void => {
-    for (let i = 0; i < units.length; i += 1) {
-      const p = units[i]!;
-      for (let j = i + 1; j < units.length; j += 1) {
-        const q = units[j]!;
-        const dx = q.x - p.x;
-        const dy = q.y - p.y;
-        const min = p.r + q.r + PAD;
-        const spread = dx * dx + dy * dy;
-        // Squared comparison first: 126,756 pairs a pass, and almost none of them are near.
-        if (spread >= min * min) continue;
-        const distance = Math.sqrt(spread) || 0.001;
-        const push = (min - distance) * 0.5;
-        const ux = dx / distance;
-        const uy = dy / distance;
-        p.x -= ux * push;
-        p.y -= uy * push;
-        q.x += ux * push;
-        q.y += uy * push;
-      }
-    }
-  };
-  const PULL = 0.01;
-  for (let pass = 0; pass < 100; pass += 1) {
-    separate();
-    for (const unit of units) {
-      unit.x += (unit.home.x - unit.x) * PULL;
-      unit.y += (unit.home.y - unit.y) * PULL;
-    }
-  }
-  for (let pass = 0; pass < 260; pass += 1) {
-    separate();
-  }
-
-  // ---- from units back to dots.
-  const packed: Packed[] = new Array<Packed>(dots.length);
-  const mergeGeometry: MergeGeometry[] = pairs.map(() => ({
-    a: { x: 0, y: 0 },
-    b: { x: 0, y: 0 },
-    mid: { x: 0, y: 0 },
-    rA: 0,
-    rB: 0,
-    r: 0,
-  }));
-  units.forEach((unit) => {
-    if (unit.dots.length === 1) {
-      const index = unit.dots[0]!;
-      packed[index] = { x: unit.x, y: unit.y, r: radii[index]! };
-      return;
-    }
-    const [a, b] = unit.dots as [number, number];
-    const pairIndex = pairOf.get(a)!;
-    const ra = radii[a]!;
-    const rb = radii[b]!;
-    const d = gap(ra, rb);
-    packed[a] = { x: unit.x - d, y: unit.y, r: ra };
-    packed[b] = { x: unit.x + d, y: unit.y, r: rb };
-    mergeGeometry[pairIndex] = {
-      a: { x: unit.x - d, y: unit.y },
-      b: { x: unit.x + d, y: unit.y },
-      mid: { x: unit.x, y: unit.y },
-      rA: ra,
-      rB: rb,
-      r: Math.sqrt(ra * ra + rb * rb),
-    };
-  });
-
-  // ---- fit into the stage. One uniform scale, so a dot's area is still its share of the
-  // two funds added together.
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-  for (const point of packed) {
-    if (point.x - point.r < minX) minX = point.x - point.r;
-    if (point.x + point.r > maxX) maxX = point.x + point.r;
-    if (point.y - point.r < minY) minY = point.y - point.r;
-    if (point.y + point.r > maxY) maxY = point.y + point.r;
-  }
-  // The caption owns the bottom-left of the stage, so the field sits high enough to leave it
-  // the corner.
-  const region = portrait
-    ? { w: 820, h: 800, cx: 0, cy: -96 }
-    : { w: 1180, h: 630, cx: 0, cy: -60 };
-  const scale = Math.min(
-    region.w / Math.max(1, maxX - minX),
-    region.h / Math.max(1, maxY - minY),
-    2.4,
+  const aMetrics = wordBoxMetrics(
+    { ...metrics.a, advance: advance.a ?? metrics.a.advance },
+    1,
   );
-  const midX = (minX + maxX) / 2;
-  const midY = (minY + maxY) / 2;
-  const toRegion = (v: Vec): Vec => ({
-    x: region.cx + (v.x - midX) * scale,
-    y: region.cy + (v.y - midY) * scale,
-  });
-  packed.forEach((point) => {
-    const next = toRegion(point);
-    point.x = next.x;
-    point.y = next.y;
-    point.r *= scale;
-  });
-  mergeGeometry.forEach((merge) => {
-    merge.a = toRegion(merge.a);
-    merge.b = toRegion(merge.b);
-    merge.mid = toRegion(merge.mid);
-    merge.rA *= scale;
-    merge.rB *= scale;
-    merge.r *= scale;
-  });
+  const bMetrics = wordBoxMetrics(
+    { ...metrics.b, advance: advance.b ?? metrics.b.advance },
+    1,
+  );
 
-  // ---- the ledger line: every surviving company, one tick. Order is patch then weight, so
-  // the line reads as a printed register, not a ranking.
-  const partnerOf = new Map<number, readonly [number, number]>();
-  pairs.forEach(([a, b]) => {
-    partnerOf.set(a, [a, b]);
-    partnerOf.set(b, [a, b]);
-  });
-  const survivors: number[] = [];
-  const seen = new Set<number>();
-  dots.forEach((_dot, index) => {
-    const couple = partnerOf.get(index);
-    if (!couple) {
-      survivors.push(index);
-      return;
-    }
-    const [a, b] = couple;
-    if (!seen.has(a)) {
-      seen.add(a);
-      survivors.push(a);
-    }
-    seen.add(b);
-  });
-  survivors.sort((i, j) => {
-    const si = dots[i]!.cluster;
-    const sj = dots[j]!.cluster;
-    if (si !== sj) return si - sj;
-    return dots[j]!.weightBp - dots[i]!.weightBp;
-  });
-  const lineWidth = portrait ? 560 : 900;
-  const step = survivors.length > 1 ? lineWidth / (survivors.length - 1) : 0;
-  // A tick is a hairline lifted off the rule the ledger draws, not a disc: 504 of them land
-  // on 900 world units, which is under two unit apart.
-  const tickRadius = clamp(step * 0.85, 0.7, 2.6);
-  const line: LineSlot[] = survivors.map((_owner, index) => ({
-    x: -lineWidth / 2 + index * step,
-    y: 0,
-    r: tickRadius,
-  }));
+  // 60% of the frame, unless that would be tall enough to eat the second word.
+  const targetWidth = width * WORD_WIDTH[portrait ? "portrait" : "landscape"];
+  const heightCap = height * (portrait ? 0.36 : 0.5);
+  const aFont = Math.max(
+    16,
+    Math.min(targetWidth / aMetrics.advance, heightCap / aMetrics.ascent),
+  );
+  const aWidth = aMetrics.advance * aFont;
+  const aBoxHeight = (aMetrics.ascent + aMetrics.descent) * aFont;
+  const aBoxTop = portrait
+    ? height * A_TOP.portrait
+    : Math.max(height * 0.06, height * A_TOP.landscape - aBoxHeight / 2);
 
-  // The pencil circles the heaviest company on the line.
-  let circleSlot = 0;
-  let biggest = -1;
-  survivors.forEach((owner, slot) => {
-    const weight = dots[owner]!.weightBp;
-    if (weight > biggest) {
-      biggest = weight;
-      circleSlot = slot;
-    }
-  });
+  const a: WordBox = {
+    left: (width - aWidth) / 2,
+    top: aBoxTop,
+    width: aWidth,
+    height: aBoxHeight,
+    fontSize: aFont,
+    advance: aMetrics.advance,
+    ascent: aMetrics.ascent * aFont,
+    descent: aMetrics.descent * aFont,
+  };
 
-  const cardA: Vec = portrait ? { x: 0, y: -240 } : { x: -170, y: 46 };
-  const cardB: Vec = portrait ? { x: 0, y: 30 } : { x: 316, y: 22 };
+  const bFont = aFont * B_SCALE[portrait ? "portrait" : "landscape"];
+  const bWidth = bMetrics.advance * bFont;
+  const b: WordBox = {
+    left: (width - bWidth) / 2,
+    top: a.top + a.height + height * AB_GAP[portrait ? "portrait" : "landscape"],
+    width: bWidth,
+    height: (bMetrics.ascent + bMetrics.descent) * bFont,
+    fontSize: bFont,
+    advance: bMetrics.advance,
+    ascent: bMetrics.ascent * bFont,
+    descent: bMetrics.descent * bFont,
+  };
+
+  // The rule, read literally from the bake: the origin is the ticker line's baseline's left
+  // edge, y down, so its y is an em value below that baseline. A value that would put the
+  // rule inside the letters (or off the frame) is treated as a bake defect, and the film's
+  // own line, under the second word, is used instead.
+  const baselineA = a.top + a.ascent;
+  const ruleWidth = metrics.rule.width * a.fontSize;
+  const ruleTop = baselineA + metrics.rule.y * a.fontSize;
+  const saneRule =
+    Number.isFinite(ruleTop) &&
+    Number.isFinite(ruleWidth) &&
+    ruleWidth > a.width * 0.2 &&
+    ruleWidth < a.width * 4 &&
+    ruleTop > a.top + a.height * 0.6 &&
+    ruleTop < height * 0.96;
+  // The rule is left-aligned with word A's origin, not centred: the renderer maps a dot's `rx`
+  // through `left + rx · fontSize`, so rx = 0 is word A's left edge and rx = rule.width is the
+  // far end of the line. `rule.width` equals `a.advance` (1.934 em), so the line is exactly as
+  // wide as the first word; centring it instead would put the DOM rule where the dots are not.
+  const rule: Rect = saneRule
+    ? { left: a.left, top: ruleTop, width: ruleWidth, height: 2 }
+    : {
+        left: a.left,
+        top: Math.min(height * 0.9, b.top + b.height + height * 0.06),
+        width: a.width * 1.1,
+        height: 2,
+      };
+
+  const axis: "x" | "y" = portrait ? "y" : "x";
+  const frameExtent = portrait ? height : width;
+  const bleed = frameExtent * SCAN_BLEED[portrait ? "portrait" : "landscape"];
+  const startPx = portrait ? a.top - bleed : a.left - bleed;
+  const endPx = portrait ? a.top + a.height + bleed : a.left + a.width + bleed;
 
   return {
-    dots: packed,
-    pairs: mergeGeometry,
-    line,
-    lineWidth,
-    lineOwner: survivors,
-    circleSlot,
-    seamA: { x: cardA.x, y: cardA.y },
-    seamB: { x: cardB.x, y: cardB.y },
-    cardA,
-    cardB,
-    clusterCenters: centres,
-    bounds: {
-      minX: toRegion({ x: minX, y: minY }).x,
-      minY: toRegion({ x: minX, y: minY }).y,
-      maxX: toRegion({ x: maxX, y: maxY }).x,
-      maxY: toRegion({ x: maxX, y: maxY }).y,
-    },
+    viewport: { width, height },
+    portrait,
+    a,
+    b,
+    rule,
+    axis,
+    scanStartPct: (startPx / frameExtent) * 100,
+    scanEndPct: (endPx / frameExtent) * 100,
+    scanStartPx: startPx,
+    scanExtentPx: Math.max(1, endPx - startPx),
   };
 }
 
 /**
- * Expand the baked companies into the field's dots: one per held position.
+ * The scan's position curve: fast at both ends, slow through the middle.
  *
- * This is the film's whole argument in one function. 504 companies, but 1,004 positions —
- * because 500 of them are held by both funds — so a shared company becomes two dots that the
- * merge beat fuses back into one. `totals.held` (1,004) is what the field starts as and
- * `totals.distinct` (504) is what survives it.
- *
- * The first dot of a pair is the one the first card spills, and it is the dot that carries
- * the company's label and the fused radius; the second arrives with the second card.
+ * The brief asks for a sweep that gets going, hangs over the companies long enough to read
+ * them, then leaves. Position `p = t + a·sin(2πt)/(2π)` has velocity `1 + a·cos(2πt)`:
+ * with `a = 0.82` it moves at 1.82× at the ends and 0.18× in the middle, and stays
+ * monotonic (velocity never reaches zero), so a counter driven from it never runs backwards.
  */
-export function expandCompanies(
-  companies: ReadonlyArray<{ k: "a" | "b" | "s"; w: number }>,
-  labels: ReadonlyMap<number, string>,
-): { dots: DotSpec[]; pairs: Array<[number, number]> } {
-  const dots: DotSpec[] = [];
-  const pairs: Array<[number, number]> = [];
-  companies.forEach((company, index) => {
-    const cluster = clusterOf(index);
-    if (company.k === "b") {
-      dots.push({ fund: 1, weightBp: company.w, shared: false, cluster, label: null });
-      return;
-    }
-    const label = labels.get(index) ?? null;
-    const first = dots.length;
-    dots.push({
-      fund: 0,
-      weightBp: company.w,
-      shared: company.k === "s",
-      cluster,
-      label,
-    });
-    if (company.k !== "s") return;
-    const second = dots.length;
-    dots.push({ fund: 1, weightBp: company.w, shared: true, cluster, label: null });
-    pairs.push([first, second]);
+export const SCAN_EASE_AMOUNT = 0.82;
+
+export function scanEase(t: number): number {
+  const time = clamp(t, 0, 1);
+  const p = time + (SCAN_EASE_AMOUNT / (Math.PI * 2)) * Math.sin(Math.PI * 2 * time);
+  return clamp(p, 0, 1);
+}
+
+/** The inverse of `scanEase`, used to place a cue where the bar reaches a given position. */
+export function timeForScan(p: number): number {
+  const target = clamp(p, 0, 1);
+  if (target <= 0) return 0;
+  if (target >= 1) return 1;
+  let low = 0;
+  let high = 1;
+  for (let step = 0; step < 40; step += 1) {
+    const mid = (low + high) / 2;
+    if (scanEase(mid) < target) low = mid;
+    else high = mid;
+  }
+  return (low + high) / 2;
+}
+
+/**
+ * Keep at most `limit` companies, choosing the heaviest — a phone's field is capped at 2,000
+ * dots by the brief, and dropping the smallest companies is the only cap that still draws the
+ * shape of the fund.
+ *
+ * `indexMap` says where an original record went: `-1` for one that was dropped. The labels
+ * are joined to records by their original index, so the map is what keeps them attached after
+ * a cap; the top of the weight distribution is always kept, so no label is ever dropped.
+ */
+export function capField(
+  field: DotField,
+  limit: number,
+): { field: DotField; indexMap: Int32Array } {
+  const indexMap = new Int32Array(field.count).fill(-1);
+  if (limit <= 0 || field.count <= limit) {
+    for (let index = 0; index < field.count; index += 1) indexMap[index] = index;
+    return { field, indexMap };
+  }
+
+  const order = Array.from({ length: field.count }, (_, index) => index);
+  order.sort((x, y) => {
+    const wx = field.raw[x * RECORD_FLOATS] ?? 0;
+    const wy = field.raw[y * RECORD_FLOATS] ?? 0;
+    return wy - wx || x - y;
   });
-  return { dots, pairs };
+  const keep = order.slice(0, limit).sort((x, y) => x - y);
+
+  const raw = new Float32Array(limit * RECORD_FLOATS);
+  keep.forEach((from, into) => {
+    raw.set(
+      field.raw.subarray(from * RECORD_FLOATS, from * RECORD_FLOATS + RECORD_FLOATS),
+      into * RECORD_FLOATS,
+    );
+    indexMap[from] = into;
+  });
+  return { field: { count: limit, raw }, indexMap };
+}
+
+/** A dot's screen position, from its record and the word box it sits in. */
+export function dotPoint(
+  record: { vx: number; vy: number },
+  word: WordBox,
+): { x: number; y: number } {
+  return {
+    x: word.left + record.vx * word.fontSize,
+    y: word.top + word.ascent + record.vy * word.fontSize,
+  };
+}
+
+/**
+ * How many mono labels a frame can carry.
+ *
+ * Twelve is the brief's number and it works on a laptop, where the word is 864 px wide. A
+ * phone gives the word 312 px, and twelve 56 px labels then overlap each other and the
+ * letters; six — the six heaviest, which is the order the bake already sorts them in — stay
+ * legible and still read as "the largest companies". The lead's call, 2026-11-03.
+ */
+export function labelBudget(portrait: boolean): number {
+  return portrait ? LABELS_PORTRAIT : LABELS_LANDSCAPE;
+}
+
+/**
+ * Where each label is printed, and when the bar reaches it.
+ *
+ * The exact join is the bake's `index` (the record's place in `dots.bin`). The rank match is
+ * the guard for a bake that predates that field: both sequences are sorted by weight, so the
+ * n-th heaviest label is put on the n-th heaviest record. It is an approximation, which is
+ * why the exact join is used whenever it is present.
+ */
+export function labelAnchors(
+  field: DotField,
+  caption: Caption,
+  layout: FilmLayout,
+): LabelAnchor[] {
+  if (field.count === 0 || caption.labels.length === 0) return [];
+
+  const exact = caption.labels.every(
+    (label) => label.index !== undefined && label.index >= 0 && label.index < field.count,
+  );
+
+  let recordFor: (labelIndex: number) => number;
+  if (exact) {
+    recordFor = (labelIndex) => caption.labels[labelIndex]?.index ?? -1;
+  } else {
+    const byWeight = caption.labels
+      .map((label, labelIndex) => ({ labelIndex, weight: label.weight }))
+      .sort((x, y) => y.weight - x.weight || x.labelIndex - y.labelIndex);
+    const ranked = Array.from({ length: field.count }, (_, index) => index).sort(
+      (x, y) => {
+        const wx = field.raw[x * RECORD_FLOATS] ?? 0;
+        const wy = field.raw[y * RECORD_FLOATS] ?? 0;
+        return wy - wx || x - y;
+      },
+    );
+    const assignment = new Map<number, number>();
+    byWeight.forEach((entry, rank) => {
+      const record = ranked[rank];
+      if (record !== undefined && !assignment.has(entry.labelIndex)) {
+        assignment.set(entry.labelIndex, record);
+      }
+    });
+    recordFor = (labelIndex) => assignment.get(labelIndex) ?? -1;
+  }
+
+  const { width, height } = layout.viewport;
+  const anchors: LabelAnchor[] = [];
+  // The bake sorts labels by weight, so the budget takes the heaviest ones.
+  caption.labels.slice(0, labelBudget(layout.portrait)).forEach((label, labelIndex) => {
+    const recordIndex = recordFor(labelIndex);
+    if (recordIndex < 0) return;
+    const record = dotRecord(field.raw, recordIndex);
+    if (record === null) return;
+    const point = dotPoint(record, layout.a);
+    const along = layout.axis === "x" ? point.x : point.y;
+    const threshold = clamp((along - layout.scanStartPx) / layout.scanExtentPx, 0, 1);
+
+    const right = point.x + 9;
+    const fitsRight = right + LABEL_WIDTH <= width - 10;
+    const left = clamp(
+      fitsRight ? right : point.x - 9 - LABEL_WIDTH,
+      10,
+      width - LABEL_WIDTH - 10,
+    );
+    const top = clamp(point.y - LABEL_HEIGHT / 2, 10, height - LABEL_HEIGHT - 10);
+    anchors.push({ ticker: label.ticker, name: label.name, left, top, threshold });
+  });
+  return anchors;
+}
+
+/**
+ * The dot the `hold` beat winks at: the heaviest company at the right-hand edge of the word,
+ * so the wink happens at the edge of the composition rather than in the middle of it.
+ *
+ * `null` when there is no field, which is a film without dots — the caller then places its
+ * wink against the word box instead.
+ */
+export function edgeDot(
+  field: DotField,
+  layout: FilmLayout,
+): { x: number; y: number; w: number } | null {
+  if (field.count === 0) return null;
+  const edge = layout.a.advance * 0.86;
+  let best: { x: number; y: number; w: number } | null = null;
+  let fallback: { x: number; y: number; w: number } | null = null;
+  for (let index = 0; index < field.count; index += 1) {
+    const record = dotRecord(field.raw, index);
+    if (record === null) continue;
+    const point = dotPoint(record, layout.a);
+    const candidate = { x: point.x, y: point.y, w: record.w };
+    if (fallback === null || record.w > fallback.w) fallback = candidate;
+    if (record.vx >= edge && record.vx <= layout.a.advance - 0.02) {
+      if (best === null || record.w > best.w) best = candidate;
+    }
+  }
+  return best ?? fallback;
 }
