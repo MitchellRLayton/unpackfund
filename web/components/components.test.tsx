@@ -58,14 +58,14 @@ function row(
 /**
  * The caption sentence for the geography channel, word for word as the operator's
  * instruction gives it: the mark and the edge are explained in text, so the colour is
- * reinforcement and a screen reader or a monochrome print loses nothing. The clause
- * about the two-letter code is not decoration: on Windows the flag *is* the code, and
- * a reader who sees letters where the caption promised a flag should not think the
- * page is broken.
+ * reinforcement and a screen reader or a monochrome print loses nothing. The sentence
+ * names the flag *and* the code because both are printed (operator, 2026-11-02): the
+ * flag is decoration derived from the code, the code is the fact, and the glyph is
+ * `aria-hidden` so a screen reader hears the code and nothing else.
  */
 const COUNTRY_SENTENCE =
-  " The flag beside a company is the domicile its holders' filings agree on by value;" +
-  " where a platform has no flag glyphs it shows the two-letter code instead." +
+  " The flag and two-letter code beside a company are the domicile its" +
+  " holders' filings agree on by value." +
   " The row's left edge repeats it in colour — blue for the United States, ochre for" +
   " developed markets elsewhere, a deeper ochre for emerging ones. A grey edge marks a" +
   " company with no market tier: solid where the domicile is known but is neither" +
@@ -364,22 +364,27 @@ describe("the country channel", () => {
     row("c_3", "Undecided Co", 0.02, 1),
   ];
 
-  it("marks exactly the rows the release answers for, and names the country aloud", () => {
+  it("marks exactly the rows the release answers for, with the flag and the code", () => {
     const { container } = render(<LedgerTable rows={rows} />);
     const tagged = [
       ...container.querySelectorAll<HTMLTableRowElement>("tbody tr[data-country]"),
     ];
     expect(tagged.map((tr) => tr.dataset.country)).toEqual(["US", "TW"]);
-    // The mark is a flag glyph, so it is not text a screen reader can read: the span
-    // carries the country's *name* as its accessible name instead, and the glyph itself
-    // is never announced (static-xray-frontend §8 — the meaning is never the picture).
-    expect(screen.getByRole("img", { name: "United States" })).toBeTruthy();
-    expect(screen.getByRole("img", { name: "Taiwan" })).toBeTruthy();
-    // The glyph is the code's two regional indicators, so the mark is derived and not
-    // a table entry: `US` → U+1F1FA U+1F1F8.
+    // The tag prints both: the flag, then the two-letter code. The glyph is the code's
+    // two regional indicators, so the mark is derived and not a table entry:
+    // `US` → U+1F1FA U+1F1F8, then a space, then the code itself.
     expect(container.querySelector(".country-tag")?.textContent).toBe(
-      "\u{1F1FA}\u{1F1F8}",
+      "\u{1F1FA}\u{1F1F8} US",
     );
+    // The flag is decoration — the code carries the fact — so the glyph is hidden from
+    // assistive tech and the code is what a screen reader hears (static-xray-frontend
+    // §8: the meaning is never the picture, and here the picture is a duplicate).
+    const flag = container.querySelector(".country-tag [aria-hidden='true']");
+    expect(flag?.textContent).toBe("\u{1F1FA}\u{1F1F8}");
+    expect(
+      container.querySelector(".country-tag")?.getAttribute("aria-label"),
+    ).toBeNull();
+    expect(screen.queryAllByRole("img")).toHaveLength(0);
     // The undecided company carries neither the attribute nor a tag.
     const untagged = [
       ...container.querySelectorAll<HTMLTableRowElement>("tbody tr"),
@@ -414,13 +419,17 @@ describe("the country channel", () => {
     expect(byName("Nestle")?.dataset.tier).toBe("DM");
     // The unclassified row keeps its mark; the unplaced row has none and says so in an
     // attribute the stylesheet turns into the dashed edge.
-    expect(screen.getByRole("img", { name: "Cayman Islands" })).toBeTruthy();
+    expect(byName("Cayman Holdco")?.querySelector(".country-tag")?.textContent).toBe(
+      "\u{1F1F0}\u{1F1FE} KY",
+    );
     expect(byName("Cayman Holdco")?.dataset.countryMissing).toBeUndefined();
     expect(byName("Glencore")?.dataset.tier).toBeUndefined();
     expect(byName("Glencore")?.dataset.countryMissing).toBe("true");
     expect(byName("Glencore")?.querySelector(".country-tag")).toBeNull();
     // Every classified row still carries its mark, whatever its tier.
-    expect(screen.getByRole("img", { name: "South Korea" })).toBeTruthy();
+    expect(
+      byName("Samsung Electronics")?.querySelector(".country-tag")?.textContent,
+    ).toBe("\u{1F1F0}\u{1F1F7} KR");
   });
 
   it("explains the tag and the edge in the caption, word for word", () => {
@@ -492,7 +501,9 @@ describe("the country channel", () => {
     expect(tr?.dataset.direct).toBe("true");
     expect(tr?.dataset.country).toBe("TW");
     expect(tr?.dataset.tier).toBe("EM");
-    expect(tr?.querySelector(".country-tag")?.getAttribute("aria-label")).toBe("Taiwan");
+    expect(tr?.querySelector(".country-tag")?.textContent?.trim()).toBe(
+      "\u{1F1F9}\u{1F1FC} TW",
+    );
     expect(container.querySelector("caption")?.textContent).toContain(COUNTRY_SENTENCE);
   });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { countryName, flagEmoji } from "./country-flag";
+import { flagEmoji } from "./country-flag";
 
 /**
  * The 86 codes the live release publishes (2026-11-02.7, `companies/countries.json`).
@@ -129,38 +129,5 @@ describe("flagEmoji", () => {
     for (const bad of ["", "U", "USA", "U1", "1S", "U S", "🇺🇸"]) {
       expect(flagEmoji(bad), bad).toBe("");
     }
-  });
-});
-
-describe("countryName", () => {
-  it("names the country, not the code", () => {
-    expect(countryName("US")).toBe("United States");
-    expect(countryName("GB")).toBe("United Kingdom");
-    expect(countryName("TW")).toBe("Taiwan");
-  });
-
-  it("names the awkward domiciles the release actually publishes", () => {
-    // These are the codes a hand-written table would get wrong or forget: the Crown
-    // dependencies, the Caribbean registrations and the territories.
-    expect(countryName("KY")).toBe("Cayman Islands");
-    expect(countryName("BM")).toBe("Bermuda");
-    expect(countryName("VG")).toBe("British Virgin Islands");
-    expect(countryName("GG")).toBe("Guernsey");
-    expect(countryName("JE")).toBe("Jersey");
-    expect(countryName("IM")).toBe("Isle of Man");
-    expect(countryName("MH")).toBe("Marshall Islands");
-    expect(countryName("PR")).toBe("Puerto Rico");
-    expect(countryName("GI")).toBe("Gibraltar");
-  });
-
-  it("falls back to the code when the browser has no name for it", () => {
-    // `Intl.DisplayNames` answers with the input for an unknown region; the label is
-    // then the code, which is what the tag showed before the flag existed.
-    expect(countryName("ZZ")).toBe("ZZ");
-  });
-
-  it("names every published code, so no row is labelled with a bare code", () => {
-    const unnamed = PUBLISHED_CODES.filter((code) => countryName(code) === code);
-    expect(unnamed).toEqual([]);
   });
 });
