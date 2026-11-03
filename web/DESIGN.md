@@ -52,6 +52,7 @@ Defined once in `app/globals.css` as custom properties, light and dark through `
 | `--country-us`                          | `#3b6ea5`                   | `#6c9bd2`                    | the row's left edge for a US-domiciled company   |
 | `--country-dm`                          | `#9c7025`                   | `#d9a54a`                    | the edge for a developed market outside the US   |
 | `--country-em`                          | `#4a3410`                   | `#8b6d40`                    | the edge for an emerging market                  |
+| `--country-other`                       | `#74746b`                   | `#b0b0a6`                    | the edge for the two states with no market tier  |
 | `--delta-up`                            | `#0a6f1c`                   | `#39ff14`                    | the `In VT` bracket above the benchmark (text)   |
 | `--delta-down`                          | `#c4002b`                   | `#ff4d5e`                    | the same bracket below the benchmark             |
 | `--pill-bg`                             | `#c5c6c7`                   | `#192028`                    | the current section's pill (20% off `--surface`) |
@@ -146,15 +147,21 @@ the row's second line. The rules:
   emerging stripe is itself 3.24:1 in the dark scheme. The operator then asked for a sign indicator instead, so the ink
   now answers to the arithmetic and the geography axis belongs to the 6 px edge alone — one channel per meaning, no
   shared cell, and no third tier to design.
-- **Absence means no answer.** A company the filings disagree about — or one held only by funds that file no country —
-  is absent from the map, and its row carries no edge and no tag. A default would be a guess. The caption sentence
-  appears only when a row actually carries a code, and a release that publishes no country object renders exactly as
-  it did before the channel existed: no tag, no edge, no sentence, no extra fetch.
-- **`OTHER` keeps the code and loses the edge.** A domicile neither provider calls developed or emerging — Cayman,
-  Bermuda, the British Virgin Islands, Argentina, Russia, frontier Europe — is 4.2% of the release's classified
-  companies. Colouring those as emerging would be an invention; leaving them indistinguishable from an undecided
-  company would hide a decision that was made. So the row keeps its two-letter code (text), gets
-  `data-tier="OTHER"` (no colour), and the caption says the edge stays blank where the country is neither.
+- **Absence still means no answer — but it now says so.** A company the filings disagree about, or one held only by
+  funds that file no country, is absent from the map: no tag, no tier, no invented domicile. What changed on
+  2026-11-02 is the _rendering_: the operator's report was a list of holdings that "don't have a color to them", and a
+  blank edge is indistinguishable from a rendering failure. So an unplaced row carries
+  `data-country-missing="true"` and draws the neutral ink **dashed** — same 6 px channel, same token as `OTHER`, so
+  the two unclassified states are one idea told apart by pattern rather than by a fourth colour. The caption sentence
+  still appears only when a row actually carries a code, and a release that publishes no country object renders
+  exactly as it did before the channel existed: no tag, no edge, no sentence, no extra fetch.
+- **`OTHER` keeps the code and takes the neutral edge.** A domicile neither provider calls developed or emerging —
+  Cayman, Bermuda, the British Virgin Islands, Argentina, Russia, frontier Europe — is 4.2% of the release's
+  classified companies. Colouring those as emerging would be an invention, so it is not a tier; leaving them
+  colourless hid a decision that _was_ made, so it is not nothing either. The row keeps its two-letter code (text),
+  gets `data-tier="OTHER"` and the **solid** neutral edge, and the caption names both neutral states. The tone is a
+  measured warm grey — 3.82:1 on the darkest row background, ΔE 29.8+ from every tier ink in both schemes, simulated
+  worst case — because a grey that sat closer to the ochre would read as a third ochre.
 - **The classification is a convention, and the convention is named** (`web/lib/country-tier.ts`). The edge answers
   "developed or emerging?", which is a publisher's judgement rather than a fact: FTSE, MSCI, S&P DJI and the IMF
   disagree about nine countries. This site follows the **FTSE Russell equity country classification as of 2026-11-02**,

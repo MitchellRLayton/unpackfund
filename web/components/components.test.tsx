@@ -63,9 +63,9 @@ function row(
 const COUNTRY_SENTENCE =
   " The country beside a company is the domicile its holders' filings agree on by value." +
   " The row's left edge repeats it in colour — blue for the United States, ochre for" +
-  " developed markets elsewhere, a deeper ochre for emerging ones — and stays blank" +
-  " where the filings do not agree, or where the country is neither developed nor" +
-  " emerging.";
+  " developed markets elsewhere, a deeper ochre for emerging ones. A grey edge marks a" +
+  " company with no market tier: solid where the domicile is known but is neither" +
+  " developed nor emerging, dashed where the filings do not agree on a country at all.";
 
 const vt: BenchmarkFacts = {
   ticker: "VT",
@@ -380,16 +380,19 @@ describe("the country channel", () => {
     expect(container.querySelectorAll(".country-tag")).toHaveLength(2);
   });
 
-  it("turns each domicile into its market tier, and leaves an unclassified one blank", () => {
+  it("turns each domicile into its market tier, and marks the two unplaced states", () => {
     // The third axis: the same country code the row tags becomes the edge's tier. Taiwan
-    // is emerging under FTSE (the IMF calls it advanced), the United States is its own
-    // tier, and a domicile with no market classification keeps the code but no edge —
-    // "not classified" and "not decided" stay distinguishable because only the undecided
-    // row loses the code as well.
+    // is emerging under FTSE (the IMF calls it advanced) and the United States is its own
+    // tier. The two states with no tier are distinguished by *pattern*, not by a fourth
+    // colour: a domicile in neither list (Cayman) keeps its code and takes the solid
+    // neutral edge, and a company whose filings do not agree (no country at all) loses the
+    // code and takes the dashed one. That distinction is what the operator asked for on
+    // 2026-11-02 — before it, both rendered as nothing, which read as a bug.
     const tiers = [
       row("c_5", "Cayman Holdco", 0.02, 0, null, "KY"),
       row("c_6", "Samsung Electronics", 0.03, 0, null, "KR"),
       row("c_7", "Nestle", 0.03, 0, null, "CH"),
+      row("c_8", "Glencore", 0.02, 0, null, undefined),
     ];
     const { container } = render(<LedgerTable rows={tiers} />);
     const byName = (name: string) =>
@@ -399,8 +402,14 @@ describe("the country channel", () => {
     expect(byName("Cayman Holdco")?.dataset.tier).toBe("OTHER");
     expect(byName("Samsung Electronics")?.dataset.tier).toBe("DM");
     expect(byName("Nestle")?.dataset.tier).toBe("DM");
-    // Every classified row still carries its code as text, whatever its tier.
+    // The unclassified row keeps its code; the unplaced row has none and says so in an
+    // attribute the stylesheet turns into the dashed edge.
     expect(screen.getByText("KY")).toBeTruthy();
+    expect(byName("Cayman Holdco")?.dataset.countryMissing).toBeUndefined();
+    expect(byName("Glencore")?.dataset.tier).toBeUndefined();
+    expect(byName("Glencore")?.dataset.countryMissing).toBe("true");
+    expect(byName("Glencore")?.querySelector(".country-tag")).toBeNull();
+    // Every classified row still carries its code as text, whatever its tier.
     expect(screen.getByText("KR")).toBeTruthy();
   });
 
