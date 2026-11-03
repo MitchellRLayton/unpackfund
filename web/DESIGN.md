@@ -82,22 +82,22 @@ meanings: the row _background_ keeps meaning position kind — a company the vis
 and geography is drawn as a **6 px left edge on the row's first cell** plus the country's **flag** in the row's second
 line. The rules:
 
-- **The mark is a glyph with a name, and the caption says what it means.** The tag is the country's flag emoji
-  (`🇺🇸`, `🇹🇼`), derived from the two-letter code — each letter becomes its Unicode "regional indicator" symbol, so
-  the mark needs no table, no fetch and no pipeline step, and a code that arrives tomorrow gets its flag for free
-  (`lib/country-flag.ts`). A flag is a picture, not text, so the meaning is carried three other ways: the span is
-  `role="img"` with the country's **name** as its accessible name (`Intl.DisplayNames`, so a screen reader says
-  "United States" once instead of announcing a flag and then a code), the caption gains one sentence saying what the
-  mark and the edge mean, and the edge repeats the domicile in colour so a reader scanning rows can find it at a
-  glance (rule 3). Blue is the United States, ochre for the developed markets elsewhere, and a deeper ochre for
-  emerging markets; that mapping is stated in the caption, never implied by hue.
-- **The code is the fallback, and it is the same two letters.** Windows' Segoe UI Emoji ships no flag glyphs, so
-  Chrome and Edge there draw the regional-indicator pair as the two boxed letters — which is exactly the code the tag
-  printed before the flag existed. That is why the operator chose this shape on 2026-11-02 ("🇺🇸 on Mac; US on
-  Windows — degrades to exactly the code"): the degradation is the old rendering, not a broken one, and the caption
-  names it so a Windows reader does not think the page failed. The trade-off is recorded rather than hidden: on a
-  platform that draws flags, the two-letter code is no longer visible text, so the accessible name and the caption
-  carry what the code used to carry.
+- **The tag prints the flag and the code, and the code is the fact.** The tag is `🇺🇸 US` — the country's flag, then
+  the two-letter code the tag has always printed. The flag is a _derivation_, not data: each letter of the code becomes
+  its Unicode "regional indicator" symbol, so the mark needs no table, no fetch and no pipeline step, and a code that
+  arrives tomorrow gets its flag for free (`lib/country-flag.ts`). The operator's instruction on 2026-11-02 was both
+  marks, not the flag instead of the code ("I do want the flag and the country code displayed for each, even with the
+  awkward screen reader behavior it is fine"), so the glyph is **decoration and the code is the fact**: the flag is set
+  `aria-hidden`, a screen reader hears `US` exactly as it did before the flag existed, and a monochrome print still
+  carries the code. The caption gains one sentence saying what the pair and the edge mean, and the edge repeats the
+  domicile in colour so a reader scanning rows can find it at a glance (rule 3). Blue is the United States, ochre for
+  the developed markets elsewhere, and a deeper ochre for emerging markets; that mapping is stated in the caption,
+  never implied by hue.
+- **On Windows the flag is the code twice, and that is the accepted cost.** Windows' Segoe UI Emoji ships no flag
+  glyphs, so Chrome and Edge there draw the regional-indicator pair as two boxed letters — a Windows tag reads `US US`.
+  The alternative was printing only what the platform can draw, which would make the tag's contents differ per
+  platform; printing both and letting the duplicate show is the honest version, and the caption names the pair rather
+  than promising a flag. Recorded, not hidden: this is the one rendering the operator accepted knowing it.
 - **A row can be both.** A stock held directly that also has a decided domicile keeps its purple background and gains
   the edge: `data-direct` and `data-tier` sit side by side on the same `<tr>`, and neither channel borrows the
   other's encoding. The stripe is an inset `box-shadow` on the first cell rather than a `tr` border, which is

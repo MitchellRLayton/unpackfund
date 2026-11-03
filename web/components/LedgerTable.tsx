@@ -15,7 +15,7 @@
 import { useMemo, useState } from "react";
 
 import { benchmarkDelta } from "@/lib/benchmark";
-import { countryName, flagEmoji } from "@/lib/country-flag";
+import { flagEmoji } from "@/lib/country-flag";
 import { TIER_AS_OF, tierOf } from "@/lib/country-tier";
 import { formatCount, formatShare, formatSignedShare } from "@/lib/format";
 import type { BenchmarkFacts, LedgerRow } from "@/lib/types";
@@ -152,9 +152,8 @@ export function LedgerTable({
               " than only through a fund."
             : ""}
           {anyCountry
-            ? " The flag beside a company is the domicile its holders' filings" +
-              " agree on by value; where a platform has no flag glyphs it shows the" +
-              " two-letter code instead. The row's left edge repeats it in colour — blue for" +
+            ? " The flag and two-letter code beside a company are the domicile its" +
+              " holders' filings agree on by value. The row's left edge repeats it in colour — blue for" +
               " the United States, ochre for developed markets elsewhere, a deeper" +
               " ochre for emerging ones. A grey edge marks a company with no market" +
               " tier: solid where the domicile is known but is neither developed nor" +
@@ -273,28 +272,25 @@ export function LedgerTable({
                         </span>
                       ))}
                     </span>
-                    {/* The mark is the country's flag, derived from its code: the two
-                      letters become regional indicators, and the platform's emoji font
-                      decides what that looks like. macOS, iOS and Android draw a flag;
-                      Windows' Segoe UI Emoji has no flag glyphs and draws the two boxed
-                      letters instead — which is exactly the code, so the fallback is
-                      what this tag printed before the flag existed (operator's choice,
-                      2026-11-02). `role="img"` plus the country's *name* means a screen
-                      reader says "United States" once, rather than announcing a flag
-                      and then a code; the name comes from `Intl.DisplayNames`, so there
-                      is no table to keep current. No tooltip — a meaning that lives
+                    {/* The mark is the country's flag beside its two-letter code. The
+                      flag is *derived* from that code — the two letters become regional
+                      indicators, and the platform's emoji font decides what that looks
+                      like: macOS, iOS and Android draw a flag, Windows' Segoe UI Emoji
+                      has no flag glyphs and draws the two boxed letters, so a Windows
+                      tag reads "US US". Both are printed (operator's choice, 2026-11-02:
+                      show the flag and the code, "even with the awkward screen reader
+                      behavior"), so the flag is decoration and the code is the fact: the
+                      glyph is `aria-hidden` and a screen reader hears the code, exactly
+                      as it did before the flag existed. No tooltip — a meaning that lives
                       behind hover is a meaning half the readers never get. A company the
                       filings do not agree on renders nothing here: no mark is the honest
                       answer, and a default would be a guess. */}
                     {row.country ? (
                       <>
                         {" "}
-                        <span
-                          className="country-tag"
-                          role="img"
-                          aria-label={countryName(row.country)}
-                        >
-                          {flagEmoji(row.country)}
+                        <span className="country-tag">
+                          <span aria-hidden="true">{flagEmoji(row.country)}</span>{" "}
+                          {row.country}
                         </span>
                       </>
                     ) : null}

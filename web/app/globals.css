@@ -884,20 +884,20 @@ th[aria-sort="ascending"] .sort-button::after {
   color: var(--muted);
 }
 
-/* The country mark: a flag glyph, boxed with a hairline so it reads as a tag rather
- * than as another word in the attribution. The glyph is the platform's, not ours — a
- * colour emoji ignores `color`, so `--muted` here only matters on the platforms that
- * draw the two-letter code instead (Windows), where it is the same ink the tag used
- * before the flag existed. `font-size` is a step up from the note's 0.78rem because a
- * flag is drawn smaller than its em box; `line-height` keeps the taller glyph inside
- * the row's fixed height, which is what stops the flag from moving the table. */
+/* The country mark: the flag and the two-letter code together, boxed with a hairline so
+ * the pair reads as a tag rather than as another word in the attribution. The flag is
+ * the platform's glyph, not ours, so a colour emoji ignores `color`; `--muted` is the
+ * ink of the code, which is the text a screen reader hears and the lettering Windows
+ * draws in place of the flag (a Windows tag reads "US US"). `font-size` is the note's
+ * own 0.78rem: a flag and two letters together are wider than either alone, and the
+ * row's height is fixed, so the pair has to sit on the same baseline as the note. */
 .country-tag {
   display: inline-block;
-  padding: 0 0.2rem;
+  padding: 0 0.22rem;
   border: 1px solid var(--rule);
   border-radius: 2px;
-  font-size: 0.85rem;
-  line-height: 1.25;
+  font-size: 0.78rem;
+  line-height: 1.3;
   letter-spacing: 0.02em;
   color: var(--muted);
   vertical-align: baseline;
