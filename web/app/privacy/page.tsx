@@ -53,11 +53,17 @@ export default function PrivacyPage() {
         feature works without a database. Closing the tab ends it.
       </p>
       <p>
-        The site sets no cookies, writes nothing to <code>localStorage</code> or{" "}
-        <code>sessionStorage</code>, keeps nothing in <code>IndexedDB</code>, and keeps no
-        server-side session. If you save a link, the portfolio is in that link, so treat a
-        shared link as you would a shared note: anyone with the link can see the portfolio
-        in it.
+        The site sets no cookies, keeps nothing in <code>IndexedDB</code>, and keeps no
+        server-side session. It writes exactly two values to your browser&rsquo;s local
+        storage, and both exist only to stop the first-visit animation from replaying: one
+        is a mark in <code>sessionStorage</code> that says this tab has already shown it
+        and disappears when you close the tab, and the other is the single timestamp of
+        the last time it played, kept in <code>localStorage</code> so that opening a new
+        tab does not start the animation again the same day. Neither contains an
+        identifier, a portfolio, or anything I can read, and neither is ever sent
+        anywhere. Clearing this site&rsquo;s data removes both. If you save a link, the
+        portfolio is in that link, so treat a shared link as you would a shared note:
+        anyone with the link can see the portfolio in it.
       </p>
 
       <h2 id="server">What the server sees</h2>

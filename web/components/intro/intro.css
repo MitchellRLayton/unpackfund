@@ -1,0 +1,547 @@
+/*
+ * The Unpacking — the film's own sheet.
+ *
+ * Everything is scoped under `.intro`, which is the one node the film adds to the curtain it
+ * is handed. Nothing here is a page style: if this file disappeared, the app would look
+ * exactly the same. The page's tokens are the film's palette (`--paper`, `--ink`,
+ * `--graphite`, `--rule`, `--alert`), so the film and the product are the same object seen
+ * twice rather than a screensaver in front of a website.
+ *
+ * The animatic's three local colours are kept as local aliases and given the app's values:
+ * the "string" is `--alert` (the only saturated colour in the film, and the only one that is
+ * allowed to mean something), the grid is ink at a hairline alpha, and the grain is an inline
+ * SVG noise tile so the paper has tooth without a network request.
+ *
+ * The dots are all ink (`--company` is a single alpha, never a hue). The two funds are told
+ * apart by a paper-coloured ring, which is a shape, not a colour, and the shared companies
+ * are told apart by nothing at all until they fuse — that is the beat.
+ */
+
+.intro {
+  --string: var(--alert);
+  --grid-line: color-mix(in oklch, var(--ink) 7%, transparent);
+  --company: color-mix(in oklch, var(--ink) 38%, transparent);
+  --grain-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  contain: layout paint;
+  pointer-events: none;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  isolation: isolate;
+}
+
+/* --------------------------------------------------------------- the stage */
+
+.intro .intro__paper {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(
+      120% 90% at 50% 30%,
+      color-mix(in oklch, var(--paper) 70%, white 30%),
+      transparent 70%
+    ),
+    var(--paper);
+}
+
+/* One tile of noise, drifted by GSAP and looped. `.intro__grain` is deliberately larger than
+ * the frame so the drift never exposes an edge. */
+.intro .intro__grain {
+  position: absolute;
+  inset: -25%;
+  z-index: 1;
+  background-image: var(--grain-image);
+  background-size: 180px 180px;
+  mix-blend-mode: multiply;
+  opacity: 0;
+  will-change: transform;
+}
+
+.intro .intro__grid {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: 46px 46px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 45%, black 30%, transparent 78%);
+  opacity: 0;
+}
+
+/* The world: 1000 × 1000 world units, origin centred, camera applied by GSAP. */
+.intro .intro__world {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  width: 1000px;
+  height: 1000px;
+  margin-left: -500px;
+  margin-top: -500px;
+  transform-origin: 50% 50%;
+}
+
+/* ---------------------------------------------------------------- ticker */
+
+.intro .ticker {
+  position: absolute;
+  left: 500px;
+  top: 500px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  opacity: 0;
+}
+
+.intro .ticker__text {
+  padding-left: 0.34em;
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+.intro .ticker__rule {
+  width: 64px;
+  height: 1px;
+  background: color-mix(in oklch, var(--ink) 45%, transparent);
+}
+
+/* ------------------------------------------------------------------ card */
+
+.intro .card {
+  position: absolute;
+  left: 500px;
+  top: 500px;
+  width: 136px;
+  height: 172px;
+  overflow: visible;
+  border: 1px solid color-mix(in oklch, var(--ink) 20%, transparent);
+  border-radius: 2px;
+  background: linear-gradient(
+    170deg,
+    color-mix(in oklch, var(--paper) 82%, white 18%),
+    var(--paper)
+  );
+  box-shadow:
+    0 1px 0 color-mix(in oklch, var(--paper) 60%, white),
+    0 8px 18px -10px color-mix(in oklch, var(--ink) 45%, transparent);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.intro .card__band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 33.333%;
+  border-bottom: 1px solid color-mix(in oklch, var(--ink) 12%, transparent);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklch, var(--paper) 88%, white 12%),
+    color-mix(in oklch, var(--paper) 70%, var(--ink) 3%)
+  );
+  transform-origin: 50% 0;
+}
+
+.intro .card__band:nth-child(2) {
+  top: 33.333%;
+  border-bottom: none;
+}
+
+.intro .card__band:nth-child(3) {
+  top: 66.666%;
+  border-bottom: none;
+  box-shadow: inset 0 1px 0 color-mix(in oklch, var(--ink) 12%, transparent);
+}
+
+.intro .card__crease {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 1px;
+  background: color-mix(in oklch, var(--ink) 26%, transparent);
+  transform-origin: 50% 50%;
+}
+
+/* The seam is where the light gets out, and it is the one place the accent is a *material*
+ * rather than a moment: the string, its glow, and the knot are all the same red. */
+.intro .card__seam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--string);
+  box-shadow: 0 0 14px 2px color-mix(in oklch, var(--string) 55%, transparent);
+  opacity: 0;
+  transform-origin: 50% 50%;
+}
+
+.intro .card__string {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 160px;
+  height: 200px;
+  margin-left: -80px;
+  margin-top: -100px;
+  overflow: visible;
+  fill: none;
+  stroke: var(--string);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.intro .card__knot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin-left: -4.5px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: var(--string);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--string) 22%, transparent);
+}
+
+/* -------------------------------------------------------------- dot field */
+
+/* Named `dotfield`, never `field`: the app's own `.field` is the input's wrapper, and one
+ * shared rule would make the handoff morph into the viewport. */
+.intro .dotfield {
+  position: absolute;
+  inset: 0;
+}
+
+.intro .dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 50%;
+  background: var(--company);
+  will-change: transform, opacity;
+}
+
+/* Fund two is drawn as a ring rather than a fill: same ink, different shape. It reads as a
+ * second source without introducing a second colour. */
+.intro .dot[data-fund="1"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 42%, transparent);
+}
+
+/* The accent's one moment: the instant two dots become one company. The ring is a child of
+ * the dot, so it expands and fades on the compositor while the dot's own transform is being
+ * written every frame. */
+.intro .dot__flash {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1.5px solid var(--alert);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.intro .dot__flash.is-fusing {
+  animation: intro-fuse 240ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+@keyframes intro-fuse {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+
+  28% {
+    opacity: 0.9;
+    transform: scale(1.15);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+.intro .dot-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  color: var(--ink);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+/* --------------------------------------------------------------- counter */
+
+.intro .counter {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 1.9rem;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  opacity: 0;
+}
+
+.intro .counter__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--graphite);
+}
+
+.intro .counter__digits {
+  display: flex;
+  font-family: var(--font-mono);
+  font-size: 34px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+
+/* A digit caught mid-roll is two half-digits; fading the window's edges turns that into a
+ * roll instead of two numbers stacked. */
+.intro .counter__slot {
+  position: relative;
+  width: 0.62em;
+  height: 34px;
+  overflow: hidden;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 34%,
+    #000 66%,
+    transparent 100%
+  );
+}
+
+.intro .counter__strip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  will-change: transform;
+}
+
+.intro .counter__digit {
+  display: block;
+  height: 34px;
+  line-height: 34px;
+  text-align: center;
+}
+
+/* --------------------------------------------------------------- caption */
+
+.intro .caption {
+  position: absolute;
+  left: 50%;
+  bottom: 2rem;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: min(560px, 84vw);
+  transform: translateX(-50%);
+  opacity: 0;
+}
+
+.intro .caption__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  color: var(--graphite);
+}
+
+.intro .caption__ticker {
+  flex: none;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.intro .caption__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.intro .caption__filed {
+  flex: none;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+/* ---------------------------------------------------------------- ledger */
+
+/* Born as a single rule under the field, dies as the input's outline. It is the film's one
+ * piece of geometry that has to match the page, so it is measured against the real input
+ * rather than guessed at. */
+.intro .ledger {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 6;
+  width: 0;
+  height: 1px;
+  border: 0 solid var(--rule);
+  background: var(--rule);
+  opacity: 0;
+}
+
+.intro .circle {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  stroke: var(--alert);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.intro .circle__path {
+  opacity: 0.9;
+}
+
+/* ----------------------------------------------------------------- made */
+
+.intro .made {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 1.35rem;
+  z-index: 5;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--graphite);
+  opacity: 0;
+}
+
+/* ----------------------------------------------------------------- skip */
+
+.intro .skip {
+  position: absolute;
+  left: 50%;
+  bottom: 1.25rem;
+  z-index: 9;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.5em 0.9em;
+  transform: translateX(-50%);
+  border: 1px solid color-mix(in oklch, var(--ink) 18%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--paper) 88%, transparent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--graphite);
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.skip:hover,
+.intro .skip:focus-visible {
+  color: var(--ink);
+  border-color: color-mix(in oklch, var(--ink) 38%, transparent);
+  outline: none;
+}
+
+.intro .skip__key {
+  padding: 0.15em 0.4em;
+  border: 1px solid color-mix(in oklch, var(--ink) 16%, transparent);
+  border-radius: 3px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+
+/* --------------------------------------------------------------- phone */
+
+/* On a phone the field reaches further down the frame, so the two filings become two stacked
+ * lines with a paper scrim under them, and the counter moves up out of the notch. */
+@media (max-width: 640px) {
+  .intro .counter {
+    top: 1.1rem;
+  }
+
+  .intro .caption {
+    bottom: 3.6rem;
+    width: calc(100vw - 2.5rem);
+  }
+
+  .intro .caption__row {
+    display: block;
+  }
+
+  .intro .caption__name {
+    overflow: visible;
+    white-space: normal;
+    text-overflow: clip;
+  }
+
+  .intro .caption__filed {
+    display: block;
+    margin-top: 1px;
+  }
+
+  .intro .caption__ticker {
+    margin-right: 0.45rem;
+  }
+
+  .intro .caption {
+    isolation: isolate;
+  }
+
+  .intro .caption::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: -12px -16px -12px -16px;
+    background: linear-gradient(to top, var(--paper) 58%, transparent);
+  }
+
+  .intro .made {
+    bottom: 1.1rem;
+  }
+}

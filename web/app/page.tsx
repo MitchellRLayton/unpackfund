@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { IntroCurtain } from "@/components/intro/IntroCurtain";
 import { Workspace } from "@/components/workspace/Workspace";
 
 /**
@@ -21,6 +22,9 @@ export default function HomePage() {
   return (
     <main id="main">
       <Workspace />
+      {/* `/` only, deliberately: `/x/` is the same surface reached by a link, and a
+          visitor who followed a link has already been introduced. */}
+      <IntroCurtain />
     </main>
   );
 }
