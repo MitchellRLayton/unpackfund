@@ -131,11 +131,21 @@ export interface FundIndexShard {
  * `releases/{as_of}/catalogue.json`, positional on purpose: 8,531 of them is
  * 470 KB as arrays and 940 KB as objects. Order is `[name, issuer, etf, coverage]`.
  */
+/**
+ * One positional `catalogue.json` row: `[name, issuer, etf, coverage_pct]` and, from a
+ * release built after 2026-11-02, the fund's own filed net assets as a fifth element.
+ *
+ * The fifth is optional because the app points at whichever release is live, and the
+ * live one may predate the field: a reader must not break on an older release, and the
+ * pipeline's validator accepts both row lengths for the same reason (the additive
+ * contract, `data-contract-and-release`).
+ */
 export type CatalogueRow = [
   name: string,
   issuer: string,
   etf: number,
   coveragePct: number,
+  netAssets?: number | null,
 ];
 
 export interface Catalogue {

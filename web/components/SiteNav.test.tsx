@@ -30,12 +30,12 @@ describe("SiteNav", () => {
   it("marks exactly one section, and it is the one you are on", () => {
     const { unmount } = render(<SiteNav />);
     expect(screen.getAllByRole("link", { current: "page" })).toHaveLength(1);
-    expect(currentLabel()).toBe("Builder");
+    expect(currentLabel()).toBe("Portfolio");
 
-    // `/x/` is the ledger, and a trailing path under it is still the ledger.
+    // `/x/` is the X-Ray, and a trailing path under it is still the X-Ray.
     for (const [path, label] of [
-      ["/x/", "Ledger"],
-      ["/x", "Ledger"],
+      ["/x/", "X-Ray"],
+      ["/x", "X-Ray"],
       // `/compare` starts with the same characters as `/c`: two lit labels would
       // say the visitor is in two places at once.
       ["/compare/", "Compare"],

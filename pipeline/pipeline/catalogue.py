@@ -11,7 +11,7 @@ large one:
     tickers.json            every published ticker, sorted (~25 KB gzipped)
     aliases.json            share-class ticker -> the published ticker for its series
     index/{L}.json          bytes + sha256 per fund, sharded by first character
-    catalogue.json          ticker -> name, issuer, ETF flag, coverage
+    catalogue.json          ticker -> name, issuer, ETF flag, coverage, filed net assets
     companies/index.json    company_id -> name, ticker, holder count (search)
     companies/{id}.json     company_id -> [[ticker, weight_bp], …] (reverse X-Ray)
     companies/countries.json  company_id -> ISO country, for the ledger's country tag
@@ -86,9 +86,19 @@ def catalogue_object(
     """Ticker → what a search result needs to show, in as few bytes as possible.
 
     Entries are arrays rather than objects because 8,531 of them is 470 KB instead
-    of 940 KB, and the order is fixed: ``[name, issuer, etf, coverage_pct]``. The
-    app's ``loadCatalogue`` is the only reader, so a positional format with one
-    documented order is cheaper than a self-describing one nobody reads.
+    of 940 KB, and the order is fixed: ``[name, issuer, etf, coverage_pct,
+    net_assets]``. The app's ``loadCatalogue`` is the only reader, so a positional
+    format with one documented order is cheaper than a self-describing one nobody
+    reads.
+
+    ``net_assets`` is the fund's own filed N-PORT figure in whole dollars, or
+    ``null`` when the filing reports none — never a zero standing in for "unknown".
+    It is the directory's only size order (operator's instruction, 2026-11-02), and
+    it is the filing's own number rather than a vendor AUM: the release already
+    parses it for every weight it publishes, so publishing it adds no source, no
+    fetch and no second definition of "how big is this fund". The field is additive
+    to the object: the validator still accepts a four-element row from a release
+    built before it existed, and the web reader treats a missing element as null.
 
     ``etf_classifier`` rides at the top because the flag is a *test*, not a fact:
     ``name_rule_v1`` misses exchange-traded funds whose name reads like a mutual
@@ -102,6 +112,7 @@ def catalogue_object(
             fund["issuer"],
             1 if fund.get("etf") else 0,
             fund["coverage_pct"],
+            fund.get("net_assets"),
         ]
     return {
         "as_of": as_of,
@@ -284,6 +295,10 @@ def write_release_objects(
                     "issuer": document["issuer"],
                     "etf": document["etf"],
                     "coverage_pct": document["coverage_pct"],
+                    # The fund document carries the size so a fund page can show it;
+                    # the catalogue is a projection of the documents, never a second
+                    # read of the filing (the validator gates that equality).
+                    "net_assets": document.get("net_assets"),
                 }
                 for document in documents
             ],

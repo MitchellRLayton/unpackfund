@@ -224,12 +224,12 @@ describe("PortfolioBuilder — adding a holding never re-weights the ones alread
     expect(screen.queryByDisplayValue("33.33")).toBeNull();
     expect(screen.queryByDisplayValue("33.34")).toBeNull();
     // …the new row is honestly empty, so the total is still exactly 100% and the
-    // ledger link stays live.
+    // X-Ray link stays live.
     expect(screen.getByDisplayValue("0.00")).toBeTruthy();
     expect(screen.getByText("100.00%")).toBeTruthy();
     expect(screen.getByText("fully allocated")).toBeTruthy();
     expect(
-      screen.getByRole("link", { name: "View the ledger" }).getAttribute("aria-disabled"),
+      screen.getByRole("link", { name: "Open the X-Ray" }).getAttribute("aria-disabled"),
     ).toBeNull();
     // And the URL carries the three amounts, so a reload cannot re-split them either.
     const decoded = decodePortfolio(window.location.hash);
@@ -337,16 +337,16 @@ describe("PortfolioBuilder — 100% is a statement, not a clamp", () => {
     expect(decoded.portfolio.entries.map((entry) => entry.amount)).toEqual([9500, 1000]);
   });
 
-  it("holds the ledger link until the total is exactly 100%", () => {
+  it("holds the X-Ray link until the total is exactly 100%", () => {
     render(<PortfolioBuilder />);
     fireEvent.click(screen.getByRole("button", { name: "Add QQQ" }));
     fireEvent.click(screen.getByRole("button", { name: "Add VTI" }));
     // The sentence is always on screen in percent mode; its state is a class, so the
     // ink flips rather than the words appearing and disappearing.
-    const gate = () => screen.getByText("The ledger opens at exactly 100%.");
-    // A clean 50/50 split opens the ledger, and the sentence says so in green.
+    const gate = () => screen.getByText("The X-Ray opens at exactly 100%.");
+    // A clean 50/50 split opens the X-Ray, and the sentence says so in green.
     expect(
-      screen.getByRole("link", { name: "View the ledger" }).getAttribute("aria-disabled"),
+      screen.getByRole("link", { name: "Open the X-Ray" }).getAttribute("aria-disabled"),
     ).toBeNull();
     expect(gate().className).toContain("tally__gate--open");
     expect(gate().className).not.toContain("tally__gate--locked");
@@ -354,7 +354,7 @@ describe("PortfolioBuilder — 100% is a statement, not a clamp", () => {
     fireEvent.change(screen.getByLabelText("Amount for QQQ, in percent"), {
       target: { value: "95" },
     });
-    const gated = screen.getByRole("link", { name: "View the ledger" });
+    const gated = screen.getByRole("link", { name: "Open the X-Ray" });
     expect(gated.getAttribute("aria-disabled")).toBe("true");
     expect(gated.getAttribute("aria-describedby")).toBe("ledger-gate");
     // Red until the portfolio is whole (operator's instruction, 2026-11-02).
@@ -368,12 +368,12 @@ describe("PortfolioBuilder — 100% is a statement, not a clamp", () => {
       target: { value: "50" },
     });
     expect(
-      screen.getByRole("link", { name: "View the ledger" }).getAttribute("aria-disabled"),
+      screen.getByRole("link", { name: "Open the X-Ray" }).getAttribute("aria-disabled"),
     ).toBeNull();
     expect(gate().className).toContain("tally__gate--open");
   });
 
-  it("opens the ledger in dollar mode whatever the amounts are", () => {
+  it("opens the X-Ray in dollar mode whatever the amounts are", () => {
     render(<PortfolioBuilder />);
     fireEvent.click(screen.getByRole("button", { name: "Add QQQ" }));
     fireEvent.click(screen.getByRole("button", { name: "Dollars" }));
@@ -383,9 +383,9 @@ describe("PortfolioBuilder — 100% is a statement, not a clamp", () => {
     // Dollars are their own total, so nothing to be short of — and no sentence about a
     // 100% rule the visitor is not being asked to meet.
     expect(
-      screen.getByRole("link", { name: "View the ledger" }).getAttribute("aria-disabled"),
+      screen.getByRole("link", { name: "Open the X-Ray" }).getAttribute("aria-disabled"),
     ).toBeNull();
-    expect(screen.queryByText("The ledger opens at exactly 100%.")).toBeNull();
+    expect(screen.queryByText("The X-Ray opens at exactly 100%.")).toBeNull();
   });
 });
 

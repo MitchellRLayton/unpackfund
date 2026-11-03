@@ -34,6 +34,39 @@ provenance of every number visible without a click.
 5. **Numbers are tabular.** `font-variant-numeric: tabular-nums` on every weight, count, and metric so columns align
    without a grid of spans.
 
+## Metadata first, method below the table (operator's instruction, 2026-11-02)
+
+The complaint was about order, not about content: "too much information at the top of the page discussing
+methodologies … all I really want are the metadata information you give in tables." The page was answering the right
+question with its reasoning in front of its answer — a reader met the benchmark column's rules before the column they
+describe, then had to scroll past them to reach the ledger.
+
+`/x` now renders, in this order:
+
+1. the `<h1>`, then one line: how many companies across how many funds (and how many held directly), plus the one fact
+   that makes the weights legible — a weight is a share of the whole portfolio, so the column sums to the covered part,
+   not to 100%;
+2. `FreshnessStrip` and `MetricsList`, together and unchanged: those are the two tables the operator asked to see first;
+3. the notices that carry state — unusable symbol, below the coverage floor, partial band, no benchmark — tightened to
+   the sentence that matters, because a reader needs them _before_ the weights they qualify;
+4. the `Companies` heading and the ledger;
+5. one `<details>` ("How to read this page") under the table, holding every explanation that used to open the page: the
+   benchmark column's four facts (what the column is, why `0.00%` is not "not owned", which way round the bracket
+   subtracts, and that it is computed unrounded and rounded once), the cash sentence, the "what is not traced, and
+   why" disclosure, the per-fund source table, and the closing N-PORT note.
+
+Two rules make that an architecture rather than a tidy-up:
+
+- **Nothing is deleted to shorten the page.** The measure of the change is that the first screen is the answer and the
+  method is one click from it, not that the copy got smaller. `components/LedgerView.test.tsx` holds both halves — one
+  paragraph of prose above the table, and the benchmark explanation inside the first `<details>` after it — so an edit
+  that drifts a paragraph back up, or quiet-deletes one while tidying, fails a test instead of shipping.
+- **Provenance still sits above the fold where it is the visitor's own data.** Rule 1 is unchanged for the strip
+  (release, filing period, lag, coverage, not traced): that is the provenance of the table. What moved below the table
+  is the _method_ of the comparison column — the VT filing link and the two-different-wholes reasoning. The table's
+  caption still names the benchmark, the bracket's direction and the sign ink, because a caption is read with the
+  table, so no row has a meaning that is only available one click away.
+
 ## Tokens
 
 Defined once in `app/globals.css` as custom properties, light and dark through `prefers-color-scheme`.

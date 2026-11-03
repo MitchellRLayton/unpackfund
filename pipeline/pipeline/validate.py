@@ -237,6 +237,23 @@ def _check_fund(document: dict, report: Report) -> None:
     coverage = document["coverage_pct"]
     if not isinstance(coverage, (int, float)) or not 0 <= coverage <= 100:
         report.fail(f"{ticker}.coverage_pct", str(coverage))
+    # ``net_assets`` is additive to schema 1, the same rule as ``etf``'s label: absent
+    # is valid, because a filing can report none and a release built before 2026-11-02
+    # was not asked for it. Present, it must be a non-negative number — the `/funds`
+    # directory orders every fund by it, so a string or a negative would sort the list
+    # by something that is not a size. ``null`` is the explicit "the filing gave none"
+    # state and is not the same as zero.
+    if "net_assets" in document:
+        net_assets = document["net_assets"]
+        if net_assets is not None and (
+            isinstance(net_assets, bool)
+            or not isinstance(net_assets, (int, float))
+            or net_assets < 0
+        ):
+            report.fail(
+                f"{ticker}.net_assets",
+                f"{net_assets!r} is not a non-negative number or null",
+            )
     unknown = set(document["warnings"]) - WARNING_ENUM
     if unknown:
         report.fail(f"{ticker}.warnings", f"not in the enum: {sorted(unknown)}")
@@ -985,8 +1002,9 @@ def _check_catalogue(release_dir: Path, manifest: dict, funds: list[dict], repor
     These are the objects a browser fetches, and each one is a place a release can
     disagree with itself: a ticker list that omits a fund, a hash shard that names a
     fund the release does not publish, a company shard that credits a holding to the
-    wrong fund. The funds are the source of truth; every other object is checked
-    against them.
+    wrong fund, a catalogue size that disagrees with the fund document it was derived
+    from. The funds are the source of truth; every other object is checked against
+    them.
     """
     tickers = sorted(fund.get("ticker", "") for fund in funds if fund.get("ticker"))
     by_ticker = {fund["ticker"]: fund for fund in funds if fund.get("ticker")}
@@ -1054,8 +1072,14 @@ def _check_catalogue(release_dir: Path, manifest: dict, funds: list[dict], repor
         if not document.get("etf_classifier"):
             report.fail("catalogue.etf_classifier", "absent — the flag is a test, not a fact")
         for ticker, entry in entries.items():
-            if not isinstance(entry, list) or len(entry) != 4:
-                report.fail("catalogue.entry", f"{ticker}: expected [name, issuer, etf, coverage_pct]")
+            # Four elements is a release built before the size figure existed and
+            # stays valid (additive contract); five is the current shape. Anything
+            # else is a row a reader would index wrongly, and the app reads position.
+            if not isinstance(entry, list) or len(entry) not in (4, 5):
+                report.fail(
+                    "catalogue.entry",
+                    f"{ticker}: expected [name, issuer, etf, coverage_pct, net_assets]",
+                )
                 break
             if entry[0] != by_ticker.get(ticker, {}).get("name"):
                 report.fail("catalogue.name", f"{ticker}: {entry[0]!r} != the fund's own name")
@@ -1070,6 +1094,20 @@ def _check_catalogue(release_dir: Path, manifest: dict, funds: list[dict], repor
                     f"{ticker}: catalogue says {entry[2]}, the fund says {expected}",
                 )
                 break
+            if len(entry) == 5:
+                # The size in the directory must be the size on the fund's page —
+                # a projection gate, the same rule the company→country map answers
+                # to. The catalogue is derived from the documents in the same build,
+                # so a disagreement here means one of the two writers is reading a
+                # different number, and the list would order funds by a figure no
+                # fund document states.
+                own = by_ticker.get(ticker, {}).get("net_assets")
+                if entry[4] != own:
+                    report.fail(
+                        "catalogue.net_assets",
+                        f"{ticker}: catalogue says {entry[4]!r}, the fund says {own!r}",
+                    )
+                    break
 
     # index/{L}.json: one entry per fund, hashing the bytes on disk.
     index_dir = release_dir / "index"

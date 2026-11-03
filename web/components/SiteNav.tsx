@@ -4,7 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 /**
- * Five sections, and which one you are on.
+ * Five sections, and which one you are on. The labels are the operator's words:
+ * `/` is the Portfolio, `/x` is the X-Ray of it (2026-11-02). The URLs did not
+ * move with the names — a shared link is older than a label.
  *
  * The current page is marked with `aria-current` as well as weight, because a
  * bold label alone is a colour-and-typography distinction that vanishes in a
@@ -26,10 +28,10 @@ export function SiteNav() {
   return (
     <nav className="site-nav" aria-label="Sections">
       <Link href="/" aria-current={on("/") ? "page" : undefined}>
-        Builder
+        Portfolio
       </Link>
       <Link href="/x/" aria-current={on("/x") ? "page" : undefined}>
-        Ledger
+        X-Ray
       </Link>
       <Link href="/compare/" aria-current={on("/compare") ? "page" : undefined}>
         Compare

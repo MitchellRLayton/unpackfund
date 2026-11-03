@@ -246,7 +246,7 @@ def render_page(
 
     ledger = ledger_link(fund["ticker"])
     ledger_action = (
-        f'<a href="{_esc(ledger)}">See all {total_rows:,} holdings in the look-through ledger</a>'
+        f'<a href="{_esc(ledger)}">See all {total_rows:,} holdings in the look-through X-Ray</a>'
         if ledger
         else '<a href="/x/">Look through a portfolio</a>'
     )
@@ -319,7 +319,7 @@ def render_page(
     <h2 id="caveats-heading">What this page does not tell you</h2>
     <ul class="plain">
       <li>It shows the fund, not a portfolio. To see what a mix of funds owns, open the
-      <a href="/">builder</a>.</li>
+      <a href="/">Portfolio</a>.</li>
       <li>{100 - coverage:.1f}% of the fund's weight is not mapped to a company we can
       identify — cash, derivatives, or issuers outside the SEC's filing system. It is
       counted, not hidden.</li>

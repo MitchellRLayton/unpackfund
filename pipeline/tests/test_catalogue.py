@@ -40,7 +40,14 @@ def test_index_shards_are_grouped_and_carry_the_release():
     assert "manifest.json" not in json.dumps(shards)
 
 
-def test_catalogue_entries_are_four_positional_fields():
+def test_catalogue_entries_are_five_positional_fields():
+    """The fifth position is the fund's own filed net assets, in whole dollars.
+
+    The directory orders the page by it (operator's instruction, 2026-11-02), and the
+    number is the same one the filing supplies for the weight maths — not a vendor
+    AUM and not a second read of EDGAR. ``None`` is a row the release could not size,
+    and it must stay distinguishable from ``0``.
+    """
     document = catalogue.catalogue_object(
         "2026-10-30.1",
         [
@@ -50,11 +57,28 @@ def test_catalogue_entries_are_four_positional_fields():
                 "issuer": "Vanguard",
                 "etf": True,
                 "coverage_pct": 96.7,
-            }
+                "net_assets": 1_500_000_000_000,
+            },
+            {
+                "ticker": "NOSIZE",
+                "name": "A Fund Whose Filing Reported No Net Assets",
+                "issuer": "A Trust",
+                "etf": False,
+                "coverage_pct": 60.0,
+            },
         ],
         etf_classifier="name_rule_v1",
     )
-    assert document["funds"]["VOO"] == ["Vanguard 500 Index Fund", "Vanguard", 1, 96.7]
+    assert document["funds"]["VOO"] == [
+        "Vanguard 500 Index Fund",
+        "Vanguard",
+        1,
+        96.7,
+        1_500_000_000_000,
+    ]
+    # Absence stays valid and is published as null, never as a zero that would sort
+    # the fund beside an empty one.
+    assert document["funds"]["NOSIZE"][4] is None
     # The flag is a test, not a fact, so the release names the test.
     assert document["etf_classifier"] == "name_rule_v1"
 

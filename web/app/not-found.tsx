@@ -14,8 +14,8 @@ export default function NotFound() {
     <main id="main" className="narrow">
       <h1>Page not found</h1>
       <p>
-        That address is not part of UnpackFund. The <Link href="/">builder</Link> and the{" "}
-        <Link href="/x/">ledger</Link> are the whole app while it is this young.
+        That address is not part of UnpackFund. The <Link href="/">Portfolio</Link> and
+        the <Link href="/x/">X-Ray</Link> are the whole app while it is this young.
       </p>
     </main>
   );

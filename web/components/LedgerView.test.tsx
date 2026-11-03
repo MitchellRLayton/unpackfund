@@ -377,6 +377,90 @@ describe("the ledger when the benchmark cannot be read", () => {
   });
 });
 
+describe("the page's information architecture", () => {
+  /**
+   * The operator's complaint (2026-11-02) was about order, not about content: "too much
+   * information at the top of the page discussing methodologies … all I really want are
+   * the metadata information you give in tables". The page was answering the question in
+   * the right way and in the wrong order — a reader met the benchmark's provenance rules
+   * before the column they explain, and had to scroll past them to reach the ledger.
+   *
+   * The fix is one disclosure under the table, not a deletion: every sentence is still
+   * on the page, one click below the numbers. This test holds both halves, because each
+   * can regress on its own — a later edit could drift the explanation back above the
+   * table (cheap to do by accident, invisible in a diff of one hunk) or could quiet-delete
+   * a paragraph while tidying (the failure mode a "move the prose" instruction invites).
+   */
+  it("puts one paragraph of prose on the first screen and the method under the table", () => {
+    useRelease.mockReturnValue({
+      status: "ready",
+      data: releaseWithBenchmark,
+      error: null,
+    });
+    useFunds.mockImplementation(() => ({ funds: [], pending: [], error: null }));
+    useBenchmark.mockReturnValue({ status: "ready", data: vtRollup, error: null });
+    // Cash and an unallocated remainder, so every paragraph that used to sit above the
+    // table exists in this fixture: before the change the page rendered three of them
+    // (the count line, the cash line, and the benchmark's long explanation), and this test
+    // failed with "expected 3 to be 1" before the move.
+    useLedger.mockImplementation((_funds, _weights, _direct, _cash, benchmark) => ({
+      ledger: {
+        ...withBenchmarkWeights(benchmark),
+        metrics: { ...ledger.metrics, cash_weight: 0.032, unallocated_weight: 0.011 },
+      },
+      error: null,
+      mode: "main",
+      durationMs: 3,
+    }));
+
+    const { container } = render(<LedgerView />);
+    const table = container.querySelector("table.ledger");
+    expect(table).not.toBeNull();
+
+    // A "prose block" here is a paragraph a reader *reads* — so the count leaves out the
+    // three things above the table that are not prose: the metadata tables the operator
+    // asked for (the strip's cells and the metrics list, whose notes are part of the
+    // table), the notices (which say what happened to *this* portfolio rather than how
+    // the page is built), and the two controls that happen to be paragraphs — the CSV
+    // row and the screen-reader-only status line.
+    const prose = [...container.querySelectorAll("p")].filter(
+      (paragraph) =>
+        (table!.compareDocumentPosition(paragraph) & Node.DOCUMENT_POSITION_PRECEDING) !==
+          0 &&
+        paragraph.closest(".notice, .strip, .metrics") === null &&
+        !paragraph.classList.contains("sr-only") &&
+        !paragraph.classList.contains("table-more"),
+    );
+    expect(prose).toHaveLength(1);
+    expect(prose[0]?.textContent).toContain(
+      "Every weight is a share of the whole portfolio",
+    );
+
+    // The one disclosure sits after the table, and it is the page's only method block.
+    const method = container.querySelector("details");
+    expect(method?.firstElementChild?.tagName).toBe("SUMMARY");
+    expect(method?.firstElementChild?.textContent).toBe("How to read this page");
+    expect(
+      table!.compareDocumentPosition(method!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+
+    // Everything the first screen used to carry is in it, tightened rather than dropped:
+    // the benchmark column (what it is, the 0.00% case, the bracket, the rounding), the
+    // cash sentence, the coverage gap, the per-fund source table, and the N-PORT note.
+    expect(method?.textContent).toContain("it is not a share of your portfolio");
+    expect(method?.textContent).toContain("filed at under 0.01%");
+    expect(method?.textContent).toContain("Cash is 3.20% of your money");
+    expect(method?.textContent).toContain("1.10% is unallocated");
+    expect(method?.textContent).toContain("What is not traced, and why");
+    expect(method?.textContent).toContain("Where each number comes from");
+    expect(method?.textContent).toContain("Weights come from Form N-PORT, as filed");
+
+    // The benchmark explanation is not *also* above the table: the element that carries
+    // it is the one inside the disclosure, so the two copies cannot drift apart.
+    expect(screen.getByText(/filed at under 0\.01%/).closest("details")).toBe(method);
+  });
+});
+
 describe("the ledger when the percentages do not add up", () => {
   /** The page's own branch: no table, one sentence, and the reason in words. */
   function incomplete(total: number) {

@@ -213,6 +213,48 @@ def lending_collateral(filing: NportFiling) -> Collateral:
     return Collateral(frozenset(), 0.0)
 
 
+def _net_assets_usd(net_assets: float | None) -> int | None:
+    """The filing's own net assets in whole dollars, or ``None`` when it filed none.
+
+    N-PORT's ``netAssets`` is a decimal with cents; the `/funds` directory orders
+    funds by it (operator's instruction, 2026-11-02), so it is rounded once, here, and
+    every consumer reads the same integer. ``None`` stays distinct from ``0``: a
+    filing that reports no figure is a fund with no size answer, and publishing zero
+    would sort it beside a genuinely empty fund.
+    """
+    return None if net_assets is None else int(round(net_assets))
+
+
+def _with_net_assets(document: dict, net_assets: int | None) -> dict:
+    """A fund document carrying the filing's net assets beside its coverage.
+
+    Additive to fund schema 1, the same pattern as ``etf`` and ``asset_cat``: a
+    document without the field is valid, which is what lets the web bundle ship ahead
+    of the release that publishes it (``data-contract-and-release`` §8) and what the
+    validator's "absence stays valid" case pins. It is attached in the builder rather
+    than in ``artifact.build_fund_artifact`` because the builder describes the shape
+    every document must carry, and this number is optional by design.
+
+    The insert is positional, after ``coverage_pct``, rather than appended: the
+    document's key order is fixed and hashed, and a size belongs beside the other
+    per-fund figure a reader checks. The second call site is
+    ``_flatten_fund_of_funds``: ``artifact.attach_fund_of_funds`` rebuilds a wrapper's
+    document field by field so its hash covers the contract's order, and it knows
+    nothing about a size — without re-attaching, exactly the funds that were flattened
+    would lose the figure the catalogue still carries.
+    """
+    published: dict = {}
+    for key, value in document.items():
+        published[key] = value
+        if key == "coverage_pct":
+            published["net_assets"] = net_assets
+    if "net_assets" not in published:
+        # The builder always writes coverage_pct, so this is a guard rather than a
+        # path: a document must not lose the number because its key order changed.
+        published["net_assets"] = net_assets
+    return published
+
+
 def build_fund(
     ref: universe.FundRef,
     index: CompanyIndex,
@@ -308,6 +350,10 @@ def build_fund(
         metrics=weights.metrics(vector.holdings),
         warnings=vector.warnings,
     )
+    # The fund's own filed size, published for the directory's order — no vendor AUM
+    # and no second data source: the release already parses this number to weight
+    # every holding it shows.
+    document = _with_net_assets(document, _net_assets_usd(filing.net_assets))
     payload = artifact.canonical_bytes(document)
 
     # Gate 3 — the size budget the plan promises the browser.
@@ -323,7 +369,9 @@ def build_fund(
         "rungs": dict(vector.rung_counts),
         "asset_cats": dict(vector.asset_cat_counts),
         "total_bp": vector.total_bp,
-        "net_assets": filing.net_assets,
+        # One number, one implementation: the summary and the flatten read the value
+        # the document publishes, not a second conversion of the parsed float.
+        "net_assets": document["net_assets"],
         "as_of": found.report_date,
         "name": document["name"],
         "issuer": document["issuer"],
@@ -693,6 +741,11 @@ def _flatten_fund_of_funds(
                 warnings=sorted(warnings),
             )
 
+        # ``attach_fund_of_funds`` rebuilds the document field by field, so the size
+        # the filing gave is re-attached here rather than taught to the flattener: the
+        # figure is a property of the filing, not of the composition. Read from the
+        # document it was published in, so the flatten cannot state a different number.
+        document = _with_net_assets(document, build.document.get("net_assets"))
         payload = artifact.canonical_bytes(document)
         if len(payload) > MAX_FUND_BYTES:
             raise GateError(

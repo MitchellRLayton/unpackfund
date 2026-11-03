@@ -97,7 +97,7 @@ export function CompanyView() {
       <p className="prose">
         Search for a company to see every fund in the published release that holds it, and
         how much of each fund it is. This is the same data as the{" "}
-        <a href="/x/">look-through ledger</a>, read in the other direction.
+        <a href="/x/">look-through X-Ray</a>, read in the other direction.
       </p>
 
       {release.status === "error" ? (

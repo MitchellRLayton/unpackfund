@@ -75,7 +75,7 @@ export class DataError extends Error {
   }
 }
 
-type FetchImpl = (input: string, init?: RequestInit) => Promise<Response>;
+export type FetchImpl = (input: string, init?: RequestInit) => Promise<Response>;
 
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

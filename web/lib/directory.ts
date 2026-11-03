@@ -5,7 +5,7 @@
  * exact ticker must beat a prefix match, a prefix must beat a substring in an
  * issuer name — and that is testable without a browser.
  *
- * Two rules live here.
+ * Three rules live here.
  *
  * **Search is token-AND.** Every whitespace-separated word has to match the row
  * somewhere (ticker, name, or issuer), so `avantis etf` finds the Avantis ETFs and
@@ -21,13 +21,30 @@
  * etf` with its mutual funds: a reader asking for ETFs and getting funds has been
  * told something false. Type words are answered by the fund's own name only.
  *
- * **The default order is `popular`** (see `popular.ts`): the curated widely held
- * funds first, then everything else alphabetically. `alpha` is the plain A–Z
- * switch. A sort can only reorder rows it is given, so a curated ticker the
- * release does not publish never appears.
+ * **The order opens on size when the release carries it.** The catalogue's fifth
+ * element is the fund's own filed N-PORT net assets, and `/funds` should open on the
+ * largest funds rather than an editorial list (operator's instruction, 2026-11-02).
+ * `assets` sorts by that figure descending and puts funds without one after the
+ * funds that have one, in ticker order — a fund whose filing reported no net assets
+ * has no size answer, and treating it as `$0` would sort it beside a genuinely empty
+ * fund. `DEFAULT_SORT` is `assets`; `defaultSort` falls back to `popular` when no row
+ * carries a figure, because the live release (`2026-11-02.7`) predates the field and
+ * a page that claimed "largest by assets" while sorting by ticker would be a lie
+ * with nothing behind it. `popular` (the curated widely held funds first, see
+ * `popular.ts`) and `alpha` (plain A–Z) stay for a reader who asks. A sort can only
+ * reorder rows it is given, so a curated ticker the release does not publish never
+ * appears.
+ *
+ * **Names are display text, not filing text.** Rows carry `displayName(name)` and
+ * `displayName(issuer)`, so a caps-cased trust and a mixed-case one read as one list
+ * (the rules and their exceptions live in `provider-name.ts`). The transform happens
+ * here rather than in the component so search and display cannot disagree: the
+ * search compares upper-cased display text, which is the same string the reader sees.
  */
 
 import { popularRank } from "./popular";
+import { displayName } from "./provider-name";
+import type { CatalogueRow } from "./types";
 
 /** Coverage below the contract's partial band is shown as a dash, not a number. */
 export const PARTIAL_COVERAGE = 60;
@@ -37,27 +54,57 @@ export interface DirectoryRow {
   name: string;
   issuer: string;
   coverage: number;
+  /**
+   * The fund's own filed N-PORT net assets in whole dollars, or `null` when the
+   * release carries none: a four-element catalogue row (a release built before
+   * 2026-11-02) and a filing that reports no net assets both arrive as `null`, and
+   * the sort treats them the same because neither is a size answer.
+   */
+  netAssets: number | null;
 }
 
-/** Catalogue rows (positional, `[name, issuer, etf, coverage]`) → directory rows. */
-export function toRows(
-  funds: Record<string, [name: string, issuer: string, etf: number, coverage: number]>,
-): DirectoryRow[] {
+/**
+ * One positional catalogue row — `types.CatalogueRow`, named again here because this
+ * module's own tests construct rows by hand and the name says what they are.
+ *
+ * There is one definition, not two: `toRows` reads the row's length rather than trusting
+ * a version number, which is the same additive-contract rule the pipeline's validator
+ * applies to the same rows, so a four-element row from an older release still lists.
+ */
+export type CatalogueTuple = CatalogueRow;
+
+/** Catalogue rows → directory rows, in ticker order and case-normalised for display. */
+export function toRows(funds: Record<string, CatalogueTuple>): DirectoryRow[] {
   return Object.entries(funds)
-    .map(([ticker, [name, issuer, , coverage]]) => ({
+    .map(([ticker, [name, issuer, , coverage, netAssets]]) => ({
       ticker,
-      name,
-      issuer,
+      name: displayName(name),
+      issuer: displayName(issuer),
       coverage,
+      netAssets: netAssets ?? null,
     }))
     .sort(byTicker);
 }
 
-/** `popular` = curated widely held funds first; `alpha` = plain ticker order. */
-export type DirectorySort = "popular" | "alpha";
+/** `assets` = largest filed net assets first; `popular` = curated; `alpha` = A–Z. */
+export type DirectorySort = "assets" | "popular" | "alpha";
 
-/** What the directory shows until the reader asks for A–Z. */
-export const DEFAULT_SORT: DirectorySort = "popular";
+/** The order a release that carries size figures opens on. */
+export const DEFAULT_SORT: DirectorySort = "assets";
+
+/**
+ * The order the directory opens in for these rows.
+ *
+ * Size when at least one row carries a filed figure, otherwise `popular` — the order
+ * the page shipped with before the figure existed. The condition is deliberately
+ * "at least one", not "all": a release where a few filings report no net assets is
+ * still a size-ranked release (those funds sort after the ones with a figure), and
+ * only a release with no figures at all has nothing to rank, which is the live
+ * `2026-11-02.7` case the component explains in words.
+ */
+export function defaultSort(rows: DirectoryRow[]): DirectorySort {
+  return rows.some((row) => row.netAssets !== null) ? DEFAULT_SORT : "popular";
+}
 
 function byTicker(a: DirectoryRow, b: DirectoryRow): number {
   return a.ticker.localeCompare(b.ticker);
@@ -66,16 +113,33 @@ function byTicker(a: DirectoryRow, b: DirectoryRow): number {
 /**
  * Order rows for display. Never drops or adds one.
  *
- * `popular` puts the curated tickers first in `POPULAR_ORDER` order; every other
- * row keeps alphabetical order after them. Two curated rows cannot share a rank,
- * so the only tie that reaches `byTicker` is two uncurated rows — which is exactly
- * the alphabetical tail. Deterministic given the same rows.
+ * `assets` puts the largest filed net assets first and every fund without a figure
+ * after every fund with one, in ticker order; equal figures fall back to ticker so a
+ * release cannot reorder itself between two identical runs. `popular` puts the
+ * curated tickers first in `POPULAR_ORDER` order; every other row keeps alphabetical
+ * order after them. Two curated rows cannot share a rank, so the only tie that
+ * reaches `byTicker` is two uncurated rows — which is exactly the alphabetical tail.
+ * `alpha` is plain ticker order. Deterministic given the same rows.
+ *
+ * The default is `defaultSort(rows)`, not a bare `DEFAULT_SORT`, so a call that omits
+ * the argument on an assetless release still opens in the editorial order rather than
+ * silently becoming A–Z.
  */
 export function sortRows(
   rows: DirectoryRow[],
-  sort: DirectorySort = DEFAULT_SORT,
+  sort: DirectorySort = defaultSort(rows),
 ): DirectoryRow[] {
   if (sort === "alpha") return [...rows].sort(byTicker);
+  if (sort === "assets") {
+    return [...rows].sort((a, b) => {
+      if (a.netAssets === null && b.netAssets === null) return byTicker(a, b);
+      // A missing figure is not a small one: it sorts after every known answer.
+      if (a.netAssets === null) return 1;
+      if (b.netAssets === null) return -1;
+      if (a.netAssets !== b.netAssets) return b.netAssets - a.netAssets;
+      return byTicker(a, b);
+    });
+  }
   return [...rows].sort((a, b) => {
     const left = popularRank(a.ticker);
     const right = popularRank(b.ticker);
@@ -85,15 +149,6 @@ export function sortRows(
   });
 }
 
-/**
- * Rows a query matches, best first.
- *
- * One word keeps the original ranking: exact ticker, then ticker or name prefix,
- * then a substring of the name or issuer. Several words are AND-ed — a row has to
- * match every one — and rows whose *name* carries all the words come first,
- * because `avantis etf` is a fund-type question and a fund's type is written in
- * its name. Ties keep the order they arrived in.
- */
 /**
  * Words that name the wrapper rather than the strategy.
  *
@@ -111,6 +166,15 @@ function singularTypeWord(token: string): string {
   return token;
 }
 
+/**
+ * Rows a query matches, best first.
+ *
+ * One word keeps the original ranking: exact ticker, then ticker or name prefix,
+ * then a substring of the name or issuer. Several words are AND-ed — a row has to
+ * match every one — and rows whose *name* carries all the words come first,
+ * because `avantis etf` is a fund-type question and a fund's type is written in
+ * its name. Ties keep the order they arrived in.
+ */
 export function filterRows(rows: DirectoryRow[], query: string): DirectoryRow[] {
   const tokens = query
     .trim()

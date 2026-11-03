@@ -24,7 +24,7 @@
  * row at a time, so a portfolio is short while it is being filled and past 100% for as
  * long as it takes to lower the next row; adjusting the rows the visitor did not touch
  * would rewrite numbers they did not edit. The tally states the total and whether it is
- * short or over, and "View the ledger" waits for exactly 100% — a look-through weight
+ * short or over, and "Open the X-Ray" waits for exactly 100% — a look-through weight
  * is a share of the whole, so the numbers behind that link only mean something once
  * there is a whole (2026-11-02, operator's instruction).
  *
@@ -36,19 +36,24 @@
  */
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type RefObject } from "react";
 
 import { AmountInput } from "@/components/AmountInput";
 import { Notice } from "@/components/Notice";
-import { loadSecurities, publishesSecurities, resolveAlias } from "@/lib/data";
 import { encodePortfolio } from "@/lib/fragment";
+import {
+  entryLabel,
+  removeLabel,
+  resolveEntry,
+  tallyOf,
+  type EntryDecision,
+} from "@/lib/holdings";
 import { formatCents, formatFundList, formatWeightBp } from "@/lib/format";
 import { POPULAR_ORDER } from "@/lib/popular";
-import { accepts, isCarriable, normaliseSymbol, refusal } from "@/lib/securities";
 import { USD_NOTIONAL_CENTS } from "@/lib/portfolio-weights";
 import { usePortfolio, type AddOutcome } from "@/lib/use-portfolio";
 import { useRelease, useTickers } from "@/lib/use-release";
-import { useReorderList } from "@/lib/use-reorder";
+import { useReorderList, type ReorderList } from "@/lib/use-reorder";
 import {
   CASH_KEY,
   type EntryKind,
@@ -56,14 +61,87 @@ import {
   type PortfolioEntry,
 } from "@/lib/types";
 
-/** `VT` / `AMZN` / `Cash`: what a row is called, whatever kind it is. */
-function entryLabel(entry: PortfolioEntry): string {
-  return entry.kind === "cash" ? "Cash" : entry.key;
+/** The shared labels take a kind and a key; a row is an object, so wrap once. */
+function labelOf(entry: PortfolioEntry): string {
+  return entryLabel(entry.kind, entry.key);
 }
 
-/** What the row's identity is called in a remove button, for a screen reader. */
-function removeLabel(entry: PortfolioEntry): string {
-  return entry.kind === "cash" ? "cash" : entry.key;
+function removeLabelOf(entry: PortfolioEntry): string {
+  return removeLabel(entry.kind, entry.key);
+}
+
+/**
+ * The rows themselves: one holding per row, with its amount field, its remove button
+ * and its drag handle.
+ *
+ * A component rather than a block of JSX inside `PortfolioBuilder` for two reasons.
+ * The plain one is that the builder had grown into a single function that rendered the
+ * form, the mode control, the tally and the whole list, and this is the independent
+ * piece. The load-bearing one is `react-hooks/refs` in this Next config: with the list
+ * inline *and* the new awaited add path in the same function, the React Compiler
+ * reports a false "Cannot access refs during render" on this `<ul>` — the ref is
+ * `reorder.listRef`, which is a `ref` prop, never read. Splitting the list out puts it
+ * in its own function and the diagnostic goes away without a suppression; a
+ * `eslint-disable` would have hidden the rule for the real ref reads too.
+ */
+function HoldingList({
+  entries,
+  mode,
+  reorder,
+  listRef,
+  onAmount,
+  onRemove,
+}: {
+  entries: PortfolioEntry[];
+  mode: EntryMode;
+  reorder: ReorderList;
+  /** The `<ul>` the drag maths measures rows from; the hook owns it, this renders it. */
+  listRef: RefObject<HTMLUListElement | null>;
+  onAmount: (entry: PortfolioEntry, amount: number) => void;
+  onRemove: (kind: EntryKind, key: string) => void;
+}) {
+  return (
+    <ul className="portfolio-list" ref={listRef}>
+      {entries.map((entry, index) => (
+        <li
+          key={`${entry.kind}-${entry.key}`}
+          className={reorder.draggingIndex === index ? "is-dragging" : undefined}
+        >
+          <button
+            type="button"
+            className="drag-handle"
+            {...reorder.handleProps(index)}
+            disabled={entries.length < 2}
+            aria-label={`Reorder ${removeLabelOf(entry)}`}
+            aria-describedby={entries.length > 1 ? "reorder-hint" : undefined}
+            title="Drag to reorder"
+          >
+            <span aria-hidden="true">⠿</span>
+          </button>
+          <span className="portfolio-list__name">
+            <span className="ticker">{labelOf(entry)}</span>
+            {entry.kind === "security" ? (
+              <span className="row-note">held directly</span>
+            ) : null}
+          </span>
+          <AmountInput
+            label={`Amount for ${labelOf(entry)}`}
+            mode={mode}
+            amount={entry.amount}
+            onChange={(amount) => onAmount(entry, amount)}
+          />
+          <button
+            type="button"
+            className="quiet"
+            onClick={() => onRemove(entry.kind, entry.key)}
+            aria-label={`Remove ${removeLabelOf(entry)}`}
+          >
+            Remove
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export function PortfolioBuilder() {
@@ -83,7 +161,7 @@ export function PortfolioBuilder() {
     count: portfolio.entries.length,
     labelAt: (index) => {
       const entry = portfolio.entries[index];
-      return entry ? entryLabel(entry) : "";
+      return entry ? labelOf(entry) : "";
     },
     onMove: moveHolding,
   });
@@ -197,6 +275,13 @@ export function PortfolioBuilder() {
     setConverted(null);
   }
 
+  // One statement of "is this list a whole", shared with Compare: the sentence, the
+  // gate and the colour all read from the same numbers rather than re-deriving them.
+  const tally = tallyOf(
+    mode,
+    portfolio.entries.map((entry) => entry.amount),
+  );
+
   // The release publishes thousands of funds, so a list of them is useless as a
   // starting point: the first screen would be AAAA. These are the widely held ones,
   // in the operator's curated order, filtered to what this release can actually load.
@@ -210,120 +295,92 @@ export function PortfolioBuilder() {
     return `/x/#${encodePortfolio({ mode, entries: portfolio.entries })}`;
   }, [mode, portfolio.entries]);
 
-  async function submit(event: React.FormEvent) {
+  /**
+   * One typed line in, one row (or one refusal) out.
+   *
+   * Two functions, not one: `submit` stays a synchronous event handler that decides
+   * whether to start, and `addTyped` is the async half that awaits the shared decision.
+   * The split is not cosmetic — `react-hooks/refs` in this Next config reports a false
+   * "ref accessed during render" on this component when the awaited call lives inside
+   * the form handler itself, and the compiler cannot be argued with. Same behaviour,
+   * same awaits, one frame earlier.
+   *
+   * The decision is `lib/holdings.resolveEntry`'s, not this component's: the Compare
+   * page runs the same function, so the two pages cannot disagree about whether
+   * `VFIAX` is addable, and a sentence written once is the sentence both show
+   * (2026-11-02, the operator's "standardize the logic across these tables"). What
+   * stays here is the part only this page has: the undo offers, which belong to the
+   * portfolio they would change.
+   */
+  function submit(event: React.FormEvent) {
     event.preventDefault();
     const typed = input.trim();
     if (typed.length === 0 || adding) return;
+    void addTyped(typed);
+  }
 
-    if (typed.toLowerCase() === "cash" || typed.toLowerCase() === "cash position") {
-      const body =
-        "Set the amount it represents. Cash is part of your money but has no company behind it.";
+  /** The add path's async half: one await, then a synchronous apply of the answer. */
+  async function addTyped(typed: string) {
+    setAdding(true);
+    let decision: EntryDecision;
+    try {
+      decision = await resolveEntry(
+        typed,
+        { catalog, release, allowCash: true },
+        portfolio.entries.map((entry) => entry.key),
+      );
+    } finally {
+      setAdding(false);
+    }
+    apply(decision);
+  }
+
+  /**
+   * Turn the shared decision into a row, or into the sentence that explains it.
+   *
+   * Synchronous on purpose: the await happens once, above, so this half only calls
+   * setState and `addEntry`. It also keeps the JSX below simple enough for the React
+   * Compiler's analysis — with the awaits interleaved the compiler reported a false
+   * "ref accessed during render" on the holdings list.
+   */
+  function apply(decision: EntryDecision) {
+    if (!decision.ok) {
+      setMessage({ tone: decision.tone, title: decision.title, body: decision.body });
+      return;
+    }
+    if (decision.kind === "cash") {
+      const body = decision.body;
       if (addEntry("cash", CASH_KEY, body) !== "kept") {
         setMessage({ tone: "info", title: "Added cash", body });
       }
       setInput("");
       return;
     }
-
-    const ticker = normaliseSymbol(typed);
-    if (!isCarriable(ticker)) {
-      setMessage({
-        tone: "warn",
-        title: `${typed} is not a ticker`,
-        body: "Tickers are upper-case letters, digits, dots and dashes.",
-      });
-      return;
-    }
-
-    if (release.status === "loading") {
-      setMessage({
-        tone: "info",
-        title: "Still reading the release",
-        body: "One moment — the fund list has not loaded yet.",
-      });
-      return;
-    }
-    if (release.status === "error") {
-      setMessage({
-        tone: "warn",
-        title: "The release could not be read",
-        body: release.error.message,
-      });
-      return;
-    }
-
-    // 1. A fund this release publishes. The common case, and the cheapest test.
-    if (catalog.includes(ticker)) {
-      addFund(ticker);
-      return;
-    }
-
-    setAdding(true);
-    try {
-      // 2. A share class of a published fund (`VFIAX` → `VOO`): one portfolio with
-      //    many tickers, and the release publishes one page per portfolio.
-      const published = await resolveAlias(release.data, ticker).catch(() => null);
-      if (published && catalog.includes(published)) {
-        addFund(
-          published,
-          `${ticker} is a share class of ${published}, so the holdings are the same.`,
-        );
-        return;
-      }
-
-      // 3. A stock the visitor holds directly. Identity comes from the release's own
-      //    symbol object, not from the ticker: the status is the build's verdict on
-      //    whether this symbol is one company's common stock.
-      const rows = await loadSecurities(release.data, [ticker]).catch(() => null);
-      const row = rows?.get(ticker);
-      if (row) {
-        const status = row[3];
-        if (!accepts(status)) {
-          setMessage({
-            tone: "warn",
-            title: `${ticker} cannot be added as a stock`,
-            body: refusal(status) ?? "This release lists it, but not as a common stock.",
-          });
-          return;
-        }
-        // The confirmation step: a symbol is a label, and the reader should see the
-        // company the release resolved it to before it enters their portfolio.
-        const detail = `Held directly. ${row[2] ?? "Exchange not filed"} · company ${row[0]}. Its weight is yours, not a fund's.`;
-        // The same title in both outcomes: whichever branch writes the message, the
-        // reader sees the company the release resolved the symbol to.
-        if (addEntry("security", ticker, detail, `${ticker} — ${row[1]}`) !== "kept") {
-          setMessage({
-            tone: "info",
-            title: `Added ${ticker} — ${row[1]}`,
-            body: detail,
-          });
-        }
-        return;
-      }
-
-      // Nothing published for this symbol, and the release does not carry the
-      // symbols object at all: it was built before stocks were published, so it has
-      // not been asked the question. Saying "AMZN is not in release X" would be a
-      // false claim about the symbol, and the visitor cannot act on it.
-      if (!publishesSecurities(release.data)) {
+    if (decision.kind === "security") {
+      // The confirmation step: a symbol is a label, and the reader sees the company
+      // the release resolved it to before it enters their portfolio.
+      if (
+        addEntry("security", decision.key, decision.body, decision.resolved) !== "kept"
+      ) {
         setMessage({
-          tone: "warn",
-          title: "This release does not list stock symbols yet",
-          body: `Release ${release.data.as_of} was built before stocks were published, so it can answer for funds but not for a stock you hold directly.`,
+          tone: "info",
+          title: `Added ${decision.resolved ?? decision.key}`,
+          body: decision.body,
         });
-        return;
       }
-
-      setMessage({
-        tone: "warn",
-        title: `${ticker} is not in release ${release.data.as_of}`,
-        body:
-          catalog.length > 0
-            ? `It is not a fund or a listed stock in this release. Funds published: ${formatFundList(catalog)}.`
-            : "This release publishes no funds.",
-      });
-    } finally {
-      setAdding(false);
+      setInput("");
+      return;
+    }
+    // A fund this release publishes, or a share class of one (which `resolveEntry` has
+    // already turned into the published ticker and the note that says so).
+    const outcome = addEntry("fund", decision.key, decision.body);
+    setInput("");
+    if (outcome !== "kept" && outcome !== "noop") {
+      setMessage(
+        decision.body
+          ? { tone: "info", title: `Added ${decision.key}`, body: decision.body }
+          : { tone: "info", title: `Added ${decision.key}` },
+      );
     }
   }
 
@@ -523,53 +580,19 @@ export function PortfolioBuilder() {
             </button>
             <span className="muted">
               {mode === "bp"
-                ? "Percentages must add up to 100% for the ledger."
+                ? "Percentages must add up to 100% for the X-Ray."
                 : "Dollars are the total — no need to reach any figure."}
             </span>
           </div>
 
-          <ul className="portfolio-list" ref={reorder.listRef}>
-            {portfolio.entries.map((entry, index) => (
-              <li
-                key={`${entry.kind}-${entry.key}`}
-                className={reorder.draggingIndex === index ? "is-dragging" : undefined}
-              >
-                <button
-                  type="button"
-                  className="drag-handle"
-                  {...reorder.handleProps(index)}
-                  disabled={portfolio.entries.length < 2}
-                  aria-label={`Reorder ${removeLabel(entry)}`}
-                  aria-describedby={
-                    portfolio.entries.length > 1 ? "reorder-hint" : undefined
-                  }
-                  title="Drag to reorder"
-                >
-                  <span aria-hidden="true">⠿</span>
-                </button>
-                <span className="portfolio-list__name">
-                  <span className="ticker">{entryLabel(entry)}</span>
-                  {entry.kind === "security" ? (
-                    <span className="row-note">held directly</span>
-                  ) : null}
-                </span>
-                <AmountInput
-                  label={`Amount for ${entryLabel(entry)}`}
-                  mode={mode}
-                  amount={entry.amount}
-                  onChange={(amount) => setEntryAmount(entry, amount)}
-                />
-                <button
-                  type="button"
-                  className="quiet"
-                  onClick={() => portfolio.remove(entry.kind, entry.key)}
-                  aria-label={`Remove ${removeLabel(entry)}`}
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
+          <HoldingList
+            entries={portfolio.entries}
+            mode={mode}
+            reorder={reorder}
+            listRef={reorder.listRef}
+            onAmount={setEntryAmount}
+            onRemove={portfolio.remove}
+          />
 
           <p className="tally" role="status">
             <span>
@@ -582,11 +605,7 @@ export function PortfolioBuilder() {
             </span>
             <span className="muted">
               {mode === "bp"
-                ? portfolio.complete
-                  ? "fully allocated"
-                  : portfolio.overBp > 0
-                    ? `${(portfolio.overBp / 100).toFixed(2)}% over 100%`
-                    : `${(portfolio.unallocatedBp / 100).toFixed(2)}% unallocated`
+                ? tally.sentence
                 : `${portfolio.entries.length} ${portfolio.entries.length === 1 ? "holding" : "holdings"}`}
             </span>
             {mode === "bp" ? (
@@ -618,7 +637,7 @@ export function PortfolioBuilder() {
                 if (!ledgerOpen) event.preventDefault();
               }}
             >
-              View the ledger
+              Open the X-Ray
             </Link>
             {/* The sentence the operator asked to colour (2026-11-02): red while the
              * portfolio is not whole, green once it is. Rendered in both states and in
@@ -632,7 +651,7 @@ export function PortfolioBuilder() {
                 }`}
                 id="ledger-gate"
               >
-                The ledger opens at exactly 100%.
+                The X-Ray opens at exactly 100%.
               </span>
             )}
           </p>

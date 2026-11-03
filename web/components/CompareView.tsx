@@ -12,6 +12,14 @@
  * Nothing is renormalised. If a side does not total 100%, the page says so and shows
  * no overlap number, because `Σ min` over a portfolio that only accounts for 60% of
  * its value is not a smaller comparison — it is a different question.
+ *
+ * Input and wording are shared with the Portfolio page, not re-implemented here:
+ * `lib/holdings.ts` turns a typed line into a holding or a sentence, and `tallyOf` turns
+ * amounts into the total line. Two pages that each answered "is this a fund?" and "is
+ * this 100%?" in their own words had already drifted — `/compare` refused a share class
+ * the builder resolved and a stock it accepts — so the decision lives in one module and
+ * this page only chooses what it allows (`allowSecurities: false`, `allowCash: false`)
+ * and how to render the answer.
  */
 
 import Link from "next/link";
@@ -20,22 +28,40 @@ import { useMemo, useState } from "react";
 import { Notice } from "@/components/Notice";
 import { AmountInput } from "@/components/AmountInput";
 import { encodeComparison } from "@/lib/fragment";
-import { formatCount, formatShare } from "@/lib/format";
+import { deltaInkClass, formatCount, formatShare, formatWeightBp } from "@/lib/format";
+import { resolveEntry, tallyOf, type Tally } from "@/lib/holdings";
 import { buildOverlap } from "@/lib/overlap";
 import { useComparison, type Side } from "@/lib/use-comparison";
-import { useFunds, useRelease, useTickers } from "@/lib/use-release";
-import type { FundDocument, FundWeight } from "@/lib/types";
+import { useFunds, useRelease, useTickers, type LoadState } from "@/lib/use-release";
+import type { FundDocument, FundWeight, ReleaseDescriptor } from "@/lib/types";
 
 /** Rows rendered before the table asks to be told to render the rest. */
 const ROW_PAGE = 200;
 
+/**
+ * One side of the comparison, and the only place this page takes input.
+ *
+ * The add path is the Portfolio page's, not a second one: `resolveEntry` decides what
+ * was typed and hands back the sentence to show, so `/compare` and `/` refuse the same
+ * input in the same words. Compare asks for funds only (`allowSecurities: false`,
+ * `allowCash: false`) — a comparison is between what funds hold — but the refusal is
+ * still a sentence, "AMZN is a stock, not a fund" or "Cash cannot be compared", each
+ * pointing at the Portfolio page. Before this the side answered "AMZN is not in this
+ * release", which was a claim the page had not checked and the wrong one.
+ *
+ * The amount line is `tallyOf`'s sentence rather than arithmetic here, for the same
+ * reason: "fully allocated" / "12.00% unallocated" / "5.00% over 100%" are the builder's
+ * exact words and must not fork. The `tally` itself is computed once by the page and
+ * handed down, so the sentence a column shows and the gate that opens the overlap read
+ * from the same object.
+ */
 function SideColumn({
   label,
   side,
   entries,
-  totalBp,
-  balanced,
+  tally,
   catalog,
+  release,
   onAdd,
   onRemove,
   onWeight,
@@ -45,9 +71,9 @@ function SideColumn({
   label: string;
   side: Side;
   entries: FundWeight[];
-  totalBp: number;
-  balanced: boolean;
+  tally: Tally;
   catalog: string[];
+  release: LoadState<ReleaseDescriptor>;
   onAdd: (side: Side, ticker: string) => void;
   onRemove: (side: Side, ticker: string) => void;
   onWeight: (side: Side, ticker: string, weightBp: number) => void;
@@ -55,24 +81,56 @@ function SideColumn({
   onClear: (side: Side) => void;
 }) {
   const [input, setInput] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
+  // The decision's own tone/title/body, not a string: the shared module returns
+  // presentation-ready words and both pages render the same three fields the same way.
+  const [message, setMessage] = useState<{
+    tone: "warn" | "info";
+    title: string;
+    body?: string;
+  } | null>(null);
+  // A submit may await the alias map or a symbol shard, and a second Enter while the
+  // first is in flight must not add the holding twice.
+  const [adding, setAdding] = useState(false);
   const heading = `side-${side}`;
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault();
-    const ticker = input.trim().toUpperCase();
-    if (!ticker) return;
-    if (entries.some((entry) => entry.ticker === ticker)) {
-      setMessage(`${ticker} is already in ${label}.`);
-      return;
+    const typed = input.trim();
+    if (typed.length === 0 || adding) return;
+    setAdding(true);
+    try {
+      const decision = await resolveEntry(
+        typed,
+        {
+          catalog,
+          release,
+          // Fund-only, and said out loud: both of these are refusals with a reason, not
+          // silently unavailable capabilities.
+          allowSecurities: false,
+          allowCash: false,
+          where: label,
+        },
+        // Already-present keys are part of the decision, not a check above it: a
+        // duplicate gets the same "already in" sentence the Portfolio page uses, with
+        // the column named so a reader knows which side holds it.
+        entries.map((entry) => entry.ticker),
+      );
+      if (!decision.ok) {
+        setMessage({ tone: decision.tone, title: decision.title, body: decision.body });
+        return;
+      }
+      // The resolved key, not what was typed: `VFIAX` adds `VOO`, the portfolio the
+      // release actually publishes, exactly as the builder does.
+      onAdd(side, decision.key);
+      setInput("");
+      setMessage(
+        decision.body
+          ? { tone: "info", title: `Added ${decision.label}`, body: decision.body }
+          : null,
+      );
+    } finally {
+      setAdding(false);
     }
-    if (catalog.length > 0 && !catalog.includes(ticker)) {
-      setMessage(`${ticker} is not in this release.`);
-      return;
-    }
-    onAdd(side, ticker);
-    setInput("");
-    setMessage(null);
   }
 
   return (
@@ -96,14 +154,18 @@ function SideColumn({
             setMessage(null);
           }}
         />
-        <button type="submit" className="primary">
+        <button type="submit" className="primary" disabled={adding}>
           Add
         </button>
       </form>
       {message ? (
-        <p className="row-note" role="status">
-          {message}
-        </p>
+        <Notice
+          tone={message.tone === "warn" ? "warn" : "accent"}
+          title={message.title}
+          role="status"
+        >
+          {message.body ? <p className="muted">{message.body}</p> : null}
+        </Notice>
       ) : null}
 
       {entries.length === 0 ? (
@@ -130,9 +192,13 @@ function SideColumn({
               </li>
             ))}
           </ul>
-          <p className="muted" style={{ fontSize: "0.85rem" }}>
-            {(totalBp / 100).toFixed(2)}% allocated
-            {balanced ? "" : " — not 100%"}.{" "}
+          {/* The builder's tally, word for word: the number, then the state in words,
+            from the one function that defines both (`holdings.tallyOf`). A side that is
+            short says how much is unallocated; a side past 100% says how far over; a side
+            at exactly 100% says "fully allocated". Role=status so a weight edit is
+            announced rather than silently changing the sentence. */}
+          <p className="muted" role="status" style={{ fontSize: "0.85rem" }}>
+            Total {formatWeightBp(tally.total)} {tally.sentence}.{" "}
             <button type="button" onClick={() => onEqualise(side)}>
               Split equally
             </button>{" "}
@@ -178,9 +244,31 @@ export function CompareView() {
     return map;
   }, [funds]);
 
+  // The 100% rule and the words that state it come from `holdings.tallyOf`, the same
+  // function the builder prints, so a side cannot be "complete" for the gate and
+  // "12.00% unallocated" on screen. A side the visitor has not touched still tallies to
+  // zero, and a zero side is not complete — which is correct: the overlap compares two
+  // wholes, and one whole can never be empty.
+  const tallyA = useMemo(
+    () =>
+      tallyOf(
+        "bp",
+        comparison.a.map((entry) => entry.weight_bp),
+      ),
+    [comparison.a],
+  );
+  const tallyB = useMemo(
+    () =>
+      tallyOf(
+        "bp",
+        comparison.b.map((entry) => entry.weight_bp),
+      ),
+    [comparison.b],
+  );
+
   const bothSidesReady =
-    comparison.balanced.a &&
-    comparison.balanced.b &&
+    tallyA.complete &&
+    tallyB.complete &&
     sideATickers.length > 0 &&
     sideBTickers.length > 0 &&
     pending.length === 0 &&
@@ -201,7 +289,7 @@ export function CompareView() {
   }, [bothSidesReady, comparison.a, comparison.b, fundsByTicker]);
 
   const [limit, setLimit] = useState(ROW_PAGE);
-  // Side A is already a v1 fragment, so the ledger is one link away rather than a
+  // Side A is already a v1 fragment, so the X-Ray is one link away rather than a
   // re-entry of the same funds.
   const ledgerHref = useMemo(
     () =>
@@ -230,9 +318,9 @@ export function CompareView() {
           label="Portfolio A"
           side="a"
           entries={comparison.a}
-          totalBp={comparison.totalBp.a}
-          balanced={comparison.balanced.a}
+          tally={tallyA}
           catalog={catalog}
+          release={release}
           onAdd={comparison.add}
           onRemove={comparison.remove}
           onWeight={comparison.setWeightBp}
@@ -243,9 +331,9 @@ export function CompareView() {
           label="Portfolio B"
           side="b"
           entries={comparison.b}
-          totalBp={comparison.totalBp.b}
-          balanced={comparison.balanced.b}
+          tally={tallyB}
           catalog={catalog}
+          release={release}
           onAdd={comparison.add}
           onRemove={comparison.remove}
           onWeight={comparison.setWeightBp}
@@ -283,8 +371,9 @@ export function CompareView() {
             {pending.length > 0
               ? `Loading ${pending.join(", ")}…`
               : "Add at least one fund to each side and make each side total 100%."}{" "}
-            The comparison is not scaled to fit: a side that accounts for 60% of its value
-            would make the overlap mean something else.
+            The overlap opens at exactly 100%, the same gate as the X-Ray: the comparison
+            is not scaled to fit, because a side that accounts for 60% of its value would
+            make the overlap mean something else.
           </p>
         </Notice>
       ) : null}
@@ -334,7 +423,11 @@ export function CompareView() {
               <caption>
                 The {formatCount(Math.min(limit, overlap.rows.length))} largest of{" "}
                 {formatCount(overlap.rows.length)} companies, by the larger of the two
-                weights. Δ is A minus B.
+                weights. Δ is A minus B, in percentage points: green where A holds more of
+                the company, red where B holds more, and an exact match reads —. The sign
+                is printed beside every number, so the colour reinforces the direction
+                rather than carrying it — a reader who cannot separate the two hues still
+                reads + and −.
               </caption>
               <thead>
                 <tr>
@@ -347,6 +440,17 @@ export function CompareView() {
                   </th>
                   <th scope="col" className="numeric">
                     Δ
+                    {/* The header abbreviation is the one place a screen reader would
+                      otherwise hear a bare glyph with no direction, so the cell states
+                      the subtraction, the units and the colour mapping in words. The
+                      sign is in every cell and the caption says the same thing, which
+                      is what keeps the ink reinforcement rather than meaning
+                      (`static-xray-frontend` §4a, §8). */}
+                    <span className="sr-only">
+                      : A minus B, in percentage points, positive where A holds more and
+                      negative where B holds more. Green where A holds more, red where B
+                      holds more.
+                    </span>
                   </th>
                 </tr>
               </thead>
@@ -366,10 +470,21 @@ export function CompareView() {
                     <td className="numeric">
                       {row.weightB > 0 ? formatShare(row.weightB) : "—"}
                     </td>
+                    {/* The Δ cell wears the same sign ink as the ledger's bracket, from
+                      the same function (`format.deltaInkClass`), so the two tables
+                      cannot disagree about which side is green: green where A holds
+                      more, red where B holds more, and `--muted` at a tie. The colour
+                      never carries the fact — the sign is printed, the caption states
+                      the mapping, and the header spells it out for a screen reader
+                      (`static-xray-frontend` §4a, §8). A zero delta keeps this table's
+                      own em dash rather than a signed 0.00%: the column is a difference,
+                      and at a tie there is no side for a sign to name. */}
                     <td className="numeric">
-                      {row.delta === 0
-                        ? "—"
-                        : `${row.delta > 0 ? "+" : "−"}${formatShare(Math.abs(row.delta))}`}
+                      <span className={deltaInkClass(row.delta)}>
+                        {row.delta === 0
+                          ? "—"
+                          : `${row.delta > 0 ? "+" : "−"}${formatShare(Math.abs(row.delta))}`}
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -386,9 +501,9 @@ export function CompareView() {
 
           <p className="muted">
             Every number here comes from the same aggregation as the{" "}
-            <Link href="/x/">ledger</Link>: a company&apos;s weight is the sum of the
-            funds holding it, times each fund&apos;s share of the portfolio.{" "}
-            <Link href={ledgerHref}>Open A as a ledger</Link>.
+            <Link href="/x/">X-Ray</Link>: a company&apos;s weight is the sum of the funds
+            holding it, times each fund&apos;s share of the portfolio.{" "}
+            <Link href={ledgerHref}>Open A in the X-Ray</Link>.
           </p>
         </>
       ) : null}

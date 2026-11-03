@@ -14,16 +14,21 @@
  * rule (`name_rule_v1`) that calls VOO a mutual fund, and which therefore is not
  * allowed to decide anything visible (ADR-0007 C3).
  *
- * The list opens on the curated widely held funds (`popular.ts`) instead of A–Z,
- * which would lead with AAAA, AAAAX, AAAC. The order is editorial, not a size
- * ranking — the release carries no assets — and the line above the table says so.
+ * The list opens on the **50 largest funds by assets**, where assets are the fund's
+ * own filed N-PORT net assets — the release's fifth catalogue element, not a vendor
+ * AUM figure (operator's instruction, 2026-11-02). Search still reaches every fund:
+ * it filters all rows and only the *rendered* list is capped, because a reader
+ * looking for a ticker must never be told "not in the release" by a page that is
+ * showing the first 50 of them. When a release carries no figures at all — the live
+ * `2026-11-02.7` predates the field — the order falls back to the editorial list and
+ * the page says so instead of pretending to rank; see `lib/directory.ts` for the rule.
  */
 
 import { useMemo, useState } from "react";
 
 import { Notice } from "@/components/Notice";
 import {
-  DEFAULT_SORT,
+  defaultSort,
   type DirectorySort,
   filterRows,
   PARTIAL_COVERAGE,
@@ -34,23 +39,51 @@ import {
 import { formatCount } from "@/lib/format";
 import { useCatalogue, useRelease } from "@/lib/use-release";
 
-/** Rows per request. The whole list is in memory; this only bounds the DOM. */
+/** The default view's depth: the largest funds, without a search or a pager click. */
+const TOP_BY_ASSETS = 50;
+
+/** Rows added per click. The whole list is in memory; this only bounds the DOM. */
 const ROW_PAGE = 100;
+
+/** The orders the control offers, in the order it offers them. */
+const SORTS: { value: DirectorySort; label: string }[] = [
+  { value: "assets", label: "Assets" },
+  { value: "popular", label: "Popular" },
+  { value: "alpha", label: "A–Z" },
+];
+
+/** How the table caption names each order, so a sort is stated and not inferred. */
+const ORDER_DESCRIPTIONS: Record<DirectorySort, string> = {
+  assets: "largest by assets first",
+  popular: "widely held first",
+  alpha: "by ticker",
+};
 
 export function FundDirectory() {
   const release = useRelease();
   const catalogue = useCatalogue(release.status === "ready" ? release.data : null);
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<DirectorySort>(DEFAULT_SORT);
-  const [limit, setLimit] = useState(ROW_PAGE);
+  // `null` means "whatever this release opens on". The default depends on the data
+  // (assets when any row carries a figure, popular otherwise), so it cannot be a
+  // fixed initial state: pinning one would make the fallback unreachable, and the
+  // page would either open in ticker order or claim a ranking it has no figures for.
+  const [sort, setSort] = useState<DirectorySort | null>(null);
+  const [limit, setLimit] = useState(TOP_BY_ASSETS);
 
   const rows = useMemo(
     () => (catalogue.status === "ready" ? toRows(catalogue.data.funds) : []),
     [catalogue],
   );
-  const ordered = useMemo(() => sortRows(rows, sort), [rows, sort]);
+  const effectiveSort = sort ?? defaultSort(rows);
+  const hasAssets = useMemo(() => rows.some((row) => row.netAssets !== null), [rows]);
+  const ordered = useMemo(() => sortRows(rows, effectiveSort), [rows, effectiveSort]);
   const matches = useMemo(() => filterRows(ordered, query), [ordered, query]);
   const visible = matches.slice(0, limit);
+
+  function chooseSort(next: DirectorySort) {
+    setSort(next);
+    setLimit(TOP_BY_ASSETS);
+  }
 
   return (
     <>
@@ -82,7 +115,7 @@ export function FundDirectory() {
           aria-describedby="fund-search-hint"
           onChange={(event) => {
             setQuery(event.target.value);
-            setLimit(ROW_PAGE);
+            setLimit(TOP_BY_ASSETS);
           }}
         />
         {query ? (
@@ -90,7 +123,7 @@ export function FundDirectory() {
             type="button"
             onClick={() => {
               setQuery("");
-              setLimit(ROW_PAGE);
+              setLimit(TOP_BY_ASSETS);
             }}
           >
             Clear
@@ -116,6 +149,18 @@ export function FundDirectory() {
         />
       ) : null}
 
+      {catalogue.status === "ready" && rows.length > 0 && !hasAssets ? (
+        <Notice tone="info" title="This release carries no fund asset figures yet">
+          <p>
+            A fund&apos;s size is its own filed N-PORT net assets, and this release was
+            built before the directory used them — so the list cannot open on the largest
+            funds and falls back to our editorial order instead. The first release built
+            with the figure opens on size, and the control below says which order is in
+            effect either way.
+          </p>
+        </Notice>
+      ) : null}
+
       {catalogue.status === "ready" && matches.length === 0 ? (
         <p className="muted" role="status">
           No fund matches “{query}”. Try a ticker, part of a fund or issuer name, or fewer
@@ -126,36 +171,46 @@ export function FundDirectory() {
       {visible.length > 0 ? (
         <>
           <p className="muted" style={{ fontSize: "0.85rem", margin: "0.25rem 0" }}>
-            {sort === "popular" ? (
+            {effectiveSort === "assets" && !query ? (
+              <>
+                The 50 largest by assets, from each fund&apos;s own N-PORT filing. Search
+                for any of the {formatCount(Math.max(0, rows.length - visible.length))}{" "}
+                other funds.{" "}
+              </>
+            ) : effectiveSort === "assets" ? (
+              <>Largest by assets first. </>
+            ) : effectiveSort === "popular" ? (
               <>
                 Popular funds first — our pick of the widely held ones, not a size
                 ranking.{" "}
-                <button
-                  type="button"
-                  className="quiet"
-                  onClick={() => {
-                    setSort("alpha");
-                    setLimit(ROW_PAGE);
-                  }}
-                >
-                  A–Z instead
-                </button>
               </>
             ) : (
-              <>
-                A–Z by ticker.{" "}
-                <button
-                  type="button"
-                  className="quiet"
-                  onClick={() => {
-                    setSort("popular");
-                    setLimit(ROW_PAGE);
-                  }}
-                >
-                  Popular first
-                </button>
-              </>
+              <>A–Z by ticker. </>
             )}
+            <span role="group" aria-label="Order">
+              {SORTS.map((option, index) => (
+                <span key={option.value}>
+                  {index > 0 ? " · " : null}
+                  <button
+                    type="button"
+                    className="quiet"
+                    aria-pressed={effectiveSort === option.value}
+                    // A release with no figure at all cannot be ordered by size, so
+                    // the option is offered but not selectable: enabling it would sort
+                    // by ticker while the label still said "assets".
+                    disabled={option.value === "assets" && !hasAssets}
+                    title={
+                      option.value === "assets" && !hasAssets
+                        ? "This release carries no fund asset figures"
+                        : undefined
+                    }
+                    onClick={() => chooseSort(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                </span>
+              ))}
+            </span>
           </p>
           <p
             className="muted"
@@ -171,7 +226,7 @@ export function FundDirectory() {
               <caption className="sr-only">
                 {formatCount(matches.length)} {matches.length === 1 ? "fund" : "funds"} in
                 release {catalogue.status === "ready" ? catalogue.data.as_of : ""},{" "}
-                {sort === "popular" ? "widely held first" : "by ticker"}.
+                {ORDER_DESCRIPTIONS[effectiveSort]}.
               </caption>
               <thead>
                 <tr>
