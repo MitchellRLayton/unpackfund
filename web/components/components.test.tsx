@@ -415,34 +415,47 @@ describe("the country channel", () => {
     );
   });
 
-  it("colours the bracket with the row's domicile, and says so in the caption", () => {
-    // The operator's instruction (2026-11-02): the plus-or-minus against VT should read in
-    // the same colour code as the US-versus-international channel. This holds the two ends
-    // of it together — every bracket carries the hook, and the row it sits in carries the
-    // geography attribute the stylesheet keys the ink off, so the colour and the edge can
-    // never disagree — while the inks themselves are checked for contrast in
-    // `lib/theme.test.ts`.
+  it("paints the bracket green above the benchmark and red below it", () => {
+    // The operator's instruction (2026-11-02): the plus-or-minus against VT reads as an
+    // indicator, green for more of the company than the benchmark holds and red for less.
+    // This holds the ends together — the class comes from the sign, an exact match stays
+    // quiet, and every coloured bracket still carries its sign in text, which is what lets
+    // this pair skip the colour-vision gate (`lib/theme.test.ts`). The geography edge keeps
+    // its own attribute and its own ink; the two channels do not share this cell.
     const withBenchmark = [
-      row("c_1", "NVIDIA Corp", 0.075, 1, 0.04, "US"),
-      row("c_2", "Taiwan Semiconductor", 0.05, 1, 0.01, "TW"),
-      row("c_3", "Undecided Co", 0.02, 1, 0),
+      row("c_1", "NVIDIA Corp", 0.075, 1, 0.04, "US"), // +3.50% — above, green
+      row("c_2", "Taiwan Semiconductor", 0.04, 1, 0.05, "TW"), // -1.00% — below, red
+      row("c_3", "Undecided Co", 0.02, 1, 0.02), // 0.00% — level, quiet
     ];
     const { container } = render(<LedgerTable rows={withBenchmark} benchmark={vt} />);
     const brackets = [...container.querySelectorAll<HTMLSpanElement>("tbody span.delta")];
     expect(brackets).toHaveLength(3);
+    expect(brackets.map((span) => span.className)).toEqual([
+      "delta delta--up",
+      "delta delta--down",
+      "delta",
+    ]);
+    expect(brackets.map((span) => span.textContent)).toEqual([
+      "(+3.50%)",
+      "(-1.00%)",
+      "(0.00%)",
+    ]);
+    // The sign is never implied by the ink: an up bracket begins `(+`, a down `(-`, and a
+    // level one carries no sign at all because there is no side to be on.
+    for (const span of brackets) {
+      const text = span.textContent ?? "";
+      if (span.classList.contains("delta--up")) expect(text.startsWith("(+")).toBe(true);
+      else if (span.classList.contains("delta--down"))
+        expect(text.startsWith("(-")).toBe(true);
+      else expect(text).toBe("(0.00%)");
+    }
+    // The edge still says where each company is domiciled, in its own channel.
     expect(
       brackets.map((span) => span.closest("tr")?.getAttribute("data-country") ?? null),
     ).toEqual(["US", "TW", null]);
-    // Still a signed number rather than a colour: the sign is text, and the row with no
-    // agreed domicile keeps the quiet ink.
-    expect(brackets.map((span) => span.textContent)).toEqual([
-      "(+3.50%)",
-      "(+4.00%)",
-      "(+2.00%)",
-    ]);
     expect(container.querySelector("caption")?.textContent).toContain(
-      "The bracketed difference in the In VT column is coloured the same way for an" +
-        " American row against any other",
+      "The bracketed difference in the In VT column is green when you hold more of the" +
+        " company than VT does and red when you hold less",
     );
   });
 
@@ -475,7 +488,7 @@ describe("the country channel", () => {
     expect(caption).not.toContain("shaded");
     // No geography, no ink promised: the caption cannot describe a colour code the table
     // is not using.
-    expect(caption).not.toContain("wears the same ink");
+    expect(caption).not.toContain("is green when you hold more");
   });
 });
 
