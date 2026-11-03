@@ -542,6 +542,32 @@ def _fallback_block(**overrides):
     return block
 
 
+def test_the_map_is_projected_onto_the_companies_the_release_publishes(tmp_path):
+    # The vote's tally is built from every holding the build read; the shards are built
+    # from the documents that survived the per-fund gates. A country on a company with
+    # no shard is an *extra* key, and the projection gate refuses the release for it —
+    # which is what failed the 2026-11-02 19:37 refresh on three companies. The build
+    # now projects the map before writing it, so the gate can only ever see a
+    # projection; this test holds both halves: the gate still refuses the unprojected
+    # map, and `project` is what turns it into a release that validates.
+    document = fixtures.sample_document()
+    published = company_countries.release_companies([document])
+    decided = {APPLE: "US", "c_0000000001": "KY"}
+    assert "c_0000000001" not in published
+
+    unprojected = write_release(tmp_path / "raw", [document], countries=decided)
+    assert validate.validate(unprojected) != 0
+
+    projected = write_release(
+        tmp_path / "projected",
+        [document],
+        countries=company_countries.project(decided, published),
+    )
+    assert validate.validate(projected) == 0
+    body = json.loads((projected / "companies/countries.json").read_text())
+    assert body["companies"] == {APPLE: "US"}
+
+
 def test_a_release_with_a_fallback_block_validates(tmp_path):
     release_dir = write_release(
         tmp_path,

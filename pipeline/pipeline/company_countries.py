@@ -347,6 +347,25 @@ def release_companies(documents: Iterable[Mapping[str, Any]]) -> set[str]:
     }
 
 
+def project(decided: Mapping[str, str], companies: Iterable[str]) -> dict[str, str]:
+    """The map as the release publishes it: only companies the release has a shard for.
+
+    The vote's tally is built from every holding the build read, and the shards are
+    built from the documents that survived the per-fund gates, so the two sets can
+    differ by a company whose only holder failed a gate. A country on such a company
+    is an *extra* key, and ``validate._check_company_countries`` refuses the release
+    for it — which is what happened to the 2026-11-02 19:37 refresh, on three
+    companies. Projecting here makes the map a projection by construction rather than
+    by luck, and the fallback is asked about the same set, so the two cannot drift.
+    """
+    published = set(companies)
+    return {
+        company_id: code
+        for company_id, code in decided.items()
+        if company_id in published
+    }
+
+
 def edgar_incorporations(
     company_ids: Iterable[str],
     *,
