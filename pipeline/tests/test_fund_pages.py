@@ -139,6 +139,22 @@ def test_the_fund_offers_a_prefilled_ledger_link_it_built_the_apps_way():
     assert 'See all 3 holdings in the look-through X-Ray' in render(fund())
 
 
+def test_the_nav_uses_the_apps_own_words():
+    """The fund pages are generated HTML, so they carry their own copy of the nav.
+
+    The operator renamed the two sections on 2026-11-02 ("Builder, Ledger" →
+    "Portfolio", "X-Ray") and asked for the old words to be gone everywhere in the
+    app. A generated page is the easiest place for a rename to be missed: it is not
+    a React component, so no shared nav renders it, and the live site regenerates
+    these pages from the release on every deploy.
+    """
+    page = render(fund())
+    assert '<a href="/">Portfolio</a>' in page
+    assert '<a href="/x/">X-Ray</a>' in page
+    assert ">Builder<" not in page
+    assert ">Ledger<" not in page
+
+
 def test_a_ticker_the_ledger_would_refuse_gets_no_prefill():
     """The app's fragment grammar is the gate: a 100% link must decode, not fall back."""
     assert fund_pages.ledger_link("BRK.B") is not None

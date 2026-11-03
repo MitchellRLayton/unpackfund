@@ -275,8 +275,8 @@ def render_page(
   <div class="site-header__inner">
     <a class="wordmark" href="/">UnpackFund</a>
     <nav class="site-nav" aria-label="Sections">
-      <a href="/">Builder</a>
-      <a href="/x/">Ledger</a>
+      <a href="/">Portfolio</a>
+      <a href="/x/">X-Ray</a>
       <a href="/compare/">Compare</a>
       <a href="/c/">Companies</a>
       <a href="/funds/" aria-current="page">Funds</a>
