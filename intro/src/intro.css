@@ -285,6 +285,9 @@
 }
 
 .counter__slot {
+  /* A digit caught mid-roll is two half-digits; fading the window's edges turns
+     that into a roll instead of two numbers stacked. */
+  mask-image: linear-gradient(to bottom, transparent 0, #000 34%, #000 66%, transparent 100%);
   position: relative;
   width: 0.62em;
   height: 34px;

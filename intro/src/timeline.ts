@@ -1,7 +1,7 @@
 /**
  * THE ANIMATIC TIMELINE.
  *
- * One GSAP timeline, 5.2 s, six beats, no cuts. It drives every div and every
+ * One GSAP timeline, 7.5 s, six beats, no cuts. It drives every div and every
  * circle directly — no canvas — so the only thing on trial in phase 1 is the
  * choreography. Skip is `progress(1)`; replay is `restart()`; the scrub bar is
  * the same object the show runs on, so what a reviewer drags is what the
@@ -9,17 +9,22 @@
  *
  * Beat windows (from the brief) and the content that bleeds past them:
  *
- *   paper     0.00-0.50   page, grain, ledger grid, ticker types itself
- *   parcel    0.50-1.20   card folds out of the ticker, string tugs, knot slips
- *   spill     1.20-2.40   three creases open, light, one dot per holding
- *   merge     2.40-3.40   second card, ink threads, fusion, odometer
- *   pullback  3.40-4.40   camera eases back, field becomes a ledger line, circle, h1
- *   handoff   4.40-5.20   line becomes the real input, headline is the real h1, focus
+ *   paper     0.00-1.25   page, grain, ledger grid, ticker types itself
+ *   parcel    1.25-2.50   card folds out of the ticker, string tugs, knot slips
+ *   spill     2.50-3.75   three creases open, light, one dot per holding
+ *   merge     3.75-5.00   second card, ink threads, fusion, odometer
+ *   pullback  5.00-6.25   camera eases back, field becomes a ledger line, circle, h1
+ *   handoff   6.25-7.50   line becomes the real input, headline is the real h1, focus
  *
- * Neighbouring beats overlap by construction: a beat's content starts before the
- * one before it has finished. The transport prints the *measured* overlap per
- * beat, so a beat that lands outside the brief's 150-250 ms shows up as a red
- * number rather than being asserted in a comment.
+ * EVERY CUE IS A FRACTION OF ITS BEAT. `T("spill", 0.4)` is 40% of the way
+ * through the spill beat, whatever the story table says that beat is worth, and
+ * a negative fraction reaches back into the beat before it — which is how the
+ * 200 ms overlaps are built rather than hoped for. Re-timing the run is an edit
+ * to `STORY`; the choreography follows.
+ *
+ * The transport prints the *measured* overlap per beat, derived from the first
+ * and last tween each beat registered, so a beat that lands outside the brief's
+ * 150-250 ms shows up as a red number rather than being asserted in a comment.
  */
 
 import { gsap } from "gsap";
@@ -36,18 +41,26 @@ gsap.registerPlugin(CustomEase, DrawSVGPlugin, ScrambleTextPlugin, SplitText);
 
 export type BeatId = "paper" | "parcel" | "spill" | "merge" | "pullback" | "handoff";
 
-export const TOTAL = 5.2;
-
 export type Beat = { id: BeatId; label: string; start: number; end: number };
 
 export const STORY: readonly Beat[] = [
-  { id: "paper", label: "Paper", start: 0.0, end: 0.5 },
-  { id: "parcel", label: "Parcel", start: 0.5, end: 1.2 },
-  { id: "spill", label: "Spill", start: 1.2, end: 2.4 },
-  { id: "merge", label: "Merge", start: 2.4, end: 3.4 },
-  { id: "pullback", label: "Pull-back", start: 3.4, end: 4.4 },
-  { id: "handoff", label: "Handoff", start: 4.4, end: 5.2 },
+  { id: "paper", label: "Paper", start: 0.0, end: 1.25 },
+  { id: "parcel", label: "Parcel", start: 1.25, end: 2.5 },
+  { id: "spill", label: "Spill", start: 2.5, end: 3.75 },
+  { id: "merge", label: "Merge", start: 3.75, end: 5.0 },
+  { id: "pullback", label: "Pull-back", start: 5.0, end: 6.25 },
+  { id: "handoff", label: "Handoff", start: 6.25, end: 7.5 },
 ];
+
+export const TOTAL = STORY[STORY.length - 1]!.end;
+
+const BEAT = Object.fromEntries(STORY.map((b) => [b.id, b])) as Record<BeatId, Beat>;
+
+/** A point inside a beat, as a fraction of that beat's length. */
+function T(id: BeatId, fraction: number): number {
+  const b = BEAT[id];
+  return b.start + fraction * (b.end - b.start);
+}
 
 export type BeatWindow = {
   id: BeatId;
@@ -92,6 +105,7 @@ class BeatBuilder {
   /**
    * Every call takes an ABSOLUTE time on the master timeline, because the beats
    * overlap: a beat cannot own a local 0 and still reach into the one before it.
+   * Callers get that absolute time from `T()`.
    */
   /**
    * A staggered tween on n targets runs for `duration + stagger × (n − 1)`. The
@@ -208,84 +222,90 @@ export function buildTimeline(
   gsap.set(split.lines, { yPercent: 116 });
 
   // ---------------------------------------------------------------- paper
+  // 0.00-1.25. The page arrives, the grid and grain settle, and the ticker types
+  // itself across the middle of the frame, then underlines.
   paper.cue("paper");
-  paper.fromTo(scene.root, { opacity: 0 }, { opacity: 1, duration: 0.16 });
-  paper.fromTo(scene.paper, { opacity: 0 }, { opacity: 1, duration: 0.3 }, 0);
-  paper.fromTo(scene.grid, { opacity: 0 }, { opacity: 1, duration: 0.48 }, 0.02);
-  paper.fromTo(scene.grain, { opacity: 0 }, { opacity: 0.55, duration: 0.46 }, 0.02);
-  paper.fromTo(scene.ticker, { opacity: 0 }, { opacity: 1, duration: 0.12 }, 0.06);
-  paper.fromTo(scene.ticker, { y: 9 }, { y: 0, duration: 0.4, ease: "power3.out" }, 0.06);
+  paper.fromTo(scene.root, { opacity: 0 }, { opacity: 1, duration: 0.16 }, T("paper", 0));
+  paper.fromTo(scene.paper, { opacity: 0 }, { opacity: 1, duration: 0.3 }, T("paper", 0));
+  paper.fromTo(scene.grid, { opacity: 0 }, { opacity: 1, duration: 0.48 }, T("paper", 0.02));
+  paper.fromTo(scene.grain, { opacity: 0 }, { opacity: 0.55, duration: 0.46 }, T("paper", 0.02));
+  paper.fromTo(scene.ticker, { opacity: 0 }, { opacity: 1, duration: 0.12 }, T("paper", 0.1));
+  paper.fromTo(scene.ticker, { y: 9 }, { y: 0, duration: 0.4, ease: "power3.out" }, T("paper", 0.1));
   paper.to(
     scene.tickerText,
     {
-      duration: 0.4,
+      duration: 0.6,
       ease: "none",
       scrambleText: { text: "SPY · VGT", chars: "upperCase", speed: 0.55 },
     },
-    0.06,
+    T("paper", 0.12),
   );
   paper.fromTo(
     scene.tickerRule,
     { scaleX: 0, transformOrigin: "50% 50%" },
-    { scaleX: 1, duration: 0.2, ease: "expo.out" },
-    0.3,
+    { scaleX: 1, duration: 0.24, ease: "expo.out" },
+    T("paper", 0.76),
   );
-  paper.fromTo(scene.skip, { opacity: 0 }, { opacity: 1, duration: 0.22 }, 0.24);
+  paper.fromTo(scene.skip, { opacity: 0 }, { opacity: 1, duration: 0.22 }, T("paper", 0.32));
   // The filings the run is reading are on screen for the whole of it.
-  paper.fromTo(scene.caption, { opacity: 0 }, { opacity: 1, duration: 0.3 }, 0.16);
+  paper.fromTo(scene.caption, { opacity: 0 }, { opacity: 1, duration: 0.3 }, T("paper", 0.24));
 
   // --------------------------------------------------------------- parcel
+  // 1.00-2.50. The ticker folds into a card, the string draws, the knot takes a
+  // tug and slips, and the parcel hangs there wound down.
   parcel.cue("parcel");
-  parcel.to(scene.ticker, { opacity: 0, y: -7, duration: 0.14 }, 0.34);
+  parcel.to(scene.ticker, { opacity: 0, y: -7, duration: 0.14 }, T("parcel", -0.2));
   parcel.fromTo(
     scene.cards[0]!.root,
     { opacity: 0, y: geometry.cardA.y + 14, scale: 0.93, rotation: -3 },
-    { opacity: 1, y: geometry.cardA.y, scale: 1, rotation: 0, duration: 0.32, ease: "expo.out" },
-    0.36,
+    { opacity: 1, y: geometry.cardA.y, scale: 1, rotation: 0, duration: 0.36, ease: "expo.out" },
+    T("parcel", -0.16),
   );
   parcel.fromTo(
     scene.cards[0]!.creases,
     { scaleX: 0, transformOrigin: "50% 50%" },
-    { scaleX: 1, duration: 0.2, stagger: 0.05, ease: "expo.out" },
-    0.40,
+    { scaleX: 1, duration: 0.22, stagger: 0.06, ease: "expo.out" },
+    T("parcel", -0.08),
   );
   parcel.fromTo(
     scene.cards[0]!.stringPaths,
     { drawSVG: "0%" },
-    { drawSVG: "100%", duration: 0.34, stagger: 0.02, ease: "power2.inOut" },
-    0.46,
+    { drawSVG: "100%", duration: 0.4, stagger: 0.03, ease: "power2.inOut" },
+    T("parcel", 0.04),
   );
   parcel.fromTo(
     scene.cards[0]!.knot,
     { scale: 0, opacity: 0 },
-    { scale: 1, opacity: 1, duration: 0.18, ease: "power2.out" },
-    0.54,
+    { scale: 1, opacity: 1, duration: 0.2, ease: "power2.out" },
+    T("parcel", 0.2),
   );
   // Anticipation: a small lean away from the knot, then the slip.
   parcel.to(
     scene.cards[0]!.root,
-    { x: geometry.cardA.x - 4, y: geometry.cardA.y - 3, rotation: -0.8, duration: 0.12, ease: "power2.in" },
-    0.70,
+    { x: geometry.cardA.x - 4, y: geometry.cardA.y - 3, rotation: -0.8, duration: 0.14, ease: "power2.in" },
+    T("parcel", 0.44),
   );
   parcel.to(
     scene.cards[0]!.root,
     { x: geometry.cardA.x + 0.5, y: geometry.cardA.y, rotation: 0.35, duration: 0.1, ease: "power2.out" },
-    0.82,
+    T("parcel", 0.56),
   );
   parcel.to(
     scene.cards[0]!.knot,
-    { x: 5, y: 7, rotation: 14, opacity: 0, duration: 0.18, ease: "power2.in" },
-    0.83,
+    { x: 5, y: 7, rotation: 14, opacity: 0, duration: 0.2, ease: "power2.in" },
+    T("parcel", 0.6),
   );
   parcel.to(
     scene.cards[0]!.stringPaths,
-    { y: 20, rotation: 3, opacity: 0, duration: 0.22, ease: "power1.in" },
-    0.84,
+    { y: 20, rotation: 3, opacity: 0, duration: 0.24, ease: "power1.in" },
+    T("parcel", 0.62),
   );
   // The parcel hangs there, wound down, until the card opens on the next breath.
-  parcel.to(scene.cards[0]!.root, { rotation: -0.3, duration: 0.25 }, 0.95);
+  parcel.to(scene.cards[0]!.root, { rotation: -0.3, duration: 0.25 }, T("parcel", 0.8));
 
   // ---------------------------------------------------------------- spill
+  // 2.30-3.75. Three creases open, light comes out of the seam, and one dot per
+  // holding pours onto the page.
   spill.cue("spill");
   spill.fromTo(
     scene.cards[0]!.bands,
@@ -294,29 +314,29 @@ export function buildTimeline(
       y: (i: number) => (i - 1) * 13,
       rotation: (i: number) => (i - 1) * 2.4,
       opacity: (i: number) => (i === 1 ? 0.98 : 0.9),
-      duration: 0.26,
-      stagger: 0.05,
+      duration: 0.3,
+      stagger: 0.06,
       ease: "expo.out",
     },
-    1.02,
+    T("spill", -0.16),
   );
-  spill.to(scene.cards[0]!.creases, { opacity: 0, duration: 0.2 }, 1.12);
+  spill.to(scene.cards[0]!.creases, { opacity: 0, duration: 0.2 }, T("spill", -0.06));
   spill.fromTo(
     scene.cards[0]!.seam,
     { scaleX: 0, transformOrigin: "50% 50%" },
-    { scaleX: 1, duration: 0.18, ease: "expo.out" },
-    1.14,
+    { scaleX: 1, duration: 0.2, ease: "expo.out" },
+    T("spill", -0.04),
   );
-  spill.fromTo(scene.cards[0]!.seam, { opacity: 0 }, { opacity: 0.8, duration: 0.18 }, 1.14);
+  spill.fromTo(scene.cards[0]!.seam, { opacity: 0 }, { opacity: 0.8, duration: 0.2 }, T("spill", -0.04));
   // The card stays open while the field fills, then lets go.
-  spill.to(scene.cards[0]!.root, { opacity: 0, duration: 0.3 }, 2.02);
+  spill.to(scene.cards[0]!.root, { opacity: 0, duration: 0.3 }, T("spill", 0.76));
 
   // One dot per holding, largest first, each on its own arc.
   const aDots = scene.dots
     .map((dot, index) => ({ dot, index }))
     .filter(({ dot }) => dot.spec.fund === 0)
     .sort((x, y) => y.dot.spec.weightBp - x.dot.spec.weightBp);
-  const pourStart = 1.26;
+  const pourStart = T("spill", -0.02);
   const pourStagger = 0.0088;
   aDots.forEach(({ index }, rank) => {
     if (index === options.tardy) return;
@@ -342,17 +362,21 @@ export function buildTimeline(
   // The tardy one: leaves late, scuttles, arrives after its neighbours.
   const tardy = scene.dots[options.tardy];
   if (tardy) {
-    spill.set(tardy.el, { opacity: 1, scaleX: 1, scaleY: 1, x: geometry.seamA.x + 9, y: geometry.seamA.y + 7 }, 1.9);
-    spill.to(tardy.el, { x: tardy.home.x, duration: 0.48, ease: "scurry" }, 1.94);
+    spill.set(
+      tardy.el,
+      { opacity: 1, scaleX: 1, scaleY: 1, x: geometry.seamA.x + 9, y: geometry.seamA.y + 7 },
+      T("spill", 0.5),
+    );
+    spill.to(tardy.el, { x: tardy.home.x, duration: 0.5, ease: "scurry" }, T("spill", 0.54));
     spill.to(
       tardy.el,
       {
         keyframes: [
-          { y: tardy.home.y - 30, duration: 0.22, ease: "power2.out" },
+          { y: tardy.home.y - 30, duration: 0.24, ease: "power2.out" },
           { y: tardy.home.y, duration: 0.26, ease: "back.out(2.2)" },
         ],
       },
-      1.94,
+      T("spill", 0.54),
     );
   }
 
@@ -364,7 +388,7 @@ export function buildTimeline(
   labelled.forEach(({ dot }, rank) => {
     const label = dot.label!;
     gsap.set(label, { x: 500 + dot.home.x + dot.r + 7, y: 500 + dot.home.y - 5 });
-    const at = 1.84 + rank * 0.026;
+    const at = T("spill", 0.42) + rank * 0.026;
     spill.fromTo(label, { opacity: 0 }, { opacity: 1, duration: 0.14, ease: "none" }, at);
     spill.to(
       label,
@@ -378,44 +402,50 @@ export function buildTimeline(
   });
 
   // ---------------------------------------------------------------- merge
+  // 3.55-5.00. The second card slides in and spills; the companies both funds
+  // hold reach for each other and fuse; the odometer rolls to the distinct total.
   merge.cue("merge");
   const cardB = scene.cards[1]!.root;
   merge.to(
     cardB,
-    { x: geometry.cardB.x, y: geometry.cardB.y, rotation: 1.5, opacity: 1, duration: 0.36, ease: "expo.out" },
-    2.22,
+    { x: geometry.cardB.x, y: geometry.cardB.y, rotation: 1.5, opacity: 1, duration: 0.4, ease: "expo.out" },
+    T("merge", -0.16),
   );
   merge.fromTo(
     scene.cards[1]!.stringPaths,
     { drawSVG: "0%" },
-    { drawSVG: "100%", duration: 0.26, stagger: 0.015, ease: "power2.inOut" },
-    2.34,
+    { drawSVG: "100%", duration: 0.3, stagger: 0.02, ease: "power2.inOut" },
+    T("merge", -0.06),
   );
-  merge.to(cardB, { x: geometry.cardB.x - 3, y: geometry.cardB.y - 2, duration: 0.08, ease: "power2.in" }, 2.44);
-  merge.to(cardB, { x: geometry.cardB.x, y: geometry.cardB.y, duration: 0.08, ease: "power2.out" }, 2.52);
+  merge.to(
+    cardB,
+    { x: geometry.cardB.x - 3, y: geometry.cardB.y - 2, duration: 0.1, ease: "power2.in" },
+    T("merge", 0.02),
+  );
+  merge.to(cardB, { x: geometry.cardB.x, y: geometry.cardB.y, duration: 0.1, ease: "power2.out" }, T("merge", 0.1));
   merge.fromTo(
     scene.cards[1]!.bands,
     { y: 0, rotation: 0 },
     {
       y: (i: number) => (i - 1) * 11,
       rotation: (i: number) => (i - 1) * 2,
-      duration: 0.22,
-      stagger: 0.04,
+      duration: 0.26,
+      stagger: 0.05,
       ease: "expo.out",
     },
-    2.58,
+    T("merge", 0.14),
   );
   merge.fromTo(
     scene.cards[1]!.seam,
     { scaleX: 0, opacity: 0 },
-    { scaleX: 1, opacity: 0.8, duration: 0.18, ease: "expo.out" },
-    2.62,
+    { scaleX: 1, opacity: 0.8, duration: 0.2, ease: "expo.out" },
+    T("merge", 0.18),
   );
-  merge.to(cardB, { opacity: 0, duration: 0.26 }, 2.74);
+  merge.to(cardB, { opacity: 0, duration: 0.28 }, T("merge", 0.3));
   merge.to(
     labelled.map(({ dot }) => dot.label!),
     { opacity: 0, duration: 0.26 },
-    2.62,
+    T("merge", 0.18),
   );
 
   // Fund B's dots: shared companies first, so a partner exists when the thread
@@ -433,7 +463,7 @@ export function buildTimeline(
     const distance = Math.hypot(dot.home.x - geometry.seamB.x, dot.home.y - geometry.seamB.y);
     const duration = 0.3 + distance / 1600;
     const apex = clamp(distance * 0.2, 18, 120);
-    const at = 2.5 + rank * 0.0082;
+    const at = T("merge", 0.06) + rank * 0.0082;
     merge.to(dot.el, { scaleX: 1, scaleY: 1, opacity: 1, duration: 0.2, ease: "back.out(2.6)" }, at);
     merge.to(dot.el, { x: dot.home.x, duration: duration * 0.62, ease: "power2.out" }, at);
     merge.to(
@@ -460,7 +490,7 @@ export function buildTimeline(
       `M${pair.a.x.toFixed(1)} ${pair.a.y.toFixed(1)} L${pair.b.x.toFixed(1)} ${pair.b.y.toFixed(1)}`,
     );
     scene.threadsGroup.appendChild(path);
-    const t = 2.72 + pairIndex * 0.014;
+    const t = T("merge", 0.24) + pairIndex * 0.014;
     merge.fromTo(path, { drawSVG: "0%" }, { drawSVG: "100%", duration: 0.1, ease: "power2.out" }, t);
     merge.to(a.el, { x: pair.mid.x, y: pair.mid.y, duration: 0.18, ease: "power2.inOut" }, t + 0.04);
     merge.to(b.el, { x: pair.mid.x, y: pair.mid.y, duration: 0.18, ease: "power2.inOut" }, t + 0.04);
@@ -492,11 +522,13 @@ export function buildTimeline(
   });
 
   // The odometer: 818 companies before the fusion, 745 distinct after.
-  rollCounter(merge, scene, { from: TOTALS.sum, to: TOTALS.union, start: 2.78, duration: 0.36 });
-  merge.fromTo(scene.counter, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.22 }, 2.78);
-  merge.to(scene.counter, { opacity: 0, duration: 0.22 }, 3.16);
+  rollCounter(merge, scene, { from: TOTALS.sum, to: TOTALS.union, start: T("merge", 0.36), duration: 0.4 });
+  merge.fromTo(scene.counter, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.22 }, T("merge", 0.36));
+  merge.to(scene.counter, { opacity: 0, duration: 0.25 }, T("merge", 0.8));
 
   // ------------------------------------------------------------- pull-back
+  // 4.80-6.25. The camera eases back, the field compresses onto one ledger line,
+  // a pencil loops one company, and the real headline rises by line.
   pullback.cue("pullback");
   const lineCentre = metrics.input.top + metrics.input.height / 2;
   const cameraEnd = {
@@ -506,13 +538,17 @@ export function buildTimeline(
   };
   pullback.to(
     scene.world,
-    { x: cameraEnd.x, y: cameraEnd.y, scale: cameraEnd.k, duration: 0.68, ease: "expo.inOut" },
-    3.22,
+    { x: cameraEnd.x, y: cameraEnd.y, scale: cameraEnd.k, duration: 0.9, ease: "expo.inOut" },
+    T("pullback", -0.16),
   );
   // The intro's paper is the page's paper, so letting it go is not a cut: the
   // grid and the grain lift and the product's own page is what is left.
-  pullback.to([scene.paper, scene.grid, scene.grain], { opacity: 0, duration: 0.34, ease: "power1.inOut" }, 3.78);
-  pullback.to(scene.threads, { opacity: 0, duration: 0.24 }, 3.46);
+  pullback.to(
+    [scene.paper, scene.grid, scene.grain],
+    { opacity: 0, duration: 0.34, ease: "power1.inOut" },
+    T("pullback", 0.36),
+  );
+  pullback.to(scene.threads, { opacity: 0, duration: 0.24 }, T("pullback", 0.04));
 
   // The field becomes a register: every survivor lands on one line, as a tick.
   const lineWidthPx = geometry.lineWidth * cameraEnd.k;
@@ -529,18 +565,18 @@ export function buildTimeline(
     const slot = geometry.lineOwner.findIndex((owner) => scene.dots[owner] === dot);
     const target = geometry.line[slot];
     if (!target) return;
-    const delay = 3.36 + (slot / geometry.line.length) * 0.2;
+    const delay = T("pullback", 0) + (slot / geometry.line.length) * 0.25;
     pullback.to(
       dot.el,
-      { x: target.x, y: 0, scaleX: target.r / dot.r, scaleY: target.r / dot.r, duration: 0.34, ease: "power2.inOut" },
+      { x: target.x, y: 0, scaleX: target.r / dot.r, scaleY: target.r / dot.r, duration: 0.45, ease: "power2.inOut" },
       delay,
     );
   });
   pullback.fromTo(
     scene.ledger,
     { opacity: 0, scaleX: 0 },
-    { opacity: 1, scaleX: 1, duration: 0.3, ease: "expo.out" },
-    3.8,
+    { opacity: 1, scaleX: 1, duration: 0.34, ease: "expo.out" },
+    T("pullback", 0.4),
   );
 
   // The pencil loop, around the biggest fused company on the line.
@@ -551,28 +587,31 @@ export function buildTimeline(
   };
   scene.circlePath.setAttribute("d", pencilLoop(circlePoint, 11, 7.5));
   gsap.set(scene.circlePath, { transformOrigin: `${circlePoint.x}px ${circlePoint.y}px` });
-  pullback.fromTo(scene.circleSvg, { opacity: 0 }, { opacity: 1, duration: 0.1 }, 3.94);
+  pullback.fromTo(scene.circleSvg, { opacity: 0 }, { opacity: 1, duration: 0.1 }, T("pullback", 0.56));
   pullback.fromTo(
     scene.circlePath,
     { drawSVG: "0%" },
-    { drawSVG: "100%", duration: 0.26, ease: "power2.inOut" },
-    3.96,
+    { drawSVG: "100%", duration: 0.34, ease: "power2.inOut" },
+    T("pullback", 0.6),
   );
   // One overshoot, at the close of the loop: the hand presses a little too far.
   pullback.fromTo(
     scene.circlePath,
     { scale: 1.035, rotation: -1.2 },
-    { scale: 1, rotation: 0, duration: 0.16, ease: "power2.out" },
-    4.18,
+    { scale: 1, rotation: 0, duration: 0.2, ease: "power2.out" },
+    T("pullback", 0.84),
   );
 
   // The headline is the real h1, revealed by line.
-  pullback.to(refs.h1, { opacity: 1, duration: 0.02 }, 4.0);
-  pullback.to(split.lines, { yPercent: 0, duration: 0.36, stagger: 0.06, ease: "expo.out" }, 4.02);
-  pullback.to(scene.caption, { opacity: 0, duration: 0.28 }, 4.0);
-  pullback.to(scene.skip, { opacity: 0, duration: 0.2 }, 4.1);
+  pullback.to(refs.h1, { opacity: 1, duration: 0.02 }, T("pullback", 0.64));
+  pullback.to(split.lines, { yPercent: 0, duration: 0.38, stagger: 0.06, ease: "expo.out" }, T("pullback", 0.64));
+  pullback.to(scene.caption, { opacity: 0, duration: 0.28 }, T("pullback", 0.68));
+  pullback.to(scene.skip, { opacity: 0, duration: 0.2 }, T("pullback", 0.76));
+  pullback.to(scene.dots.map((dot) => dot.el), { opacity: 0, duration: 0.2 }, T("pullback", 0.84));
 
   // --------------------------------------------------------------- handoff
+  // 6.05-7.50. The ledger line becomes the real input, the headline is already
+  // the real h1, and the page's own chrome comes back.
   handoff.cue("handoff");
   const input = metrics.input;
   handoff.to(
@@ -585,23 +624,22 @@ export function buildTimeline(
       backgroundColor: "rgba(21, 27, 36, 0)",
       borderWidth: 1,
       borderRadius: 6,
-      duration: 0.36,
+      duration: 0.5,
       ease: "expo.out",
     },
-    4.22,
-  );
-  handoff.to(
-    scene.dots.map((dot) => dot.el),
-    { opacity: 0, duration: 0.18 },
-    4.24,
+    T("handoff", -0.16),
   );
   // The pencil lifts before the box is drawn, so the two never overlap.
-  handoff.to(scene.circleSvg, { opacity: 0, duration: 0.14 }, 4.26);
-  handoff.to(scene.ledger, { opacity: 0, duration: 0.18 }, 4.66);
-  handoff.to(refs.form, { opacity: 1, duration: 0.26 }, 4.5);
-  handoff.to([refs.header, refs.prose, refs.hint, refs.footer], { opacity: 1, duration: 0.34, stagger: 0.04 }, 4.72);
-  handoff.fromTo(refs.madeBy, { opacity: 0 }, { opacity: 1, duration: 0.36, ease: "power2.out" }, 4.72);
-  handoff.to(scene.root, { opacity: 0, duration: 0.18, ease: "power1.in" }, 5.02);
+  handoff.to(scene.circleSvg, { opacity: 0, duration: 0.16 }, T("handoff", -0.1));
+  handoff.to(scene.ledger, { opacity: 0, duration: 0.2 }, T("handoff", 0.08));
+  handoff.to(refs.form, { opacity: 1, duration: 0.3 }, T("handoff", 0.16));
+  handoff.to(
+    [refs.header, refs.prose, refs.hint, refs.footer],
+    { opacity: 1, duration: 0.4, stagger: 0.05 },
+    T("handoff", 0.4),
+  );
+  handoff.fromTo(refs.madeBy, { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, T("handoff", 0.4));
+  handoff.to(scene.root, { opacity: 0, duration: 0.2, ease: "power1.in" }, T("handoff", 0.84));
 
   const windows: BeatWindow[] = [paper, parcel, spill, merge, pullback, handoff].map(
     (builder, index, all) => {

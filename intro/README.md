@@ -1,6 +1,6 @@
 # The Unpacking — phase 1 animatic
 
-The 5.2-second first-visit intro for UnpackFund, as a **timing proof**: real DOM,
+The 7.5-second first-visit intro for UnpackFund, as a **timing proof**: real DOM,
 real fonts, the real GSAP master timeline, plain divs and circles where the
 particles will go. No WebGPU in here yet — that starts once the timing is signed
 off.
@@ -52,22 +52,27 @@ including stagger tails.
 
 | Beat | Brief | Content | Overlap |
 |---|---|---|---|
-| Paper | 0.000–0.500 | 0.000–0.500 | — |
-| Parcel | 0.500–1.200 | 0.340–1.200 | +160 ms |
-| Spill | 1.200–2.400 | 1.020–2.420 | +180 ms |
-| Merge | 2.400–3.400 | 2.220–3.380 | +200 ms |
-| Pull-back | 3.400–4.400 | 3.220–4.440 | +160 ms |
-| Handoff | 4.400–5.200 | 4.220–5.200 | +220 ms |
+| Paper | 0.000–1.250 | 0.000–1.190 | — |
+| Parcel | 1.250–2.500 | 1.000–2.500 | 190 ms |
+| Spill | 2.500–3.750 | 2.300–3.750 | 200 ms |
+| Merge | 3.750–5.000 | 3.550–5.000 | 200 ms |
+| Pull-back | 5.000–6.250 | 4.800–6.250 | 200 ms |
+| Handoff | 6.250–7.500 | 6.050–7.500 | 200 ms |
 
-Every overlap sits inside the brief's 150–250 ms band, and the run is 5.2 s.
+Every overlap sits inside the brief's 150–250 ms band, and the run is 7.5 s.
+
+**Every cue is a fraction of its beat** — `T("spill", 0.4)` is 40% of the way
+through the spill beat, and a negative fraction reaches back into the beat
+before it, which is how the overlaps are built rather than hoped for. Re-timing
+the run is an edit to `STORY` in `src/timeline.ts`; the choreography follows.
 
 ## Budgets
 
 | Asset | Raw | Gzipped |
 |---|---|---|
-| `index.html` | 4.0 kB | 1.8 kB |
+| `index.html` | 4.0 kB | 1.7 kB |
 | CSS | 17.9 kB | 4.3 kB |
-| app JS | 31.3 kB | 11.5 kB |
+| app JS | 32.2 kB | 11.6 kB |
 | GSAP chunk | 98.7 kB | 38.7 kB |
 | **JS total** | | **≈ 50 kB** of the 250 kB budget |
 
@@ -76,11 +81,9 @@ in the real integration.
 
 ## Open questions carried forward
 
-1. **GSAP licence.** `SplitText`, `ScrambleText`, `DrawSVGPlugin` and
-   `MorphSVGPlugin` are GreenSock "Club" plugins bundled in the npm package. This
-   repo is MIT and public. Needs a decision before the plugins are committed to
-   `main` — either a GSAP licence, or free replacements (`TextPlugin` + a hand
-   rolling scramble, an SVG `stroke-dasharray` circle instead of DrawSVG).
+1. **GSAP licence — settled 2026-11-03.** The operator confirmed the standard
+   GSAP licence covers this use, so `SplitText`, `ScrambleText`, `DrawSVGPlugin`
+   and `MorphSVGPlugin` stay.
 2. **Which two funds to bake.** The animatic uses SPY × VGT because they share
    73 companies and produce the 745 distinct total; the bake script needs the
    final answer.
