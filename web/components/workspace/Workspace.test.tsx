@@ -9,6 +9,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildLedger } from "@/lib/aggregate";
+import { benchmarkFor } from "@/lib/benchmark";
 import { CASH_KEY } from "@/lib/holdings";
 import { splitPortfolio } from "@/lib/portfolio-weights";
 import type {
@@ -32,9 +33,10 @@ import { Workspace } from "./Workspace";
  * shell would only prove that the mocks agree with each other.
  *
  * What is pinned: the answer's sentences, the companies table's shape (the tier edge, the
- * country answer, the row's open control), sorting, filtering, the tabs writing to the
- * model, and the honesty states — no portfolio, an incomplete one, and one whose filings
- * have not arrived.
+ * country answer, the row's open control, the funds named on the row), the benchmark
+ * columns and their absence, sorting, filtering, paging, the tabs writing to the model, and
+ * the honesty states — no portfolio, an incomplete one, and one whose filings have not
+ * arrived.
  */
 
 const { state, saved } = vi.hoisted(() => ({
@@ -137,6 +139,28 @@ const LEDGER: Ledger = buildLedger({
   countries: COUNTRIES,
 });
 
+/**
+ * The benchmark's own filing: VT holds four of the eight companies, at weights that give
+ * the difference column a positive, a negative and an exact zero to print.
+ *
+ * c_apple is 21.00% of this portfolio against VT's 20.00% (+1.00), c_msft 18.00% against
+ * 50.00% (-32.00), and c_treasury 10.00% against 10.00% — the case where the sign has no
+ * side to be on and the bracket must not wear a colour.
+ */
+const VT_HOLDINGS: [string, number][] = [
+  ["c_apple", 2_000],
+  ["c_msft", 5_000],
+  ["c_nvda", 2_000],
+  ["c_treasury", 1_000],
+];
+
+const BENCHMARKED: Ledger = buildLedger({
+  funds: FUNDS,
+  weights: WEIGHTS,
+  countries: COUNTRIES,
+  benchmark: benchmarkFor(fund("VT", 100, VT_HOLDINGS)),
+});
+
 interface Options {
   entries?: PortfolioEntry[];
   ledger?: Ledger | null;
@@ -183,7 +207,9 @@ function makeModel({ entries = [], ledger = null, lens = "companies" }: Options 
     fundsError: null,
     securities: { rows: new Map(), missing: [], pending: false, error: null },
     countries: COUNTRIES,
-    benchmark: null,
+    // The real model carries the same benchmark the ledger was built with; deriving it
+    // here keeps the fixture from contradicting its own ledger.
+    benchmark: ledger?.benchmark ?? null,
     ledger,
     ledgerError: null,
     ledgerMode: "main-thread" as const,
@@ -203,9 +229,9 @@ function makeModel({ entries = [], ledger = null, lens = "companies" }: Options 
 /**
  * A ledger the size of a real portfolio: `count` companies through one fund.
  *
- * The Companies lens is windowed because a three-fund portfolio is 3,665 rows; this is the
- * same shape at a size a test can build in a millisecond, and it is what the window
- * assertions below are measured against.
+ * The Companies lens pages at 50 rows because a three-fund portfolio is 3,665 of them;
+ * this is the same shape at a size a test can build in a millisecond, and it is what the
+ * paging assertions below are measured against.
  */
 function bigLedger(count: number): Ledger {
   const holdings: [string, number][] = Array.from({ length: count }, (_, index) => [
@@ -382,25 +408,153 @@ describe("Workspace — the holdings pane and the lenses", () => {
     ]);
   });
 
-  it("draws a window of a long table, and says the whole table's count", () => {
+  it("pages 50 rows at a time, and says which rows of how many are showing", () => {
     renderWorkspace({ entries: ENTRIES, ledger: bigLedger(500) });
 
     const panel = within(screen.getByRole("tabpanel"));
     const table = panel.getByRole("table");
-    const bodyRows = table.querySelectorAll("tbody tr");
+    const rows = () => Array.from(table.querySelectorAll("tbody tr"));
+    const rankOf = (row: Element) => row.querySelector("td")?.textContent;
 
-    // A window, not the table: 500 companies cannot mean 500 rows in the DOM.
-    expect(bodyRows.length).toBeGreaterThan(0);
-    expect(bodyRows.length).toBeLessThan(60);
-    // The caption carries the full count, and the row count is declared for assistive
-    // technology: the window is a rendering detail, the table is the record.
+    // A page, not a window: fifty rows in the DOM, and no row-count to keep in step with
+    // rows that are not there.
+    expect(rows()).toHaveLength(50);
+    expect(rankOf(rows()[0] as Element)).toBe("1");
+    expect(rankOf(rows()[49] as Element)).toBe("50");
+    expect(table.hasAttribute("aria-rowcount")).toBe(false);
+    // Rows take their own height — the fund list on a row wraps — so nothing is pinned to
+    // a row constant.
+    expect(rows()[0]?.getAttribute("style")).toBeNull();
+
+    // Both the caption and the announcement say which rows these are, so nothing on the
+    // page claims to be the whole table.
     expect(table.querySelector("caption")?.textContent).toContain("500 companies in all");
-    expect(table.getAttribute("aria-rowcount")).toBe("502");
-    // Row numbers are the table's, so the first drawn row is company one.
-    expect(bodyRows[0]?.textContent?.trim().startsWith("1")).toBe(true);
+    expect(table.querySelector("caption")?.textContent).toContain("rows 1–50 of 500");
+    expect(panel.getByText("Showing rows 1–50 of 500 · page 1 of 10")).toBeTruthy();
+    expect(panel.getByRole("button", { name: "Previous" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+
+    fireEvent.click(panel.getByRole("button", { name: "Next" }));
+
+    // Row 51 of the sorted table, and the announcement is polite: it is a status the
+    // screen reader reads out without moving focus.
+    expect(rows()).toHaveLength(50);
+    expect(rankOf(rows()[0] as Element)).toBe("51");
+    expect(rankOf(rows()[49] as Element)).toBe("100");
+    expect(panel.getByText("Showing rows 51–100 of 500 · page 2 of 10")).toBeTruthy();
+    expect(panel.getByRole("button", { name: "Next" }).hasAttribute("disabled")).toBe(
+      false,
+    );
   });
 
-  it("exports every company, not the window", () => {
+  it("goes back to the first page when the sort or the filter changes the list", () => {
+    renderWorkspace({ entries: ENTRIES, ledger: bigLedger(500) });
+
+    const panel = within(screen.getByRole("tabpanel"));
+    const firstRank = () =>
+      panel.getByRole("table").querySelector("tbody tr td")?.textContent;
+
+    fireEvent.click(panel.getByRole("button", { name: "Next" }));
+    expect(firstRank()).toBe("51");
+
+    fireEvent.change(panel.getByLabelText("Filter companies"), {
+      target: { value: "c_1" },
+    });
+    // A different list, so the old page number would point at rows that are not there.
+    expect(firstRank()).toBe("1");
+    expect(panel.getByRole("table").querySelector("caption")?.textContent).toContain(
+      "page 1 of",
+    );
+  });
+
+  it("names every fund on a row rather than counting the rest behind a number", () => {
+    const threeWays = buildLedger({
+      funds: [
+        fund("AAA", 100, [["c_apple", 5_000]]),
+        fund("BBB", 100, [["c_apple", 3_000]]),
+        fund("CCC", 100, [["c_apple", 2_000]]),
+      ],
+      weights: { AAA: 0.5, BBB: 0.3, CCC: 0.2 },
+      countries: COUNTRIES,
+    });
+    renderWorkspace({ entries: ENTRIES, ledger: threeWays });
+
+    const panel = within(screen.getByRole("tabpanel"));
+    const row = panel.getByRole("row", { name: /c_apple/ });
+
+    // All three, largest part of the mix first, each with the share it contributes.
+    const listed = Array.from(row.querySelectorAll("li")).map((item) => item.textContent);
+    expect(listed).toEqual(["AAA 25.00%", "BBB 9.00%", "CCC 4.00%"]);
+    // And no "+2": the attribution a reader would have had to open a tooltip for is the
+    // attribution the row shows.
+    expect(row.textContent).not.toMatch(/\+\d/);
+  });
+
+  it("shows the benchmark beside your weight, and no column at all without one", () => {
+    const benchmarked = renderWorkspace({ entries: ENTRIES, ledger: BENCHMARKED });
+    const panel = within(screen.getByRole("tabpanel"));
+
+    const headers = panel
+      .getAllByRole("columnheader")
+      .map((header) => header.textContent?.trim());
+    expect(headers).toEqual([
+      "Rank",
+      "Company",
+      "Country, market",
+      "Your weight",
+      "VT",
+      "Change vs VT",
+      "Held by",
+      "From your funds",
+    ]);
+
+    // VT's weight is a share of VT's own NAV, printed as a share — not a holding, and not
+    // a weight of the visitor's. The cells are read by position, so a column that drifted
+    // would fail here rather than print the right number under the wrong heading.
+    const apple = panel.getByRole("row", { name: /c_apple/ });
+    const cells = Array.from(apple.querySelectorAll("td")).map(
+      (cell) => cell.textContent,
+    );
+    // The company name is the row header, so the cells are rank, country, weight, VT,
+    // change.
+    expect(cells[0]).toBe("1");
+    expect(cells[2]).toBe("21.00%");
+    expect(cells[3]).toBe("20.00%");
+    expect(cells[4]).toBe("(+1.00%)");
+
+    benchmarked.unmount();
+
+    renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+    const bare = within(screen.getByRole("tabpanel"));
+    const bareHeaders = bare
+      .getAllByRole("columnheader")
+      .map((header) => header.textContent?.trim());
+
+    // Absent, not zeros: a comparison with a benchmark the release does not publish would
+    // be a number about nothing.
+    expect(bareHeaders).not.toContain("VT");
+    expect(bareHeaders).not.toContain("Change vs VT");
+    expect(bareHeaders).toHaveLength(6);
+    expect(bare.getByRole("table").querySelector("caption")?.textContent).not.toContain(
+      "VT is the Vanguard",
+    );
+  });
+
+  it("prints the difference with its sign and its colour, and no colour at zero", () => {
+    renderWorkspace({ entries: ENTRIES, ledger: BENCHMARKED });
+
+    const panel = within(screen.getByRole("tabpanel"));
+
+    // Above the benchmark: green, and the sign says so on its own.
+    expect(panel.getByText("(+1.00%)").className).toBe("delta delta--up");
+    // Below it: red.
+    expect(panel.getByText("(-32.00%)").className).toBe("delta delta--down");
+    // Exactly level: the bracket is the whole answer, with no side to colour.
+    expect(panel.getByText("(0.00%)").className).toBe("delta");
+  });
+
+  it("exports every company, not the page", () => {
     renderWorkspace({ entries: ENTRIES, ledger: bigLedger(500) });
 
     fireEvent.click(
@@ -408,8 +562,37 @@ describe("Workspace — the holdings pane and the lenses", () => {
     );
 
     const text = saved.at(-1) ?? "";
-    // A header and 500 rows, whatever the table drew.
-    expect(text.trimEnd().split("\n")).toHaveLength(501);
+    const lines = text.trimEnd().split("\n");
+
+    // A header and 500 rows: the file is the ledger, whatever page the table drew.
+    expect(lines).toHaveLength(501);
+    // Both benchmark columns travel with the file, and with no benchmark they are empty
+    // rather than zeros — a zero in a spreadsheet is a measurement.
+    expect(lines[0]).toContain("vt_weight_pct");
+    expect(lines[0]).toContain("change_vs_vt_pp");
+    const firstRow = (lines[1] ?? "").split(",");
+    expect(firstRow).toHaveLength(10);
+    expect(firstRow[4]).toBe("");
+    expect(firstRow[5]).toBe("");
+  });
+
+  it("writes both benchmark numbers into the file a spreadsheet can subtract", () => {
+    renderWorkspace({ entries: ENTRIES, ledger: BENCHMARKED });
+
+    fireEvent.click(
+      within(screen.getByRole("tabpanel")).getByRole("button", { name: /Export/ }),
+    );
+
+    const lines = (saved.at(-1) ?? "").trimEnd().split("\n");
+    // Your weight, VT's weight inside its own NAV, and the signed difference in percentage
+    // points: the page's meaning, in cells a formula can use.
+    expect(lines.find((line) => line.startsWith("c_apple,"))).toContain(
+      ",21.00,20.00,+1.00,",
+    );
+    // The zero keeps its place and its sign-free number.
+    expect(lines.find((line) => line.startsWith("c_treasury,"))).toContain(
+      ",10.00,10.00,0.00,",
+    );
   });
 
   it("renders the empty state, with the example labelled as an example", () => {

@@ -940,6 +940,10 @@ table {
 
 /* A thin bar inside a table row, on one shared scale. */
 .rowbar {
+  /* A block, not the default inline span: `height` and `min-width` do nothing on an
+   * inline box, so an inline `.rowbar` renders as a zero-height sliver — the bar would
+   * be invisible in every table that uses it. */
+  display: block;
   position: relative;
   height: 0.4rem;
   min-width: 3rem;

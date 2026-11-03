@@ -15,12 +15,13 @@
  * are (`lib/export.ts` explains why that matters).
  */
 
+import { benchmarkDelta } from "@/lib/benchmark";
 import type { CoverageBand } from "@/lib/format";
 import { coverageBand } from "@/lib/format";
 
 import { BUCKET_WORD, TIER_WORD } from "./lens-math";
 import type { FundMixRow, MarketSplit, PairState, UntracedTotals } from "./lens-math";
-import type { UnmappedBreakdown } from "@/lib/types";
+import type { Ledger, LedgerSource, UnmappedBreakdown } from "@/lib/types";
 
 /** RFC 4180: quote when the value contains a delimiter, a quote, or a newline. */
 function cell(value: string | number | null | undefined): string {
@@ -58,6 +59,82 @@ function bandWord(pct: number | null): string {
 export function lensCsvName(kind: string, now: Date, releaseAsOf: string): string {
   const date = now.toISOString().slice(0, 10);
   return `unpackfund-${kind}-${date}-${releaseAsOf.replace(/[^0-9A-Za-z._-]/g, "_")}.csv`;
+}
+
+/** `VTI 2.05%`, or `AMZN (direct) 10.00%` — the row's own words for a source. */
+function sourceCell(source: LedgerSource): string {
+  const label = source.kind === "fund" ? source.ref : `${source.ref} (direct)`;
+  return `${label} ${share(source.weight)}%`;
+}
+
+/**
+ * A signed difference in percentage points, as a spreadsheet wants it: `+2.00`.
+ *
+ * The page prints `(+2.00%)` — the bracket and the unit are the page's grammar
+ * (`formatSignedShare`, ADR-0015). A file is read by a parser, so the sign is kept and
+ * the bracket is not: the column header carries the unit, and a cell that reads `(+2.00%)`
+ * is text in every spreadsheet ever written. `-0.00` cannot be produced: a difference that
+ * rounds to nothing prints `0.00`, with no side to be on.
+ */
+function signedPoints(delta: number): string {
+  const points = Number((delta * 100).toFixed(2));
+  if (points === 0) return "0.00";
+  return points > 0 ? `+${points.toFixed(2)}` : points.toFixed(2);
+}
+
+/**
+ * The Companies lens: the whole ledger, whatever page the table is showing.
+ *
+ * Exactly the ledger's own columns (`lib/export.ts`) with the two benchmark numbers
+ * inserted beside the weight they qualify, so a spreadsheet that already reads an export
+ * from the workspace keeps every column it had.
+ *
+ * The two new columns carry the page's meaning and the page's single subtraction:
+ * `vt_weight_pct` is the company's weight **inside the benchmark fund's own NAV** (not a
+ * share of the visitor's mix, not how much of the benchmark they hold), and
+ * `change_vs_vt_pp` is your weight minus that, in percentage points. A release that
+ * publishes no benchmark leaves both empty rather than writing `0.00`, because a zero in a
+ * spreadsheet is a measurement and this would be a missing one.
+ *
+ * Rows are in the ledger's order, which is the table's default order — the page's sort and
+ * its page number are the view's, and a file that followed them would be a different
+ * answer every time it was opened.
+ */
+export function companiesCsv(ledger: Ledger, releaseAsOf: string): string {
+  const lines = [
+    csvLine([
+      "company_id",
+      "name",
+      "ticker",
+      "portfolio_weight_pct",
+      "vt_weight_pct",
+      "change_vs_vt_pp",
+      "held_directly",
+      "fund_count",
+      "sources",
+      "release_as_of",
+    ]),
+  ];
+
+  for (const row of ledger.rows) {
+    const delta = benchmarkDelta(row.weight, row.benchmark_weight);
+    lines.push(
+      csvLine([
+        row.company_id,
+        row.name,
+        row.ticker ?? "",
+        share(row.weight),
+        row.benchmark_weight === null ? "" : share(row.benchmark_weight),
+        delta === null ? "" : signedPoints(delta),
+        row.held_directly ? "yes" : "no",
+        row.holder_count,
+        row.sources.map(sourceCell).join("; "),
+        releaseAsOf,
+      ]),
+    );
+  }
+
+  return `${lines.join("\n")}\n`;
 }
 
 /**

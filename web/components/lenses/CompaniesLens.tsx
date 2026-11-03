@@ -9,7 +9,7 @@
  * funds behind it are on the row rather than in three places. That is the whole product in
  * one table: the fund you bought is a route, and the companies are what you own.
  *
- * Four rules are visible in the markup:
+ * Five rules are visible in the markup:
  *
  * 1. **The market edge is never colour alone.** Each row carries `data-tier`, which the
  *    design system turns into a 4px inset, *and* the two-letter country code and the tier
@@ -17,38 +17,43 @@
  *    the same answer. A company whose country the release does not answer keeps its row
  *    and its weight and loses only the colour: its edge is dashed, its code reads "no
  *    code", and the tier cell says so.
- * 2. **The bar is drawn on one scale for the table** — set by the largest company — and
+ * 2. **Every fund is named, never counted down to "+N".** The row lists each contributing
+ *    fund with its share and wraps to fit them, so a twelve-fund position grows the row
+ *    instead of hiding eleven funds behind a number (`static-xray-frontend` §6: a meaning
+ *    behind hover is a meaning half the readers never get). The bar above the list is the
+ *    same numbers on one scale, not a second source of truth.
+ * 3. **The bar is drawn on one scale for the table** — set by the largest company — and
  *    that scale does not change when the table is filtered, so a filtered view is not
- *    silently re-scaled into looking like the whole portfolio. Inside the bar, the
- *    divisions are the funds that hold the position: the same numbers the Funds column
- *    and the source line carry.
- * 3. **Rank is a place in this table, not a rating.** It numbers the rows as they are
+ *    silently re-scaled into looking like the whole portfolio.
+ * 4. **Rank is a place in this table, not a rating.** It numbers the rows as they are
  *    listed and renumbers when the sort changes. Nothing here ranks a company against
  *    anything but the visitor's own weights.
- * 4. **Sorting and filtering are the view's, not the ledger's.** `sortBy` copies, the
- *    filter searches name, ticker, country code and tier word, and the export is the whole
- *    ledger — the caption says so, because a spreadsheet of 200 rows that looked like a
- *    filtered table of 12 would be a different answer.
+ * 5. **Sorting, filtering and paging are the view's, not the ledger's.** `sortBy` copies,
+ *    the filter searches name, ticker, country code and tier word, and the export is the
+ *    whole ledger — the caption says so, because a spreadsheet that looked like the page
+ *    would be a different answer. The table pages at 50 rows rather than virtualizing
+ *    (`static-xray-frontend` §8): a row whose fund list wraps has no fixed height, so a
+ *    window would have to clip the very list rule 2 exists to show, and a real page keeps
+ *    the table semantics a screen reader relies on instead of an `aria-rowindex` we
+ *    maintain by hand.
+ *
+ * The VT columns are the comparison, not a second holding: `benchmarkDelta` and
+ * `formatSignedShare` are ADR-0015's one place where two displayed weights are subtracted,
+ * the sign is always printed, and a release with no benchmark drops both columns rather
+ * than printing a column of zeros.
  */
 
-import { useMemo, useRef, useState } from "react";
-import type { CSSProperties, FocusEvent, UIEvent } from "react";
+import { useMemo, useState } from "react";
 
-import styles from "./CompaniesLens.module.css";
-import {
-  firstVisibleRow,
-  ROW_HEIGHT,
-  rowWindow,
-  scrollTopForRow,
-  VIEWPORT_HEIGHT,
-} from "@/components/workspace/windowing";
+import { PAGE_SIZE, pageOf } from "@/components/directory/paging";
+import { benchmarkDelta } from "@/lib/benchmark";
 import { TIER_AS_OF, TIER_CONVENTION, tierOf } from "@/lib/country-tier";
-import { ledgerCsv, saveCsv } from "@/lib/export";
-import { lensCsvName } from "./lens-csv";
-import { formatCount, formatShare } from "@/lib/format";
+import { saveCsv } from "@/lib/export";
+import { deltaInkClass, formatCount, formatShare, formatSignedShare } from "@/lib/format";
 import type { LedgerRow, LedgerSource } from "@/lib/types";
 import type { LensProps } from "@/components/workspace/types";
 
+import styles from "./CompaniesLens.module.css";
 import {
   CellNote,
   LensExport,
@@ -57,31 +62,61 @@ import {
   LensSection,
   LensState,
 } from "./lens-chrome";
+import { companiesCsv, lensCsvName } from "./lens-csv";
 import { lensGateState } from "./lens-gate";
 import { nextSort, sortBy, TIER_WORD, type SortState } from "./lens-math";
 
 type CompanySortKey = "name" | "country" | "weight" | "funds";
 
-const COLUMNS: Array<{
+interface Column {
+  /** `null` for a column that is not a sort: it prints and does not order. */
   key: CompanySortKey | null;
   label: string;
   numeric: boolean;
   /** The direction the first click on this column sorts in. */
   first: "ascending" | "descending";
-}> = [
+  /** Only shown when the release publishes a benchmark (`static-xray-frontend` §4a). */
+  benchmark?: boolean;
+}
+
+/**
+ * The columns, in order: your weight, then how it compares with the benchmark, then the
+ * two columns that say where the weight came from. The VT pair sits between them because
+ * the difference only reads as a difference next to the number it is against.
+ */
+const COLUMNS: Column[] = [
   { key: null, label: "Rank", numeric: true, first: "descending" },
   { key: "name", label: "Company", numeric: false, first: "ascending" },
-  { key: "country", label: "Country, market", numeric: false, first: "ascending" },
-  { key: "weight", label: "Weight", numeric: true, first: "descending" },
-  { key: "funds", label: "Funds", numeric: true, first: "descending" },
-  { key: null, label: "Weight, drawn", numeric: false, first: "descending" },
+  {
+    key: "country",
+    label: "Country, market",
+    numeric: false,
+    first: "ascending",
+  },
+  { key: "weight", label: "Your weight", numeric: true, first: "descending" },
+  {
+    key: null,
+    label: "VT",
+    numeric: true,
+    first: "descending",
+    benchmark: true,
+  },
+  {
+    key: null,
+    label: "Change vs VT",
+    numeric: true,
+    first: "descending",
+    benchmark: true,
+  },
+  { key: "funds", label: "Held by", numeric: true, first: "descending" },
+  { key: null, label: "From your funds", numeric: false, first: "descending" },
 ];
 
 const COLUMN_LABEL: Record<CompanySortKey, string> = {
   name: "Company",
   country: "Country",
-  weight: "Weight",
-  funds: "Funds",
+  weight: "Your weight",
+  funds: "Held by",
 };
 
 /** The caption says which sort is on in the column's own words, not "descending". */
@@ -108,13 +143,17 @@ function sourcesOf(row: LedgerRow): LedgerSource[] {
   return [...row.sources].sort((a, b) => b.weight - a.weight);
 }
 
-/** What one contributing source is called in a cell, a title, or a screen reader's list. */
-function sourceWord(source: LedgerSource): string {
-  return source.kind === "fund" ? source.ref : "held directly";
+/**
+ * What one contributing source is called: a fund's ticker, or the visitor's own position
+ * marked as theirs. A direct holding is not a fund (ADR-0014), so it never wears a ticker
+ * that could be mistaken for one.
+ */
+function sourceLabel(source: LedgerSource): string {
+  return source.kind === "fund" ? source.ref : `${source.ref} (direct)`;
 }
 
 /**
- * Where each fund's segment starts and ends, as fractions of the row's whole width.
+ * Where each segment starts and ends, as fractions of the row's whole width.
  *
  * A module-level function rather than arithmetic in the component body: the running total
  * is a `let`, and `react-hooks/immutability` (React Compiler) treats a variable reassigned
@@ -141,8 +180,8 @@ function barSegments(
  * The filled part's length is the weight on the table's shared scale; inside it, each
  * segment's width is that fund's share of the position, so the segments always add up to
  * the fill. A 1px `--paper` border is the only thing separating one fund from the next:
- * colour is reserved for the market tier and the coverage band, and two greys here would be
- * a distinction with no legend.
+ * colour is reserved for the market tier, the coverage band and the benchmark difference,
+ * and two greys here would be a distinction with no legend.
  */
 function FundBar({ row, maxWeight }: { row: LedgerRow; maxWeight: number }) {
   const fill = maxWeight > 0 ? Math.max(0, row.weight) / maxWeight : 0;
@@ -150,7 +189,7 @@ function FundBar({ row, maxWeight }: { row: LedgerRow; maxWeight: number }) {
   const segments = barSegments(sources);
 
   return (
-    <span className="rowbar">
+    <span className={`rowbar ${styles.bar}`}>
       {sources.map((source, index) => {
         const segment = segments[index];
         if (!segment) return null;
@@ -164,11 +203,35 @@ function FundBar({ row, maxWeight }: { row: LedgerRow; maxWeight: number }) {
               borderRight:
                 index < sources.length - 1 ? "1px solid var(--paper)" : undefined,
             }}
-            title={`${sourceWord(source)}: ${formatShare(source.weight)} of your whole portfolio`}
+            title={`${sourceLabel(source)}: ${formatShare(source.weight)} of your whole portfolio`}
           />
         );
       })}
     </span>
+  );
+}
+
+/**
+ * Every fund that paid for this position, named with its share of the visitor's mix.
+ *
+ * A list rather than a sentence, because a reader counting funds and a screen reader
+ * hearing "list, 3 items" both get the count from the structure. No truncation: the row
+ * wraps instead, and the page is short enough to take the height (this is why the table is
+ * paginated rather than windowed).
+ */
+function SourceList({ row }: { row: LedgerRow }) {
+  const sources = sourcesOf(row);
+  if (sources.length === 0) return <CellNote>no source</CellNote>;
+
+  return (
+    <ul className={styles.sources} aria-label={`Funds holding ${row.name}`}>
+      {sources.map((source) => (
+        <li className={styles.source} key={`${source.kind}:${source.ref}`}>
+          <span className={styles.sourceName}>{sourceLabel(source)}</span>{" "}
+          <span className={styles.sourceWeight}>{formatShare(source.weight)}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -181,18 +244,9 @@ export function CompaniesLens({ model }: LensProps) {
     direction: "descending",
   });
   const [query, setQuery] = useState("");
-
-  // The window, described in full in `windowing.ts`. `first` is the row at the top of the
-  // *visible* area, not the top of the drawn area — the overscan is the difference. It is
-  // view state and holds no ledger data: the table above it is the record, this is only
-  // which slice of it is in the DOM.
-  const [first, setFirst] = useState(0);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const bodyRef = useRef<HTMLTableSectionElement | null>(null);
-  // The caption and the header scroll with the rows, and the caption is taller than several
-  // rows, so `scrollTop` is not a row index until that height is subtracted. It is measured
-  // from the DOM rather than assumed, because it changes with the width of the page.
-  const bodyOffset = useRef(0);
+  // Pages are 1-based and clamped on the way out, so a filter that shortens the list while
+  // the reader is on page 40 shows the last page instead of an empty table.
+  const [page, setPage] = useState(1);
 
   // The largest company in the whole ledger, not in the filtered view: one scale for the
   // table, so filtering cannot rescale the bars into a different-looking portfolio.
@@ -242,74 +296,19 @@ export function CompaniesLens({ model }: LensProps) {
     );
   }
 
+  const hasBenchmark = ledger.benchmark !== null;
+  const columns = COLUMNS.filter((column) => !column.benchmark || hasBenchmark);
+  const current = pageOf(visible, page, PAGE_SIZE);
   const totalWeight = ledger.rows.reduce((sum, row) => sum + row.weight, 0);
   const suppressed = ledger.funds.filter((fund) => fund.coverage_pct < 60);
   const sortLabel = COLUMN_LABEL[sort.key];
-  const view = rowWindow({ count: visible.length, first });
 
-  /**
-   * How much of the scrolled content sits above the first body row — the caption, which is
-   * taller than several rows, and the pinned header. Measured rather than assumed because
-   * it changes with the width of the page, and refreshed on every scroll and focus rather
-   * than cached, so it stays true when the caption reflows.
-   */
-  const measureBodyOffset = (node: HTMLDivElement) => {
-    const body = bodyRef.current;
-    if (!body) return 0;
-    bodyOffset.current =
-      body.getBoundingClientRect().top -
-      node.getBoundingClientRect().top +
-      node.scrollTop;
-    return bodyOffset.current;
-  };
-
-  const onScroll = (event: UIEvent<HTMLDivElement>) => {
-    const node = event.currentTarget;
-    measureBodyOffset(node);
-    const next = firstVisibleRow({
-      scrollTop: node.scrollTop,
-      bodyOffset: bodyOffset.current,
-    });
-    setFirst((current) => (current === next ? current : next));
-  };
-
-  /** Sorting and filtering replace the list, so the window returns to its first row. */
-  const resetScroll = () => {
-    const node = scrollRef.current;
-    if (node) node.scrollTop = 0;
-    setFirst(0);
-  };
-
-  /**
-   * A row that takes focus is scrolled to, and the scroll moves the window.
-   *
-   * That is what keeps a keyboard working on a windowed table: rows outside the window are
-   * not in the DOM, so a Tab walk would otherwise stop at the last drawn row. Focusing a
-   * row in the overscan pulls the window forward, and the rows after it are drawn by the
-   * time the next Tab arrives.
-   */
-  const onRowFocus = (event: FocusEvent<HTMLTableSectionElement>) => {
-    const target = event.target as HTMLElement | null;
-    const row = target?.closest("tr[data-index]");
-    if (!row) return;
-    const index = Number(row.getAttribute("data-index"));
-    if (!Number.isFinite(index)) return;
-    const node = scrollRef.current;
-    if (!node) return;
-    // Measured here too: a keyboard can reach the table before the first scroll has
-    // happened, and an offset of zero would put the scroll a caption's height too high.
-    const next = scrollTopForRow({
-      index,
-      scrollTop: node.scrollTop,
-      clientHeight: node.clientHeight,
-      bodyOffset: measureBodyOffset(node),
-    });
-    if (next !== null) node.scrollTop = next;
-  };
+  /** Sorting and filtering replace the list, so the reader goes back to its first page. */
+  const resetPage = () => setPage(1);
 
   const exportCompanies = () => {
     saveCsv(
-      ledgerCsv(ledger, { as_of: releaseAsOf }),
+      companiesCsv(ledger, releaseAsOf),
       // The same file name shape as the other four lenses, so a folder of exports
       // sorts by what it holds rather than by which component wrote it.
       lensCsvName("companies", new Date(), releaseAsOf),
@@ -347,7 +346,7 @@ export function CompaniesLens({ model }: LensProps) {
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
-            resetScroll();
+            resetPage();
           }}
           placeholder="Company, ticker, country code, or market"
           aria-describedby="companies-filter-note"
@@ -370,42 +369,54 @@ export function CompaniesLens({ model }: LensProps) {
           Counted by company, not by fund: the weights in this table add up to the part of
           your portfolio a filing could place, {formatShare(totalWeight)} of the whole.
         </p>
-        <div
-          className={`table-wrap ${styles.window}`}
-          ref={scrollRef}
-          onScroll={onScroll}
-          // The CSS and `windowing.ts` have to agree on the height of the window, so the
-          // number lives in one place and the stylesheet reads it from here.
-          style={{ "--companies-window": `${VIEWPORT_HEIGHT}px` } as CSSProperties}
-        >
-          <table className="tier-edge table" aria-rowcount={visible.length + 2}>
+        <div className="table-wrap">
+          <table className={`tier-edge table ${styles.compact}`}>
             <caption>
               One row per company: {formatCount(ledger.rows.length)}{" "}
               {ledger.rows.length === 1 ? "company" : "companies"} in all, largest weight
               first unless another column is sorted. Sorted by {sortLabel},{" "}
-              {directionWords(sort.key, sort.direction)}. Every heading except Rank and
-              the drawn bar is a button: choose it to sort by that column, choose it again
-              to reverse. Rank numbers the rows as they are listed and renumbers with the
-              sort — it is a place in this table, not a judgement about a company. Weight
-              is a share of your whole portfolio, and the same company is counted once
-              however many funds hold it. Funds is how many of your funds hold it; a
-              company you also hold directly says so, and a direct holding is not a fund,
-              so it is not in that count. The drawn bar is the weight on one scale for the
-              table, set by the largest company in the ledger and unchanged by the filter;
-              the divisions inside it are the funds that hold the position, widest part
-              first, and each carries its own share of your mix. The left edge is the
-              market tier — two-letter code in text, tier in words beside it — following
-              the {TIER_CONVENTION}, as of {TIER_AS_OF}. A company whose domicile the
-              release cannot answer keeps its row and its weight: its edge is dashed, its
-              code reads &ldquo;no code&rdquo;, and its tier says why. The count and the
-              order in this caption are the whole table&rsquo;s; the rows drawn are the
-              ones in view, and scrolling draws the rest, so the row numbers stay the
-              table&rsquo;s rather than the screen&rsquo;s. Press a company name to open
-              it.
+              {directionWords(sort.key, sort.direction)}. This page shows rows{" "}
+              {formatCount(current.start)}–{formatCount(current.end)} of{" "}
+              {formatCount(current.total)}, page {formatCount(current.page)} of{" "}
+              {formatCount(current.pages)}: paging changes which rows are on screen, never
+              the count or the order. Every heading you can sort by is a button — choose
+              it to sort by that column, choose it again to reverse. Rank numbers the rows
+              as they are listed and renumbers with the sort; it is a place in this table,
+              not a judgement about a company. Your weight is a share of your whole
+              portfolio, and the same company is counted once however many funds hold it.
+              Held by is how many of your funds report it; a company you also hold
+              directly says so, since a direct holding is not a fund and is not in that
+              count. From your funds names every fund that holds the position, largest
+              part of your mix first, with each one&rsquo;s share of your portfolio — no
+              fund is hidden behind a count — and your own direct position where you have
+              one; the drawn bar above the list is the same numbers on one scale for the
+              table, set by the largest company in the ledger and unchanged by the filter,
+              with one division per fund.
+              {hasBenchmark ? (
+                <>
+                  {" "}
+                  VT is the Vanguard Total World Stock ETF, the one benchmark this table
+                  compares against, and the VT column is the company&rsquo;s weight inside
+                  VT&rsquo;s own portfolio: not a share of your mix, and not how much of
+                  VT you hold. The bracket is your weight minus VT&rsquo;s, in percentage
+                  points — (-1.20%) means you hold 1.20 points less of the company than VT
+                  does, and (+1.20%) means more. The bracket is green above zero and red
+                  below it, and has no colour at exactly zero; the sign is always printed,
+                  so the colour is emphasis and never the only reading. A company VT does
+                  not hold reads 0.00% there, which is a fact about VT&rsquo;s filing
+                  rather than a missing number.
+                </>
+              ) : null}{" "}
+              The left edge is the market tier — two-letter code in text, tier in words
+              beside it — following the {TIER_CONVENTION}, as of {TIER_AS_OF}. A company
+              whose domicile the release cannot answer keeps its row and its weight: its
+              edge is dashed, its code reads &ldquo;no code&rdquo;, and its tier says why.
+              The export is the whole ledger — every row, not this page. Press a company
+              name to open it.
             </caption>
             <thead>
               <tr>
-                {COLUMNS.map((column) => {
+                {columns.map((column) => {
                   const active = column.key !== null && sort.key === column.key;
                   if (column.key === null) {
                     return (
@@ -430,8 +441,8 @@ export function CompaniesLens({ model }: LensProps) {
                         type="button"
                         className="table__sort"
                         onClick={() => {
-                          resetScroll();
                           setSort((current) => nextSort(current, key, column.first));
+                          resetPage();
                         }}
                       >
                         {column.label}
@@ -441,45 +452,24 @@ export function CompaniesLens({ model }: LensProps) {
                 })}
               </tr>
             </thead>
-            <tbody ref={bodyRef} onFocus={onRowFocus}>
-              {view.topPad > 0 ? (
-                <tr
-                  aria-hidden="true"
-                  style={{ height: view.topPad, background: "transparent" }}
-                >
-                  <td colSpan={COLUMNS.length} style={{ padding: 0, border: 0 }} />
-                </tr>
-              ) : null}
-              {visible.slice(view.start, view.end).map((row, offset) => {
-                const index = view.start + offset;
+            <tbody>
+              {current.rows.map((row, offset) => {
                 const tier = row.country === null ? null : tierOf(row.country);
-                const largest = sourcesOf(row)[0];
+                // The rank is the row's place in the whole sorted table, not on its page.
+                const rank = current.start + offset;
+                const delta = benchmarkDelta(row.weight, row.benchmark_weight);
                 return (
                   <tr
                     key={row.company_id}
-                    data-index={index}
-                    aria-rowindex={index + 2}
-                    style={{ height: ROW_HEIGHT }}
                     data-tier={tier ?? undefined}
                     data-country-missing={row.country === null ? "true" : undefined}
                     onClick={() => model.openCompany(row.company_id)}
                   >
-                    <td className="num">{formatCount(index + 1)}</td>
-                    <th scope="row">
+                    <td className="num">{formatCount(rank)}</td>
+                    <th scope="row" className={styles.company}>
                       <button
                         type="button"
                         className="table__sort"
-                        // One line, always: a name that wrapped would make its row taller
-                        // than `ROW_HEIGHT` and every spacer after it would be wrong. The
-                        // full name stays in the accessible name and the tooltip.
-                        style={{
-                          display: "block",
-                          maxWidth: "22rem",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                        title={row.name}
                         aria-label={`Open ${row.name}`}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -506,33 +496,35 @@ export function CompaniesLens({ model }: LensProps) {
                       )}
                     </td>
                     <td className="num">{formatShare(row.weight)}</td>
+                    {hasBenchmark ? (
+                      <td className="num">
+                        {row.benchmark_weight === null
+                          ? "—"
+                          : formatShare(row.benchmark_weight)}
+                      </td>
+                    ) : null}
+                    {hasBenchmark ? (
+                      <td className="num">
+                        {delta === null ? (
+                          "—"
+                        ) : (
+                          <span className={deltaInkClass(delta)}>
+                            {formatSignedShare(delta)}
+                          </span>
+                        )}
+                      </td>
+                    ) : null}
                     <td className="num">
                       {row.holder_count > 0 ? formatCount(row.holder_count) : "—"}
                       {row.held_directly ? <CellNote>plus direct</CellNote> : null}
                     </td>
-                    <td>
+                    <td className={styles.fromFunds}>
                       <FundBar row={row} maxWeight={maxWeight} />
-                      <CellNote>
-                        {largest
-                          ? `via ${sourceWord(largest)}${
-                              row.sources.length > 1
-                                ? ` +${formatCount(row.sources.length - 1)}`
-                                : ""
-                            }`
-                          : "no source"}
-                      </CellNote>
+                      <SourceList row={row} />
                     </td>
                   </tr>
                 );
               })}
-              {view.bottomPad > 0 ? (
-                <tr
-                  aria-hidden="true"
-                  style={{ height: view.bottomPad, background: "transparent" }}
-                >
-                  <td colSpan={COLUMNS.length} style={{ padding: 0, border: 0 }} />
-                </tr>
-              ) : null}
             </tbody>
             <tfoot>
               <tr>
@@ -540,6 +532,8 @@ export function CompaniesLens({ model }: LensProps) {
                   {query.trim().length > 0 ? "Matching companies" : "All companies"}
                 </th>
                 <td className="num">{formatShare(totalWeight)}</td>
+                {hasBenchmark ? <td className="num" /> : null}
+                {hasBenchmark ? <td className="num" /> : null}
                 <td className="num" />
                 <td>
                   <CellNote>the rest of your mix is untraced weight or cash</CellNote>
@@ -547,6 +541,38 @@ export function CompaniesLens({ model }: LensProps) {
               </tr>
             </tfoot>
           </table>
+        </div>
+
+        <div className={`${styles.pager} no-print`}>
+          <p className="small muted" role="status">
+            {current.total === 0 ? (
+              "No company matches this filter."
+            ) : (
+              <>
+                Showing rows {formatCount(current.start)}–{formatCount(current.end)} of{" "}
+                {formatCount(current.total)} · page {formatCount(current.page)} of{" "}
+                {formatCount(current.pages)}
+              </>
+            )}
+          </p>
+          <div className={styles.pager__buttons}>
+            <button
+              type="button"
+              className="btn btn--quiet btn--sm"
+              disabled={current.page <= 1}
+              onClick={() => setPage(current.page - 1)}
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              className="btn btn--quiet btn--sm"
+              disabled={current.page >= current.pages}
+              onClick={() => setPage(current.page + 1)}
+            >
+              Next
+            </button>
+          </div>
         </div>
       </LensSection>
     </div>
