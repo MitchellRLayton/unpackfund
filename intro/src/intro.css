@@ -454,10 +454,38 @@
     padding-left: 0;
   }
 
+  /* Two lines per fund on a phone: ticker and name, then the filing date under
+     it, rather than a date that floats to the right edge of a wrapped row. */
+  .caption__row {
+    display: block;
+  }
+
   .caption__name {
     white-space: normal;
     overflow: visible;
     text-overflow: clip;
-    flex: 1 1 11rem;
+  }
+
+  .caption__filed {
+    display: block;
+    margin-top: 1px;
+  }
+
+  .caption__ticker {
+    margin-right: 0.45rem;
+  }
+
+  /* The field reaches the bottom of a phone's stage, so the caption gets a paper
+     scrim rather than sitting on top of four pale dots. */
+  .caption {
+    isolation: isolate;
+  }
+
+  .caption::before {
+    content: "";
+    position: absolute;
+    inset: -12px -16px -12px -16px;
+    z-index: -1;
+    background: linear-gradient(to top, var(--paper) 58%, transparent);
   }
 }
