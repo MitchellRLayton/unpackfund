@@ -79,6 +79,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .artifact import sha256_hex
+from .paths import REPO_ROOT
 from .style import Style
 from .style_overrides import resolve
 
@@ -1356,7 +1357,7 @@ def stylesheet(globals_css: Path | None = None) -> str:
     provenance line says where the bytes came from, so a served page can be traced
     to one build.
     """
-    path = globals_css or Path(__file__).resolve().parents[2] / "web" / "app" / "globals.css"
+    path = globals_css or REPO_ROOT / "web" / "app" / "globals.css"
     if not path.exists():
         raise SystemExit(f"{path}: the design system is missing, so there is no page to style")
     header = (
@@ -1373,7 +1374,7 @@ def newest_release(root: Path | None = None) -> Path:
     chronological; a partially-built directory has no catalogue and is skipped.
     """
     if root is None:
-        root = Path(__file__).resolve().parents[2] / "artifacts" / "universe-c" / "releases"
+        root = REPO_ROOT / "artifacts" / "universe-c" / "releases"
     candidates = [
         path for path in root.iterdir() if (path / CATALOGUE_FILE).exists()
     ] if root.exists() else []

@@ -10,7 +10,32 @@ from __future__ import annotations
 
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+def find_repo_root(start: Path | None = None, cwd: Path | None = None) -> Path:
+    """The checkout, found by its marker file rather than by counting parents.
+
+    Counting parents works from a source checkout and breaks the moment the package is
+    installed: `pip install ./pipeline` puts this file in site-packages, where
+    `parents[2]` is the Python installation's `lib` directory. That is not hypothetical —
+    it failed the production deploy on 2026-11-03 with "the design system is missing, so
+    there is no page to style", because the generator looked for `web/app/globals.css`
+    under `/opt/hostedtoolcache/Python/3.13.17/x64/lib`.
+
+    So: walk up from the working directory first — in every caller that exists, `pnpm` or
+    the deploy workflow runs from the repository root, so this is the checkout — and then
+    from this file, for the case where someone runs the package from elsewhere. Take the
+    first directory that has both the workspace manifest and the app. The fallback keeps
+    the old behaviour for a tree that has neither, so the error a caller sees still names
+    a path rather than raising `IndexError`.
+    """
+    here = (start or Path(__file__)).resolve()
+    for origin in ((cwd or Path.cwd()).resolve(), here.parent):
+        for candidate in (origin, *origin.parents):
+            if (candidate / "pnpm-workspace.yaml").is_file() and (candidate / "web").is_dir():
+                return candidate
+    return here.parents[2]
+
+
+REPO_ROOT = find_repo_root()
 ARTIFACTS = REPO_ROOT / "artifacts"
 RELEASES = ARTIFACTS / "releases"
 

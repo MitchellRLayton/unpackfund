@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from pipeline import fund_pages
+from pipeline import fund_pages, paths
 
 # Domiciles for the fixture's companies. US twice (a company and a cash row), one
 # developed, one emerging, one in neither list — so one page exercises every state
@@ -1191,3 +1191,34 @@ def test_the_cli_limits_a_full_rebuild(tmp_path: Path, capsys):
     assert cli(["--release", str(release), "--out", str(tmp_path / "out"),
                 "--limit", "1"]) == 0
     assert "1 fund page(s) of 2 in the catalogue" in capsys.readouterr().out
+
+
+def test_the_design_system_is_found_when_the_package_is_not_in_the_checkout(tmp_path):
+    """The installed layout that failed the 2026-11-03 production deploy.
+
+    `pip install ./pipeline` puts this package in site-packages, so `parents[2]` is the
+    Python installation's `lib` directory and `web/app/globals.css` does not exist under
+    it. The generator then refused to write anything and the deploy stopped — correctly,
+    because a fund page with no stylesheet is not a page, but the lookup was the bug. The
+    repository is found by its marker file from the working directory instead.
+    """
+    checkout = tmp_path / "unpackfund"
+    (checkout / "web" / "app").mkdir(parents=True)
+    (checkout / "web" / "app" / "globals.css").write_text(":root { --paper: #fff; }\n")
+    (checkout / "pnpm-workspace.yaml").write_text("packages:\n  - web\n")
+    installed = tmp_path / "lib" / "python3.13" / "pipeline" / "paths.py"
+    installed.parent.mkdir(parents=True)
+    installed.write_text("")
+
+    # In the deploy the working directory *is* the checkout; only the package moved.
+    found = paths.find_repo_root(installed, cwd=checkout)
+
+    assert found == checkout.resolve()
+
+
+def test_the_repository_root_is_the_one_with_the_app_in_it():
+    """And the real tree resolves, so the test above is not passing on a fiction."""
+    root = paths.find_repo_root()
+
+    assert (root / "web" / "app" / "globals.css").is_file()
+    assert (root / "pnpm-workspace.yaml").is_file()
