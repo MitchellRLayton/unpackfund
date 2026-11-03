@@ -896,13 +896,20 @@ def build_release(
     # the map is decided; both the company shards and companies/countries.json are
     # written from it (below), which is what keeps them the same fact.
     countries, country_stats = company_countries.decide(country_tally)
+    # The map describes the release, so it may only name companies the release
+    # publishes: the vote's tally is built from every holding the build read, while the
+    # shards are built from the documents that survived the per-fund gates, and a
+    # country on a company with no shard is an extra key the projection gate refuses
+    # (it failed the 2026-11-02 19:37 refresh on three of them). Projecting here makes
+    # the map a projection by construction, and the fallback below is asked about the
+    # same set, so the two cannot drift.
+    release_company_set = company_countries.release_companies(documents)
+    countries = company_countries.project(countries, release_company_set)
     fallback_stats: dict | None = None
     country_fallback_manifest: dict | None = None
-    release_company_set: set[str] = set()
     # A release that decided nothing publishes no map, so it publishes no fallback
     # either: the block describes the map, and there is none to describe.
     if countries and country_fallback:
-        release_company_set = company_countries.release_companies(documents)
         undecided = sorted(release_company_set - set(countries))
         jurisdictions = _gleif_jurisdictions(issuers, countries, undecided)
         # EDGAR is asked about the companies that need it — every undecided CIK
