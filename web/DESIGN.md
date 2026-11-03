@@ -38,25 +38,25 @@ provenance of every number visible without a click.
 
 Defined once in `app/globals.css` as custom properties, light and dark through `prefers-color-scheme`.
 
-| Token                                   | Light                       | Dark                         | Use                                                  |
-| --------------------------------------- | --------------------------- | ---------------------------- | ---------------------------------------------------- |
-| `--bg`                                  | `#ffffff`                   | `#0d1117`                    | page                                                 |
-| `--surface`                             | `#f6f8f9`                   | `#151b22`                    | table header, notices                                |
-| `--fg`                                  | `#11181c`                   | `#e8edf0`                    | body text                                            |
-| `--muted`                               | `#55636b`                   | `#9aa7b0`                    | labels, notes, secondary values                      |
-| `--rule`                                | `#d7dde1`                   | `#232b33`                    | hairlines, table rules                               |
-| `--accent`                              | `#0f6d78`                   | `#5ec8d4`                    | primary action                                       |
-| `--warn` / `--warn-soft`                | `#7a4b00` / `#fdf3e2`       | `#f0b429` / `#2e2413`        | warnings, partial coverage                           |
-| `--ok`                                  | `#17693a`                   | `#6fce8f`                    | the ledger gate once the total is exactly 100%       |
-| `--tint-direct` / `--tint-direct-hover` | `#f2ecff` / `#e9e0fd`       | `#1d1930` / `#262038`        | the ledger row of a stock you hold directly          |
-| `--country-us`                          | `#3b6ea5`                   | `#6c9bd2`                    | the row's left edge for a US-domiciled company       |
-| `--country-dm`                          | `#9c7025`                   | `#d9a54a`                    | the edge for a developed market outside the US       |
-| `--country-em`                          | `#4a3410`                   | `#8b6d40`                    | the edge for an emerging market                      |
-| `--country-other`                       | `#74746b`                   | `#b0b0a6`                    | the edge for the two states that have no market tier |
-| `--country-us-ink`                      | `#35638f`                   | `#6c9bd2`                    | the `In VT` bracket on a US company's row (text)     |
-| `--country-intl-ink`                    | `#7f5a1c`                   | `#d9a54a`                    | the same bracket for any other domicile              |
-| `--pill-bg`                             | `#c5c6c7`                   | `#192028`                    | the current section's pill (20% off `--surface`)     |
-| `--pill-shadow`                         | `0 1px 2px rgb(0 0 0 / 8%)` | `0 1px 2px rgb(0 0 0 / 45%)` | the current section's pill, under the bar            |
+| Token                                   | Light                       | Dark                         | Use                                              |
+| --------------------------------------- | --------------------------- | ---------------------------- | ------------------------------------------------ |
+| `--bg`                                  | `#ffffff`                   | `#0d1117`                    | page                                             |
+| `--surface`                             | `#f6f8f9`                   | `#151b22`                    | table header, notices                            |
+| `--fg`                                  | `#11181c`                   | `#e8edf0`                    | body text                                        |
+| `--muted`                               | `#55636b`                   | `#9aa7b0`                    | labels, notes, secondary values                  |
+| `--rule`                                | `#d7dde1`                   | `#232b33`                    | hairlines, table rules                           |
+| `--accent`                              | `#0f6d78`                   | `#5ec8d4`                    | primary action                                   |
+| `--warn` / `--warn-soft`                | `#7a4b00` / `#fdf3e2`       | `#f0b429` / `#2e2413`        | warnings, partial coverage                       |
+| `--ok`                                  | `#17693a`                   | `#6fce8f`                    | the ledger gate once the total is exactly 100%   |
+| `--tint-direct` / `--tint-direct-hover` | `#f2ecff` / `#e9e0fd`       | `#1d1930` / `#262038`        | the ledger row of a stock you hold directly      |
+| `--country-us`                          | `#3b6ea5`                   | `#6c9bd2`                    | the row's left edge for a US-domiciled company   |
+| `--country-dm`                          | `#9c7025`                   | `#d9a54a`                    | the edge for a developed market outside the US   |
+| `--country-em`                          | `#4a3410`                   | `#8b6d40`                    | the edge for an emerging market                  |
+| `--country-other`                       | `#74746b`                   | `#b0b0a6`                    | the edge for the two states with no market tier  |
+| `--delta-up`                            | `#0a6f1c`                   | `#39ff14`                    | the `In VT` bracket above the benchmark (text)   |
+| `--delta-down`                          | `#c4002b`                   | `#ff4d5e`                    | the same bracket below the benchmark             |
+| `--pill-bg`                             | `#c5c6c7`                   | `#192028`                    | the current section's pill (20% off `--surface`) |
+| `--pill-shadow`                         | `0 1px 2px rgb(0 0 0 / 8%)` | `0 1px 2px rgb(0 0 0 / 45%)` | the current section's pill, under the bar        |
 
 **Row shading (operator's instruction, 2026-11-02).** A company the visitor holds as a stock, not only through a fund, gets
 a pastel light-purple row — quiet enough that the numbers still lead, distinct enough to find the single-stock positions at
@@ -111,19 +111,26 @@ the row's second line. The rules:
   saturation one step darker, 4.41:1 on the page and 3.48:1 at worst, and at L\* 50.4 it sits closer to the blue's
   45.4 than the recommendation's ochre did (61.3, visibly paler than the blue it was paired with). Dark-scheme values
   are the recommendation's, unchanged: both pass with room to spare.
-- **The difference against the benchmark wears the same ink** (operator's instruction, 2026-11-02: "the delta of
-  plus or minus against benchmark VT … in the same color code as the US vs international"). The bracket in `In VT`
-  — `4.06% (-2.54%)` — is the one cell where a reader compares two numbers rather than reading one, so it is where the
-  domicile is worth repeating: the row's ink at the start and at the comparison, and "which names am I light on, and
-  are they American or not" can be scanned down a column instead of across every row. It is a second use of the pair,
-  not a new hue, a new column or a new metric, and the meaning is still in words: the sign is rendered, the caption says
-  which way round it is, and the code is spelled out. The inks (`--country-*-ink`) are **one step darker than the
-  stripes** because text answers to 4.5:1 where a 6 px bar answers to 3:1 — the stripe values measure 4.18:1 (blue) and
-  3.48:1 (ochre) on the darkest row background and would fail as text, which `lib/theme.test.ts` proves by listing them
-  in `TEXT_PAIRS` rather than `UI_PAIRS`. `#35638f` is 6.30:1 on the page and 4.96:1 at worst, `#7f5a1c` 6.21:1 and
-  4.89:1; separation survives the darkening (69.6 dE, and 70.8 / 67.9 / 53.3 simulated). In the dark scheme the blue and
-  the developed ochre already clear 4.5:1, so there the ink and the edge are the same value. A row with no agreed
-  domicile keeps `--muted`: an ink for "unknown" would be a default, which is the one thing this channel refuses to do.
+- **The difference against the benchmark is green above and red below** (operator's instruction, 2026-11-02, after
+  seeing this cell in the geography ink: "I prefer the green and red indicators as a positive or negative relative to
+  VT benchmark … use those neon green and neon red colorations"). The bracket in `In VT` — `4.06% (-2.54%)` — now reads
+  as an indicator: `--delta-up` when you hold more of the company than the benchmark does, `--delta-down` when you hold
+  less, and `--muted` at an exact match, because a difference of zero has no side to be on and an ink for "level" would
+  be a default. The hues are the searched neon pair, [neon green `#39ff14`](https://en.wikipedia.org/wiki/Shades_of_green)
+  and [neon red `#ff073a`](https://htmlcolorcodes.com/colors/neon-red/), and each scheme takes the value it can carry:
+  the light scheme keeps the hue and the saturation but darkens until the text floor clears — `#39ff14` measures
+  **1.36:1** on the page and 1.07:1 on the direct-position hover tint, `#ff073a` 3.93:1 and 3.10:1, all under 4.5:1 —
+  so it ships `#0a6f1c` (6.36:1 on the page, **5.01:1** at worst) and `#c4002b` (6.21:1, **4.89:1**); the dark scheme
+  takes the neon itself, where `#39ff14` is 13.96:1 and needs no lifting, and the red is raised one step with its hue
+  unchanged (`#ff4d5e`, 5.84:1 on the page and 4.81:1 on the tinted row) because `#ff073a` is 3.97:1 on the tint.
+- **Green against red is the one pair this palette allows to fail the colour-vision gate, and only because it is never
+  the carrier.** The gate exists to catch a _distinction that would otherwise be lost_; here the sign is printed —
+  `formatSignedShare` always renders `+` or `-`, an exact match prints none — the caption states green-for-more and
+  red-for-less in words, and a component test asserts that every coloured bracket carries its sign. So a deuteranope
+  reads the same table as everyone else, and the ink is reinforcement rather than information. `lib/theme.test.ts`
+  lists the reason beside the gate so the exclusion is not mistaken for an omission, and the rule that the colour never
+  carries the fact alone is the condition of the exception (`static-xray-frontend` §4a, §8).
+
 - **The developed/emerging split is two shades of the ochre, never a third hue** (shipped 2026-11-02 on the
   operator's instruction). A third hue would make the reader compare three colours instead of two and lose the
   US-versus-international read at a glance. The binding constraint is the 3:1 floor: two ochres that each clear it on
@@ -134,11 +141,12 @@ the row's second line. The rules:
   is the deeper shade in both schemes, so the meaning does not flip at night. `lib/theme.test.ts` holds all three edges
   and all three pairs: 40 uncorrected between blue and either ochre, 30 between the two ochres (40 is unreachable at
   this contrast budget, not waived), and 25 after simulation for every pair.
-- **The bracket ink did not gain a third tier** (decided with the split, 2026-11-02). It stays American-or-not: a third
-  text ink cannot clear both floors at once — above 4.5:1 the two ochre inks are confined to L\* 18-42, which caps their
-  separation at dE ~22, under the 25 the colour-vision gate requires — and the emerging stripe is itself 3.24:1 in the
-  dark scheme, so a matching ink could not be text at all. So the bracket reinforces the primary axis and the 6 px edge
-  carries the developed/emerging one, which is the axis a reader scans for. The token comment records the same reason.
+- **The bracket left the geography channel, so its tier question is closed** (2026-11-02). While the bracket wore the
+  domicile ink it stayed American-or-not, because a third _text_ ink could not clear both floors at once: above 4.5:1 the
+  two ochre inks are confined to L\* 18-42, capping their separation at dE ~22, under the 25 the gate requires, and the
+  emerging stripe is itself 3.24:1 in the dark scheme. The operator then asked for a sign indicator instead, so the ink
+  now answers to the arithmetic and the geography axis belongs to the 6 px edge alone — one channel per meaning, no
+  shared cell, and no third tier to design.
 - **Absence still means no answer — but it now says so.** A company the filings disagree about, or one held only by
   funds that file no country, is absent from the map: no tag, no tier, no invented domicile. What changed on
   2026-11-02 is the _rendering_: the operator's report was a list of holdings that "don't have a color to them", and a

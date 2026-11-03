@@ -50,6 +50,19 @@ const SORT_LABEL: Record<SortKey, string> = {
   holder_count: "number of funds",
 };
 
+/**
+ * The bracket's ink class, from the sign alone: green above the benchmark, red below,
+ * `--muted` at an exact match — a difference of zero has no side to be on, so it gets no
+ * ink. Written here rather than derived in CSS from a data attribute because the sign is
+ * arithmetic (`formatSignedShare` owns the direction) while the row's `data-country` owns
+ * the edge; two channels, two selectors, no shared cell.
+ */
+function deltaInkClass(delta: number): string {
+  if (delta > 0) return "delta delta--up";
+  if (delta < 0) return "delta delta--down";
+  return "delta";
+}
+
 export function LedgerTable({
   rows,
   limit,
@@ -149,9 +162,9 @@ export function LedgerTable({
               (benchmark
                 ? " The bracketed difference in the In " +
                   benchmark.ticker +
-                  " column is coloured the same way for an American row against any" +
-                  " other, a step darker because a number needs more contrast than a" +
-                  " stripe."
+                  " column is green when you hold more of the company than " +
+                  benchmark.ticker +
+                  " does and red when you hold less; an exact match is left plain."
                 : "") +
               " Developed and emerging follow the FTSE country classification, as of " +
               TIER_AS_OF +
@@ -294,7 +307,9 @@ export function LedgerTable({
                           own: the stylesheet keys it off `data-country` on the row, the
                           sign is in the text, and the direction is a sentence in the
                           caption (`static-xray-frontend` §4a, §8). */}
-                        <span className="delta">{formatSignedShare(delta)}</span>
+                        <span className={deltaInkClass(delta)}>
+                          {formatSignedShare(delta)}
+                        </span>
                       </>
                     )}
                   </td>

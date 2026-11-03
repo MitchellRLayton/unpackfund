@@ -153,32 +153,27 @@ function deltaE(a: string, b: string): number {
   ["muted", "tint-direct", "secondary text on a shaded row"],
   ["fg", "tint-direct-hover", "body text on a shaded row under the pointer"],
   ["muted", "tint-direct-hover", "secondary text on a shaded row under the pointer"],
-  // The bracketed difference in the `In VT` column, painted in the row's geography ink
-  // (operator's instruction, 2026-11-02). It is text, so it answers to 4.5:1 on every
-  // background a ledger row can have — the same four the edges are held to at 3:1. This
-  // is why the text inks are a step darker than the stripes; the stripe tokens
-  // (`country-us`, `country-dm`, `country-em`) would fail here on the tinted rows and are
-  // deliberately not listed. The ink stays a two-group channel — American or not — even
-  // though the edge now has three tiers: the comment at the token says why.
-  ["country-us-ink", "bg", "the bracket on a US company's row"],
-  ["country-us-ink", "surface", "the bracket on a US company's row, hovered"],
-  ["country-us-ink", "tint-direct", "the bracket on a US company held directly"],
+  // The bracketed difference in the `In VT` column, painted green above the benchmark and
+  // red below it (operator's instruction, 2026-11-02). It is text, so it answers to 4.5:1
+  // on every background a ledger row can have — the same four the edges are held to at 3:1.
+  // The values are the searched neon pair, darkened in the light scheme until they clear
+  // this floor and used as-is in the dark one, because `#39ff14` measures 1.36:1 on white.
+  // `--muted` covers the exact match, already checked above against both tints.
+  ["delta-up", "bg", "a bracket above the benchmark"],
+  ["delta-up", "surface", "a bracket above the benchmark, hovered"],
+  ["delta-up", "tint-direct", "a bracket above the benchmark on a direct row"],
   [
-    "country-us-ink",
+    "delta-up",
     "tint-direct-hover",
-    "the bracket on a US direct row under the pointer",
+    "a bracket above the benchmark on a direct row under the pointer",
   ],
-  ["country-intl-ink", "bg", "the bracket on an international company's row"],
+  ["delta-down", "bg", "a bracket below the benchmark"],
+  ["delta-down", "surface", "a bracket below the benchmark, hovered"],
+  ["delta-down", "tint-direct", "a bracket below the benchmark on a direct row"],
   [
-    "country-intl-ink",
-    "surface",
-    "the bracket on an international company's row, hovered",
-  ],
-  ["country-intl-ink", "tint-direct", "the bracket on an international direct row"],
-  [
-    "country-intl-ink",
+    "delta-down",
     "tint-direct-hover",
-    "the bracket on an international direct row under the pointer",
+    "a bracket below the benchmark on a direct row under the pointer",
   ],
 ];
 
@@ -292,14 +287,22 @@ describe("automatic light/dark", () => {
       // which confines them to roughly L* 18-54 and caps their separation at about dE 37.
       // Their floor is 30 — still two clearly different tones, measured at 34.2 and 33.2 —
       // because 40 is unreachable by construction, not because it was lowered for
-      // convenience. The bracket's text ink is a two-group channel (American or not; see
-      // the token comment for why it did not gain a third ink), so it contributes one pair
-      // at the same 40 as the blue-versus-ochre edges.
+      // convenience. The bracket's ink left this gate on 2026-11-02, when the operator
+      // replaced the geography pair there with green and red; the reason it may leave is
+      // written beside the list.
       const INK_PAIRS: Array<[string, string, number, string]> = [
         ["country-us", "country-dm", 40, "blue against the developed ochre"],
         ["country-us", "country-em", 40, "blue against the emerging ochre"],
         ["country-dm", "country-em", 30, "the two ochres against each other"],
-        ["country-us-ink", "country-intl-ink", 40, "the two bracket inks"],
+        // The bracket's green against red is **not** listed, and that is a recorded
+        // decision rather than an omission: green and red are the pair that collapses for a
+        // deuteranope, so gating them at 25 dE would forbid the ink the operator asked for
+        // and force a hue nobody wanted. The colour is allowed to carry the sign only
+        // because it is never the carrier: `formatSignedShare` prints `+` or `-`, the
+        // caption states green-for-more and red-for-less, and `LedgerTable`'s component
+        // test holds that every coloured bracket also carries its sign. A pair that fails
+        // this gate but is fully duplicated in text is not the defect the gate exists to
+        // catch (`static-xray-frontend` §4a, §8).
         // The neutral has to read as "no tier" rather than as a washed-out tier, so it gets
         // an uncorrected floor of 28 — the tightest the three tier pairs allow it without
         // pretending a grey is a hue. Measured 30.2 / 29.5 / 31.1 in the light scheme and
@@ -354,17 +357,16 @@ describe("automatic light/dark", () => {
     });
   }
 
-  it("paints the bracket from the row's geography attribute, not from a second class", () => {
-    // `LedgerTable` writes `span.delta` and the row's `data-country`; these three rules do
-    // the mapping, so the ink and the 6 px edge cannot disagree about what a row is. A
-    // rename on either side would drop the colour silently — the table would keep working
-    // and the operator would see a plain number again — which is what this holds.
+  it("paints the bracket from its sign class, and leaves an exact match quiet", () => {
+    // `LedgerTable` writes `span.delta` plus `--up` or `--down` from the arithmetic sign;
+    // these three rules are the whole mapping. A rename on either side would drop the
+    // colour silently — the table would keep working and the operator would see a plain
+    // number again — which is what this holds. The rules must key off the class, not off
+    // `data-country`: geography owns the 6 px edge, and a row can be American and below the
+    // benchmark at the same time, so the two channels may not share a selector.
     expect(CSS).toMatch(/\.delta\s*\{[^}]*color:\s*var\(--muted\)/);
-    expect(CSS).toMatch(
-      /tr\[data-country="US"\]\s+\.delta\s*\{[^}]*color:\s*var\(--country-us-ink\)/,
-    );
-    expect(CSS).toMatch(
-      /tr\[data-country\]:not\(\[data-country="US"\]\)\s+\.delta\s*\{[^}]*color:\s*var\(--country-intl-ink\)/,
-    );
+    expect(CSS).toMatch(/\.delta--up\s*\{[^}]*color:\s*var\(--delta-up\)/);
+    expect(CSS).toMatch(/\.delta--down\s*\{[^}]*color:\s*var\(--delta-down\)/);
+    expect(CSS).not.toMatch(/data-country[^{]*\.delta--?(up|down)?\s*\{/);
   });
 });
