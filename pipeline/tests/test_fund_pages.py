@@ -435,7 +435,7 @@ def test_the_page_links_all_three_surfaces_with_the_same_fragment():
     assert f'href="/x/#{fragment}"' in page
     assert "Add this fund to a portfolio" in page
     assert "Compare" in page
-    assert "See it in the X-Ray" in page
+    assert "See it in your portfolio" in page
     assert "Browse all funds" in page
 
 
@@ -534,18 +534,22 @@ def test_the_page_carries_the_not_advice_line_and_the_sec_attribution():
 def test_the_nav_uses_the_apps_own_words():
     """The fund pages are generated HTML, so they carry their own copy of the nav.
 
-    The operator renamed the two sections on 2026-11-02 ("Builder, Ledger" →
-    "Portfolio", "X-Ray") and asked for the old words to be gone everywhere in the
-    app. A generated page is the easiest place for a rename to be missed: it is not
-    a React component, so no shared nav renders it, and the live site regenerates
-    these pages from the release on every deploy.
+    The operator renamed the sections on 2026-11-02 ("Builder, Ledger" → "Portfolio",
+    "X-Ray") and again on 2026-11-03, when the redesign made `/` and `/x/` one
+    workspace and added "How it works". A generated page is the easiest place for a
+    rename to be missed: it is not a React component, so no shared nav renders it, and
+    the live site regenerates these pages from the release on every deploy. The list
+    here is `web/components/shell/SiteNav.tsx`'s, in its order.
     """
     page = render(fund())
     assert '<a href="/">Portfolio</a>' in page
-    assert '<a href="/x/">X-Ray</a>' in page
+    assert '<a href="/compare/">Compare</a>' in page
+    assert '<a href="/c/">Companies</a>' in page
     assert '<a href="/funds/" aria-current="page">Funds</a>' in page
+    assert '<a href="/methodology/">How it works</a>' in page
     assert ">Builder<" not in page
     assert ">Ledger<" not in page
+    assert ">X-Ray<" not in page
 
 
 def test_the_page_offers_no_figure_a_fund_page_must_not_publish():
