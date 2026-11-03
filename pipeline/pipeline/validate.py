@@ -825,6 +825,34 @@ def _check_company_countries(release_dir: Path, report: Report) -> None:
             report.fail("countries.counts", f"counts.{name} {counts.get(name)!r} != recomputed {value:,}")
     if not isinstance(counts.get("invalid_rows"), int) or counts.get("invalid_rows", -1) < 0:
         report.fail("countries.counts", f"counts.invalid_rows {counts.get('invalid_rows')!r} is not a count")
+
+    # The fallback's provenance, when the release ran one. Absent is valid (an older
+    # or control build); present must add up, because `sources` is the number a
+    # reader quotes when they ask how much of the map is a registry record rather
+    # than an inference over holders.
+    sources = document.get("sources")
+    if sources is not None:
+        unknown = sorted(set(sources) - {"nport", "gleif", "edgar"})
+        if unknown:
+            report.fail("countries.sources", f"unknown source(s) {unknown[:3]}")
+        elif any(not isinstance(value, int) or value < 0 for value in sources.values()):
+            report.fail("countries.sources", f"sources {sources!r} are not counts")
+        elif sum(sources.values()) != len(published_map):
+            report.fail(
+                "countries.sources",
+                f"sources sum to {sum(sources.values()):,} but the map has "
+                f"{len(published_map):,} companies",
+            )
+        if not isinstance(document.get("fallback_rule"), str) or not document.get("fallback_rule"):
+            report.fail("countries.sources", "sources are published without a fallback_rule")
+        agreement = document.get("agreement") or {}
+        for name in ("gleif_bp", "edgar_bp"):
+            rate = agreement.get(name)
+            if not isinstance(rate, int) or not 0 <= rate <= 10_000:
+                report.fail("countries.agreement", f"agreement.{name} {rate!r} is not basis points")
+        for name in ("gleif_compared", "edgar_compared"):
+            if not isinstance(agreement.get(name), int) or agreement.get(name, -1) < 0:
+                report.fail("countries.agreement", f"agreement.{name} {agreement.get(name)!r} is not a count")
     if not report.failures:
         report.ok(
             "companies.countries",

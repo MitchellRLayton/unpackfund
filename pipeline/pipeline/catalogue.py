@@ -248,6 +248,7 @@ def write_release_objects(
     securities_source: dict | None = None,
     countries: Mapping[str, str] | None = None,
     invalid_country_rows: int = 0,
+    countries_fallback: Mapping[str, Any] | None = None,
 ) -> dict:
     """Write the objects a browser reads and describe them in ``release.json``.
 
@@ -310,6 +311,7 @@ def write_release_objects(
             countries,
             company_total=len(company_shards),
             invalid_rows=invalid_country_rows,
+            fallback=countries_fallback,
         )
         countries_body = company_countries_mod.canonical_bytes(countries_document)
         if len(countries_body) > company_countries_mod.MAX_COUNTRIES_BYTES:

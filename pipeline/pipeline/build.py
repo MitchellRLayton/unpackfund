@@ -30,6 +30,7 @@ behaviour, and publishing uses it: a release must be clean.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import itertools
 import json
 import sys
@@ -518,6 +519,54 @@ def _walk(
     return builds, failures
 
 
+def _edgar_sample(decided: Mapping[str, str], size: int) -> list[str]:
+    """A fixed sample of already-decided CIK companies, for the fallback's own gate.
+
+    Deterministic and unbiased: sorted by the digest of the company id, so it does
+    not sample one state, one industry or one fund's holdings, and a rebuild asks
+    EDGAR about exactly the same companies. Without it the agreement rate would have
+    no comparison set — the build only *needs* EDGAR for the undecided.
+    """
+    ciks = [company_id for company_id in decided if company_countries.cik_of(company_id)]
+    ordered = sorted(ciks, key=lambda company_id: hashlib.sha256(company_id.encode()).digest())
+    return ordered[:size]
+
+
+def _gleif_jurisdictions(
+    issuers: "gleif.IssuerIndex | None",
+    decided: Mapping[str, str],
+    undecided: list[str],
+) -> dict[str, str] | None:
+    """``company_id -> GLEIF jurisdiction`` for the companies this build asks about.
+
+    The index holds **3.5 million** entities, so the map is filtered as it is built
+    rather than after: a dict over the whole golden copy would be ~650 MB of string
+    keys on a build that already holds every ``Entity``, and only the companies in
+    this release are ever looked up. The ids that must be present are the undecided
+    ``l_`` companies (whose country the fallback is deciding) *and* the decided
+    ``l_`` ones (which the agreement rate is measured on) — without the second half
+    the published rate would be a zero over an empty comparison set.
+
+    Hashing every LEI is the price of the lookup and it is paid once: 3.5 million
+    sha256 calls, a few seconds, against a build measured in minutes.
+    """
+    if issuers is None:
+        return None
+    wanted = {
+        company_id
+        for company_id in [*undecided, *decided]
+        if company_id.startswith(gleif.ID_PREFIX)
+    }
+    if not wanted:
+        return {}
+    jurisdictions: dict[str, str] = {}
+    for entity in issuers.entities.values():
+        company_id = entity.company_id
+        if company_id in wanted and entity.jurisdiction:
+            jurisdictions[company_id] = entity.jurisdiction
+    return jurisdictions
+
+
 def _identity_namespaces(
     issuers: "gleif.IssuerIndex | None", rung_totals: dict[str, int]
 ) -> dict[str, dict]:
@@ -679,6 +728,7 @@ def build_release(
     progress_every: int = 0,
     identity: bool = True,
     issuer_namespace: bool = True,
+    country_fallback: bool = True,
     securities_source: dict | None = None,
 ) -> Path:
     started = time.monotonic()
@@ -841,6 +891,56 @@ def build_release(
             }
         )
 
+    # --- the company→country decision, and the fallback for what it could not do.
+    # The vote has been final since the last fund landed, so this is the one place
+    # the map is decided; both the company shards and companies/countries.json are
+    # written from it (below), which is what keeps them the same fact.
+    countries, country_stats = company_countries.decide(country_tally)
+    fallback_stats: dict | None = None
+    country_fallback_manifest: dict | None = None
+    release_company_set: set[str] = set()
+    # A release that decided nothing publishes no map, so it publishes no fallback
+    # either: the block describes the map, and there is none to describe.
+    if countries and country_fallback:
+        release_company_set = company_countries.release_companies(documents)
+        undecided = sorted(release_company_set - set(countries))
+        jurisdictions = _gleif_jurisdictions(issuers, countries, undecided)
+        # EDGAR is asked about the companies that need it — every undecided CIK
+        # company — plus a fixed sample of decided ones, because the agreement gate
+        # cannot compare against an answer nobody fetched.
+        wanted = [company_id for company_id in undecided if company_countries.cik_of(company_id)]
+        sample = _edgar_sample(countries, company_countries.EDGAR_AGREEMENT_SAMPLE)
+        codes = company_countries.edgar_incorporations([*wanted, *sample], log=_log)
+        countries, fallback_stats = company_countries.apply_fallback(
+            countries,
+            companies=release_company_set,
+            gleif_jurisdictions=jurisdictions,
+            edgar_codes=codes,
+        )
+        country_fallback_manifest = {
+            **fallback_stats,
+            "rule": company_countries.FALLBACK_RULE,
+            "edgar_cache": {
+                # Relative when the pipeline ran from the repo (the normal case);
+                # a CI cache outside the tree contributes only its name, because an
+                # absolute build path is nobody's business in a public artifact.
+                "dir": str(sec.CACHE_DIR if not sec.CACHE_DIR.is_absolute() else sec.CACHE_DIR.name),
+                "max_age_days": company_countries.EDGAR_MAX_AGE_S // 86_400,
+                "asked": len(wanted) + len(sample),
+                "answered": len(codes),
+            },
+        }
+        _log(
+            f"country fallback: {fallback_stats['sources']['gleif']:,} by GLEIF "
+            f"jurisdiction, {fallback_stats['sources']['edgar']:,} by EDGAR "
+            f"incorporation, {fallback_stats['sources']['nport']:,} by the vote "
+            f"(EDGAR asked {len(wanted) + len(sample):,}, answered {len(codes):,}; "
+            f"agreement gleif={fallback_stats['agreement']['gleif_bp']:,}bp/"
+            f"{fallback_stats['agreement']['gleif_compared']:,}, "
+            f"edgar={fallback_stats['agreement']['edgar_bp']:,}bp/"
+            f"{fallback_stats['agreement']['edgar_compared']:,})"
+        )
+
     document = manifest_mod.build_manifest(
         release_id=release,
         funds=documents,
@@ -848,6 +948,7 @@ def build_release(
         rung_counts={name: int(rung_totals.get(name, 0)) for name in RUNG_NAMES},
         asset_cat_counts=dict(sorted(cat_totals.items())),
         identity_namespaces=_identity_namespaces(issuers, rung_totals),
+        country_fallback=country_fallback_manifest,
         generated_at=generated_at,
     )
     payload = artifact.canonical_bytes(document)
@@ -857,10 +958,10 @@ def build_release(
     # entries at day-4 scale, 0.42 MB gzipped, on nobody's critical path); these
     # are the catalogue, the per-letter hash shards, and the reverse X-Ray shards.
     new_aliases = aliases
-    countries, country_stats = company_countries.decide(country_tally)
     _log(
-        f"country: {len(countries):,} of {country_tally.companies():,} companies decided "
-        f"({country_stats['below_floor']:,} below the floor, "
+        f"country: {len(countries):,} of "
+        f"{len(release_company_set) or country_tally.companies():,} companies placed "
+        f"({country_stats['below_floor']:,} below the vote's floor, "
         f"{country_tally.invalid_rows:,} row(s) with an unusable invCountry)"
     )
     browser_objects = catalogue.write_release_objects(
@@ -875,6 +976,7 @@ def build_release(
         securities_source=securities_source,
         countries=countries,
         invalid_country_rows=country_tally.invalid_rows,
+        countries_fallback=fallback_stats,
     )
     elapsed = time.monotonic() - started
     _log(
@@ -991,6 +1093,12 @@ def main(argv: list[str] | None = None) -> int:
         "measuring what the namespace is worth, with identity frozen",
     )
     parser.add_argument(
+        "--no-country-fallback",
+        action="store_true",
+        help="place only what the N-PORT vote decides; the control build for "
+        "measuring what GLEIF jurisdiction and EDGAR incorporation are worth",
+    )
+    parser.add_argument(
         "--no-securities",
         action="store_true",
         help="skip the typed-symbol object (securities/), so a release without it can "
@@ -1036,9 +1144,16 @@ def main(argv: list[str] | None = None) -> int:
             progress_every=max(0, args.progress_every),
             identity=not args.no_identity,
             issuer_namespace=not args.no_issuers,
+            country_fallback=not args.no_country_fallback,
             securities_source=securities_source,
         )
-    except (GateError, NportParseError, LookupError, filings.NoFilingError) as error:
+    except (
+        GateError,
+        company_countries.CountryFallbackError,
+        NportParseError,
+        LookupError,
+        filings.NoFilingError,
+    ) as error:
         _log(f"FAILED: {type(error).__name__}: {error}")
         return 1
     return 0

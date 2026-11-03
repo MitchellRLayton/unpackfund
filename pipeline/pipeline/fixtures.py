@@ -110,6 +110,7 @@ def write_release(
     benchmarks: tuple[str, ...] = (),
     securities_source: dict | None = None,
     countries: dict[str, str] | None = None,
+    countries_fallback: dict | None = None,
 ) -> Path:
     """Write ``documents`` as a release directory, the way ``build.py`` does.
 
@@ -122,6 +123,9 @@ def write_release(
     ``countries`` is the decision ``company_countries.decide`` would have reached; a
     fixture release publishes the map only when a caller supplies one, which keeps
     both shapes — with and without a country — in reach of the validator's tests.
+    ``countries_fallback`` is the ``sources``/``agreement`` block a fallback build
+    publishes beside it, so the validator's checks of that block have a shape to run
+    against offline.
     """
     release_dir = root / "releases" / release_id
     (release_dir / "funds").mkdir(parents=True, exist_ok=True)
@@ -158,6 +162,7 @@ def write_release(
         benchmarks=benchmarks,
         securities_source=securities_source,
         countries=countries,
+        countries_fallback=countries_fallback,
     )
     return release_dir
 
