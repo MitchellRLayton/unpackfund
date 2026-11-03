@@ -35,6 +35,25 @@ Four rules, each of which exists because the alternative is a guess:
 * **Absence is the answer for the undecided.** A company with no country key in the
   map is not "unknown country" to be defaulted — it is a company we decline to
   place, and the ledger shows no tag.
+* **But an undecided company is asked once more, of its own registry record.** The
+  vote is a consensus over *holders*; a company's own registry already knows where it
+  is registered, and on the 2026-11-02.7 release that second question placed 1,610 of
+  the 1,610 LEI companies and 862 of the 1,092 CIK companies the vote could not
+  decide — leaving 230 of 12,895 unplaced, against 2,702 before. The fallback is
+  therefore not a tie-break inside the vote — it never touches a company the vote
+  decided — and it is tried in one fixed order: GLEIF ``jurisdiction`` (the golden
+  copy is already cached for the ``l_`` namespace, and it is CC0), then EDGAR
+  ``stateOfIncorporation`` for a ``c_`` company, through the pipeline's own request
+  cache. A company neither record places stays absent, which is still the answer
+  rather than an error.
+* **The fallback has to reproduce the vote, or the build fails.** Both sources are
+  asked about companies the vote *did* decide, and the share that agrees with the
+  published country is computed on every build and published beside the counts
+  (``agreement``). A source that agrees below its floor is not "new data disagreeing
+  with old data" — it means the code table (EDGAR) or the field being read (GLEIF)
+  is wrong, so the build raises instead of shipping a quietly worse map. Sample
+  sizes are published with the rates, and a floor is only enforced once the
+  comparison set is big enough to mean something.
 
 Arithmetic is integer dollars, not floats: the same release built twice must
 produce the same bytes, and float addition is not associative across the order the
@@ -47,7 +66,7 @@ from __future__ import annotations
 import json
 from typing import Any, Iterable, Mapping
 
-from pipeline import classify
+from pipeline import classify, gleif
 
 from .artifact import sha256_hex
 
@@ -68,6 +87,115 @@ MIN_AGREEMENT_BP = 8_000
 
 #: How many independent filings must name the company before its country is decided.
 MIN_FILINGS = 2
+
+#: The fallback rule, published in the object beside the vote's rule: a reader is
+#: entitled to know that two questions were asked, in which order, and that neither
+#: answer overrides the vote.
+FALLBACK_RULE = (
+    "for a company the vote does not decide, its own registry record: GLEIF "
+    "jurisdiction for an LEI entity, then EDGAR stateOfIncorporation for a CIK "
+    "company; neither answer overrides a decided company, and a company neither "
+    "record places stays undecided"
+)
+
+#: Agreement floors for the fallback, in basis points of the companies both answers
+#: cover. Below these the table or the field is wrong, not the data: GLEIF agreed on
+#: 5,958 of 6,003 decided LEI companies (9,925 bp) and EDGAR on 335 of 342 (9,795 bp)
+#: on the 2026-11-02 release, so a rate under these floors cannot be explained by the
+#: exceptions we already understand — Cayman and Bermuda holdcos whose N-PORT country
+#: is the listing venue, dual-domiciled names — because those cost 0.75% and 2%, not
+#: 5%. The floors sit 225 bp and 295 bp under the measured rates: wide enough for a
+#: sample of 342 to move, narrow enough that a wrong code table cannot pass.
+MIN_GLEIF_AGREEMENT_BP = 9_700
+MIN_EDGAR_AGREEMENT_BP = 9_500
+
+#: The smallest comparison set a floor is enforced on. A rate over 40 companies is
+#: noise; the build publishes the rate and the counts either way, and only refuses
+#: the release once the sample can carry the claim.
+MIN_AGREEMENT_SAMPLE = 200
+
+#: How many already-decided CIK companies the build asks EDGAR about, so the EDGAR
+#: rate has a comparison set at all. Chosen once and measured: the deterministic
+#: sample (sorted by sha256 of the company id) of 400 ids answered with a mappable
+#: code for 342 of them on the 2026-11-02 release — over the 200 a floor is enforced
+#: on, which is the only reason the size is in the code at all.
+EDGAR_AGREEMENT_SAMPLE = 400
+
+#: How long a cached EDGAR submissions document is trusted, in seconds. A company's
+#: state of incorporation does not change on a filing cadence, and this is the same
+#: six-hour-at-the-shortest discipline as the rest of the pipeline: the number only
+#: has to be short enough that a re-run after a broken fetch heals.
+EDGAR_MAX_AGE_S = 30 * 24 * 60 * 60
+
+#: EDGAR's ``stateOfIncorporation`` vocabulary is its own: a US state code, a
+#: Canadian province, or an alphanumeric country code that is *not* ISO. Resolving it
+#: is therefore ordered — a US state first, because ``DE`` is Delaware and Germany is
+#: ``2M``; ``CA`` is California before it is Canada, and Canada's provinces are
+#: ``A1``/``A6``/``Z4``/... rather than ``CA``.
+US_STATES = frozenset(
+    {
+        "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI",
+        "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN",
+        "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH",
+        "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA",
+        "WV", "WI", "WY",
+        # Territories, which EDGAR also files as a state of incorporation.
+        "AS", "GU", "MP", "PR", "VI",
+    }
+)
+
+#: Canadian provinces and territories, EDGAR's other literal vocabulary.
+CA_PROVINCES = frozenset(
+    {"AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT"}
+)
+
+#: EDGAR foreign incorporation code -> ISO 3166-1 alpha-2, and the number of
+#: already-decided CIK companies that carried the code in the 2026-11-02 join (450
+#: decided companies, 367 with a code; every count below is the whole sample for that
+#: code, and all of them agreed except where noted in the build log).
+#: Only codes that were unanimous and observed more than a handful of times are here.
+#: The five that are **not** here are absent on purpose, and the reason is the same
+#: for all of them: either too thin to be evidence or already mixed —
+#: ``D8`` (3 observations: CN/KY/VG), ``U3`` (2: LU/ES), ``C3`` (2: AU/NO), ``X1``
+#: (1: US), ``A4`` (1: CA). A company whose code is absent stays undecided, which is
+#: the same answer a company with no code gets (``2026-11-02`` build log).
+EDGAR_COUNTRY_CODES: dict[str, str] = {
+    "2M": "DE",  # 5
+    "A0": "CA",  # 5
+    "A1": "CA",  # 24
+    "A6": "CA",  # 11
+    "A8": "CA",  # 3
+    "C1": "AR",  # 2
+    "D0": "BM",  # 6
+    "D5": "BR",  # 3
+    "E9": "KY",  # 27
+    "F3": "CL",  # 1
+    "F5": "TW",  # 1
+    "G7": "DK",  # 1
+    "I0": "FR",  # 5
+    "K3": "HK",  # 1
+    "K7": "IN",  # 1
+    "L2": "IE",  # 1
+    "L3": "IL",  # 7
+    "L6": "IT",  # 1
+    "M0": "JP",  # 10
+    "N4": "LU",  # 1
+    "O5": "MX",  # 1
+    "P7": "NL",  # 6
+    "R1": "PA",  # 1
+    "T3": "ZA",  # 1
+    "U0": "SG",  # 1
+    "V7": "SE",  # 4
+    "V8": "CH",  # 7
+    "X0": "GB",  # 17
+    "Y8": "IM",  # 1
+    "Z4": "CA",  # 11
+    "1T": "MH",  # 2
+}
+
+
+class CountryFallbackError(RuntimeError):
+    """A fallback source stopped reproducing the vote, so the build refuses."""
 
 #: The ceiling on the object. It exists to fail a build, not to warn: the object's
 #: only reason to exist is being small enough for `/x`. The wide universe is about
@@ -159,12 +287,210 @@ def decide(tally: Tally) -> tuple[dict[str, str], dict[str, int]]:
     return decided, {"with_votes": tally.companies(), "below_floor": below_floor}
 
 
+# --- the fallback ----------------------------------------------------------
+
+
+def cik_of(company_id: str) -> str | None:
+    """The zero-padded CIK a ``c_`` id carries, or ``None`` for another namespace."""
+    if not company_id.startswith("c_"):
+        return None
+    digits = company_id[2:]
+    return digits if digits.isdigit() and len(digits) == 10 else None
+
+
+def gleif_country(jurisdiction: str | None) -> str | None:
+    """GLEIF ``jurisdiction`` → ISO alpha-2: ``US-DE`` → ``US``, ``KY`` → ``KY``.
+
+    GLEIF records a US entity's jurisdiction as a state (``US-DE``) and everyone
+    else's as a country, so the part before the hyphen is the answer. A jurisdiction
+    that is not two letters — or a country GLEIF spelled in another vocabulary — is
+    no answer, never a guess.
+    """
+    if not jurisdiction:
+        return None
+    head = jurisdiction.strip().upper().split("-", 1)[0]
+    return head if is_country_code(head) else None
+
+
+def edgar_country(code: str | None) -> str | None:
+    """EDGAR ``stateOfIncorporation`` → ISO alpha-2, or ``None`` when unmapped.
+
+    Ordered on purpose (see ``US_STATES``): the field is EDGAR's own vocabulary, in
+    which ``DE`` is Delaware and Germany is ``2M``, and ``CA`` is California — a
+    company incorporated in Canada carries a province code (``A1``, ``A6``, ``Z4``…).
+    A code that is not in the table and not a state or province is an answer we do
+    not have, so the company stays undecided.
+    """
+    if not code:
+        return None
+    value = code.strip().upper()
+    if value in US_STATES:
+        return "US"
+    if value in CA_PROVINCES:
+        return "CA"
+    return EDGAR_COUNTRY_CODES.get(value)
+
+
+def release_companies(documents: Iterable[Mapping[str, Any]]) -> set[str]:
+    """Every company the release publishes a shard for.
+
+    Deliberately the same filter ``catalogue.company_objects`` applies — a row with
+    a zero weight publishes no shard — because a country placed on a company the
+    catalogue omitted is an *extra* key, and the release's projection gate refuses it
+    (``validate._check_company_countries``).
+    """
+    return {
+        row["company_id"]
+        for document in documents
+        for row in document.get("holdings", ())
+        if row.get("company_id") and int(row.get("weight_bp") or 0)
+    }
+
+
+def edgar_incorporations(
+    company_ids: Iterable[str],
+    *,
+    fetch: Any = None,
+    log: Any = None,
+) -> dict[str, str]:
+    """``company_id -> stateOfIncorporation`` for the ``c_`` ids asked about.
+
+    Fetches through :func:`pipeline.sec.fetch_json`, so every document lands in the
+    pipeline's content-addressed cache (``data/cache/<2 hex>/<sha256>``) and a rebuild
+    reads it back instead of re-asking SEC. ``fetch`` is injectable for tests, and a
+    company whose fetch fails is simply absent: a missing answer is allowed, so no
+    fetch may raise out of here (a 404 on a delisted CIK would otherwise fail a
+    release over one company's domicile).
+    """
+    if fetch is None:
+        from . import sec
+
+        def fetch(cik: str) -> Mapping[str, Any]:
+            return sec.fetch_json(sec.submissions_url(cik), max_age=EDGAR_MAX_AGE_S)
+
+    codes: dict[str, str] = {}
+    for company_id in sorted(company_ids):
+        cik = cik_of(company_id)
+        if cik is None:
+            continue
+        try:
+            document = fetch(cik)
+        except Exception as error:  # noqa: BLE001 - absence is an allowed answer
+            if log is not None:
+                log(f"edgar: {company_id} unanswered ({type(error).__name__})")
+            continue
+        value = document.get("stateOfIncorporation") if isinstance(document, Mapping) else None
+        if isinstance(value, str) and value.strip():
+            codes[company_id] = value.strip().upper()
+    return codes
+
+
+def apply_fallback(
+    decided: Mapping[str, str],
+    *,
+    companies: Iterable[str],
+    gleif_jurisdictions: Mapping[str, str] | None = None,
+    edgar_codes: Mapping[str, str] | None = None,
+) -> tuple[dict[str, str], dict[str, Any]]:
+    """Place what the vote could not, and publish how well the fallback agrees.
+
+    ``decided`` is the vote's map and is copied, never written to: a fallback may
+    only add a company the vote left out. ``companies`` is the release's company
+    set, so a company with no vote still gets a question (the vote's tally only
+    knows companies that filed a usable row).
+
+    The agreement rates compare each source against the **vote's** answer on the
+    companies it did decide — the only population where both answers exist. They are
+    published as basis points with their sample sizes, and the build refuses the
+    release when a rate falls below its floor on a sample big enough to mean it.
+    """
+    placed = dict(decided)
+    jurisdictions = gleif_jurisdictions or {}
+    codes = edgar_codes or {}
+    sources = {"nport": len(decided), "gleif": 0, "edgar": 0}
+
+    for company_id in sorted(companies):
+        if company_id in placed:
+            continue
+        country = None
+        if company_id.startswith(gleif.ID_PREFIX):
+            country = gleif_country(jurisdictions.get(company_id))
+            if country is not None:
+                sources["gleif"] += 1
+        elif company_id.startswith("c_"):
+            country = edgar_country(codes.get(company_id))
+            if country is not None:
+                sources["edgar"] += 1
+        if country is not None:
+            placed[company_id] = country
+
+    gleif_matched, gleif_compared = _agreement(decided, jurisdictions, gleif_country)
+    edgar_matched, edgar_compared = _agreement(decided, codes, edgar_country)
+    agreement = {
+        "gleif_bp": _basis_points(gleif_matched, gleif_compared),
+        "gleif_compared": gleif_compared,
+        "edgar_bp": _basis_points(edgar_matched, edgar_compared),
+        "edgar_compared": edgar_compared,
+    }
+    _enforce("gleif", agreement["gleif_bp"], agreement["gleif_compared"], MIN_GLEIF_AGREEMENT_BP)
+    _enforce("edgar", agreement["edgar_bp"], agreement["edgar_compared"], MIN_EDGAR_AGREEMENT_BP)
+    return placed, {"sources": sources, "agreement": agreement}
+
+
+def _agreement(
+    decided: Mapping[str, str],
+    answers: Mapping[str, Any],
+    resolve: Any,
+) -> tuple[int, int]:
+    """``(matched, compared)`` over the decided companies the source also answered.
+
+    One pass for both numbers, because they belong to the same population: a company
+    whose answer does not resolve to a country (an EDGAR code we decline to map) is
+    not part of the rate, so counting it in the denominator would publish a rate over
+    a sample the rate was not computed on.
+    """
+    matched = compared = 0
+    for company_id in sorted(decided):
+        answer = answers.get(company_id)
+        if not answer:
+            continue
+        country = resolve(answer)
+        if country is None:
+            continue
+        compared += 1
+        matched += int(country == decided[company_id])
+    return matched, compared
+
+
+def _basis_points(matched: int, compared: int) -> int:
+    """Agreement in basis points, rounded once, or ``0`` when nothing compared."""
+    return int(round(10_000 * matched / compared)) if compared else 0
+
+
+def _enforce(source: str, bp: int, compared: int, floor: int) -> None:
+    """Refuse the release when a fallback stops reproducing the vote.
+
+    Below ``MIN_AGREEMENT_SAMPLE`` the rate is published but not acted on: a 40-row
+    sample disagreeing is not evidence that the table is wrong. Above it, a rate
+    under the floor is — and a build that shipped it would quietly relabel hundreds
+    of companies, which is worse than a failed build.
+    """
+    if compared < MIN_AGREEMENT_SAMPLE or bp >= floor:
+        return
+    raise CountryFallbackError(
+        f"{source} agrees with the published country on {bp:,} bp of {compared:,} "
+        f"companies, under its {floor:,} bp floor — the code table, not the data, is "
+        f"wrong; refusing the release"
+    )
+
+
 def build_object(
     as_of: str,
     countries: Mapping[str, str],
     *,
     company_total: int,
     invalid_rows: int = 0,
+    fallback: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The published object: the map, its provenance, and its own coverage.
 
@@ -177,22 +503,40 @@ def build_object(
     """
     codes = {company_id: countries[company_id] for company_id in sorted(countries)}
     us = sum(1 for code in codes.values() if code == "US")
-    return {
+    document: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
         "as_of": as_of,
         "source": SOURCE,
         "rule": RULE,
-        "counts": {
-            "companies": int(company_total),
-            "with_country": len(codes),
-            "us": us,
-            "non_us": len(codes) - us,
-            "undecided": int(company_total) - len(codes),
-            "invalid_rows": int(invalid_rows),
-        },
-        "companies": codes,
     }
+    # Additive by presence: a release that ran no fallback publishes neither key, so
+    # the object a 2026-11-02 release produced is still readable by the same code.
+    if fallback is not None:
+        document["fallback_rule"] = FALLBACK_RULE
+    document["counts"] = {
+        "companies": int(company_total),
+        "with_country": len(codes),
+        "us": us,
+        "non_us": len(codes) - us,
+        "undecided": int(company_total) - len(codes),
+        "invalid_rows": int(invalid_rows),
+    }
+    if fallback is not None:
+        document["sources"] = {
+            "nport": int((fallback.get("sources") or {}).get("nport", 0)),
+            "gleif": int((fallback.get("sources") or {}).get("gleif", 0)),
+            "edgar": int((fallback.get("sources") or {}).get("edgar", 0)),
+        }
+        agreement = fallback.get("agreement") or {}
+        document["agreement"] = {
+            "gleif_bp": int(agreement.get("gleif_bp", 0)),
+            "gleif_compared": int(agreement.get("gleif_compared", 0)),
+            "edgar_bp": int(agreement.get("edgar_bp", 0)),
+            "edgar_compared": int(agreement.get("edgar_compared", 0)),
+        }
+    document["companies"] = codes
+    return document
 
 
 def canonical_bytes(document: dict[str, Any]) -> bytes:
@@ -244,18 +588,31 @@ def fund_votes(holdings: Iterable[Any]) -> tuple[dict[str, tuple[str, int]], int
 
 
 __all__ = [
+    "EDGAR_AGREEMENT_SAMPLE",
+    "EDGAR_COUNTRY_CODES",
+    "FALLBACK_RULE",
     "KIND",
     "MAX_COUNTRIES_BYTES",
     "MIN_AGREEMENT_BP",
+    "MIN_AGREEMENT_SAMPLE",
+    "MIN_EDGAR_AGREEMENT_BP",
     "MIN_FILINGS",
+    "MIN_GLEIF_AGREEMENT_BP",
     "RULE",
     "SCHEMA_VERSION",
     "SOURCE",
+    "CountryFallbackError",
     "Tally",
+    "apply_fallback",
     "build_object",
     "canonical_bytes",
+    "cik_of",
     "decide",
     "digest",
+    "edgar_country",
+    "edgar_incorporations",
     "fund_votes",
+    "gleif_country",
     "is_country_code",
+    "release_companies",
 ]

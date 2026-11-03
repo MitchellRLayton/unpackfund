@@ -22,6 +22,7 @@ import json
 
 import pytest
 
+from pipeline import build as build_mod
 from pipeline import company_countries, fixtures, validate
 from pipeline.artifact import canonical_bytes
 
@@ -354,3 +355,303 @@ def test_the_shard_and_the_map_are_written_from_one_decision(tmp_path, country):
     shard = json.loads((release_dir / f"companies/{APPLE}.json").read_text())
     assert document["companies"] == {APPLE: country}
     assert shard["country"] == country
+
+
+# ----------------------------------------------------------------------- fallback
+#
+# The vote is a consensus over *holders*; a company's own registry record is a
+# different kind of evidence, and it is allowed to answer only where the vote
+# declined. Three properties make that publishable: it never touches a decided
+# company, it is ordered (EDGAR's own vocabulary is not ISO), and it is checked
+# against the vote on every build so a wrong code table fails the release instead of
+# quietly relabelling companies.
+
+
+def test_a_decided_company_is_never_overridden():
+    decided = {"c_0000000001": "US"}
+    placed, stats = company_countries.apply_fallback(
+        decided,
+        companies={"c_0000000001"},
+        # Both sources would say something else about the same company. They are not
+        # asked: the vote decided, and a fallback is not a second opinion.
+        gleif_jurisdictions={"c_0000000001": "KY"},
+        edgar_codes={"c_0000000001": "E9"},
+    )
+    assert placed == decided
+    assert stats["sources"] == {"nport": 1, "gleif": 0, "edgar": 0}
+
+
+def test_a_gleif_jurisdiction_becomes_a_country():
+    assert company_countries.gleif_country("US-DE") == "US"
+    assert company_countries.gleif_country("KY") == "KY"
+    assert company_countries.gleif_country("us-de") == "US"
+    for junk in (None, "", "USA", "U", "-DE"):
+        assert company_countries.gleif_country(junk) is None
+
+
+def test_edgar_codes_are_read_in_edgars_own_vocabulary():
+    # The field is not ISO: DE is Delaware (Germany is 2M) and CA is California
+    # (Canada is a province code). Getting that order wrong would move every US
+    # company incorporated in Delaware to Germany.
+    assert company_countries.edgar_country("DE") == "US"
+    assert company_countries.edgar_country("CA") == "US"
+    assert company_countries.edgar_country("PR") == "US"  # a territory files as a state
+    assert company_countries.edgar_country("A1") == "CA"  # Ontario
+    assert company_countries.edgar_country("E9") == "KY"
+    assert company_countries.edgar_country("X0") == "GB"
+    assert company_countries.edgar_country("2m") == "DE", "case is normalised, not trusted"
+
+
+def test_an_unknown_or_ambiguous_edgar_code_leaves_the_company_undecided():
+    # D8, U3, C3, X1 and A4 are absent from the table on purpose: too thin, or the
+    # observations already disagree. A company whose code we cannot resolve stays
+    # absent — the same answer as no code at all, and never a default.
+    for unknown in ("D8", "U3", "C3", "X1", "A4", "ZZ", "F4", "", None):
+        assert company_countries.edgar_country(unknown) is None
+    placed, stats = company_countries.apply_fallback(
+        {},
+        companies={"c_0000000001", "c_0000000002"},
+        edgar_codes={"c_0000000001": "D8", "c_0000000002": "E9"},
+    )
+    assert placed == {"c_0000000002": "KY"}
+    assert stats["sources"] == {"nport": 0, "gleif": 0, "edgar": 1}
+
+
+def test_the_fallback_universe_is_what_the_catalogue_publishes():
+    # The same filter `catalogue.company_objects` applies, because a country placed
+    # on a company with no shard is an extra key the release's projection gate
+    # refuses (that is how the 2026-11-02.7 build caught three wrapper sleeves).
+    documents = [
+        {
+            "ticker": "TESTX",
+            "holdings": [
+                {"company_id": "c_1", "weight_bp": 500},
+                {"company_id": "c_2", "weight_bp": 0},
+                {"company_id": None, "weight_bp": 500},
+                {"company_id": "c_3"},
+            ],
+        }
+    ]
+    assert company_countries.release_companies(documents) == {"c_1"}
+
+
+def test_a_failed_fetch_leaves_the_company_undecided_rather_than_failing_the_build():
+    def fetch(cik):
+        if cik == "0000000001":
+            raise RuntimeError("HTTP 404")
+        return {"stateOfIncorporation": "E9", "cik": cik}
+
+    codes = company_countries.edgar_incorporations(
+        ["c_0000000001", "c_0000000002", "l_ffffffffffffffff"], fetch=fetch
+    )
+    assert codes == {"c_0000000002": "E9"}, "an LEI id is never asked about, and no fetch may raise"
+
+
+def test_the_gate_refuses_a_table_that_stops_reproducing_the_vote():
+    decided = {f"c_{index:010d}": "US" for index in range(250)}
+    # A table shifted one code along: every answer is wrong, which is what a bad
+    # revision of EDGAR's vocabulary looks like.
+    shifted = {company_id: "E9" for company_id in decided}
+    with pytest.raises(company_countries.CountryFallbackError) as error:
+        company_countries.apply_fallback(decided, companies=set(decided), edgar_codes=shifted)
+    assert "9,500 bp floor" in str(error.value)
+
+
+def test_the_gate_passes_on_a_rate_the_real_join_measured():
+    # The published rate on 2026-11-02 was 9,925 bp for GLEIF and ~9,9xx for EDGAR.
+    # A rate at the floor passes: the floor is a floor, not a target.
+    decided = {f"c_{index:010d}": "US" for index in range(250)}
+    agreeing = {company_id: "DE" for company_id in list(decided)[:249]}
+    disagreeing = {company_id: "E9" for company_id in list(decided)[249:]}
+    placed, stats = company_countries.apply_fallback(
+        decided, companies=set(decided), edgar_codes={**agreeing, **disagreeing}
+    )
+    assert placed == decided
+    assert stats["agreement"]["edgar_compared"] == 250
+    assert stats["agreement"]["edgar_bp"] == 9_960
+
+
+def test_a_small_sample_is_published_but_does_not_fail_the_build():
+    # Under MIN_AGREEMENT_SAMPLE a rate is noise, so it is recorded and not acted on:
+    # the release says how many companies the claim rests on.
+    decided = {f"c_{index:010d}": "US" for index in range(20)}
+    placed, stats = company_countries.apply_fallback(
+        decided, companies=set(decided), edgar_codes={company_id: "E9" for company_id in decided}
+    )
+    assert placed == decided
+    assert stats["agreement"]["edgar_compared"] == 20
+    assert stats["agreement"]["edgar_bp"] == 0
+
+
+def test_the_object_counts_its_sources_and_they_add_up():
+    decided = {f"c_{index:010d}": "US" for index in range(3)}
+    placed, stats = company_countries.apply_fallback(
+        decided,
+        companies=set(decided) | {"l_0000000000000001", "c_0000000009"},
+        gleif_jurisdictions={"l_0000000000000001": "KY"},
+        edgar_codes={"c_0000000009": "A1"},
+    )
+    document = company_countries.build_object(
+        "2026-11-02.7", placed, company_total=10, fallback=stats
+    )
+    assert document["sources"] == {"nport": 3, "gleif": 1, "edgar": 1}
+    assert sum(document["sources"].values()) == document["counts"]["with_country"] == 5
+    assert document["counts"]["undecided"] == 5
+    assert "GLEIF" in document["fallback_rule"] and "EDGAR" in document["fallback_rule"]
+    # Additive: a release built without the fallback carries neither key.
+    plain = company_countries.build_object("2026-11-02.7", placed, company_total=10)
+    assert "sources" not in plain and "fallback_rule" not in plain
+
+
+def test_the_object_with_a_fallback_is_byte_stable():
+    decided = {"c_0000000001": "US", "c_0000000002": "TW"}
+    companies = set(decided) | {"l_0000000000000001"}
+    jurisdictions = {"l_0000000000000001": "KY"}
+    first = company_countries.apply_fallback(
+        decided, companies=companies, gleif_jurisdictions=jurisdictions
+    )
+    # Same input, different dict order: the bytes may not move.
+    shuffled = company_countries.apply_fallback(
+        dict(reversed(list(decided.items()))),
+        companies=set(reversed(sorted(companies))),
+        gleif_jurisdictions=jurisdictions,
+    )
+    assert first == shuffled
+    body = company_countries.canonical_bytes(
+        company_countries.build_object("2026-11-02.7", first[0], company_total=3, fallback=first[1])
+    )
+    assert body == company_countries.canonical_bytes(
+        company_countries.build_object("2026-11-02.7", shuffled[0], company_total=3, fallback=shuffled[1])
+    )
+
+
+# ------------------------------------------------------- the fallback, at the gate
+
+
+def _fallback_block(**overrides):
+    block = {
+        "sources": {"nport": 1, "gleif": 0, "edgar": 0},
+        "agreement": {
+            "gleif_bp": 9_925,
+            "gleif_compared": 6_003,
+            "edgar_bp": 9_907,
+            "edgar_compared": 350,
+        },
+    }
+    block.update(overrides)
+    return block
+
+
+def test_a_release_with_a_fallback_block_validates(tmp_path):
+    release_dir = write_release(
+        tmp_path,
+        [fixtures.sample_document()],
+        countries={APPLE: "US"},
+        countries_fallback=_fallback_block(),
+    )
+    assert validate.validate(release_dir) == 0
+    document = json.loads((release_dir / "companies/countries.json").read_text())
+    assert document["sources"] == {"nport": 1, "gleif": 0, "edgar": 0}
+    assert "GLEIF" in document["fallback_rule"]
+
+
+def test_validator_refuses_sources_that_do_not_add_up(tmp_path):
+    # `sources` is the number a reader quotes for how much of the map is a registry
+    # record, so a block that does not sum to the map is a release-level mistake.
+    release_dir = write_release(
+        tmp_path,
+        [fixtures.sample_document()],
+        countries={APPLE: "US"},
+        countries_fallback=_fallback_block(sources={"nport": 2, "gleif": 0, "edgar": 0}),
+    )
+    assert validate.validate(release_dir) == 1
+
+
+def test_validator_refuses_an_unknown_source_or_a_rate_that_is_not_basis_points(tmp_path):
+    # `build_object` publishes only the three known keys, so an unknown source can
+    # only arrive by hand — which is exactly the tampering the gate is for.
+    release_dir = write_release(
+        tmp_path / "unknown",
+        [fixtures.sample_document()],
+        countries={APPLE: "US"},
+        countries_fallback=_fallback_block(),
+    )
+    path = release_dir / "companies/countries.json"
+    document = json.loads(path.read_text())
+    document["sources"]["mystery"] = 0
+    payload = company_countries.canonical_bytes(document)
+    path.write_bytes(payload)
+    _repair_descriptor(release_dir, payload)
+    assert validate.validate(release_dir) == 1
+
+    release_dir = write_release(
+        tmp_path / "bps",
+        [fixtures.sample_document()],
+        countries={APPLE: "US"},
+        countries_fallback=_fallback_block(
+            agreement={
+                "gleif_bp": 12_000,
+                "gleif_compared": 6_003,
+                "edgar_bp": 9_907,
+                "edgar_compared": 350,
+            }
+        ),
+    )
+    assert validate.validate(release_dir) == 1
+
+
+def test_validator_refuses_sources_without_a_fallback_rule(tmp_path):
+    release_dir = write_release(
+        tmp_path,
+        [fixtures.sample_document()],
+        countries={APPLE: "US"},
+        countries_fallback=_fallback_block(),
+    )
+    path = release_dir / "companies/countries.json"
+    document = json.loads(path.read_text())
+    document.pop("fallback_rule")
+    payload = company_countries.canonical_bytes(document)
+    path.write_bytes(payload)
+    _repair_descriptor(release_dir, payload)
+    assert validate.validate(release_dir) == 1
+
+
+def test_the_edgar_agreement_sample_is_deterministic_and_bounded():
+    # The build asks EDGAR about decided companies only to have something to compare
+    # against, so the sample has to be fixed across rebuilds and unbiased — sorted by
+    # the digest of the company id, not by ticker or by holdings.
+    decided = {f"c_{index:010d}": "US" for index in range(500)}
+    decided["l_0000000000000001"] = "KY"
+    first = build_mod._edgar_sample(decided, 400)
+    assert len(first) == 400
+    assert all(company_id.startswith("c_") for company_id in first), "an LEI id is never asked"
+    assert first == build_mod._edgar_sample(dict(reversed(list(decided.items()))), 400)
+    assert len(set(first)) == 400
+    assert build_mod._edgar_sample({}, 400) == []
+
+
+def test_the_gleif_lookup_keeps_only_the_companies_this_release_asks_about():
+    # The golden copy holds 3.5 million entities; materialising a dict of all of them
+    # would cost hundreds of megabytes for the ~20,000 ids a release can name. The
+    # filter must still keep both halves the rates are computed from: the undecided
+    # companies being placed and the decided ones being compared.
+    from pipeline import gleif as gleif_mod
+
+    entities = {
+        lei: gleif_mod.Entity(lei=lei, name=name, status="ACTIVE", jurisdiction=jurisdiction)
+        for lei, name, jurisdiction in (
+            ("LEI0000000000000001", "PLACED", "US-DE"),
+            ("LEI0000000000000002", "COMPARED", "KY"),
+            ("LEI0000000000000003", "NOT IN RELEASE", "TW"),
+        )
+    }
+    index = gleif_mod.IssuerIndex(entities, {}, cache_date="2026-10-29", source="GLEIF")
+    placed_id = entities["LEI0000000000000001"].company_id
+    compared_id = entities["LEI0000000000000002"].company_id
+    ignored_id = entities["LEI0000000000000003"].company_id
+
+    found = build_mod._gleif_jurisdictions(index, {compared_id: "KY"}, [placed_id])
+    assert found == {placed_id: "US-DE", compared_id: "KY"}
+    assert ignored_id not in found, "an entity this release does not publish is not looked up"
+    assert build_mod._gleif_jurisdictions(None, {}, ["l_x"]) is None
+    assert build_mod._gleif_jurisdictions(index, {}, []) == {}

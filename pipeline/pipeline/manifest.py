@@ -64,6 +64,7 @@ def build_manifest(
     asset_cat_counts: dict[str, int],
     etf_count: int | None = None,
     identity_namespaces: dict[str, dict[str, Any]] | None = None,
+    country_fallback: dict[str, Any] | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     """Assemble the manifest for one release.
@@ -112,6 +113,10 @@ def build_manifest(
         "coverage_histogram": coverage_histogram([f["coverage_pct"] for f in funds]),
         "mapping_rungs": rung_counts,
         "asset_cat_counts": asset_cat_counts,
+        # Which sources placed a company's country, and where EDGAR's answers came
+        # from — the same courtesy ``identity_namespaces`` pays the GLEIF cache. A
+        # release built without the fallback omits it rather than claiming zero.
+        **({"country_fallback": country_fallback} if country_fallback else {}),
         "files": sorted(files, key=lambda entry: entry["path"]),
     }
 
