@@ -818,7 +818,7 @@ def render_page(
             f'          <a class="btn" data-fragment href="{_esc(compare)}">Compare</a>\n'
             + (
                 f'          <a class="btn" data-fragment href="{_esc(ledger)}">'
-                "See it in the X-Ray</a>\n"
+                "See it in your portfolio</a>\n"
                 if ledger
                 else ""
             )
@@ -885,10 +885,10 @@ def render_page(
     <a class="wordmark" href="/">UnpackFund</a>
     <nav class="site-nav" aria-label="Sections">
       <a href="/">Portfolio</a>
-      <a href="/x/">X-Ray</a>
       <a href="/compare/">Compare</a>
       <a href="/c/">Companies</a>
       <a href="/funds/" aria-current="page">Funds</a>
+      <a href="/methodology/">How it works</a>
     </nav>
     <div class="header-tools"><a class="search-trigger" href="/funds/">Find a fund</a></div>
   </div>
