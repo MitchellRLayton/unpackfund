@@ -24,6 +24,7 @@
  * - a holding of zero weight cannot affect a sum and only inflates counts.
  */
 
+import { effectiveHoldingsForLedger } from "./effective-holdings";
 import { coverageBand } from "./format";
 import {
   FULL_ALLOCATION_BP,
@@ -273,9 +274,22 @@ export function buildLedger({
           source_url: benchmark.source_url,
         };
 
+  const effective = effectiveHoldingsForLedger({
+    rows,
+    unmapped: {
+      positions: unmappedPositions,
+      positions_with_weight: unmappedWithWeight,
+      securities_with_weight: securitiesWithWeight,
+      securities_weight: securitiesWeight,
+      cash_and_derivatives_with_weight: cashAndDerivativesWithWeight,
+      cash_and_derivatives_weight: cashAndDerivativesWeight,
+    },
+  });
+
   return {
     rows,
     metrics,
+    effective,
     benchmark: benchmarkFacts,
     funds: contributingFunds,
     oldest_as_of: oldestAsOf,

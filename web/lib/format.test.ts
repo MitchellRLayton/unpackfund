@@ -6,12 +6,13 @@ import {
   coverageLabel,
   formatCoveragePct,
   formatDays,
+  formatEffective,
   formatFreshness,
+  formatFundList,
   formatRatio,
   formatShare,
   formatSignedShare,
   formatWeightBp,
-  formatFundList,
 } from "./format";
 
 describe("formatWeightBp", () => {
@@ -115,5 +116,26 @@ describe("formatFundList", () => {
     const text = formatFundList(universe);
     expect(text).toBe("F0, F1, F2, F3, F4, F5, F6, F7 and 12,257 more");
     expect(text.length).toBeLessThan(80);
+  });
+});
+
+describe("formatEffective", () => {
+  it("keeps one decimal below 100 and drops it from 100 up", () => {
+    expect(formatEffective(1)).toBe("1.0");
+    expect(formatEffective(1.4705882352941176)).toBe("1.5");
+    expect(formatEffective(44.721359549995796)).toBe("44.7");
+    expect(formatEffective(99.4)).toBe("99.4");
+    expect(formatEffective(100)).toBe("100");
+    expect(formatEffective(1204.4)).toBe("1,204");
+    expect(formatEffective(9123)).toBe("9,123");
+  });
+
+  it("rounds from the value, not from the display: 99.96 is still below 100", () => {
+    expect(formatEffective(99.96)).toBe("100.0");
+  });
+
+  it("has nothing to print for a value that is not a number", () => {
+    expect(formatEffective(Number.NaN)).toBe("—");
+    expect(formatEffective(Number.POSITIVE_INFINITY)).toBe("—");
   });
 });

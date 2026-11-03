@@ -1,0 +1,119 @@
+/**
+ * The Companies lens's effective-holdings block: the ladder and the evidence list.
+ *
+ * Geometry only. Colour is the page's own ink, graphite and rule — Core and Broad are told
+ * apart by the labels they print and the places they hold, so a hue here would be a second
+ * channel for a fact that is already written down, and the one reader it would help is a
+ * reader who cannot see the labels either.
+ */
+
+.ladder {
+  margin: 0;
+}
+
+/* The rail and the markers are absolutely positioned, so the strip's height is the number
+   of lanes the data needed — set inline from `ladderMarkers`, never guessed here. */
+.strip {
+  position: relative;
+}
+
+.rail {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--rule-strong);
+}
+
+/* A marker is a point on the rail: zero-width, so its tick lands exactly on `left` and its
+   label can grow either way from it. */
+.marker {
+  position: absolute;
+  bottom: 0;
+  width: 0;
+  height: 0;
+}
+
+.marker[data-lane="1"] {
+  bottom: 1.5rem;
+}
+
+.marker[data-lane="2"] {
+  bottom: 3rem;
+}
+
+.tick {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  height: 0.45rem;
+  background: var(--graphite);
+}
+
+.label {
+  position: absolute;
+  bottom: 0.55rem;
+  left: 0;
+  white-space: nowrap;
+  color: var(--ink);
+  font-size: var(--text-12);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.marker[data-align="middle"] .label {
+  transform: translateX(-50%);
+}
+
+.marker[data-align="end"] .label {
+  transform: translateX(-100%);
+}
+
+.evidence {
+  font-size: var(--text-14);
+}
+
+.evidence summary {
+  color: var(--graphite);
+  cursor: pointer;
+  font-size: var(--text-14);
+}
+
+.facts {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-2) 0;
+}
+
+/* The one sentence that belongs to the facts above rather than to the link below, so the
+   gap goes under it and the two do not read as a single paragraph. */
+.note {
+  margin: 0 0 var(--space-2);
+}
+
+.fact {
+  display: grid;
+  grid-template-columns: minmax(9rem, 15rem) minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.fact dt {
+  color: var(--graphite);
+  font-size: var(--text-12);
+}
+
+.fact dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* At a 320 px window a 15 rem label column leaves a value two words wide, so the pairs
+   stack — label above value — rather than wrap into a column of fragments. */
+@media (max-width: 34rem) {
+  .fact {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}

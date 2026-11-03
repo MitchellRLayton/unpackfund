@@ -51,7 +51,7 @@ export function PrintSummary({
         </p>
       </header>
 
-      <AnswerStrip answer={answer} />
+      <AnswerStrip answer={answer} effective={model.ledger?.effective} />
 
       <section className="stack stack--tight">
         <h3 className="subtitle">Your holdings</h3>

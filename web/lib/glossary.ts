@@ -37,6 +37,14 @@ export interface GlossaryTerm {
   short: string;
   /** The full entry: one or two plain paragraphs. No formulas beyond the one. */
   definition: string;
+  /**
+   * The line for a reader who wants the name of the thing: the formula, or the
+   * statistical term the plain definition is a gloss on. Optional, because most of
+   * the site's words have no such line; `/glossary/` prints it under the entry in
+   * the page's smallest type, so it is available without being the first thing a
+   * reader meets.
+   */
+  expert?: string;
   /** Where a reader meets the word, so the definition can be found from there. */
   appears: string;
 }
@@ -75,6 +83,17 @@ export const GLOSSARY_TERMS = [
     appears: "The ledger's VT column, and the methodology section on the benchmark.",
   },
   {
+    id: "broad",
+    label: "Broad",
+    short:
+      "Counts every company, giving small ones partial credit. Core is always at or below Broad. A wide gap means a few large positions dominate a long tail.",
+    definition:
+      "Counts every company, giving small ones partial credit. It is the less sensitive of the two counts: every company contributes, so a mix of many small positions reads as the many holdings it is, and one very large position moves it less than it moves Core. Core is always at or below Broad. A wide gap means a few large positions dominate a long tail.",
+    expert: "exp(Shannon entropy); Hill number of order 1.",
+    appears:
+      "Beside Core in the answer strip, the Companies lens summary block and the Funds lens columns, and the methodology section on effective holdings.",
+  },
+  {
     id: "cash-line",
     label: "Cash line",
     short:
@@ -95,6 +114,17 @@ export const GLOSSARY_TERMS = [
       "Every table on the site: the X-Ray ledger, the company directory, fund pages, and the compare page.",
   },
   {
+    id: "core",
+    label: "Core",
+    short:
+      "Counts mostly your largest positions, so a few big names pull it down fast. Core is always at or below Broad. A wide gap means a few large positions dominate a long tail.",
+    definition:
+      "Counts mostly your largest positions, so a few big names pull it down fast. It is the stricter of the two counts: squaring a share rewards size twice, so the largest positions decide most of the answer while the tail barely moves it. Core is always at or below Broad. A wide gap means a few large positions dominate a long tail.",
+    expert: "1/HHI (inverse Simpson index; Hill number of order 2).",
+    appears:
+      "Beside Broad in the answer strip, the Companies lens summary block and the Funds lens columns, and the methodology section on effective holdings.",
+  },
+  {
     id: "coverage",
     label: "Coverage",
     short:
@@ -113,6 +143,16 @@ export const GLOSSARY_TERMS = [
       "The portfolio can hold a stock directly as well as funds. A direct holding is resolved to the same company identity the funds use, given the weight you entered, and added to that company's row: a company held both directly and through a fund is one line, at the sum of the two. It counts toward coverage and concentration exactly as a fund's holdings do. In percentage mode, amounts that do not add up to 100% leave an unallocated remainder, which is reported as unallocated weight instead of being treated as cash or spread over the other entries; in dollar mode the amounts are the whole, and each weight is its amount divided by their sum.",
     appears:
       "The portfolio builder, and the X-Ray ledger, where a row you hold directly is shaded.",
+  },
+  {
+    id: "effective-holdings",
+    label: "Effective holdings",
+    short:
+      "How many equal-sized holdings your mix acts like. It measures how evenly your money is spread across companies, not risk: it ignores how companies move together.",
+    definition:
+      "How many equal-sized holdings your mix acts like. It measures how evenly your money is spread across companies, not risk: it ignores how companies move together. It is printed as two counts, Core and Broad, because a long tail can fairly be counted in more than one way: mostly by the largest positions, or company by company. Both are computed after look-through merging, from the same company rows as the rest of the ledger, so a company held through three funds is one company and the pair describes the mix rather than an average of the funds inside it.",
+    appears:
+      "The answer strip, the Companies lens summary block and the Funds lens columns, and the methodology section on effective holdings.",
   },
   {
     id: "effective-number",

@@ -171,7 +171,7 @@ export function Workspace() {
         </div>
 
         <div className="stack stack--loose">
-          <AnswerStrip answer={answer}>
+          <AnswerStrip answer={answer} effective={model.ledger?.effective}>
             {isExample ? <p className={styles.exampleLabel}>{EXAMPLE_LABEL}</p> : null}
           </AnswerStrip>
 

@@ -16,6 +16,7 @@
  */
 
 import { benchmarkDelta } from "@/lib/benchmark";
+import type { EffectiveHoldings } from "@/lib/effective-holdings";
 import type { CoverageBand } from "@/lib/format";
 import { coverageBand } from "@/lib/format";
 
@@ -43,6 +44,17 @@ function share(fraction: number): string {
 /** A percentage that is already a percentage, at the page's coverage precision. */
 function coverage(pct: number): string {
   return pct.toFixed(1);
+}
+
+/**
+ * One of the two effective-holdings counts, for the file.
+ *
+ * One decimal and no thousands separator, so a spreadsheet reads a number rather than
+ * text: the page may print `1,204`, which a CSV cell would have to quote and a sum
+ * would then skip.
+ */
+function holdings(value: number): string {
+  return value.toFixed(1);
 }
 
 function bandWord(pct: number | null): string {
@@ -205,8 +217,22 @@ export function marketsCsv(split: MarketSplit, releaseAsOf: string): string {
 /**
  * One row per fund in the mix. The three dates travel together and separately, so
  * a spreadsheet can sort by age without parsing a sentence.
+ *
+ * `pair` adds the fund's own two effective-holdings counts as `core` and `broad`. They
+ * are appended only when the caller has them, so the file keeps `release_as_of` as its
+ * last column and a caller with nothing to add gets the shape it always got.
  */
-export function fundsCsv(rows: readonly FundMixRow[], releaseAsOf: string): string {
+export function fundsCsv(
+  rows: readonly FundMixRow[],
+  releaseAsOf: string,
+  pair?: ReadonlyMap<string, EffectiveHoldings>,
+): string {
+  const withPair = pair !== undefined;
+  const counts = (pairFor: EffectiveHoldings | undefined, key: "core" | "broad") => {
+    const value = pairFor ? pairFor[key] : null;
+    return value === null ? "" : holdings(value);
+  };
+
   const lines = [
     csvLine([
       "ticker",
@@ -219,11 +245,13 @@ export function fundsCsv(rows: readonly FundMixRow[], releaseAsOf: string): stri
       "filed_at",
       "age_days",
       "top10_share_pct",
+      ...(withPair ? ["core", "broad"] : []),
       "release_as_of",
     ]),
   ];
 
   for (const row of rows) {
+    const pairFor = pair?.get(row.ticker);
     lines.push(
       csvLine([
         row.ticker,
@@ -236,6 +264,7 @@ export function fundsCsv(rows: readonly FundMixRow[], releaseAsOf: string): stri
         row.filedAt,
         row.lagDays,
         row.top10Share === null ? "" : share(row.top10Share),
+        ...(withPair ? [counts(pairFor, "core"), counts(pairFor, "broad")] : []),
         releaseAsOf,
       ]),
     );

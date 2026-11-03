@@ -9,6 +9,7 @@ import type {
   LedgerRow,
   ReleaseDescriptor,
 } from "@/lib/types";
+import { withEffective } from "../lib/testing/ledger";
 
 /**
  * `/x` end to end at the seams the page owns: the *shape* of the table depends on
@@ -171,7 +172,7 @@ function ledgerRow(company_id: string, name: string, weight: number): LedgerRow 
   };
 }
 
-const ledger: Ledger = {
+const ledgerBase: Omit<Ledger, "effective"> = {
   rows: [
     ledgerRow("c_nvda", "NVIDIA Corp", 0.0751),
     ledgerRow("c_matx", "Matson Inc", 0.0021),
@@ -210,6 +211,7 @@ const ledger: Ledger = {
     cash_and_derivatives_weight: 0.0148,
   },
 };
+const ledger = withEffective(ledgerBase);
 
 beforeEach(() => {
   // Calls accumulate across tests otherwise, and one of the assertions below is

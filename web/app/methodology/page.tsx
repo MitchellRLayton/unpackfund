@@ -34,6 +34,7 @@ const SECTIONS: readonly ReadingSection[] = [
   { id: "coverage", title: "Coverage, and the 70/60 bands" },
   { id: "dates", title: "The three dates" },
   { id: "concentration", title: "Concentration" },
+  { id: "effective-holdings", title: "Effective holdings" },
   { id: "overlap", title: "Overlap" },
   { id: "markets", title: "Market tiers" },
   { id: "country-decision", title: "How a country is decided", depth: 3 },
@@ -255,6 +256,106 @@ export default function MethodologyPage() {
         not the index of the portfolio. When a fund in the portfolio covers less than 60%
         of its weight, the figures are withheld rather than computed over the part that
         resolved.
+      </p>
+
+      <h2 id="effective-holdings">Effective holdings</h2>
+      <p>
+        <Term name="effective-holdings">Effective holdings</Term> answers a question a sum
+        of squares makes hard to hear: how many equal-sized holdings would spread this
+        money the way the mix actually spreads it? The answer comes as a pair.{" "}
+        <Term name="core">Core</Term> counts mostly the largest positions, so a few big
+        names pull it down fast; <Term name="broad">Broad</Term> counts every company,
+        giving the small ones partial credit. Two counts rather than one, because a long
+        tail can fairly be counted in more than one way, and the distance between the two
+        answers is worth printing beside them.
+      </p>
+      <p>
+        Both counts are computed after the <Term name="look-through">look-through</Term>,
+        from the merged company weights — a company held through three funds is one
+        company, with one weight, not three entries. The input is exactly the summed row
+        the ledger prints: each company&rsquo;s weight is the sum of its contributions
+        from every fund and every direct stock in the mix, so the pair describes the mix a
+        reader holds rather than an average of the funds inside it. That is the reason the
+        look-through exists, and the reason these two figures are not computed per fund
+        and averaged.
+      </p>
+      <p>
+        Four kinds of row are never a company and never enter the count: cash the reader
+        adds to the portfolio, a fund&rsquo;s own cash lines, money-market sweeps, and
+        derivatives. None of them has an issuer behind it, so counting one would credit
+        the mix with a holding that is not there. Unresolved fund holdings are excluded
+        for a different reason: a position that could not be matched to a company is never
+        treated as one company, because doing so would invent an identity and hide the
+        gap. It stays unmatched weight, and the coverage rule stated above says what that
+        does to the pair. A negative weight — a short — is excluded too, and the exclusion
+        is flagged beside the figures rather than applied in silence: a short is a real
+        exposure, and leaving it in the shares would let it shrink every other share and
+        flatter both counts.
+      </p>
+      <p>
+        The arithmetic starts from the shares. Let w_i be a company&rsquo;s merged weight
+        and <em>T</em> the sum of those weights — the company weight in the mix, with the
+        rows above already removed — so that s_i = w_i / T and the shares sum to 1. N is
+        the number of companies included, and it is the ceiling both counts approach.
+      </p>
+      <p className="mono">
+        Core = 1 / HHI, with HHI = Σ s_i² · Broad = exp(H), with H = −Σ s_i ln s_i over
+        s_i &gt; 0
+      </p>
+      <p>
+        The pair is bounded by construction: 1 ≤ Core ≤ Broad ≤ N, and all three are equal
+        only when every included weight is equal. Core cannot fall below one, because the
+        shares sum to one and their squares cannot exceed one; Broad cannot fall below
+        Core, because the exponential gives a long tail more weight than the squares do;
+        and N is the ceiling, which only an even spread across every company reaches. A
+        mix with one large position and a long tail of small ones therefore shows a low
+        Core, a higher Broad, and a wide gap between the two.
+      </p>
+      <p>
+        Coverage qualifies the pair exactly as it qualifies every other concentration
+        figure: <em>T</em> ÷ (<em>T</em> + unmatched weight), against the same bands. At
+        70% or more the pair prints plainly; from 60% to 70% it is labelled partial; below
+        60% both counts are withheld. The withheld case is not a zero and not an estimate:
+        a count computed over a minority of the money would describe that minority, and a
+        reader would have no way to see the difference. The unmatched weight in that
+        denominator is company-like money the release could not name; cash, sweeps and
+        derivatives are outside both terms, because they were never going to be a company.
+      </p>
+      <p>
+        Merging is also what keeps the pair honest about overlap. Treat each fund&rsquo;s
+        contribution as its own holding and a company held by three funds counts three
+        times: computed that way, both counts come out at or above the merged pair, and
+        the gap between the two answers is exactly what merging removes. The pair printed
+        is the merged one, because the mix is what a reader holds; a fund&rsquo;s own
+        count is a different question, and the site does not add the two together.
+      </p>
+      <p>
+        The unmatched weight is the one part of the mix the pair cannot count, and the
+        range that leaves belongs to the evidence layer rather than to the printed pair:
+        counted once, the unmatched weight is one more holding, and counted as the M equal
+        holdings those unresolved positions could be, it is M of them. Both ends are
+        computed over the resolved company weight plus the unmatched weight, so they
+        describe what the mix would look like if the unread money were as evenly spread as
+        each case assumes. Below 60% coverage the range is withheld along with the pair —
+        the same rule, applied to every evidence figure that depends on them — because all
+        of them rest on the same incomplete denominator.
+      </p>
+      <p>
+        One arithmetic rule is worth stating because it cannot be seen on screen: the
+        inputs are unrounded float64 throughout, the terms of each sum are added in
+        ascending order, and 0 · ln 0 is taken as 0. Rounded inputs, summed in the order a
+        reader typed their holdings, would let the same mix produce different figures on
+        two visits; adding the smallest term first makes the result independent of the
+        order the portfolio was entered, and a zero share contributes nothing rather than
+        a limit that is never used.
+      </p>
+      <p>
+        The limits of the pair are part of its definition. It is a count of holdings, so
+        it ignores how companies move together: two mixes with the same Core and Broad can
+        move in very different ways, because the arithmetic treats every company as
+        independent of every other. It is not a verdict on a mix, and no threshold on this
+        site turns Core or Broad into advice — a low count describes a mix that rests on a
+        few names, and that is the whole claim.
       </p>
 
       <h2 id="overlap">Overlap</h2>

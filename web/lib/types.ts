@@ -633,4 +633,12 @@ export interface Ledger {
   max_lag_days: number | null;
   /** Positions that could not be tied to a company, by cause and by weight. */
   unmapped: UnmappedBreakdown;
+  /**
+   * The equal-sized-holdings pair, computed from these merged rows.
+   *
+   * It lives on the ledger rather than in a component because it is the same arithmetic
+   * the worker already runs: the component reads a number, it does not compute one
+   * (`lookthrough-math-and-qa` §2).
+   */
+  effective: import("./effective-holdings").EffectiveHoldings;
 }

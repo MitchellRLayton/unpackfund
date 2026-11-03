@@ -16,6 +16,7 @@ import { FundsLens } from "./FundsLens";
 import { MarketsLens } from "./MarketsLens";
 import { OverlapLens } from "./OverlapLens";
 import { QualityLens } from "./QualityLens";
+import { withEffective } from "../../lib/testing/ledger";
 
 /**
  * A render of each lens against a hand-worked portfolio — the same fixture the
@@ -149,7 +150,7 @@ const UNMAPPED: UnmappedBreakdown = {
   cash_and_derivatives_weight: 0.1,
 };
 
-const LEDGER: Ledger = {
+const LEDGERBase: Omit<Ledger, "effective"> = {
   rows: ROWS,
   metrics: {
     hhi: 0.2626,
@@ -176,6 +177,7 @@ const LEDGER: Ledger = {
   max_lag_days: 59,
   unmapped: UNMAPPED,
 };
+const LEDGER = withEffective(LEDGERBase);
 
 function model(input: { ledger: Ledger; funds: FundDocument[] }): WorkspaceModel {
   const docs = new Map(input.funds.map((document) => [document.ticker, document]));
@@ -355,5 +357,124 @@ describe("the four lenses render a worked portfolio", () => {
     expect(incompleteHtml).toContain("The portfolio is not whole yet");
     expect(incompleteHtml).toContain("8.00%");
     expect(incompleteHtml).not.toContain("<table");
+  });
+});
+
+/**
+ * The Effective holdings pair on the Funds lens.
+ *
+ * Appended as its own block so nothing above it — which another agent is editing —
+ * is touched. Imports the CSV builder and the frozen arithmetic where it needs them
+ * rather than adding a line to the shared import header.
+ *
+ * Every value below is hand-computed from the fixture, not read back from the
+ * function under test:
+ *
+ * - SPR holds 60% c1, 25% c2, 15% c3 of itself. Shares are already those numbers, so
+ *   Core = 1/(0.36+0.0625+0.0225) = 1/0.445 = 2.247 → 2.2, and
+ *   Broad = e^-(0.6·ln0.6 + 0.25·ln0.25 + 0.15·ln0.15) = e^0.9376 = 2.554 → 2.6.
+ * - The AAA row of the shared fixture holds 50% c1 and 30% c2: shares 0.625 and
+ *   0.375, so Core = 1/0.53125 = 1.882 → 1.9 and Broad = e^0.6616 = 1.938 → 1.9.
+ * - The portfolio merges c1 across AAA and BBB, which is why its own pair (1.9 and
+ *   2.3 from T = 0.70, shares 0.700/0.171/0.129) is neither the sum nor the average
+ *   of the rows above it.
+ */
+describe("funds: the Effective holdings pair", () => {
+  /** A fund that spreads itself over three companies, so Core and Broad differ. */
+  const spread = fund({
+    ticker: "SPR",
+    coverage_pct: 100,
+    holdings: [holding("c1", 6000), holding("c2", 2500), holding("c3", 1500)],
+  });
+
+  const spreadModel = {
+    ...MODEL,
+    funds: [spread],
+    fundByTicker: new Map([[spread.ticker, spread]]),
+    split: { ...MODEL.split, fundWeights: { [spread.ticker]: 0.9 } },
+  } as WorkspaceModel;
+
+  it("heads a two-column group and prints each fund's own pair", () => {
+    const html = renderToStaticMarkup(<FundsLens model={spreadModel} />);
+    expect(html).toContain("Effective holdings");
+    expect(html).toContain('colSpan="2"');
+    // The two words are glossary terms, so they are links here and popovers in a
+    // browser; either way the label is the same word.
+    expect(html).toMatch(/>Core</);
+    expect(html).toMatch(/>Broad</);
+    expect(html).toMatch(/>2\.2</);
+    expect(html).toMatch(/>2\.6</);
+    expect(html).not.toMatch(/NaN|undefined/);
+  });
+
+  it("ends with the portfolio's own pair and says it is not an average", () => {
+    const html = renderToStaticMarkup(<FundsLens model={MODEL} />);
+    expect(html).toContain("Your portfolio");
+    expect(html).toContain(
+      "Not an average of the rows above. Companies held by more than one fund merge, which lowers both counts.",
+    );
+    // The ledger's own pair, for a reader who never hovers: 1.9 and 2.3.
+    expect(html).toMatch(/>1\.9</);
+    expect(html).toMatch(/>2\.3</);
+    expect(html).not.toMatch(/NaN|undefined/);
+  });
+
+  it("withholds both counts for a fund below the 60% floor, never a zero", () => {
+    // 40% resolved to a company, 60% a security the release could not name.
+    const thin = fund({
+      ticker: BBB,
+      coverage_pct: 40,
+      holdings: [holding("c1", 4000), holding(null, 6000, "equity")],
+    });
+    const one = FUNDS[0];
+    if (!one) throw new Error("fixture");
+    const html = renderToStaticMarkup(
+      <FundsLens model={model({ ledger: LEDGER, funds: [one, thin] })} />,
+    );
+    expect(html).toContain("40.0% not covered");
+    // Both withheld cells are the table's no-number glyph, at the end of that row, and
+    // nothing repeats the row's story: its own Coverage cell names the band and the
+    // percentage already.
+    const fromRow = html.slice(html.indexOf(">BBB<"));
+    const thinRow = fromRow.slice(0, fromRow.indexOf("</tr>"));
+    expect(thinRow).toContain('<td class="num">—</td><td class="num">—</td>');
+    expect(html).not.toMatch(/NaN|undefined/);
+  });
+
+  it("writes core and broad as one-decimal columns, empty when withheld", async () => {
+    const { fundsCsv } = await import("./lens-csv");
+    const { effectiveHoldingsForFund } = await import("@/lib/effective-holdings");
+    const pair = new Map([[spread.ticker, effectiveHoldingsForFund(spread)]]);
+    const base = {
+      name: spread.name,
+      weight: 0.9,
+      positions: 3,
+      asOf: spread.as_of,
+      filedAt: spread.filed_at,
+      lagDays: spread.lag_days,
+      top10Share: null,
+      unmatchedWeight: 0,
+      unmatchedPositions: 0,
+    };
+
+    const csv = fundsCsv(
+      [
+        { ...base, ticker: spread.ticker, coveragePct: 100 },
+        { ...base, ticker: BBB, coveragePct: 40 },
+      ],
+      "2026-11-02.7",
+      pair,
+    );
+    const lines = csv.trimEnd().split("\n");
+    expect(lines[0]).toBe(
+      "ticker,name,weight_pct,positions,coverage_pct,coverage_band,reporting_period,filed_at,age_days,top10_share_pct,core,broad,release_as_of",
+    );
+    expect(lines[1]).toBe(
+      `SPR,SPR Fund,90.00,3,100.0,full,2026-06-30,2026-08-28,59,,2.2,2.6,2026-11-02.7`,
+    );
+    // A withheld pair is empty cells, not zeroes, and the row still travels.
+    expect(lines[2]).toBe(
+      `BBB,SPR Fund,90.00,3,40.0,none,2026-06-30,2026-08-28,59,,,,2026-11-02.7`,
+    );
   });
 });
