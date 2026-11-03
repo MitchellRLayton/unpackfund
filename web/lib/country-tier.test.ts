@@ -54,6 +54,7 @@ describe("the market classification", () => {
     expect(tierOf("RO")).toBe("EM"); // MSCI: frontier
     expect(tierOf("VN")).toBe("EM"); // MSCI: frontier
     expect(tierOf("BG")).toBe("OTHER"); // IMF: advanced
+    expect(tierOf("LU")).toBe("DM"); // FTSE lists it with Belgium; MSCI keeps it separate
   });
 
   it("puts the offshore and unclassified domiciles in OTHER, not in emerging", () => {
