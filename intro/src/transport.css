@@ -1,0 +1,254 @@
+/* Phase-1 review furniture. Deliberately plain: it should not compete with the
+   thing it is measuring. */
+
+.transport {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 90;
+  background: color-mix(in oklch, var(--paper) 84%, var(--ink) 6%);
+  border-top: 1px solid var(--rule);
+  backdrop-filter: blur(10px);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--graphite-ink);
+  padding: 0.5rem 1rem 0.55rem;
+  display: none;
+}
+
+.transport--live {
+  display: block;
+}
+
+.transport__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  min-height: 26px;
+}
+
+.transport__group {
+  display: inline-flex;
+  gap: 0.3rem;
+}
+
+.transport__btn {
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.24rem 0.5rem;
+  cursor: pointer;
+  letter-spacing: 0.03em;
+}
+
+.transport__btn:hover {
+  border-color: var(--ink);
+}
+
+.transport__btn--play {
+  min-width: 4.4em;
+  text-align: center;
+}
+
+.transport__btn--speed {
+  min-width: 2.9em;
+  text-align: center;
+}
+
+.transport__time {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.transport__beat {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 10px;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+
+.transport__meta {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--graphite);
+}
+
+.transport__spacer {
+  flex: 1 1 auto;
+}
+
+.transport__hint {
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  color: var(--graphite);
+  text-transform: uppercase;
+}
+
+/* ---- the scrub bar */
+
+.transport__track {
+  position: relative;
+  height: 22px;
+  margin: 0.45rem 0 0.4rem;
+  border-radius: 3px;
+  background: color-mix(in oklch, var(--ink) 6%, transparent);
+  cursor: ew-resize;
+  touch-action: none;
+  overflow: hidden;
+}
+
+.transport__segments {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.transport__segment {
+  position: relative;
+  flex-basis: 0;
+  border-right: 1px solid color-mix(in oklch, var(--paper) 70%, transparent);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--graphite);
+  padding: 0.35rem 0.4rem 0 0.45rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.transport__segment[data-beat="paper"] {
+  background: color-mix(in oklch, var(--ink) 4%, transparent);
+}
+.transport__segment[data-beat="parcel"] {
+  background: color-mix(in oklch, var(--ink) 7%, transparent);
+}
+.transport__segment[data-beat="spill"] {
+  background: color-mix(in oklch, var(--ink) 10%, transparent);
+}
+.transport__segment[data-beat="merge"] {
+  background: color-mix(in oklch, var(--ink) 7%, transparent);
+}
+.transport__segment[data-beat="pullback"] {
+  background: color-mix(in oklch, var(--ink) 4%, transparent);
+}
+.transport__segment[data-beat="handoff"] {
+  background: color-mix(in oklch, var(--ink) 2%, transparent);
+}
+
+.transport__fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  background: color-mix(in oklch, var(--ink) 9%, transparent);
+  pointer-events: none;
+}
+
+.transport__playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1.5px;
+  margin-left: -0.75px;
+  background: var(--string);
+  pointer-events: none;
+  box-shadow: 0 0 6px color-mix(in oklch, var(--string) 50%, transparent);
+}
+
+/* ---- the readout */
+
+.transport__foot {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.1rem;
+  flex-wrap: wrap;
+}
+
+.transport__table {
+  border-collapse: collapse;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+
+.transport__table th,
+.transport__table td {
+  text-align: left;
+  padding: 0.1rem 0.85rem 0.1rem 0;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.transport__table thead th {
+  font-size: 8.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--graphite);
+  border-bottom: 1px solid var(--rule-soft);
+  padding-bottom: 0.2rem;
+}
+
+.transport__table tbody th {
+  color: var(--ink);
+  text-transform: none;
+}
+
+.transport__table td {
+  color: var(--graphite-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.transport__table tr.is-current th,
+.transport__table tr.is-current td {
+  color: var(--ink);
+}
+
+.transport__table tr.is-current th::before {
+  content: "▸ ";
+  color: var(--string);
+}
+
+.transport__table .is-ok {
+  color: var(--ink);
+}
+
+.transport__table .is-bad {
+  color: var(--string);
+  font-weight: 500;
+}
+
+.transport__summary {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--graphite-ink);
+  max-width: 26rem;
+  line-height: 1.5;
+}
+
+.transport__summary strong {
+  color: var(--string);
+}
+
+@media (max-width: 700px) {
+  .transport__hint,
+  .transport__meta {
+    display: none;
+  }
+  .transport__table thead {
+    display: none;
+  }
+  .transport__table td:nth-child(5),
+  .transport__table th:nth-child(5) {
+    display: none;
+  }
+}

@@ -1,0 +1,234 @@
+/* The Builder underneath. Real DOM, real input, real notice — the intro covers
+   it for 5.2 s and then gets out of the way. */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid var(--rule);
+  background: color-mix(in oklch, var(--paper) 88%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.site-header__inner {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 0.8rem 1.4rem;
+  display: flex;
+  gap: 1.6rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-size: 1.02rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.site-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.1rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.site-nav a {
+  color: var(--graphite-ink);
+  text-decoration: none;
+  padding-bottom: 2px;
+  border-bottom: 1px solid transparent;
+}
+
+.site-nav a:hover {
+  color: var(--ink);
+}
+
+.site-nav a[aria-current="page"] {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+main.narrow {
+  max-width: 38rem;
+  margin: 0 auto;
+  padding: 6.5rem 1.4rem 2rem;
+}
+
+main h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2.1rem, 5.2vw, 3.35rem);
+  font-weight: 380;
+  line-height: 1.04;
+  letter-spacing: -0.022em;
+  margin: 0 0 1rem;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.prose {
+  margin: 0 0 2.1rem;
+  color: var(--graphite-ink);
+  font-size: 1.06rem;
+  line-height: 1.62;
+  max-width: 34rem;
+}
+
+.field {
+  display: flex;
+  gap: 0.6rem;
+  align-items: stretch;
+}
+
+.field input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  background: color-mix(in oklch, var(--paper) 60%, white 40%);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 0.72rem 0.85rem;
+  transition: border-color 120ms ease;
+}
+
+.field input::placeholder {
+  color: var(--graphite);
+  letter-spacing: 0.02em;
+}
+
+.field input:focus {
+  border-color: var(--ink);
+  outline: none;
+}
+
+.field input:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.primary {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--paper);
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  padding: 0 1.1rem;
+  cursor: pointer;
+}
+
+.primary:hover {
+  background: color-mix(in oklch, var(--ink) 86%, var(--paper));
+}
+
+.chips {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.9rem 0 0;
+  padding: 0;
+}
+
+.chips:empty {
+  margin: 0;
+}
+
+.chips li {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.1em;
+  padding: 0.28rem 0.55rem;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  color: var(--ink);
+  background: color-mix(in oklch, var(--paper) 30%, var(--ink) 4%);
+}
+
+.hint {
+  margin: 0.9rem 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.02em;
+  color: var(--graphite-ink);
+}
+
+.site-footer {
+  max-width: 38rem;
+  margin: 4.5rem auto 0;
+  padding: 1.3rem 1.4rem 3rem;
+  border-top: 1px solid var(--rule);
+  color: var(--graphite-ink);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.site-footer p {
+  margin: 0 0 0.7rem;
+}
+
+.site-footer strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* The signature: hand-lettered, faint, bottom-right. Part of the page, not the
+   overlay, so it is still there after the intro has gone. */
+.made {
+  position: fixed;
+  right: 1.6rem;
+  bottom: calc(var(--transport-h) + 1.4rem);
+  z-index: 15;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 340;
+  font-size: 0.95rem;
+  letter-spacing: 0.005em;
+  color: var(--graphite);
+  transform: rotate(-1.6deg);
+  pointer-events: none;
+  opacity: 0;
+}
+
+@media (max-width: 620px) {
+  main.narrow {
+    padding-top: 4.6rem;
+  }
+  .made {
+    font-size: 0.82rem;
+    right: 1rem;
+  }
+  .site-nav {
+    gap: 0.8rem;
+    font-size: 0.66rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 560px) {
+  /* Bottom-right is where the hint lives on a phone, so the note joins the
+     page flow instead of sitting on top of it. */
+  .made {
+    position: static;
+    text-align: right;
+    margin: 1.4rem 0 0;
+    opacity: 1;
+  }
+}
