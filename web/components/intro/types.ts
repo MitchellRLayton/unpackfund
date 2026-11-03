@@ -1,94 +1,103 @@
 /**
- * The film's data contract, and the three pure helpers that touch it.
+ * The film's data contract: the two artifacts the bake publishes, and every string the film
+ * prints from them.
  *
- * `/intro/field.json` is baked by `scripts/bake-intro.mjs` from two published fund
- * documents, so this file describes an artifact rather than a live endpoint. Nothing here
- * touches the DOM, which is what lets `layout.test.ts` exercise the packing and the
- * caption formatter without a browser.
+ * `/intro/caption.json` and `/intro/dots.bin` are baked by `scripts/bake-intro.mjs` from two
+ * published fund documents, so this file describes an artifact rather than a live endpoint
+ * (CONTRACT.md §1). Nothing here touches the DOM, which is what lets the formatting and the
+ * geometry be tested without a browser.
  *
- * The shape, as baked:
- *
- *   { schema: 1, release, generated_at, pair: [A, B],
- *     funds: [{ ticker, name, as_of, filed_at, lag_days, coverage_pct, holdings }, …],
- *     totals: { held, distinct, shared },
- *     labels: [{ name, ticker, weight }],          // the twelve the film prints
- *     companies: [{ k: "a" | "b" | "s", w }] }     // 504 rows, one per company
- *
- * `k` says which funds hold the company (`s` = both) and `w` is its combined holding
- * weight in basis points, which is what sets a dot's area. There is deliberately no
- * company identity in the field: the film never needs one, and a name per dot would be a
- * table rather than a picture.
+ * The record layout is read from the contract, not re-derived: 7 float32 per company,
+ * `[w, vx, vy, ox, oy, rx, ry]`, little-endian, sorted by company id at bake time. The film
+ * never needs a company's identity — only its weight, where it sits in the two words, and
+ * where it lands on the final rule.
  */
 
-/** Which funds hold a company: only the first, only the second, or both. */
-export type HeldBy = "a" | "b" | "s";
+/** Which fund a caption names. The film's beats use A for the first (VTI), B for the second. */
+export type FundSlot = "a" | "b";
 
-/** One fund, as the card caption names it. */
-export interface IntroFund {
+/** One fund, as the caption names it. */
+export interface CaptionFund {
   ticker: string;
   name: string;
-  /** The period the filing describes, `YYYY-MM-DD`. */
-  as_of: string;
   /** The day the N-PORT was filed, `YYYY-MM-DD`. */
   filed_at: string;
-  lag_days: number;
-  coverage_pct: number;
-  /** How many mapped holdings the filing lists. */
-  holdings: number;
+  /** The period the filing describes, `YYYY-MM-DD`. */
+  as_of: string;
+  /** How many companies this fund holds in the release. */
+  companies: number;
 }
 
-/** A company the film writes a ticker beside — one of the twelve largest. */
-export interface IntroLabel {
+/** A company the film writes a ticker beside — one of the twelve largest in A. */
+export interface CaptionLabel {
   name: string;
   ticker: string;
-  /** Combined weight in basis points, matching one row of `companies`. */
+  /** At the bake's discretion: basis points or a share. Only the order matters. */
   weight: number;
+  /**
+   * The 0-based record index in `dots.bin`, so a label can find the dot it belongs to.
+   * Added at the lead's request after the first contract draft; the rank match below is
+   * only the guard for a bake that predates it.
+   */
+  index?: number;
 }
 
-/** One company in the field. */
-export interface IntroCompany {
-  k: HeldBy;
-  /** Combined holding weight in basis points — the dot's area. */
-  w: number;
+/** A word's font metrics, in em units of the word at its own font size. */
+export interface WordMetrics {
+  /** Total advance of the word. */
+  advance: number;
+  /** Height above the baseline. */
+  ascender: number;
+  /** Depth below the baseline. */
+  descender: number;
 }
 
-/** The whole artifact. */
-export interface IntroField {
+/** Everything the film needs to place two words and the rule they collapse onto. */
+export interface CaptionMetrics {
+  unitsPerEm: number;
+  a: WordMetrics;
+  b: WordMetrics;
+  /** The final rule, inside the ticker line's box. */
+  rule: { width: number; y: number };
+}
+
+/** The whole `caption.json` artifact. */
+export interface Caption {
   schema: 1;
   release: string;
-  generated_at: string | null;
-  pair: readonly [string, string];
-  funds: readonly [IntroFund, IntroFund];
-  totals: { held: number; distinct: number; shared: number };
-  labels: IntroLabel[];
-  companies: IntroCompany[];
+  generated_at: string;
+  a: CaptionFund;
+  b: CaptionFund;
+  /** `k`: companies in both funds. */
+  shared: number;
+  labels: CaptionLabel[];
+  metrics: CaptionMetrics;
 }
 
-/**
- * One dot on the field: a company as one card spills it.
- *
- * `fund` is the card that spills the dot, not the only fund that holds it — a company
- * both funds hold is spilled by the first card and receives the second card's weight at
- * the merge.
- */
-export interface DotSpec {
-  /** 0 = the first card (left / top), 1 = the second. */
-  fund: 0 | 1;
-  /** Combined weight in basis points; drives the dot's area. */
-  weightBp: number;
-  /** Both funds hold it: it carries a merge flash, and a thread from the second card. */
-  shared: boolean;
-  /**
-   * Deterministic packing group. The film no longer colours by group — every dot is ink —
-   * but eleven seeded patches are what make the field read as a field rather than a pile,
-   * so the packing keeps the grouping and the group is derived from the company's index.
-   */
-  cluster: number;
-  /** The mono label this dot carries, or `null` for the 492 that carry none. */
-  label: string | null;
+/** `dots.bin`, unpacked: one record per company in the union of the two funds. */
+export interface DotField {
+  count: number;
+  /** Float32Array of `RECORD_FLOATS * count`. */
+  raw: Float32Array;
 }
 
-/** The twelve mono labels the film writes, largest position first. */
+/** Floats per record in `dots.bin` (CONTRACT.md §1). */
+export const RECORD_FLOATS = 7;
+/** Bytes per record. */
+export const RECORD_BYTES = RECORD_FLOATS * 4;
+
+/** One company's record, named. `null` fields mean "not in B" for `ox`/`oy`. */
+export interface DotRecord {
+  w: number;
+  vx: number;
+  vy: number;
+  /** `null` when the company is not held by B: the bake writes NaN, NaN. */
+  ox: number | null;
+  oy: number | null;
+  rx: number;
+  ry: number;
+}
+
 const MONTHS = [
   "JAN",
   "FEB",
@@ -105,13 +114,13 @@ const MONTHS = [
 ] as const;
 
 /**
- * `2026-08-28` → `filed 28 AUG 2026`, the caption's third column.
+ * `2026-08-28` → `filed 28 AUG 2026`, the caption's second half.
  *
  * Written by hand rather than through `Intl.DateTimeFormat`, for two reasons that both
- * matter here: the film must render identically on every machine (a locale-dependent
- * month is a hydration and a review hazard), and no formatter is allowed inside a
- * timeline callback. An unparseable date is returned as-is behind the word `filed`, so a
- * bad artifact is legible on screen instead of throwing during the film.
+ * matter here: the film must render identically on every machine (a locale-dependent month
+ * is a hydration and a review hazard), and no formatter is allowed inside a timeline
+ * callback. An unparseable date is returned behind the word `filed`, so a bad artifact is
+ * legible on screen instead of throwing during the film.
  */
 export function formatFiledLine(filedAt: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(filedAt);
@@ -124,71 +133,85 @@ export function formatFiledLine(filedAt: string): string {
   return `filed ${String(day).padStart(2, "0")} ${name} ${year}`;
 }
 
-/** A caption row: what the card under the field prints about one fund. */
-export function captionRows(field: IntroField): Array<{
-  ticker: string;
-  name: string;
-  filed: string;
-}> {
-  return field.funds.map((fund) => ({
-    ticker: fund.ticker,
-    name: fund.name,
-    filed: formatFiledLine(fund.filed_at),
-  }));
+/**
+ * A company count with a thousands separator, and never a leading zero.
+ *
+ * `String#toLocaleString` is deliberately not used: the film prints counts during a tween,
+ * one frame at a time, and a locale-dependent group separator (or an Arabic-Indic digit set)
+ * would make the frame different on different machines. The counter is also why there is no
+ * padding here: the odometer rolls from nothing to a number, and a zero slot in front of
+ * `VTI`'s count would read as a second, smaller number.
+ */
+export function formatCount(value: number): string {
+  const whole = Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+  return String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+/** The caption at the top-left: the ticker and the day its filing arrived. */
+export function captionText(caption: Caption | null, ticker = "VTI"): string {
+  if (caption === null) return ticker;
+  return `${caption.a.ticker} · ${formatFiledLine(caption.a.filed_at)}`;
+}
+
+/** VTI's own company count: the number the counter lands on. */
+export function counterTotal(caption: Caption | null): number | null {
+  if (caption === null) return null;
+  const total = caption.a.companies;
+  return Number.isFinite(total) && total > 0 ? total : null;
 }
 
 /**
- * Assign the twelve printed tickers to their companies.
+ * The line under the counter during the `twice` beat:
+ * `{k} of VOO's {m} companies are already in VTI`.
  *
- * The artifact carries no company identity — only weight — so the join is by weight, and
- * the bake guarantees every label's weight appears in `companies` (verified below). Two
- * companies can share a weight (AMD and LLY both sit at 294 bp), so the tie is broken by
- * index: the label goes to the first unclaimed company of that weight, which is stable
- * because `companies` is sorted by company id at bake time.
- *
- * Returns company index → ticker for the twelve labels, and nothing else. Labels only
- * ever land on a dot the first card spills, or the label would appear after the merge.
+ * Both tickers come from the artifact rather than from the copy, so a re-bake for a
+ * different pair says the right thing; `null` means the artifact is not here yet.
  */
-export function labelByCompany(
-  companies: readonly IntroCompany[],
-  labels: readonly IntroLabel[],
-): Map<number, string> {
-  const claimed = new Set<number>();
-  const assigned = new Map<number, string>();
-  const ordered = [...labels].sort((a, b) => b.weight - a.weight);
-  for (const label of ordered) {
-    const index = companies.findIndex(
-      (company, at) =>
-        !claimed.has(at) && company.w === label.weight && company.k !== "b",
-    );
-    if (index === -1) continue;
-    claimed.add(index);
-    assigned.set(index, label.ticker);
+export function sharedLine(caption: Caption | null): string | null {
+  if (caption === null) return null;
+  const k = formatCount(caption.shared);
+  const total = formatCount(caption.b.companies);
+  return `${k} of ${caption.b.ticker}'s ${total} companies are already in ${caption.a.ticker}`;
+}
+
+/** One record, by index, or `null` when the index is outside the field. */
+export function dotRecord(raw: Float32Array, index: number): DotRecord | null {
+  const at = index * RECORD_FLOATS;
+  if (index < 0 || at + RECORD_FLOATS > raw.length) return null;
+  const w = raw[at];
+  const vx = raw[at + 1];
+  const vy = raw[at + 2];
+  const ox = raw[at + 3];
+  const oy = raw[at + 4];
+  const rx = raw[at + 5];
+  const ry = raw[at + 6];
+  if (
+    w === undefined ||
+    vx === undefined ||
+    vy === undefined ||
+    ox === undefined ||
+    oy === undefined ||
+    rx === undefined ||
+    ry === undefined
+  ) {
+    return null;
   }
-  return assigned;
-}
-
-/**
- * The packing group of a company, derived from its position in the artifact.
- *
- * The baked field is sorted by company id and carries no group, and the film must not
- * invent one that looks like data — so the group is a scramble of the index: deterministic
- * (the same field packs the same way on every load and every resize), spreading the
- * companies evenly over the eleven patches, and meaningful to nobody.
- */
-export function clusterOf(index: number): number {
-  let h = (index + 1) * 0x9e3779b1;
-  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
-  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
-  h = (h ^ (h >>> 16)) >>> 0;
-  return h % 11;
+  return {
+    w,
+    vx,
+    vy,
+    ox: Number.isNaN(ox) ? null : ox,
+    oy: Number.isNaN(oy) ? null : oy,
+    rx,
+    ry,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function isNumber(value: unknown): value is number {
+function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
@@ -196,85 +219,119 @@ function isString(value: unknown): value is string {
   return typeof value === "string";
 }
 
-function parseFund(value: unknown): IntroFund {
-  if (!isRecord(value)) throw new Error("field.funds[]: not an object");
-  const { ticker, name, as_of, filed_at, lag_days, coverage_pct, holdings } = value;
-  if (!isString(ticker) || !isString(name) || !isString(as_of) || !isString(filed_at)) {
-    throw new Error("field.funds[]: missing ticker, name, as_of or filed_at");
-  }
-  if (!isNumber(lag_days) || !isNumber(coverage_pct) || !isNumber(holdings)) {
-    throw new Error(
-      `field.funds[${ticker}]: lag_days, coverage_pct or holdings is not a number`,
-    );
-  }
-  return { ticker, name, as_of, filed_at, lag_days, coverage_pct, holdings };
+function expectNumber(
+  source: Record<string, unknown>,
+  key: string,
+  where: string,
+): number {
+  const value = source[key];
+  if (!isFiniteNumber(value))
+    throw new Error(`caption.json: ${where}.${key} is not a number`);
+  return value;
+}
+
+function expectString(
+  source: Record<string, unknown>,
+  key: string,
+  where: string,
+): string {
+  const value = source[key];
+  if (!isString(value)) throw new Error(`caption.json: ${where}.${key} is not a string`);
+  return value;
+}
+
+function parseFund(value: unknown, where: string): CaptionFund {
+  if (!isRecord(value)) throw new Error(`caption.json: ${where} is not an object`);
+  const companies = expectNumber(value, "companies", where);
+  return {
+    ticker: expectString(value, "ticker", where),
+    name: expectString(value, "name", where),
+    filed_at: expectString(value, "filed_at", where),
+    as_of: expectString(value, "as_of", where),
+    companies,
+  };
+}
+
+function parseWord(value: unknown, where: string): WordMetrics {
+  if (!isRecord(value)) throw new Error(`caption.json: ${where} is not an object`);
+  return {
+    advance: expectNumber(value, "advance", where),
+    ascender: expectNumber(value, "ascender", where),
+    descender: expectNumber(value, "descender", where),
+  };
 }
 
 /**
- * Type the artifact, refusing anything the film cannot draw.
+ * Validate `caption.json` into a `Caption`, or throw with the field that broke.
  *
- * The fetch is a network read of a committed file, so the failure that matters is a stale
- * or half-written artifact after a release: it must land as a refused film (the page is
- * revealed, no focus stolen) rather than as a half-built stage with `undefined` coordinates
- * three beats in. Only the fields the choreography reads are checked.
+ * The film is allowed to play without dots and without this file (the brief's guardrail),
+ * so a throw here is caught by the caller and the film simply prints tickers it already
+ * knows. Throwing rather than defaulting means a bake that drifts shape is reported by the
+ * tests instead of silently printing the wrong filing date.
  */
-export function parseField(value: unknown): IntroField {
-  if (!isRecord(value)) throw new Error("field.json: not an object");
-  if (value.schema !== 1)
-    throw new Error(`field.json: schema ${String(value.schema)} is not 1`);
-
-  const pair = value.pair;
-  if (!Array.isArray(pair) || pair.length !== 2 || !pair.every(isString)) {
-    throw new Error("field.json: pair must be two tickers");
-  }
-
-  const funds = value.funds;
-  if (!Array.isArray(funds) || funds.length < 2)
-    throw new Error("field.json: needs two funds");
-  const [a, b] = funds as [unknown, unknown];
-  const parsedFunds: [IntroFund, IntroFund] = [parseFund(a), parseFund(b)];
-
-  const totals = value.totals;
-  if (!isRecord(totals) || !isNumber(totals.held) || !isNumber(totals.distinct)) {
-    throw new Error("field.json: totals.held and totals.distinct are required numbers");
-  }
-  if (!isNumber(totals.shared)) throw new Error("field.json: totals.shared is required");
-
-  const companiesRaw = value.companies;
-  if (!Array.isArray(companiesRaw) || companiesRaw.length === 0) {
-    throw new Error("field.json: companies is empty");
-  }
-  const companies: IntroCompany[] = companiesRaw.map((row, index) => {
-    if (!isRecord(row))
-      throw new Error(`field.json: companies[${index}] is not an object`);
-    const { k, w } = row;
-    if (k !== "a" && k !== "b" && k !== "s") {
-      throw new Error(`field.json: companies[${index}].k is not a, b or s`);
-    }
-    if (!isNumber(w) || w < 0)
-      throw new Error(`field.json: companies[${index}].w is not a weight`);
-    return { k, w };
-  });
-
+export function parseCaption(value: unknown): Caption {
+  if (!isRecord(value)) throw new Error("caption.json: not an object");
+  if (value.schema !== 1) throw new Error("caption.json: schema is not 1");
   const labelsRaw = value.labels;
-  if (!Array.isArray(labelsRaw)) throw new Error("field.json: labels is not an array");
-  const labels: IntroLabel[] = labelsRaw.map((row, index) => {
-    if (!isRecord(row)) throw new Error(`field.json: labels[${index}] is not an object`);
-    const { name, ticker, weight } = row;
-    if (!isString(name) || !isString(ticker) || !isNumber(weight)) {
-      throw new Error(`field.json: labels[${index}] needs name, ticker and weight`);
-    }
-    return { name, ticker, weight };
+  if (!Array.isArray(labelsRaw)) throw new Error("caption.json: labels is not an array");
+  const metricsRaw = value.metrics;
+  if (!isRecord(metricsRaw)) throw new Error("caption.json: metrics is not an object");
+  const ruleRaw = metricsRaw.rule;
+  if (!isRecord(ruleRaw)) throw new Error("caption.json: metrics.rule is not an object");
+
+  const labels: CaptionLabel[] = labelsRaw.map((row, index) => {
+    const where = `labels[${index}]`;
+    if (!isRecord(row)) throw new Error(`caption.json: ${where} is not an object`);
+    const label: CaptionLabel = {
+      name: expectString(row, "name", where),
+      ticker: expectString(row, "ticker", where),
+      weight: expectNumber(row, "weight", where),
+    };
+    if (isFiniteNumber(row.index) && row.index >= 0) label.index = Math.trunc(row.index);
+    return label;
   });
+
+  const unitsPerEm = expectNumber(metricsRaw, "unitsPerEm", "metrics");
+  const a = parseFund(value.a, "a");
+  const b = parseFund(value.b, "b");
+  if (a.ticker === "" || b.ticker === "")
+    throw new Error("caption.json: a ticker is empty");
+  if (a.companies <= 0) throw new Error("caption.json: a.companies is not positive");
 
   return {
     schema: 1,
-    release: isString(value.release) ? value.release : "",
-    generated_at: isString(value.generated_at) ? value.generated_at : null,
-    pair: [pair[0] as string, pair[1] as string],
-    funds: parsedFunds,
-    totals: { held: totals.held, distinct: totals.distinct, shared: totals.shared },
+    release: expectString(value, "release", "caption"),
+    generated_at: expectString(value, "generated_at", "caption"),
+    a,
+    b,
+    shared: expectNumber(value, "shared", "caption"),
     labels,
-    companies,
+    metrics: {
+      unitsPerEm,
+      a: parseWord(metricsRaw.a, "metrics.a"),
+      b: parseWord(metricsRaw.b, "metrics.b"),
+      rule: {
+        width: expectNumber(ruleRaw, "width", "metrics.rule"),
+        y: expectNumber(ruleRaw, "y", "metrics.rule"),
+      },
+    },
   };
+}
+
+/**
+ * Unpack `dots.bin` into a `DotField`.
+ *
+ * Little-endian float32 is a platform-independent byte format and `Float32Array` reads it
+ * in the platform's own order, so the browser side needs exactly one check: the byte length
+ * has to be a whole number of 28-byte records. An empty or ragged file is a bake defect, and
+ * throwing it lets the caller play without dots rather than drawing noise.
+ */
+export function parseDots(buffer: ArrayBuffer): DotField {
+  if (buffer.byteLength === 0) throw new Error("dots.bin: empty");
+  if (buffer.byteLength % RECORD_BYTES !== 0) {
+    throw new Error(
+      `dots.bin: ${buffer.byteLength} bytes is not ${RECORD_BYTES}-byte records`,
+    );
+  }
+  return { count: buffer.byteLength / RECORD_BYTES, raw: new Float32Array(buffer) };
 }
