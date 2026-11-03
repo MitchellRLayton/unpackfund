@@ -76,9 +76,9 @@
 
 .ticker__text {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 17px;
   font-weight: 500;
-  letter-spacing: 0.34em;
+  letter-spacing: 0.3em;
   text-transform: uppercase;
   color: var(--ink);
   white-space: nowrap;
@@ -86,7 +86,7 @@
 }
 
 .ticker__rule {
-  width: 46px;
+  width: 64px;
   height: 1px;
   background: color-mix(in oklch, var(--ink) 45%, transparent);
 }
