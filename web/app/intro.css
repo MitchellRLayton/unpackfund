@@ -1,0 +1,41 @@
+/*
+ * The curtain, before the film's own code has arrived.
+ *
+ * The first visit has to cover the page *before* the first paint, or the visitor sees the
+ * workspace for a moment and then a film covering it — the one thing worse than no film.
+ * The decision is made by a three-line hint in `layout.tsx` (which runs before paint and
+ * can only read storage), and this file is what that hint switches on. The film's own
+ * styles arrive with its chunk, a few hundred milliseconds later; by then the paper is
+ * already covering everything.
+ *
+ * The curtain is opaque, so nothing else needs hiding: the film reveals the real page in
+ * stages as its own paper fades, and a rule here that dimmed `main` would hide the very
+ * elements the handoff is animating.
+ *
+ * `html[data-intro]` is set by the hint and cleared by `IntroCurtain` whichever way the
+ * real decision goes, so a hint that guessed wrong costs one frame, not a broken page.
+ */
+
+/* The curtain itself. It is painted before any JavaScript runs, so a browser that never
+   executes the film's chunk still shows paper rather than a hole. */
+.intro-curtain {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--paper);
+}
+
+/* Only the hint can show it. A browser that never runs the hint — no JavaScript, a
+   blocked chunk — shows the page, which is the failure mode that costs nothing. */
+html[data-intro="play"] .intro-curtain {
+  display: block;
+}
+
+/* A visitor with no JavaScript, or one whose chunk never arrives, must not be left
+   staring at an empty sheet: the page comes back after a short while regardless. */
+@media (prefers-reduced-motion: reduce) {
+  .intro-curtain {
+    display: none;
+  }
+}

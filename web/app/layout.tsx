@@ -5,6 +5,7 @@ import { SearchPalette } from "@/components/shell/SearchPalette";
 import { SiteFooter } from "@/components/shell/SiteFooter";
 import { SiteNav } from "@/components/shell/SiteNav";
 import "./globals.css";
+import "./intro.css";
 
 /**
  * The indexable flip is a build-time flag, not an edit.
@@ -39,6 +40,30 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        {/* The first-visit film has to hide the page before the first paint, and the
+            decision needs storage, which only exists in the browser. This is the one
+            place a blocking script earns its keep: it reads two marks and sets one
+            attribute, and `components/intro/IntroCurtain.tsx` makes the real decision a
+            few hundred milliseconds later with the tested policy in
+            `lib/intro-session.ts`. If the two ever disagree the hint loses, at the cost of
+            one frame. Keep the cooldown here in step with `COOLDOWN_MS`. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{
+if(location.pathname!=="/"&&location.pathname!=="/index.html")return;
+var s=sessionStorage.getItem("unpackfund.intro.session");
+var l=localStorage.getItem("unpackfund.intro.last");
+var m=/[?&]intro=(force|off)/.exec(location.search);
+var play=m&&m[1]==="off"?false
+:matchMedia("(prefers-reduced-motion: reduce)").matches?false
+:location.hash.length>1?false
+:m&&m[1]==="force"?true
+:s===null&&(l===null||Date.now()-parseFloat(l)>=864e5);
+if(play)document.documentElement.dataset.intro="play";
+}catch(e){}})();`,
+          }}
+        />
+        <div id="intro-curtain" className="intro-curtain" />
         <a className="skip-link" href="#main">
           Skip to content
         </a>
