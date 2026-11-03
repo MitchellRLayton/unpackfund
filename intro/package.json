@@ -1,0 +1,21 @@
+{
+  "name": "@unpackfund/intro",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The Unpacking \u2014 the first-visit intro for unpackfund.com. Its own chunk; the Builder never depends on it.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "deploy": "npx --yes wrangler@4.155.0 deploy --config ../wrangler.animatic.jsonc"
+  },
+  "dependencies": {
+    "gsap": "3.15.0"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vite": "7.3.7"
+  }
+}

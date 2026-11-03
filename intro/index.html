@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UnpackFund — The Unpacking (animatic)</title>
+    <meta name="description" content="Phase-1 animatic of The Unpacking, the first-visit intro for UnpackFund." />
+    <meta name="robots" content="noindex, nofollow" />
+    <link
+      rel="preload"
+      href="/fonts/newsreader-200_800-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/ibm-plex-mono-500-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+  </head>
+  <body>
+    <!--
+      The Builder is real DOM from first paint: the headline and the input exist
+      before the intro chunk does, so a visitor with JS off, a slow connection or
+      a blocked intro is still on a working page. Nothing here is injected by the
+      animation.
+    -->
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header" id="page-header">
+      <div class="site-header__inner">
+        <a class="wordmark" href="/">UnpackFund</a>
+        <nav class="site-nav" aria-label="Sections">
+          <a href="/" aria-current="page">Builder</a>
+          <a href="/x/">Ledger</a>
+          <a href="/compare/">Compare</a>
+          <a href="/c/">Companies</a>
+          <a href="/funds/">Funds</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main" class="narrow">
+      <h1 id="builder-h1">See the companies behind your funds</h1>
+      <p class="prose" id="page-prose">
+        Enter what you hold — fund tickers, stock symbols, and cash. UnpackFund
+        reads each fund&rsquo;s most recent SEC N-PORT filing, maps every holding
+        to one company, and adds your direct positions into the same list, so a
+        company appears once.
+      </p>
+
+      <form class="field" id="builder-form" novalidate>
+        <label class="sr-only" for="ticker">Fund ticker or stock symbol</label>
+        <input
+          id="ticker"
+          type="text"
+          name="ticker"
+          placeholder="Ticker or symbol"
+          autocomplete="off"
+          autocapitalize="characters"
+          spellcheck="false"
+          maxlength="10"
+          aria-describedby="ticker-hint"
+        />
+        <button class="primary" type="submit">Add</button>
+      </form>
+      <ul class="chips" id="chips" aria-live="polite"></ul>
+      <p class="hint" id="ticker-hint">Try SPY, VGT, or QQQ — or a stock symbol like AMZN.</p>
+    </main>
+
+    <footer class="site-footer" id="page-footer">
+      <p class="notice">
+        <strong>UnpackFund is not investment advice.</strong> It is a free tool showing what
+        funds hold, built from public SEC filings. It is not a recommendation to buy, hold,
+        or sell any security, and the operator is not a registered investment adviser.
+        Holdings come from quarterly filings and typically describe a portfolio
+        <strong>60 to 150 days</strong> old; they can be wrong.
+        <strong>Verify anything that matters</strong> against the fund&rsquo;s own documents.
+      </p>
+      <p class="attribution">
+        Source: SEC EDGAR (Form N-PORT). No SEC seal or logo is used, and the SEC has not
+        reviewed or endorsed this site. UnpackFund is not affiliated with any fund issuer.
+      </p>
+    </footer>
+
+    <div class="made" id="made" aria-hidden="true">made by hand in California</div>
+
+    <!-- The intro mounts here. It is its own chunk; the Builder above never waits on it. -->
+    <div id="intro-root"></div>
+
+    <!-- Phase-1 review furniture. Not part of the product. -->
+    <aside id="transport" class="transport" aria-label="Animatic transport"></aside>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

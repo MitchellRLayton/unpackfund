@@ -1,5 +1,6 @@
 packages:
   - web
+  - intro
 
 # Keep the content-addressable store inside the checkout so installs never write
 # to a user-level cache, and keep node_modules hardlinks on one filesystem.

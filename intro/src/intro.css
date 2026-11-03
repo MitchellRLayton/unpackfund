@@ -1,0 +1,491 @@
+/* The Unpacking. Everything inside #intro-root is aria-hidden decoration; the
+   page underneath is the accessible surface. */
+
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.intro__paper {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 90% at 50% 30%, color-mix(in oklch, var(--paper) 70%, white 30%), transparent 70%),
+    var(--paper);
+}
+
+.intro__grain {
+  position: absolute;
+  inset: -20%;
+  background-image: var(--grain-image);
+  background-size: 180px 180px;
+  mix-blend-mode: multiply;
+  opacity: 0;
+  will-change: background-position;
+}
+
+:root[data-theme="dark"] .intro__grain {
+  mix-blend-mode: screen;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .intro__grain {
+    mix-blend-mode: screen;
+  }
+}
+
+.intro__grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: 46px 46px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 45%, black 30%, transparent 78%);
+  opacity: 0;
+}
+
+/* The world: 1000 × 1000 world units, origin centred, camera applied by GSAP. */
+.intro__world {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1000px;
+  height: 1000px;
+  margin-left: -500px;
+  margin-top: -500px;
+  transform-origin: 50% 50%;
+}
+
+/* ---------------------------------------------------------------- ticker */
+
+.ticker {
+  position: absolute;
+  left: 500px;
+  top: 500px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  opacity: 0;
+}
+
+.ticker__text {
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--ink);
+  white-space: nowrap;
+  padding-left: 0.34em;
+}
+
+.ticker__rule {
+  width: 64px;
+  height: 1px;
+  background: color-mix(in oklch, var(--ink) 45%, transparent);
+}
+
+/* ------------------------------------------------------------------ card */
+
+.card {
+  position: absolute;
+  left: 500px;
+  top: 500px;
+  width: 136px;
+  height: 172px;
+  background: linear-gradient(
+    170deg,
+    color-mix(in oklch, var(--paper) 82%, white 18%),
+    var(--paper)
+  );
+  border: 1px solid color-mix(in oklch, var(--ink) 20%, transparent);
+  box-shadow:
+    0 1px 0 color-mix(in oklch, var(--paper) 60%, white),
+    0 8px 18px -10px color-mix(in oklch, var(--ink) 45%, transparent);
+  border-radius: 2px;
+  opacity: 0;
+  overflow: visible;
+}
+
+.card__band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 33.333%;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklch, var(--paper) 88%, white 12%),
+    color-mix(in oklch, var(--paper) 70%, var(--ink) 3%)
+  );
+  border-bottom: 1px solid color-mix(in oklch, var(--ink) 12%, transparent);
+  transform-origin: 50% 0;
+}
+
+.card__band:nth-child(2) {
+  top: 33.333%;
+  border-bottom: none;
+}
+
+.card__band:nth-child(3) {
+  top: 66.666%;
+  border-bottom: none;
+  box-shadow: inset 0 1px 0 color-mix(in oklch, var(--ink) 12%, transparent);
+}
+
+.card__crease {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 1px;
+  background: color-mix(in oklch, var(--ink) 26%, transparent);
+  transform-origin: 50% 50%;
+}
+
+.card__seam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--string);
+  box-shadow: 0 0 14px 2px color-mix(in oklch, var(--string) 55%, transparent);
+  opacity: 0;
+  transform-origin: 50% 50%;
+}
+
+.card__string {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 160px;
+  height: 200px;
+  margin-left: -80px;
+  margin-top: -100px;
+  overflow: visible;
+  fill: none;
+  stroke: var(--string);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.card__knot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin-left: -4.5px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: var(--string);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--string) 22%, transparent);
+}
+
+/* -------------------------------------------------------------- dot field */
+
+/* Named apart from the Builder's `form.field`: these two must never share a
+   rule, or the input measures the whole viewport and the handoff morphs into
+   thin air. */
+.dotfield {
+  position: absolute;
+  inset: 0;
+}
+
+.dot {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--dot, var(--graphite));
+  box-shadow: inset 0 0 0 0.5px color-mix(in oklch, var(--ink) 26%, transparent);
+  will-change: transform, opacity;
+}
+
+:root[data-theme="dark"] .dot {
+  box-shadow: inset 0 0 0 0.5px color-mix(in oklch, var(--ink) 14%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .dot {
+    box-shadow: inset 0 0 0 0.5px color-mix(in oklch, var(--ink) 14%, transparent);
+  }
+}
+
+.dot[data-fund="1"] {
+  box-shadow:
+    inset 0 0 0 0.5px color-mix(in oklch, var(--ink) 26%, transparent),
+    inset 0 0 0 2.5px color-mix(in oklch, var(--paper) 55%, transparent);
+}
+
+.dot-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+  opacity: 0;
+  white-space: nowrap;
+  will-change: transform, opacity;
+}
+
+.threads {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1000px;
+  height: 1000px;
+  overflow: visible;
+  fill: none;
+  stroke: color-mix(in oklch, var(--ink) 55%, transparent);
+  stroke-width: 1.2;
+}
+
+.thread {
+  stroke-linecap: round;
+}
+
+/* --------------------------------------------------------------- counter */
+
+.counter {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 1.9rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  opacity: 0;
+}
+
+.counter__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--graphite-ink);
+}
+
+.counter__digits {
+  display: flex;
+  font-family: var(--font-mono);
+  font-size: 34px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.counter__slot {
+  /* A digit caught mid-roll is two half-digits; fading the window's edges turns
+     that into a roll instead of two numbers stacked. */
+  mask-image: linear-gradient(to bottom, transparent 0, #000 34%, #000 66%, transparent 100%);
+  position: relative;
+  width: 0.62em;
+  height: 34px;
+  overflow: hidden;
+}
+
+.counter__strip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  will-change: transform;
+}
+
+.counter__digit {
+  display: block;
+  height: 34px;
+  line-height: 34px;
+  text-align: center;
+}
+
+/* The merge flash: the one place the string red touches the field. */
+.flash {
+  position: absolute;
+  border-radius: 50%;
+  border: 1.5px solid var(--string);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/* --------------------------------------------------------------- caption */
+
+.caption {
+  position: fixed;
+  left: 1.5rem;
+  bottom: calc(var(--transport-h) + 1.5rem);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.65;
+  letter-spacing: 0.015em;
+  color: var(--graphite-ink);
+  max-width: 30rem;
+}
+
+.caption__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.55rem;
+  align-items: baseline;
+}
+
+.caption__ticker {
+  color: var(--ink);
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  min-width: 2.4em;
+}
+
+.caption__name {
+  color: var(--graphite-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.caption__filed {
+  color: var(--graphite);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding-left: 0.35rem;
+  border-left: 1px solid var(--rule-soft);
+}
+
+/* ------------------------------------------------------------------ skip */
+
+.skip {
+  position: fixed;
+  right: 1.4rem;
+  top: 1.2rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--graphite-ink);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 0.42rem 0.7rem;
+  opacity: 0;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.skip:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.skip__key {
+  border-left: 1px solid var(--rule);
+  padding-left: 0.45rem;
+  color: var(--graphite);
+}
+
+/* ---------------------------------------------------------------- ledger */
+
+.ledger {
+  position: fixed;
+  z-index: 41;
+  background: var(--ink);
+  border-style: solid;
+  border-width: 0;
+  border-color: color-mix(in oklch, var(--ink) 28%, transparent);
+  box-sizing: border-box;
+  transform-origin: 50% 50%;
+  opacity: 0;
+}
+
+.circle {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 41;
+  overflow: visible;
+  fill: none;
+  stroke: var(--graphite);
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* --------------------------------------------------------------- reduced */
+
+@media (prefers-reduced-motion: reduce) {
+  .intro__grain {
+    animation: none !important;
+  }
+}
+
+/* ------------------------------------------------------------ narrow stage */
+
+@media (max-width: 560px) {
+  /* The skip control owns the top-right corner; the counter steps below it. */
+  .counter {
+    top: 3.6rem;
+  }
+
+  .caption {
+    max-width: calc(100vw - 2rem);
+    font-size: 10px;
+  }
+
+  .caption__filed {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  /* Two lines per fund on a phone: ticker and name, then the filing date under
+     it, rather than a date that floats to the right edge of a wrapped row. */
+  .caption__row {
+    display: block;
+  }
+
+  .caption__name {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .caption__filed {
+    display: block;
+    margin-top: 1px;
+  }
+
+  .caption__ticker {
+    margin-right: 0.45rem;
+  }
+
+  /* The field reaches the bottom of a phone's stage, so the caption gets a paper
+     scrim rather than sitting on top of four pale dots. */
+  .caption {
+    isolation: isolate;
+  }
+
+  .caption::before {
+    content: "";
+    position: absolute;
+    inset: -12px -16px -12px -16px;
+    z-index: -1;
+    background: linear-gradient(to top, var(--paper) 58%, transparent);
+  }
+}
