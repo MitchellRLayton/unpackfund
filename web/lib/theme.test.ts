@@ -13,6 +13,12 @@ import { describe, expect, it } from "vitest";
  * These are WCAG 2.2 AA text-contrast ratios over the *tokens*, computed from the
  * stylesheet itself rather than from a copy of it: a token change that fixes one
  * surface and breaks another fails here (static-xray-frontend §7).
+ *
+ * The redesign moved the palette to OKLCH, so this file converts OKLCH to sRGB
+ * before measuring. The conversion is the standard one (Björn Ottosson's OKLab
+ * matrices) and it clamps to the sRGB gamut, which is what a browser does when it
+ * paints an out-of-gamut colour: measuring the unclamped value would report a
+ * contrast the reader never sees.
  */
 
 const CSS = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
@@ -20,7 +26,7 @@ const CSS = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8")
 function blockAfter(pattern: RegExp): string {
   const start = CSS.search(pattern);
   if (start < 0) throw new Error(`globals.css is missing ${pattern}`);
-  const match = CSS.slice(start).match(/:root\s*\{([\s\S]*?)\}/);
+  const match = CSS.slice(start).match(/:root\s*\{([\s\S]*?)\n\s*\}/);
   const body = match?.[1];
   if (body === undefined) {
     throw new Error("globals.css has no :root block after " + pattern);
@@ -28,24 +34,105 @@ function blockAfter(pattern: RegExp): string {
   return body;
 }
 
-function tokens(block: string): Record<string, string> {
+/** `--name: value;` for every token in a block, comments stripped. */
+function declarations(block: string): Record<string, string> {
   const found: Record<string, string> = {};
-  for (const match of block.matchAll(/--([\w-]+):\s*(#[0-9a-fA-F]{6})\s*;/g)) {
+  const withoutComments = block.replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const match of withoutComments.matchAll(/--([\w-]+):\s*([^;]+);/g)) {
     const [, name, value] = match;
-    if (name && value) found[name] = value.toLowerCase();
+    if (name && value) found[name] = value.trim();
   }
   return found;
 }
 
-const LIGHT = tokens(blockAfter(/:root\s*\{/));
-const DARK = tokens(blockAfter(/@media\s*\(prefers-color-scheme:\s*dark\)/));
+const LIGHT_RAW = declarations(blockAfter(/:root\s*\{/));
+const DARK_RAW = declarations(blockAfter(/@media\s*\(prefers-color-scheme:\s*dark\)/));
 
-function luminance(hex: string): number {
+/** A colour token is one that paints: an OKLCH value or a mix of them. */
+function isColour(value: string): boolean {
+  return /^oklch\(/.test(value) || /^color-mix\(/.test(value);
+}
+
+/**
+ * Resolve `var(--x)` aliases within one theme, so a pair can name either the
+ * semantic token or the compatibility alias and measure the same colour.
+ */
+function resolve(theme: Record<string, string>, name: string, depth = 0): string {
+  const value = theme[name];
+  if (value === undefined) throw new Error(`missing token --${name}`);
+  if (depth > 8) throw new Error(`alias loop at --${name}`);
+  const reference = /^var\(--([\w-]+)\)$/.exec(value);
+  if (reference?.[1]) return resolve(theme, reference[1], depth + 1);
+  return value;
+}
+
+/** OKLCH → linear sRGB, clamped to the gamut the way a browser paints it. */
+function linearFromOklch(value: string): [number, number, number] {
+  const match = /^oklch\(\s*([\d.]+)%?\s+([\d.]+)\s+([\d.]+)/.exec(value);
+  if (!match) throw new Error(`not an oklch colour: ${value}`);
+  const [, rawL, rawC, rawH] = match;
+  const lightness = Number(rawL) > 1 ? Number(rawL) / 100 : Number(rawL);
+  const chroma = Number(rawC);
+  const hue = (Number(rawH) * Math.PI) / 180;
+
+  const a = chroma * Math.cos(hue);
+  const b = chroma * Math.sin(hue);
+
+  const lPrime = lightness + 0.3963377774 * a + 0.2158037573 * b;
+  const mPrime = lightness - 0.1055613458 * a - 0.0638541728 * b;
+  const sPrime = lightness - 0.0894841775 * a - 1.291485548 * b;
+
+  const l = lPrime ** 3;
+  const m = mPrime ** 3;
+  const s = sPrime ** 3;
+
+  const clamp = (channel: number) => Math.min(1, Math.max(0, channel));
+  return [
+    clamp(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+    clamp(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+    clamp(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
+  ];
+}
+
+function hexFromLinear(channels: readonly number[]): string {
+  const encode = (value: number) => {
+    const clamped = Math.min(1, Math.max(0, value));
+    const srgb =
+      clamped <= 0.0031308 ? 12.92 * clamped : 1.055 * clamped ** (1 / 2.4) - 0.055;
+    return Math.round(srgb * 255)
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return "#" + channels.map(encode).join("");
+}
+
+/** Every colour token as a hex string, for the contrast and CVD maths below. */
+function hexes(theme: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of Object.keys(theme)) {
+    const value = resolve(theme, name);
+    if (/^oklch\(/.test(value)) out[name] = hexFromLinear(linearFromOklch(value));
+  }
+  return out;
+}
+
+const LIGHT = hexes(LIGHT_RAW);
+// The dark block overrides the light one rather than replacing it, so an alias
+// declared only in `:root` still resolves in the dark scheme — which is exactly how
+// the browser cascades it.
+const DARK = hexes({ ...LIGHT_RAW, ...DARK_RAW });
+
+function linearChannels(hex: string): [number, number, number] {
   const channel = (offset: number) => {
     const value = parseInt(hex.slice(offset, offset + 2), 16) / 255;
     return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
   };
-  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+  return [channel(1), channel(3), channel(5)];
+}
+
+function luminance(hex: string): number {
+  const [r, g, b] = linearChannels(hex);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
 function contrast(a: string, b: string): number {
@@ -85,26 +172,6 @@ const CVD_MATRICES: Record<string, readonly (readonly number[])[]> = {
   ],
 };
 
-function linearChannels(hex: string): [number, number, number] {
-  const channel = (offset: number) => {
-    const value = parseInt(hex.slice(offset, offset + 2), 16) / 255;
-    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-  };
-  return [channel(1), channel(3), channel(5)];
-}
-
-function hexFromLinear(channels: readonly number[]): string {
-  const encode = (value: number) => {
-    const clamped = Math.min(1, Math.max(0, value));
-    const srgb =
-      clamped <= 0.0031308 ? 12.92 * clamped : 1.055 * clamped ** (1 / 2.4) - 0.055;
-    return Math.round(srgb * 255)
-      .toString(16)
-      .padStart(2, "0");
-  };
-  return "#" + channels.map(encode).join("");
-}
-
 function simulate(hex: string, matrix: readonly (readonly number[])[]): string {
   const source = linearChannels(hex);
   return hexFromLinear(
@@ -126,40 +193,46 @@ function deltaE(a: string, b: string): number {
   return Math.hypot(first[0] - second[0], first[1] - second[1], first[2] - second[2]);
 }
 
-/** Every pair that carries text. 4.5:1 is AA for normal-size text. */ const TEXT_PAIRS: Array<
-  [fg: string, bg: string, why: string]
-> = [
-  ["fg", "bg", "body text"],
-  ["fg", "surface", "text on a raised surface"],
-  // The current section's pill is a darker step of `--surface` (operator's instruction,
-  // 2026-11-02), so it needs its own pair: a future darkening must fail here rather than
-  // in a reader's eyes.
-  ["fg", "pill-bg", "the current section's label on its pill"],
-  ["muted", "bg", "secondary text"],
-  ["muted", "surface", "secondary text on a raised surface"],
-  ["accent", "bg", "links and accent labels"],
-  ["accent", "surface", "links in a table header"],
-  ["accent", "accent-soft", "accent text in an accent notice"],
-  ["warn", "warn-soft", "warning text in a warning notice"],
-  ["fg", "warn-soft", "body text in a warning notice"],
-  ["danger", "bg", "error text"],
-  // The ledger gate's sentence: red while the portfolio is short or over, green once it
-  // is exactly 100% (operator's instruction, 2026-11-02). Both inks on the page.
-  ["ok", "bg", "the ledger gate once the portfolio is at 100%"],
-  ["bg", "accent", "the primary button's label"],
+/**
+ * Every pair that carries text. 4.5:1 is AA for normal-size text.
+ *
+ * The redesign's names are used directly (`--ink`, `--graphite`, `--tier-*-ink`), and
+ * the compatibility aliases are exercised through the same list where a legacy
+ * component still reads them, so an alias that drifts from its token fails here.
+ */
+const TEXT_PAIRS: Array<[fg: string, bg: string, why: string]> = [
+  ["ink", "paper", "body text"],
+  ["ink", "surface", "text on a raised surface"],
+  ["graphite", "paper", "secondary text"],
+  ["graphite", "surface", "secondary text on a raised surface"],
+  ["fg", "bg", "the legacy alias pair, which must still resolve"],
+  ["muted", "bg", "the legacy secondary alias"],
+  // A country code is text, so the tier's text-weight ink answers to 4.5:1 even
+  // though the 4px edge beside it only has to answer to 3:1.
+  ["tier-us-ink", "paper", "a US country code"],
+  ["tier-dm-ink", "paper", "a developed-market country code"],
+  ["tier-em-ink", "paper", "an emerging-market country code"],
+  ["tier-none-ink", "paper", "an untiered country code"],
+  ["tier-us-ink", "surface", "a US country code on a raised surface"],
+  ["tier-dm-ink", "surface", "a developed-market code on a raised surface"],
+  ["tier-em-ink", "surface", "an emerging-market code on a raised surface"],
+  ["tier-none-ink", "surface", "an untiered code on a raised surface"],
+  // Errors are the only place `--alert` is allowed, and they always carry an icon
+  // and words, so the ink is what has to be readable.
+  ["alert-ink", "alert-wash", "error text in an alert notice"],
+  ["ink", "alert-wash", "body text in an alert notice"],
+  ["paper", "ink", "the primary button's label"],
   // A shaded row carries the same text as any other row, so both of its inks are
-  // checked against the tint — in both schemes (2026-11-02).
-  ["fg", "tint-direct", "body text on a row shaded for a direct position"],
-  ["muted", "tint-direct", "secondary text on a shaded row"],
-  ["fg", "tint-direct-hover", "body text on a shaded row under the pointer"],
-  ["muted", "tint-direct-hover", "secondary text on a shaded row under the pointer"],
-  // The bracketed difference in the `In VT` column, painted green above the benchmark and
-  // red below it (operator's instruction, 2026-11-02). It is text, so it answers to 4.5:1
-  // on every background a ledger row can have — the same four the edges are held to at 3:1.
-  // The values are the searched neon pair, darkened in the light scheme until they clear
-  // this floor and used as-is in the dark one, because `#39ff14` measures 1.36:1 on white.
-  // `--muted` covers the exact match, already checked above against both tints.
-  ["delta-up", "bg", "a bracket above the benchmark"],
+  // checked against the tint — in both schemes.
+  ["ink", "tint-direct", "body text on a row shaded for a direct position"],
+  ["graphite", "tint-direct", "secondary text on a shaded row"],
+  ["ink", "tint-direct-hover", "body text on a shaded row under the pointer"],
+  ["graphite", "tint-direct-hover", "secondary text on a shaded row under the pointer"],
+  // The bracketed difference in the `In VT` column, painted green above the benchmark
+  // and red below it. It is text, so it answers to 4.5:1 on every background a ledger
+  // row can have — the same four the edges are held to at 3:1. The sign is always
+  // printed, so the colour never carries the meaning alone.
+  ["delta-up", "paper", "a bracket above the benchmark"],
   ["delta-up", "surface", "a bracket above the benchmark, hovered"],
   ["delta-up", "tint-direct", "a bracket above the benchmark on a direct row"],
   [
@@ -167,7 +240,7 @@ function deltaE(a: string, b: string): number {
     "tint-direct-hover",
     "a bracket above the benchmark on a direct row under the pointer",
   ],
-  ["delta-down", "bg", "a bracket below the benchmark"],
+  ["delta-down", "paper", "a bracket below the benchmark"],
   ["delta-down", "surface", "a bracket below the benchmark, hovered"],
   ["delta-down", "tint-direct", "a bracket below the benchmark on a direct row"],
   [
@@ -186,48 +259,36 @@ function deltaE(a: string, b: string): number {
  * These were excluded from this file when the channel shipped, on the reasoning that "a
  * 3px stripe is not text". The operator then could not tell the two domiciles apart, and
  * the US edge measured 1.85:1 on the page: the exclusion had removed the only check that
- * would have caught it (operator's instruction, 2026-11-02, "slightly more prominent blue
- * color differentiation"). A graphic that carries a distinction gets a gate, or the next
+ * would have caught it. A graphic that carries a distinction gets a gate, or the next
  * palette tweak quietly makes it invisible again.
  */
 const UI_PAIRS: Array<[fg: string, bg: string, why: string]> = [
-  ["country-us", "bg", "the US geography edge on a plain row"],
-  ["country-us", "surface", "the US geography edge on a hovered row"],
-  ["country-us", "tint-direct", "the US geography edge on a direct-position row"],
+  ["tier-us", "paper", "the US edge on a plain row"],
+  ["tier-us", "surface", "the US edge on a hovered row"],
+  ["tier-us", "tint-direct", "the US edge on a direct-position row"],
+  ["tier-us", "tint-direct-hover", "the US edge on a direct row under the pointer"],
+  ["tier-dm", "paper", "the developed edge on a plain row"],
+  ["tier-dm", "surface", "the developed edge on a hovered row"],
+  ["tier-dm", "tint-direct", "the developed edge on a direct-position row"],
   [
-    "country-us",
+    "tier-dm",
     "tint-direct-hover",
-    "the US geography edge on a direct-position row under the pointer",
+    "the developed edge on a direct row under the pointer",
   ],
-  // Split into two international inks on 2026-11-02 (developed ex-US against emerging), so
-  // both are now held to the floor on every row background rather than one standing for
-  // "everywhere else".
-  ["country-dm", "bg", "the developed geography edge on a plain row"],
-  ["country-dm", "surface", "the developed geography edge on a hovered row"],
-  ["country-dm", "tint-direct", "the developed geography edge on a direct-position row"],
+  ["tier-em", "paper", "the emerging edge on a plain row"],
+  ["tier-em", "surface", "the emerging edge on a hovered row"],
+  ["tier-em", "tint-direct", "the emerging edge on a direct-position row"],
+  ["tier-em", "tint-direct-hover", "the emerging edge on a direct row under the pointer"],
+  // The neutral covers the two states that have no colour at all: a domicile in
+  // neither list (solid) and a company the release could not place (dashed). Both draw
+  // the same token, so one set of pairs covers both.
+  ["tier-none", "paper", "the neutral edge on a plain row"],
+  ["tier-none", "surface", "the neutral edge on a hovered row"],
+  ["tier-none", "tint-direct", "the neutral edge on a direct-position row"],
   [
-    "country-dm",
+    "tier-none",
     "tint-direct-hover",
-    "the developed geography edge on a direct-position row under the pointer",
-  ],
-  ["country-em", "bg", "the emerging geography edge on a plain row"],
-  ["country-em", "surface", "the emerging geography edge on a hovered row"],
-  ["country-em", "tint-direct", "the emerging geography edge on a direct-position row"],
-  [
-    "country-em",
-    "tint-direct-hover",
-    "the emerging geography edge on a direct-position row under the pointer",
-  ],
-  // The neutral returned on 2026-11-02 for the two states that had no colour at all: a
-  // domicile in neither list (solid) and a company the release could not place (dashed).
-  // Both draw the same token, so one set of pairs covers both.
-  ["country-other", "bg", "the neutral edge on a plain row"],
-  ["country-other", "surface", "the neutral edge on a hovered row"],
-  ["country-other", "tint-direct", "the neutral edge on a direct-position row"],
-  [
-    "country-other",
-    "tint-direct-hover",
-    "the neutral edge on a direct-position row under the pointer",
+    "the neutral edge on a direct row under the pointer",
   ],
 ];
 
@@ -251,9 +312,17 @@ describe("automatic light/dark", () => {
     expect(CSS).toMatch(/@media\s*\(prefers-color-scheme:\s*dark\)/);
   });
 
-  it("redefines the same tokens in dark, so nothing is left on a light value", () => {
-    expect(Object.keys(LIGHT).length).toBeGreaterThan(10);
-    expect(Object.keys(DARK).sort()).toEqual(Object.keys(LIGHT).sort());
+  it("redefines every painted token in dark, so nothing is left on a light value", () => {
+    const painted = Object.entries(LIGHT_RAW)
+      .filter(([, value]) => isColour(value))
+      .map(([name]) => name)
+      .sort();
+    expect(painted.length).toBeGreaterThan(10);
+    // Every colour the light scheme paints must be repainted in dark. A token that is
+    // only an alias (`var(--x)`) needs no entry: it resolves through the token that is.
+    for (const name of painted) {
+      expect(DARK_RAW[name], `--${name} is not redefined in dark`).toBeDefined();
+    }
   });
 
   for (const [theme, name] of [
@@ -282,38 +351,33 @@ describe("automatic light/dark", () => {
       // Each entry: the two tokens, the separation uncorrected vision must show, and why.
       // The simulated floor is the same for every pair — 25 is where two inks read as one
       // colour — and the uncorrected floor differs by what the pair is. Blue against
-      // either ochre clears 40 with room (81.7 and 64.4 in the light scheme). The two
-      // ochres cannot: both must clear the 3:1 non-text floor on every row background,
-      // which confines them to roughly L* 18-54 and caps their separation at about dE 37.
-      // Their floor is 30 — still two clearly different tones, measured at 34.2 and 33.2 —
-      // because 40 is unreachable by construction, not because it was lowered for
-      // convenience. The bracket's ink left this gate on 2026-11-02, when the operator
-      // replaced the geography pair there with green and red; the reason it may leave is
-      // written beside the list.
+      // either ochre clears 40 with room. The two ochres cannot: both must clear the 3:1
+      // non-text floor on every row background, which confines them to a narrow lightness
+      // band and caps their separation. Their floor is 30 — still two clearly different
+      // tones — because 40 is unreachable by construction, not because it was lowered for
+      // convenience.
       const INK_PAIRS: Array<[string, string, number, string]> = [
-        ["country-us", "country-dm", 40, "blue against the developed ochre"],
-        ["country-us", "country-em", 40, "blue against the emerging ochre"],
-        ["country-dm", "country-em", 30, "the two ochres against each other"],
+        ["tier-us", "tier-dm", 40, "blue against the developed ochre"],
+        ["tier-us", "tier-em", 40, "blue against the emerging ochre"],
+        ["tier-dm", "tier-em", 30, "the two ochres against each other"],
         // The bracket's green against red is **not** listed, and that is a recorded
-        // decision rather than an omission: green and red are the pair that collapses for a
-        // deuteranope, so gating them at 25 dE would forbid the ink the operator asked for
-        // and force a hue nobody wanted. The colour is allowed to carry the sign only
+        // decision rather than an omission: green and red are the pair that collapses for
+        // a deuteranope, so gating them at 25 dE would forbid the ink the operator asked
+        // for and force a hue nobody wanted. The colour is allowed to carry the sign only
         // because it is never the carrier: `formatSignedShare` prints `+` or `-`, the
-        // caption states green-for-more and red-for-less, and `LedgerTable`'s component
-        // test holds that every coloured bracket also carries its sign. A pair that fails
-        // this gate but is fully duplicated in text is not the defect the gate exists to
-        // catch (`static-xray-frontend` §4a, §8).
-        // The neutral has to read as "no tier" rather than as a washed-out tier, so it gets
-        // an uncorrected floor of 28 — the tightest the three tier pairs allow it without
-        // pretending a grey is a hue. Measured 30.2 / 29.5 / 31.1 in the light scheme and
-        // 32.5 / 34.0 / 31.4 in the dark; the simulated floor stays at 25 for every pair.
-        ["country-other", "country-us", 28, "the neutral against the blue tier"],
-        ["country-other", "country-dm", 28, "the neutral against the developed ochre"],
-        ["country-other", "country-em", 28, "the neutral against the emerging ochre"],
+        // caption states green-for-more and red-for-less, and the component test holds
+        // that every coloured bracket also carries its sign.
+        // The neutral has to read as "no tier" rather than as a washed-out tier, so it
+        // gets an uncorrected floor of 28 — the tightest the three tier pairs allow it
+        // without pretending a grey is a hue. The simulated floor stays at 25 for every
+        // pair.
+        ["tier-none", "tier-us", 28, "the neutral against the blue tier"],
+        ["tier-none", "tier-dm", 28, "the neutral against the developed ochre"],
+        ["tier-none", "tier-em", 28, "the neutral against the emerging ochre"],
       ];
       const MIN_SIMULATED_SEPARATION = 25;
-      const background = theme["bg"];
-      if (!background) throw new Error("missing --bg");
+      const background = theme["paper"];
+      if (!background) throw new Error("missing --paper");
 
       const failures: string[] = [];
       for (const [leftName, rightName, normalFloor, why] of INK_PAIRS) {
@@ -358,15 +422,15 @@ describe("automatic light/dark", () => {
   }
 
   it("paints the bracket from its sign class, and leaves an exact match quiet", () => {
-    // `LedgerTable` writes `span.delta` plus `--up` or `--down` from the arithmetic sign;
+    // The table writes `span.delta` plus `--up` or `--down` from the arithmetic sign;
     // these three rules are the whole mapping. A rename on either side would drop the
     // colour silently — the table would keep working and the operator would see a plain
     // number again — which is what this holds. The rules must key off the class, not off
-    // `data-country`: geography owns the 6 px edge, and a row can be American and below the
+    // `data-tier`: geography owns the row edge, and a row can be American and below the
     // benchmark at the same time, so the two channels may not share a selector.
-    expect(CSS).toMatch(/\.delta\s*\{[^}]*color:\s*var\(--muted\)/);
+    expect(CSS).toMatch(/\.delta\s*\{[^}]*color:\s*var\(--graphite\)/);
     expect(CSS).toMatch(/\.delta--up\s*\{[^}]*color:\s*var\(--delta-up\)/);
     expect(CSS).toMatch(/\.delta--down\s*\{[^}]*color:\s*var\(--delta-down\)/);
-    expect(CSS).not.toMatch(/data-country[^{]*\.delta--?(up|down)?\s*\{/);
+    expect(CSS).not.toMatch(/data-tier[^{]*\.delta--?(up|down)?\s*\{/);
   });
 });

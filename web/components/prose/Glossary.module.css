@@ -1,0 +1,66 @@
+/*
+ * The glossary page's additions: the A–Z index, and the rhythm between entries.
+ *
+ * The article itself is `.prose`, so paragraphs, headings and links are already
+ * styled. What is here is the index strip (which is not prose) and the spacing
+ * inside a term, which `.prose > * + *` cannot reach because each term is a
+ * block inside a letter section.
+ */
+
+.index {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-5);
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+}
+
+/*
+ * `.prose a` (0,1,1) underlines every link in the article, so these two need a
+ * descendant selector to win their case: a letter is a target, not a sentence
+ * running on, and 26 underlined letters would read as a paragraph of links.
+ */
+.index .indexLink,
+.index .indexEmpty {
+  display: inline-flex;
+  min-width: 2ch;
+  justify-content: center;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.index .indexLink:hover {
+  border-color: var(--rule-strong);
+  background: var(--wash);
+}
+
+/* A letter with no terms still appears, so the strip is A–Z rather than a list
+   of the letters that happen to be in use today. Muted, not hidden: the shape of
+   the index is information. */
+.index .indexEmpty {
+  color: var(--graphite);
+  border-color: transparent;
+}
+
+.letter {
+  margin-top: var(--space-7);
+}
+
+.entry {
+  margin-top: var(--space-5);
+}
+
+.entry > * + * {
+  margin-top: var(--space-2);
+}
+
+/* Where the word is met, in the smallest type on the page: a citation, not a
+   second definition. */
+.appears {
+  font-size: var(--text-12);
+  color: var(--graphite);
+}

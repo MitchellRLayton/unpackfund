@@ -9,13 +9,20 @@
  * "nothing read yet", so the prerendered HTML never claims a portfolio is empty
  * when the visitor arrived through a shared link.
  *
- * Two shapes share one fragment, and they are not the same thing:
+ * Three shapes share one fragment, and they are not the same thing:
  *
- * - `portfolio` is the ledger's state — entries that can be funds, stocks, or cash,
- *   with a dollars-or-percent mode (v3).
+ * - `portfolio` is the workspace's state — entries that can be funds, stocks, or
+ *   cash, with a dollars-or-percent mode (v3).
  * - `a` and `b` are `/compare`'s two fund lists. Comparison is funds-only by design,
  *   so it keeps the v2/v1 shape, and a v3 link is projected onto it (its funds, at
  *   their portfolio weights).
+ * - `lens` and `companyId` are *view* state: which lens is open, and which company
+ *   page is being read. They ride in the same fragment (`view-fragment.ts`) so the
+ *   whole view is one shareable URL and nothing about it reaches a server.
+ *
+ * One writer, deliberately: a weight edit must not drop the open lens, and a lens
+ * change must not drop the portfolio. Both go through `commit`, which always
+ * re-encodes the whole view from the snapshot it is about to publish.
  *
  * Snapshot identity is cached, because React re-reads it on every render and a
  * fresh object each time would loop.
@@ -28,14 +35,25 @@ import {
   fundWeights,
 } from "./fragment";
 import type { FundWeight, Portfolio } from "./types";
+import {
+  DEFAULT_LENS,
+  encodeView,
+  parseView,
+  portfolioPart,
+  type Lens,
+} from "./view-fragment";
 
 export interface FragmentSnapshot {
-  /** The portfolio the ledger shows. */
+  /** The portfolio the workspace shows. */
   portfolio: Portfolio;
   /** `/compare`'s first column. Always funds, always basis points. */
   a: FundWeight[];
   /** The second portfolio, only ever non-empty on `/compare`. */
   b: FundWeight[];
+  /** Which lens the workspace has open. */
+  lens: Lens;
+  /** The company page being read, if any. */
+  companyId: string | null;
   problem: string | null;
   /** `false` until the fragment has actually been read, on the client only. */
   ready: boolean;
@@ -45,6 +63,8 @@ const UNREAD: FragmentSnapshot = {
   portfolio: { mode: "bp", entries: [] },
   a: [],
   b: [],
+  lens: DEFAULT_LENS,
+  companyId: null,
   problem: null,
   ready: false,
 };
@@ -64,22 +84,42 @@ let cached: FragmentSnapshot | null = null;
 
 function read(): FragmentSnapshot {
   if (typeof window === "undefined") return UNREAD;
-  const result = decodeComparison(window.location.hash);
-  if (result.ok) {
+  const hash = window.location.hash;
+  const view = parseView(hash);
+  const part = portfolioPart(hash);
+  const result = part ? decodeComparison(part) : null;
+
+  if (result && result.ok) {
     return {
       portfolio: result.portfolio,
       a: result.a,
       b: result.b,
+      lens: view.lens,
+      companyId: view.companyId,
       problem: null,
       ready: true,
     };
   }
-  if (result.reason === "empty") {
-    return { ...UNREAD, ready: true };
+
+  // A fragment with no portfolio part is a company page or a bare lens: a real
+  // view, not a broken link.
+  if (!part) {
+    return {
+      ...UNREAD,
+      lens: view.lens,
+      companyId: view.companyId,
+      problem: view.problem ? (PROBLEMS[view.problem] ?? null) : null,
+      ready: true,
+    };
   }
+
   return {
     ...UNREAD,
-    problem: PROBLEMS[result.reason] ?? "That link could not be opened.",
+    lens: view.lens,
+    companyId: view.companyId,
+    problem:
+      (result && !result.ok && PROBLEMS[result.reason]) ??
+      "That link could not be opened.",
     ready: true,
   };
 }
@@ -116,9 +156,53 @@ export function subscribe(listener: () => void): () => void {
  * from. Passing `replace: false` keeps a user bisecting portfolios in control.
  */
 export function write(portfolio: Portfolio, options: { replace?: boolean } = {}): void {
+  const current = getSnapshot();
   const entries = portfolio.entries;
-  const hash = entries.length === 0 ? "" : `#${encodePortfolio(portfolio)}`;
-  commit(hash, { ...portfolio, entries }, [], options);
+  const hash =
+    entries.length === 0
+      ? current.lens === DEFAULT_LENS && !current.companyId
+        ? ""
+        : `#${encodeView({ lens: current.lens, companyId: current.companyId })}`
+      : `#${encodeView({
+          portfolio,
+          lens: current.lens,
+          companyId: current.companyId,
+        })}`;
+  commit(hash, { ...portfolio, entries }, current.b, options, undefined, {
+    lens: current.lens,
+    companyId: current.companyId,
+  });
+}
+
+/** Open a lens. The portfolio and the company page are untouched. */
+export function writeLens(lens: Lens, options: { replace?: boolean } = {}): void {
+  const current = getSnapshot();
+  const hash = `#${encodeView({
+    portfolio: current.portfolio.entries.length > 0 ? current.portfolio : null,
+    lens,
+    companyId: current.companyId,
+  })}`;
+  commit(hash, current.portfolio, current.b, options, current.a, {
+    lens,
+    companyId: current.companyId,
+  });
+}
+
+/** Open a company page, keeping the portfolio so the page can say "you hold X%". */
+export function writeCompany(
+  companyId: string | null,
+  options: { replace?: boolean } = {},
+): void {
+  const current = getSnapshot();
+  const hash = `#${encodeView({
+    portfolio: current.portfolio.entries.length > 0 ? current.portfolio : null,
+    lens: current.lens,
+    companyId,
+  })}`;
+  commit(hash, current.portfolio, current.b, options, current.a, {
+    lens: current.lens,
+    companyId,
+  });
 }
 
 /**
@@ -133,7 +217,12 @@ export function writeComparison(
 ): void {
   const sideA = sortFunds(a);
   const sideB = sortFunds(b);
-  const hash = sideA.length === 0 ? "" : `#${encodeComparison(sideA, sideB)}`;
+  // A comparison with only a second side is still a comparison: `/compare` lets a
+  // visitor start from an empty page and fill B first, and that state has to survive
+  // a reload and a copied link. Only a comparison with nothing on either side is
+  // the empty view, which is the bare path.
+  const hash =
+    sideA.length === 0 && sideB.length === 0 ? "" : `#${encodeComparison(sideA, sideB)}`;
   // `a` is also the ledger's portfolio, in the only form `/compare` can produce:
   // funds at basis points.
   const portfolio: Portfolio = {
@@ -144,7 +233,10 @@ export function writeComparison(
       amount: entry.weight_bp,
     })),
   };
-  commit(hash, portfolio, sideB, options, sideA);
+  commit(hash, portfolio, sideB, options, sideA, {
+    lens: DEFAULT_LENS,
+    companyId: null,
+  });
 }
 
 function sortFunds(entries: FundWeight[]): FundWeight[] {
@@ -159,6 +251,10 @@ function commit(
   b: FundWeight[],
   options: { replace?: boolean },
   a?: FundWeight[],
+  view: { lens: Lens; companyId: string | null } = {
+    lens: DEFAULT_LENS,
+    companyId: null,
+  },
 ): void {
   const url = `${window.location.pathname}${window.location.search}${hash}`;
   if (options.replace === false) {
@@ -170,6 +266,8 @@ function commit(
     portfolio,
     a: a ?? fundsOf(portfolio),
     b,
+    lens: view.lens,
+    companyId: view.companyId,
     problem: null,
     ready: true,
   };
@@ -180,3 +278,6 @@ function commit(
 function fundsOf(portfolio: Portfolio): FundWeight[] {
   return sortFunds(fundWeights(portfolio));
 }
+
+/** Re-exported so a caller does not have to import two modules to encode a link. */
+export { encodePortfolio };

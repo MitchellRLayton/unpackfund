@@ -1,0 +1,53 @@
+/*
+ * The reading layout's own additions to globals.css.
+ *
+ * Everything a reader sees at rest is styled there (`.reading`, `.toc`,
+ * `.prose`). These rules only answer layout questions the global sheet cannot:
+ * where the TOC goes when sticky positioning would be wrong, and how a third
+ * level of heading is indented in the list.
+ */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-7);
+}
+
+/* Provenance — "Effective October 30, 2026 · version 1.2.0" — is a quiet line,
+   not a second paragraph: the title and the lede carry the page, and this says
+   only which copy this is. */
+.meta {
+  font-size: var(--text-12);
+  color: var(--graphite);
+}
+
+/* Already set on `.toc` globally; the sub-entry is the only addition. */
+.tocSub {
+  padding-left: var(--space-3);
+  font-size: var(--text-12);
+}
+
+/*
+ * Below 60rem `.reading` collapses to one column, and the TOC renders above the
+ * article. Sticky there would pin a list of links over the first thing the
+ * reader is trying to read, on the narrowest screen. It stays a plain list.
+ */
+@media (max-width: 59.99rem) {
+  :global(.reading) > :global(.toc) {
+    position: static;
+  }
+}
+
+/*
+ * A sticky column taller than the window puts its last links out of reach:
+ * the page cannot scroll far enough for them while the column is pinned. Let
+ * the column scroll instead. It holds links, so tabbing through them scrolls it
+ * too; nothing here traps focus.
+ */
+@media (min-width: 60rem) {
+  :global(.reading) > :global(.toc) {
+    max-height: calc(100vh - 6rem);
+    overflow-y: auto;
+  }
+}

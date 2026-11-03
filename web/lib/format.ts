@@ -148,6 +148,59 @@ export function formatIsoDate(value: string): string {
   return value;
 }
 
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+/**
+ * `2026-06-30` → `Jun 30, 2026`, for a sentence rather than a table cell.
+ *
+ * Built from the string, never through `Date`: parsing an ISO date and formatting
+ * it back re-introduces a timezone, which is how a filing period becomes the day
+ * before for a reader west of UTC. A value that is not `YYYY-MM-DD` is returned
+ * unchanged, because a date this function cannot read is a data problem the page
+ * should show rather than hide behind a plausible-looking string.
+ */
+export function formatDateLong(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return value;
+  const [, year, month, day] = match;
+  const name = MONTHS[Number(month) - 1];
+  if (!name) return value;
+  return `${name} ${Number(day)}, ${year}`;
+}
+
+/**
+ * A fraction as a percent with one decimal, for prose: `0.1234` → `12.3%`.
+ *
+ * Sentences round to one decimal because a sentence is read, not compared; tables
+ * keep two (`formatShare`) because a column is compared. A real share below 0.05%
+ * prints `<0.1%` rather than `0.0%`, so a position never disappears in prose.
+ */
+export function formatPct1(weight: number): string {
+  const pct = weight * 100;
+  if (pct !== 0 && Math.abs(pct) < 0.05) {
+    return weight < 0 ? ">-0.1%" : "<0.1%";
+  }
+  return `${oneDp.format(pct)}%`;
+}
+
+/** `0.1234` → `12.3%`; the same rounding as `formatPct1`, named for coverage. */
+export function formatPct1Of(pct: number): string {
+  return `${oneDp.format(pct)}%`;
+}
+
 /** The scorecard strip's date line: `2026-06-30 · filed 2026-08-28 · 59 days`. */
 export function formatFreshness(asOf: string, filedAt: string, lagDays: number): string {
   return `${formatIsoDate(asOf)} · filed ${formatIsoDate(filedAt)} · ${formatDays(lagDays)}`;

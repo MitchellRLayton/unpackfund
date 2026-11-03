@@ -1,0 +1,83 @@
+/*
+ * Layout for the company surfaces.
+ *
+ * Structure only, like the fund directory's module: grids, gaps, widths. Every
+ * colour and type size is a token from `globals.css`, so a theme change reaches
+ * these surfaces without an edit here.
+ */
+
+.controls {
+  display: grid;
+  grid-template-columns: minmax(12rem, 2.4fr) minmax(8rem, 1fr);
+  gap: var(--space-3);
+  align-items: end;
+}
+
+@media (max-width: 32rem) {
+  .controls {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.pager__buttons {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* The company dialog is a reading surface, not a dropdown: same chrome as the
+ * search palette, more room for the fund table. */
+.dialog {
+  width: min(48rem, calc(100vw - 2rem));
+  max-height: min(84vh, calc(100vh - 4rem));
+}
+
+.detailHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-4) var(--space-2);
+  border-bottom: 1px solid var(--rule);
+}
+
+.detailBody {
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+.detailTitle {
+  outline: none;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-3);
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.fact__label {
+  font-size: var(--text-12);
+  color: var(--graphite);
+}
+
+.fact__value {
+  font-size: var(--text-16);
+  font-variant-numeric: tabular-nums;
+}

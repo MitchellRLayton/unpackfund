@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
-import { LegalPage } from "@/components/LegalPage";
+import { ReadingLayout, type ReadingSection } from "@/components/prose/ReadingLayout";
+import { Term } from "@/components/prose/Term";
 import {
   CONTACT_EMAIL,
   EFFECTIVE_DATE,
@@ -15,10 +16,26 @@ export const metadata: Metadata = {
     "UnpackFund is not investment advice. Holdings data lags by 60 to 150 days and may be wrong.",
 };
 
+const SECTIONS: readonly ReadingSection[] = [
+  { id: "advice", title: "Not investment advice" },
+  { id: "data", title: "Holdings data is old and may be wrong" },
+  { id: "affiliation", title: "No affiliation, no endorsement" },
+  { id: "marks", title: "Third-party names and marks" },
+  { id: "warranty", title: "No warranty; limitation of liability" },
+  { id: "offer", title: "No offer" },
+  { id: "corrections", title: "Corrections and complaints" },
+];
+
 export default function DisclaimerPage() {
   return (
-    <LegalPage title="Disclaimer" updated={EFFECTIVE_DATE} version={LEGAL_COPY_VERSION}>
-      <h2>Not investment advice</h2>
+    <ReadingLayout
+      eyebrow="How it works"
+      title="Disclaimer"
+      lede="What this site is not, in the plainest terms I can write it: not advice, not a recommendation, and not a current picture of a portfolio."
+      meta={`Effective ${EFFECTIVE_DATE} · copy ${LEGAL_COPY_VERSION}`}
+      sections={SECTIONS}
+    >
+      <h2 id="advice">Not investment advice</h2>
       <p>
         UnpackFund is a free tool that shows what funds hold, built from public SEC
         filings. Nothing here is a recommendation, a solicitation, or a personalised
@@ -28,14 +45,15 @@ export default function DisclaimerPage() {
         from one.
       </p>
 
-      <h2>Holdings data is old and may be wrong</h2>
+      <h2 id="data">Holdings data is old and may be wrong</h2>
       <p>
-        Fund holdings come from quarterly Form N-PORT filings, so they typically describe
-        a portfolio as it stood <strong>60 to 150 days</strong> before you read it.
-        Filings are sometimes amended, mis-keyed, or filed late, and my parsing of them
-        can be wrong. Coverage is incomplete: where a fund&rsquo;s holdings cannot be
-        matched to enough of its assets, the site says so and withholds the metrics rather
-        than showing a number it cannot stand behind.
+        Fund holdings come from quarterly <Term name="n-port">Form N-PORT</Term> filings,
+        so they typically describe a portfolio as it stood <strong>60 to 150 days</strong>{" "}
+        before you read it. Filings are sometimes amended, mis-keyed, or filed late, and
+        my parsing of them can be wrong. <Term name="coverage">Coverage</Term> is
+        incomplete: where a fund&rsquo;s holdings cannot be matched to enough of its
+        assets, the site says so and withholds the metrics rather than showing a number it
+        cannot stand behind.
       </p>
       <p>
         <strong>
@@ -44,7 +62,7 @@ export default function DisclaimerPage() {
         before you act on it.
       </p>
 
-      <h2>No affiliation, no endorsement</h2>
+      <h2 id="affiliation">No affiliation, no endorsement</h2>
       <p>
         I am not affiliated with any fund, fund issuer, or index provider. Fund and
         company names are used descriptively, to say what a fund holds. No logo, seal, or
@@ -52,14 +70,14 @@ export default function DisclaimerPage() {
         them has reviewed, approved, or endorsed this site.
       </p>
 
-      <h2>Third-party names and marks</h2>
+      <h2 id="marks">Third-party names and marks</h2>
       <p>
         Fund, company, and index names appear because the product describes what those
         funds hold. They remain the trademarks of their owners. Their use here is
         nominative and does not suggest any affiliation, sponsorship, or endorsement.
       </p>
 
-      <h2>No warranty; limitation of liability</h2>
+      <h2 id="warranty">No warranty; limitation of liability</h2>
       <p>
         The site is provided &ldquo;as is&rdquo;, without warranty of any kind, express or
         implied, including fitness for a particular purpose. To the extent permitted by
@@ -67,18 +85,18 @@ export default function DisclaimerPage() {
         reliance on its contents. Governing law: {JURISDICTION}.
       </p>
 
-      <h2>No offer</h2>
+      <h2 id="offer">No offer</h2>
       <p>
         Nothing on this site is an offer to sell or a solicitation of an offer to buy any
         security, nor a recommendation of any security, fund, or strategy, in any
         jurisdiction.
       </p>
 
-      <h2>Corrections and complaints</h2>
+      <h2 id="corrections">Corrections and complaints</h2>
       <p>
         Errors: {CONTACT_EMAIL}, with the fund and the date. Trademark or copyright
         complaints: the same address, and they reach the operator the same day.
       </p>
-    </LegalPage>
+    </ReadingLayout>
   );
 }

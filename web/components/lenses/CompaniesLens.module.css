@@ -1,0 +1,27 @@
+/**
+ * The Companies table's scroll window.
+ *
+ * The table draws only the rows in view — a three-fund portfolio is 3,665 companies — so
+ * the container has to be exactly as tall as the rows it claims to show. The height comes
+ * in as `--companies-window`, set from `VIEWPORT_HEIGHT` in `windowing.ts`, so the CSS and
+ * the arithmetic that draws the spacers cannot drift apart.
+ *
+ * On paper there is no scrolling, so the window opens instead of clipping: a `max-height`
+ * box would print the top of the table and cut the rest off with no sign that it had. What
+ * prints is the rows the page was showing, which is why the caption states the whole
+ * table's count rather than the drawn rows'.
+ */
+.window {
+  max-height: var(--companies-window);
+  overflow-y: auto;
+  /* Reserve the scrollbar's lane, so the columns do not shift sideways when the window
+     starts to scroll. */
+  scrollbar-gutter: stable;
+}
+
+@media print {
+  .window {
+    max-height: none;
+    overflow: visible;
+  }
+}

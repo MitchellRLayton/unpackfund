@@ -1,844 +1,1154 @@
-@import "tailwindcss";
-
 /*
- * Design tokens. The values are provisional (web/DESIGN.md records them as such)
- * but the constraints are not: contrast at WCAG AA, no meaning carried by colour
- * alone, a system font stack so nothing is downloaded before first paint, and
- * tabular numerals wherever a column of numbers is compared.
+ * UnpackFund — design tokens and primitives.
+ *
+ * The redesign's rules, in the order they decide a screen:
+ *
+ * 1. Answer first. The answer strip is the only place Newsreader appears besides
+ *    page titles, so the sentence a page exists to say is the one thing that
+ *    looks like a headline.
+ * 2. Colour carries meaning only. The market tiers own the hues; everything else
+ *    is paper, ink and graphite. A colour on screen always means something.
+ * 3. Limits are content. Coverage, filing dates and unmatched weight sit beside
+ *    the numbers they qualify, at the same weight — never in a footnote.
+ * 4. Calm chrome. 1px rules, flat surfaces, 3px corners, no shadows except the
+ *    one that lifts a popover off the page.
+ *
+ * Tokens are OKLCH so a lightness step is a number rather than a guess. Dark
+ * values are in the same order as the light ones, and every pair that carries
+ * text is checked at 4.5:1 in both schemes (`lib/theme.test.ts`).
  */
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/inter.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+    U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Newsreader";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("/fonts/newsreader.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+    U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/plex-mono-400.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+    U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/plex-mono-500.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+    U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
   color-scheme: light dark;
 
-  --fg: #11181c;
-  --bg: #ffffff;
-  --surface: #f6f8f9;
-  --muted: #55636b;
-  --rule: #d7dde1;
-  --rule-strong: #b6c0c6;
-  --accent: #0f6d78;
-  --accent-soft: #e3f1f2;
-  --warn: #7a4b00;
-  --warn-soft: #fdf3e2;
-  --danger: #8c1d18;
-  /* The ledger gate's satisfied state (operator's instruction, 2026-11-02: the sentence
-   * beside "View the ledger" is red until the total is 100%, green once it is). Green is
-   * a state, not a brand colour, so it is one token per scheme and it is checked against
-   * `--bg` like any other text: #17693a is 6.73:1 on white, and the red it pairs with
-   * (--danger) is 9.11:1, so neither state is the one that is hard to read. */
-  --ok: #17693a;
-  /* The row of a company the visitor holds directly, as a stock — the operator's
-   * instruction, 2026-11-02. Pastel and quiet on purpose: it shades a row that
-   * already says so in words (`You · NVDA`, and `direct` in the Funds column when
-   * no fund holds it), so colour is reinforcement and never the meaning. A solid
-   * tint rather than a low-alpha layer, so it composites the same over the page,
-   * over a hover, and on a phone at 12% brightness. */
-  --tint-direct: #f2ecff;
-  --tint-direct-hover: #e9e0fd;
+  /* ---- Surfaces and ink ------------------------------------------------ */
+  --paper: oklch(97% 0.012 85);
+  --surface: oklch(99% 0.006 85);
+  --ink: oklch(22% 0.02 260);
+  --graphite: oklch(48% 0.01 260);
+  /* A rule is graphite at low alpha, so it sits on paper and on surface alike. */
+  --rule: color-mix(in oklch, var(--graphite) 24%, transparent);
+  --rule-strong: color-mix(in oklch, var(--graphite) 45%, transparent);
+  --wash: color-mix(in oklch, var(--graphite) 7%, transparent);
+  --wash-strong: color-mix(in oklch, var(--graphite) 13%, transparent);
 
-  /* The row's left edge for a US-domiciled company. Geography is a second channel,
-   * separate from the background, and the code beside it — not this colour — is what
-   * carries the meaning.
-   *
-   * **Slate blue against ochre** (operator's instruction, 2026-11-02, adopting the palette
-   * recommended to them): blue-versus-yellow is the one axis that survives every common
-   * colour-vision deficiency, and neither hue means "up" or "down" the way a green or a
-   * red would in portfolio software. The pair this replaces — blue against
-   * periwinkle-violet — collapsed for deuteranopes: measured in simulation, its two inks
-   * sat 35.9 apart in CIE Lab normally but only **7.5** for deuteranopia and 14.7 for
-   * protanopia, which is one colour to those readers. This pair holds 81.7 / 83.4 / 79.8.
-   *
-   * #3b6ea5 is 5.30:1 on the page and 4.18:1 on the darkest row background it is painted
-   * over (the direct-position hover), clearing the 3:1 non-text floor everywhere
-   * `lib/theme.test.ts` checks. */
-  --country-us: #3b6ea5;
-  /* The same edge for a developed market outside the United States: muted ochre,
-   * saturation deliberately unchanged from the recommendation so it reads as a colour and
-   * not as a warning.
-   *
-   * **Darkened from the recommended #c08a2e, and only in this one value.** At that
-   * lightness the ochre measures 3.04:1 on white but **2.85:1** on `--surface` and
-   * **2.39:1** on the direct-position hover tint — under the 3:1 floor, i.e. gone on a
-   * hovered row, which is the same defect the 6 px widening was fixing. #9c7025 is the
-   * same hue and saturation one step darker: 4.41:1 on the page, 3.48:1 at worst. It is
-   * also *closer* in visual weight to the blue (L* 50.4 against 45.4; the recommendation's
-   * ochre sat at 61.3 and read noticeably paler than the blue it was meant to match). */
-  --country-dm: #9c7025;
-  /* Emerging markets: the *deeper* of the two ochres, and the one token this change adds
-   * (operator's instruction, 2026-11-02: "don't forget the colour differentiation between
-   * DM and EM"). Not a third hue — the rule the previous edge was written under is
-   * "two shades of the ochre, never a third hue", because a third hue makes a reader
-   * compare three things instead of two, and because the blue–yellow axis is the only one
-   * that survives every common colour-vision deficiency.
-   *
-   * The shade is a measurement, not a taste. Two ochres that both clear the 3:1 non-text
-   * floor on every row background are confined to L* 18–54 in this scheme, which caps
-   * their separation at about dE 37; #4a3410 sits at L* 23.5 against the developed ochre's
-   * 50.4, giving **dE 34.2 normally and 30.0 at worst in simulation** (deuteranopia 34.2,
-   * protanopia 33.6, tritanopia 30.0) while measuring **9.24:1** on the darkest row
-   * background — a stripe that is darker and quieter, never a second hue. */
-  --country-em: #4a3410;
+  /* ---- Market tiers: the only hues with meaning ------------------------ */
+  --tier-us: oklch(50% 0.13 250);
+  --tier-dm: oklch(60% 0.12 85);
+  --tier-em: oklch(38% 0.15 55);
+  --tier-none: oklch(50% 0 0);
+  /* Text-weight versions of the tier inks: a 4px edge answers to 3:1, a label
+   * answers to 4.5:1, so the two are separate tokens rather than one value used
+   * at two sizes. */
+  --tier-us-ink: oklch(45% 0.12 250);
+  --tier-dm-ink: oklch(46% 0.1 85);
+  --tier-em-ink: oklch(38% 0.13 55);
+  --tier-none-ink: oklch(45% 0 0);
 
-  /* Neither developed nor emerging: the *neutral* the operator asked for on 2026-11-02
-   * ("we have some holdings that don't have a color to them"). It is a warm grey, not a
-   * fourth hue — the two-shades rule is about market tiers, and an unclassified domicile
-   * is the absence of a tier, so it takes the absent colour rather than a competing one.
-   * Two shades of grey would have to mean two different things, so instead one tone carries
-   * two states by *pattern*: solid on a row whose country is known but is not a managed
-   * market (Bermuda, Cayman, Jersey), dashed on a row whose country the filings do not
-   * agree on. Pattern is the one channel that survives every colour-vision deficiency and a
-   * black-and-white print, so the distinction does not depend on the ink at all.
-   *
-   * #74746b measures **3.82:1** on the darkest row background and separates from every tier
-   * ink by at least **dE 29.8 normally and 29.8 simulated** — the gate's floor is 25, and a
-   * grey that sat closer to the ochre would read as a third ochre (`lib/theme.test.ts`). */
-  --country-other: #74746b;
+  /* ---- State ----------------------------------------------------------- */
+  /* Errors only, always with an icon and words. */
+  --alert: oklch(58% 0.19 30);
+  --alert-ink: oklch(45% 0.17 30);
+  --alert-wash: oklch(96% 0.02 30);
+  /* The benchmark bracket's sign. Green above, red below, graphite at an exact
+   * match; the sign is always printed, so the colour never carries it alone. */
+  --delta-up: oklch(48% 0.13 150);
+  --delta-down: oklch(50% 0.18 25);
+  /* A directly held stock's row. Quiet enough that the numbers still lead. */
+  --tint-direct: oklch(97% 0.015 300);
+  --tint-direct-hover: oklch(95% 0.025 300);
 
-  /* The bracketed difference in `In VT` is **green when you hold more of the company than
-   * VT does and red when you hold less** (operator's instruction, 2026-11-02, after seeing
-   * the geography ink there: the sign is what the cell is read for). The hues are the
-   * searched neon pair — neon green `#39ff14`, neon red `#ff073a` — which is exactly what
-   * neon cannot do on a white page: `#39ff14` measures **1.36:1** on `--bg` and 1.07:1 on
-   * the direct-position hover, `#ff073a` 3.93:1 and 3.10:1, all under the 4.5:1 text floor.
-   * So the light scheme keeps each hue and its saturation and darkens until it clears:
-   * #0a6f1c is 6.36:1 on the page and **5.01:1** at worst, #c4002b 6.21:1 and **4.89:1**.
-   * The dark scheme takes the neon itself, where a light ink finally has room (`#39ff14` is
-   * 13.96:1 on `#0d1117`).
-   *
-   * Green against red is the one pair that **collapses for red-green readers**, which is
-   * why it is not the carrier: `formatSignedShare` renders `+` or `-` in the text, the
-   * caption says which way round it is, and `components.test.tsx` holds a test that every
-   * coloured bracket also carries its sign. The colour is reinforcement. The CVD gate in
-   * `lib/theme.test.ts` deliberately does not list this pair — listing it would either fail
-   * the gate or force a hue the operator did not ask for — and the geography edges keep
-   * their own gated pair on a different channel (`static-xray-frontend` §4a, §8). */
-  --delta-up: #0a6f1c;
-  --delta-down: #c4002b;
+  /* ---- Type ------------------------------------------------------------ */
+  --font-ui:
+    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Newsreader", "Iowan Old Style", Georgia, "Times New Roman", serif;
+  --font-mono:
+    "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
-  /* The current section's pill: `--surface` mixed 20% darker, per the operator's
-   * instruction of 2026-11-02 ("20% darker pill"). It is a token rather than a
-   * `color-mix()` at the use site so the theme test can check its contrast: #f6f8f9 at
-   * 80% is #c5c6c7, and body text on it is still over 10:1. `--surface` stays as it is —
-   * table headers and notices want the quiet version, the location wants a block. */
-  --pill-bg: #c5c6c7;
+  --text-12: 0.75rem;
+  --text-14: 0.875rem;
+  --text-16: 1rem;
+  --text-20: 1.25rem;
+  --text-28: 1.75rem;
+  --text-40: 2.5rem;
 
-  /* The shadow under the current section's pill. Soft and small: it separates the
-   * pill from the bar, not from the page. A black 8% shadow is invisible on the dark
-   * scheme's #0d1117, so the dark value is deeper rather than the same. */
-  --pill-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+  --leading-tight: 1.15;
+  --leading-snug: 1.35;
+  --leading-body: 1.6;
 
-  --font-sans:
-    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /* ---- Space, radius, measure ----------------------------------------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
 
-  --step: 0.25rem;
-  --row: 2rem;
+  --radius: 3px;
+  --radius-lg: 6px;
+  --measure: 68ch;
+  --shell: 82rem;
+
+  /* ---- Compatibility aliases ------------------------------------------ */
+  /* The pre-redesign components are still in the tree (their tests are the
+   * regression suite for the arithmetic they render). They read these names, so
+   * the aliases keep them legible rather than unstyled if one is ever mounted
+   * again. New code uses the tokens above. */
+  --fg: var(--ink);
+  --bg: var(--paper);
+  --muted: var(--graphite);
+  --accent: var(--tier-us-ink);
+  --accent-soft: var(--wash);
+  --warn: var(--tier-dm-ink);
+  --warn-soft: var(--wash);
+  --danger: var(--alert-ink);
+  --ok: var(--delta-up);
+  --country-us: var(--tier-us);
+  --country-dm: var(--tier-dm);
+  --country-em: var(--tier-em);
+  --country-other: var(--tier-none);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --fg: #e8edf0;
-    --bg: #0d1117;
-    --surface: #151b22;
-    --muted: #9aa7b0;
-    --rule: #232b33;
-    --rule-strong: #384350;
-    --accent: #5ec8d4;
-    --accent-soft: #10333a;
-    --warn: #f0b429;
-    --warn-soft: #2e2413;
-    --danger: #ff9c96;
-    /* 9.82:1 on #0d1117 — the red above is already legible in this scheme, so only the
-     * green needed a dark value. */
-    --ok: #6fce8f;
-    /* The same two tints, darkened until the row reads as a shade rather than a
-     * highlight: a light pastel over #0d1117 would glow, which is the opposite of
-     * quiet. Both keep `--fg` and `--muted` above AA (lib/theme.test.ts). */
-    --tint-direct: #1d1930;
-    --tint-direct-hover: #262038;
-    /* The geography edges in the dark scheme: the same slate blue and two ochres, lifted
-     * until they read as a stripe on #0d1117 instead of disappearing into it. The blue and
-     * the developed ochre are the values from the operator's recommended palette unchanged
-     * — that pair passes the 3:1 floor with room to spare:
-     * #6c9bd2 is 6.54:1 on the page and 5.39:1 on the direct-position hover,
-     * #d9a54a is 8.50:1 and 7.01:1. Simulation again: pair separation 87.3 normally,
-     * 89.6 for deuteranopia, 84.9 for protanopia.
-     *
-     * The emerging ochre is new here and is the *darker* of the two, as in the light
-     * scheme. On a dark page that means it sits closest to the 3:1 floor — 3.24:1 on the
-     * direct-position hover — which is the price of keeping "emerging is the deeper tone"
-     * true in both schemes rather than flipping the meaning at night. Separation from the
-     * developed ochre: **33.2 normally, 26.4 at worst in simulation** (deuteranopia 33.2,
-     * protanopia 32.5, tritanopia 26.4), and from the blue 64.6. */
-    --country-us: #6c9bd2;
-    --country-dm: #d9a54a;
-    --country-em: #8b6d40;
-    /* The same neutral, lightened for the dark scheme for the same reason the tiers are:
-     * a stripe has to be seen on #0d1117. #b0b0a6 is 6.31:1 on the darkest row background
-     * and at least dE 31.4 from all three tier inks, simulated worst case. */
-    --country-other: #b0b0a6;
-    /* The neon itself, and here it works: on `#0d1117` `#39ff14` is 13.96:1 on the page and
-     * 11.51:1 on the tinted row, so the bracket reads the way the operator asked. The red is
-     * lifted one step with its hue unchanged — `#ff073a` measures 3.97:1 on the
-     * direct-position hover tint, under the floor, where #ff4d5e is 4.81:1 and 5.84:1 on the
-     * page. Light's two values are the same two hues, darkened far enough to be readable on
-     * white. The geography edge keeps this scheme's three stripes and its own gate; the
-     * bracket no longer shares them. */
-    --delta-up: #39ff14;
-    --delta-down: #ff4d5e;
-    /* 20% in the opposite direction, and deliberately: on a #0d1117 page a darker pill
-     * moves *toward* the page and erases the block the light scheme just gained, so the
-     * dark scheme gets the same 20% step away from `--surface` instead. #151b22 at 120%
-     * is #192028. */
-    --pill-bg: #192028;
-    --pill-shadow: 0 1px 2px rgb(0 0 0 / 45%);
+    --paper: oklch(17% 0.015 260);
+    --surface: oklch(21% 0.015 260);
+    --ink: oklch(93% 0.012 85);
+    --graphite: oklch(70% 0.01 260);
+    --rule: color-mix(in oklch, var(--graphite) 26%, transparent);
+    --rule-strong: color-mix(in oklch, var(--graphite) 48%, transparent);
+    --wash: color-mix(in oklch, var(--graphite) 10%, transparent);
+    --wash-strong: color-mix(in oklch, var(--graphite) 18%, transparent);
+
+    --tier-us: oklch(70% 0.12 250);
+    --tier-dm: oklch(84% 0.1 85);
+    --tier-em: oklch(60% 0.13 50);
+    --tier-none: oklch(66% 0 0);
+    --tier-us-ink: oklch(78% 0.1 250);
+    --tier-dm-ink: oklch(84% 0.09 85);
+    --tier-em-ink: oklch(74% 0.12 50);
+    --tier-none-ink: oklch(74% 0 0);
+
+    --alert: oklch(68% 0.17 30);
+    --alert-ink: oklch(78% 0.14 30);
+    --alert-wash: oklch(26% 0.05 30);
+    --delta-up: oklch(78% 0.16 150);
+    --delta-down: oklch(72% 0.16 25);
+    --tint-direct: oklch(26% 0.04 300);
+    --tint-direct-hover: oklch(30% 0.05 300);
   }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Reset and base                                                            */
+/* ------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 html {
   -webkit-text-size-adjust: 100%;
-  scroll-behavior: smooth;
+  text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--fg);
-  font: 16px/1.55 var(--font-sans);
-  font-variant-numeric: tabular-nums;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-16);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 500;
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
+}
+
+p {
+  margin: 0;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
 }
 
 a {
-  color: var(--accent);
-  text-underline-offset: 0.15em;
+  color: inherit;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 0.18em;
 }
 
 a:hover {
-  text-decoration-thickness: 2px;
+  text-decoration-color: currentColor;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
   border-radius: 2px;
 }
 
-/* Visually hidden, still announced: sentences that exist only for a screen reader. */
-.sr-only {
+::selection {
+  background: color-mix(in oklch, var(--tier-us) 28%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Layout                                                                    */
+/* ------------------------------------------------------------------------- */
+
+.shell {
+  width: 100%;
+  max-width: var(--shell);
+  margin-inline: auto;
+  padding-inline: clamp(1rem, 3vw, 2.5rem);
+}
+
+.page {
+  padding-block: var(--space-6) var(--space-8);
+}
+
+.page--narrow {
+  max-width: 46rem;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.stack--tight {
+  gap: var(--space-2);
+}
+
+.stack--loose {
+  gap: var(--space-6);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.row--between {
+  justify-content: space-between;
+}
+
+.visually-hidden {
   position: absolute;
   width: 1px;
   height: 1px;
-  padding: 0;
   margin: -1px;
+  padding: 0;
   overflow: hidden;
-  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
 }
 
 .skip-link {
   position: absolute;
-  left: -999px;
-  top: 0;
-  background: var(--accent);
-  color: var(--bg);
-  padding: 0.5rem 1rem;
-  /* Above the frozen header (z-index 20): the first Tab must land somewhere visible. */
-  z-index: 30;
+  left: var(--space-4);
+  top: -3rem;
+  z-index: 100;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  text-decoration: none;
+  transition: top 120ms ease;
 }
 
 .skip-link:focus {
-  left: 0.5rem;
-  top: 0.5rem;
+  top: var(--space-2);
 }
 
-/* Frozen, on every screen: the section you are in is a location, and it stays on
- * screen while the page scrolls under it (operator's instruction, 2026-11-02). Opaque
- * `--bg` plus the rule is the seam — no translucency and no blur, because a bar that
- * tints a dense table as it passes reads as a rendering fault. */
+/* ------------------------------------------------------------------------- */
+/* Type                                                                      */
+/* ------------------------------------------------------------------------- */
+
+.title {
+  font-family: var(--font-display);
+  font-size: clamp(var(--text-28), 4vw, var(--text-40));
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+
+.title--sm {
+  font-family: var(--font-display);
+  font-size: var(--text-28);
+  font-weight: 500;
+}
+
+.subtitle {
+  font-size: var(--text-20);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.eyebrow {
+  font-size: var(--text-12);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--graphite);
+}
+
+.lede {
+  font-size: var(--text-20);
+  line-height: var(--leading-snug);
+  color: var(--ink);
+  max-width: var(--measure);
+}
+
+.muted {
+  color: var(--graphite);
+}
+
+.small {
+  font-size: var(--text-14);
+}
+
+.tiny {
+  font-size: var(--text-12);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  letter-spacing: -0.01em;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Header, nav, search                                                       */
+/* ------------------------------------------------------------------------- */
+
 .site-header {
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: 30;
+  background: var(--paper);
   border-bottom: 1px solid var(--rule);
-  background: var(--bg);
 }
 
 .site-header__inner {
-  max-width: 64rem;
-  margin: 0 auto;
-  padding: 0.75rem 1.25rem;
   display: flex;
-  gap: 1.25rem;
-  align-items: baseline;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 3.5rem;
+  padding-block: var(--space-2);
   flex-wrap: wrap;
 }
 
 .wordmark {
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-family: var(--font-display);
+  font-size: var(--text-20);
+  font-weight: 600;
+  letter-spacing: -0.02em;
   text-decoration: none;
-  color: var(--fg);
+  white-space: nowrap;
 }
 
 .site-nav {
   display: flex;
+  align-items: center;
+  gap: var(--space-1);
   flex-wrap: wrap;
-  gap: 0.2rem;
-  font-size: 0.9rem;
 }
 
-/* Every label carries the pill's padding, so the current page does not shift the rest
- * of the row when it gains one, and the bar does not overflow on a narrow screen. */
 .site-nav a {
+  display: inline-block;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  font-size: var(--text-14);
   text-decoration: none;
-  color: var(--muted);
-  padding: 0.25rem 0.55rem;
-  border-radius: 0.4rem;
+  color: var(--graphite);
 }
 
 .site-nav a:hover {
-  color: var(--fg);
-  background: var(--surface);
+  color: var(--ink);
+  background: var(--wash);
 }
 
-/* The section you are on: bold, and a grey rounded block with a soft shadow, so it reads
- * as a place rather than as a word someone bolded (operator's instruction, 2026-11-02).
- * `--pill-bg` is the darker step of `--surface` the operator asked for, so the block
- * separates from the bar even at a glance. `aria-current` carries the same fact to a
- * screen reader, so the colour is reinforcement and never the only carrier (§8). */
 .site-nav a[aria-current="page"] {
-  color: var(--fg);
-  font-weight: 600;
-  background: var(--pill-bg);
-  box-shadow: var(--pill-shadow);
+  color: var(--ink);
+  background: var(--wash-strong);
+  font-weight: 500;
 }
 
-main {
-  max-width: 64rem;
-  margin: 0 auto;
-  padding: 2rem 1.25rem 4rem;
-}
-
-main.narrow {
-  max-width: 40rem;
-}
-
-h1 {
-  font-size: 1.6rem;
-  line-height: 1.2;
-  margin: 0 0 0.5rem;
-  letter-spacing: -0.015em;
-}
-
-h2 {
-  font-size: 1.1rem;
-  margin: 2rem 0 0.75rem;
-}
-
-p,
-li {
-  color: var(--fg);
-}
-
-.muted {
-  color: var(--muted);
-}
-
-.prose {
-  max-width: 40rem;
-}
-
-footer.site-footer {
-  border-top: 1px solid var(--rule);
-  margin-top: 4rem;
-  padding: 1.25rem;
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-footer.site-footer p {
-  max-width: 64rem;
-  margin: 0 auto;
-}
-
-/* -- notices ------------------------------------------------------------- */
-
-.notice {
-  border: 1px solid var(--rule-strong);
-  border-left-width: 4px;
-  background: var(--surface);
-  padding: 0.75rem 1rem;
-  margin: 1rem 0;
-  border-radius: 2px;
-}
-
-.notice--warn {
-  border-left-color: var(--warn);
-  background: var(--warn-soft);
-}
-
-.notice--error {
-  border-left-color: var(--danger);
-}
-
-.notice--accent {
-  border-left-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.notice__title {
-  font-weight: 650;
-  margin: 0 0 0.25rem;
-}
-
-.notice p:last-child {
-  margin-bottom: 0;
-}
-
-.detail {
-  color: var(--muted);
-  font-size: 0.85rem;
-  font-family: var(--font-mono);
-  overflow-wrap: anywhere;
-}
-
-/* -- builder ------------------------------------------------------------- */
-
-.field {
+.header-tools {
+  margin-left: auto;
   display: flex;
-  gap: 0.5rem;
-  align-items: stretch;
-  max-width: 26rem;
+  align-items: center;
+  gap: var(--space-2);
 }
 
-.field input[type="text"],
-.field input[type="search"] {
-  flex: 1;
-  font: inherit;
-  padding: 0.5rem 0.65rem;
-  border: 1px solid var(--rule-strong);
-  border-radius: 3px;
-  background: var(--bg);
-  color: var(--fg);
-}
-
-.field input[type="text"]:focus-visible,
-.field input[type="search"]:focus-visible {
-  border-color: var(--accent);
-}
-
-button {
-  font: inherit;
-  padding: 0.45rem 0.8rem;
-  border: 1px solid var(--rule-strong);
-  border-radius: 3px;
+.search-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  min-height: 2rem;
   background: var(--surface);
-  color: var(--fg);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--graphite);
+  font-size: var(--text-14);
   cursor: pointer;
 }
 
-button:hover:not(:disabled) {
-  border-color: var(--accent);
+.search-trigger:hover {
+  border-color: var(--rule-strong);
+  color: var(--ink);
 }
 
-button:disabled {
+/* On a phone the header is two rows: the wordmark and the search button, then the
+ * sections as one strip that scrolls sideways rather than wrapping into a block
+ * that pushes the page down. The strip keeps its own scroll, so a 320 px screen
+ * still reaches every section with a thumb. */
+@media (max-width: 48rem) {
+  .site-header__inner {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "brand tools"
+      "nav nav";
+    gap: var(--space-1) var(--space-3);
+    padding-block: var(--space-2) 0;
+  }
+
+  .wordmark {
+    grid-area: brand;
+  }
+
+  .header-tools {
+    grid-area: tools;
+    margin-left: 0;
+  }
+
+  .site-nav {
+    grid-area: nav;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    margin-inline: calc(var(--space-4) * -1);
+    padding-inline: var(--space-4);
+    padding-bottom: var(--space-2);
+  }
+
+  .site-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .site-nav a {
+    white-space: nowrap;
+  }
+
+  .search-trigger__label,
+  .search-trigger .kbd {
+    display: none;
+  }
+
+  .search-trigger {
+    min-width: 2.25rem;
+    justify-content: center;
+  }
+}
+
+.kbd {
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  padding: 0.05rem 0.3rem;
+  border: 1px solid var(--rule);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  color: var(--graphite);
+  background: var(--paper);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Footer                                                                    */
+/* ------------------------------------------------------------------------- */
+
+.site-footer {
+  margin-top: var(--space-8);
+  border-top: 1px solid var(--rule);
+  padding-block: var(--space-5) var(--space-6);
+  font-size: var(--text-14);
+  color: var(--graphite);
+}
+
+.site-footer__inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.site-footer a {
+  color: var(--graphite);
+}
+
+.site-footer a:hover {
+  color: var(--ink);
+}
+
+.footer-links {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Buttons                                                                   */
+/* ------------------------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 2.25rem;
+  padding: var(--space-1) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  font-size: var(--text-14);
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:hover {
+  background: var(--wash);
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
   cursor: not-allowed;
-  color: var(--muted);
-}
-
-button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--bg);
-  font-weight: 600;
-}
-
-button.quiet {
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
-  padding: 0.25rem 0.4rem;
-}
-
-button.quiet:hover {
-  color: var(--fg);
+  color: var(--graphite);
+  background: var(--paper);
   border-color: var(--rule);
 }
 
-.portfolio-list {
-  list-style: none;
-  padding: 0;
-  margin: 1rem 0;
-  border-top: 1px solid var(--rule);
+.btn--primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
 }
 
-.portfolio-list li {
-  display: grid;
-  /* handle · name · amount · Remove — four columns, so the handle never lands in an
-     implicit second row next to a wrapped amount. */
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  gap: 0.6rem;
+.btn--primary:hover {
+  background: color-mix(in oklch, var(--ink) 88%, var(--paper));
+}
+
+.btn--primary:disabled,
+.btn--primary[aria-disabled="true"] {
+  background: var(--wash-strong);
+  border-color: transparent;
+  color: var(--graphite);
+}
+
+.btn--quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--graphite);
+  padding-inline: var(--space-2);
+}
+
+.btn--quiet:hover {
+  background: var(--wash);
+  color: var(--ink);
+}
+
+.btn--sm {
+  min-height: 1.75rem;
+  font-size: var(--text-12);
+  padding-inline: var(--space-2);
+}
+
+.btn--icon {
+  min-width: 2rem;
+  padding-inline: var(--space-1);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Chips                                                                     */
+/* ------------------------------------------------------------------------- */
+
+.chip {
+  display: inline-flex;
   align-items: center;
-  padding: 0.45rem 0;
-  border-bottom: 1px solid var(--rule);
-}
-
-/* The row a visitor is dragging: lifted off the rule, not hidden behind it. */
-.portfolio-list li.is-dragging {
+  gap: 0.3em;
+  padding: 0.1rem var(--space-2);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
   background: var(--surface);
-  border-radius: 4px;
-  box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
+  font-size: var(--text-12);
+  line-height: 1.5;
+  color: var(--graphite);
+  white-space: nowrap;
 }
 
-.portfolio-list .ticker {
+.chip--mono {
   font-family: var(--font-mono);
-  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
-/* The name and its note share the first grid cell: anything else would land in an
-   implicit second row and push Remove onto its own line. */
-.portfolio-list__name {
+.chip--full {
+  color: var(--ink);
+  border-color: var(--rule-strong);
+}
+
+.chip--partial {
+  color: var(--tier-dm-ink);
+  border-color: color-mix(in oklch, var(--tier-dm) 55%, transparent);
+  background: color-mix(in oklch, var(--tier-dm) 12%, var(--surface));
+}
+
+.chip--none {
+  color: var(--alert-ink);
+  border-color: color-mix(in oklch, var(--alert) 45%, transparent);
+  background: var(--alert-wash);
+}
+
+.chip--date {
+  font-variant-numeric: tabular-nums;
+}
+
+.chip--old {
+  color: var(--alert-ink);
+  border-color: color-mix(in oklch, var(--alert) 45%, transparent);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Panels and cards                                                          */
+/* ------------------------------------------------------------------------- */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+}
+
+.panel__head {
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--rule);
+  flex-wrap: wrap;
+}
+
+.panel__title {
+  font-size: var(--text-14);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.panel__body {
+  padding: var(--space-4);
+}
+
+.panel__body--flush {
+  padding: 0;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Answer strip                                                              */
+/* ------------------------------------------------------------------------- */
+
+.answer {
+  font-family: var(--font-display);
+  font-size: clamp(var(--text-16), 1.4vw, var(--text-20));
+  line-height: 1.45;
+  letter-spacing: -0.005em;
+  max-width: 58ch;
+}
+
+.answer__sentence {
+  display: block;
+  margin-block: 0.55em;
+}
+
+.answer__sentence:first-child {
+  margin-top: 0;
+}
+
+.answer strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.answer__note {
+  font-family: var(--font-ui);
+  font-size: var(--text-14);
+  line-height: var(--leading-body);
+  color: var(--graphite);
+  max-width: var(--measure);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Tabs (lenses)                                                             */
+/* ------------------------------------------------------------------------- */
+
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--rule);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+/* On a phone a five-tab strip scrolls sideways with nothing to say so, and the last
+ * tab is the one that disappears. Two rows are cheaper than a hidden control. */
+@media (max-width: 40rem) {
+  .tabs {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+}
+
+.tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: -1px;
+  font-size: var(--text-14);
+  color: var(--graphite);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  color: var(--ink);
+}
+
+.tab[aria-selected="true"] {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+  font-weight: 500;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Meter and bars                                                            */
+/* ------------------------------------------------------------------------- */
+
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.meter__track {
+  position: relative;
+  height: 0.5rem;
+  background: var(--wash-strong);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.meter__fill {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  background: var(--ink);
+  border-radius: 999px;
+}
+
+.meter__fill--over {
+  background: var(--alert);
+}
+
+.meter__label {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-12);
+  color: var(--graphite);
+  font-variant-numeric: tabular-nums;
+}
+
+.bar {
+  display: flex;
+  width: 100%;
+  height: 0.75rem;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--wash);
+}
+
+.bar--tall {
+  height: 1.25rem;
+}
+
+.bar__seg {
+  height: 100%;
   min-width: 0;
 }
 
-/* Drag handle. `touch-action: none` is what stops a touch drag scrolling the page
-   instead, and the horizontal padding is a bigger hit target than the glyph. */
-.drag-handle {
-  border: 0;
-  background: none;
-  color: var(--muted);
-  cursor: grab;
-  font: inherit;
-  line-height: 1;
-  padding: 0.3rem 0.35rem;
-  touch-action: none;
+.bar__seg--us {
+  background: var(--tier-us);
 }
 
-.drag-handle:hover:not(:disabled) {
-  color: var(--fg);
+.bar__seg--dm {
+  background: var(--tier-dm);
 }
 
-.drag-handle:active:not(:disabled) {
-  cursor: grabbing;
+.bar__seg--em {
+  background: var(--tier-em);
 }
 
-.drag-handle:disabled {
-  cursor: default;
-  opacity: 0.35;
+.bar__seg--none {
+  background: var(--tier-none);
 }
 
-.portfolio-list li.is-dragging .drag-handle {
-  color: var(--fg);
-  cursor: grabbing;
+.bar__seg--unplaced {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--tier-none) 0 3px,
+    transparent 3px 6px
+  );
 }
 
-.reorder-hint {
-  margin: 0.35rem 0 0;
-  font-size: 0.85rem;
-}
-
-.weight-input {
+.legend {
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: var(--text-12);
+  color: var(--graphite);
+}
+
+.legend__item {
+  display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  justify-content: flex-end;
+  gap: 0.4em;
 }
 
-.weight-input input {
-  width: 5.5rem;
-  font: inherit;
-  padding: 0.3rem 0.4rem;
-  text-align: right;
-  border: 1px solid var(--rule-strong);
-  border-radius: 3px;
-  background: var(--bg);
-  color: var(--fg);
+.legend__swatch {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 2px;
+  flex: none;
 }
 
-.tally {
-  display: flex;
-  gap: 0.75rem;
-  align-items: baseline;
-  flex-wrap: wrap;
-  margin: 0.75rem 0 1.5rem;
-  font-size: 0.9rem;
+/* A thin bar inside a table row, on one shared scale. */
+.rowbar {
+  position: relative;
+  height: 0.4rem;
+  min-width: 3rem;
+  background: var(--wash);
+  border-radius: 999px;
+  overflow: hidden;
 }
 
-.tally__value {
-  font-weight: 650;
+.rowbar__fill {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  background: var(--graphite);
+  border-radius: 999px;
 }
 
-.tally__go {
-  padding: 0.4rem 0.8rem;
-  border-radius: 3px;
-  background: var(--accent);
-  color: var(--bg);
-  font-weight: 600;
-  text-decoration: none;
-  margin-left: auto;
+.rowbar__fill--us {
+  background: var(--tier-us);
 }
 
-/* The ledger link until the portfolio is whole. Inert, not removed: the reason sits
- * beside it in words, and a control that disappears takes its explanation with it. */
-.tally__go[aria-disabled="true"] {
-  background: var(--surface);
-  color: var(--muted);
-  cursor: not-allowed;
+.rowbar__fill--dm {
+  background: var(--tier-dm);
 }
 
-/* The sentence beside the link, in two states (operator's instruction, 2026-11-02): red
- * while the portfolio is not at 100%, green once it is. The words do not change, and the
- * state is also carried by the tally (`5.00% over 100%` / `fully allocated`) and by
- * whether the link works — so the colour is reinforcement and never the only carrier
- * (DESIGN rule 3, §8). Both inks are checked against `--bg` in both schemes by
- * lib/theme.test.ts. */
-.tally__gate--locked {
-  color: var(--danger);
+.rowbar__fill--em {
+  background: var(--tier-em);
 }
 
-.tally__gate--open {
-  color: var(--ok);
+.rowbar__fill--none {
+  background: var(--tier-none);
 }
 
-/* -- ledger -------------------------------------------------------------- */
-
-.strip {
-  display: flex;
-  flex-wrap: wrap;
-  border-top: 1px solid var(--rule);
-  border-left: 1px solid var(--rule);
-  margin: 1.5rem 0;
-}
-
-/* Flex, not grid: a partial last row grows to fill the width instead of leaving
-   an empty cell painted in the rule colour. */
-.strip__cell {
-  flex: 1 1 11rem;
-  padding: 0.65rem 0.8rem;
-  border-right: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
-}
-
-.strip__label {
-  display: block;
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.strip__value {
-  display: block;
-  font-size: 1.05rem;
-  font-weight: 650;
-}
-
-.strip__note {
-  display: block;
-  font-size: 0.8rem;
-  color: var(--muted);
-}
+/* ------------------------------------------------------------------------- */
+/* Tables                                                                    */
+/* ------------------------------------------------------------------------- */
 
 .table-wrap {
   overflow-x: auto;
   border: 1px solid var(--rule);
-}
-
-table.ledger {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-}
-
-/* A second line inside a table cell, shown only where a column of secondary
-   text (an issuer name) would otherwise squeeze the row into a paragraph. */
-.cell-note {
-  display: none;
-}
-
-@media (max-width: 40rem) {
-  .cell-note {
-    display: block;
-    font-size: 0.8125rem;
-    color: var(--muted);
-  }
-
-  table.ledger .optional {
-    display: none;
-  }
-}
-
-@media (max-width: 34rem) {
-  .strip__cell {
-    flex-basis: 8rem;
-  }
-
-  .strip__value {
-    font-size: 1rem;
-  }
-
-  .portfolio-list li {
-    gap: 0.5rem;
-  }
-
-  /* The handle is the newest column and the narrowest screen is the one that cannot
-     spare 8 px, so it shrinks before the ticker does. */
-  .drag-handle {
-    padding: 0.3rem 0.2rem;
-  }
-
-  .weight-input input {
-    width: 4.5rem;
-  }
-}
-
-table.ledger caption {
-  text-align: left;
-  padding: 0.6rem 0.75rem;
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-table.ledger th,
-table.ledger td {
-  text-align: left;
-  padding: 0 0.75rem;
-  height: var(--row);
-  border-bottom: 1px solid var(--rule);
-  vertical-align: middle;
-}
-
-table.ledger thead th {
-  position: sticky;
-  top: 0;
+  border-radius: var(--radius-lg);
   background: var(--surface);
-  font-size: 0.8rem;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: var(--muted);
-  z-index: 1;
 }
 
-table.ledger th.numeric,
-table.ledger td.numeric {
-  text-align: right;
+.table {
+  font-size: var(--text-14);
   font-variant-numeric: tabular-nums;
 }
 
-table.ledger tbody tr:hover {
+.table caption {
+  caption-side: top;
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-12);
+  color: var(--graphite);
+  border-bottom: 1px solid var(--rule);
+}
+
+/* Only column headers pin. A `<th scope="row">` is a row's own name, and pinning it
+ * would stack every company name under the header in a vertically scrolling table. */
+.table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   background: var(--surface);
 }
 
-/* A company the visitor holds directly, as a stock. The shading is reinforcement:
- * the row already names the direct position in words (`You · NVDA` in the
- * attribution, and `direct` in the Funds column when no fund holds it), and the
- * table caption says what the shading means — so a reader who cannot see colour
- * loses nothing (static-xray-frontend §8, "no colour-only meaning"). Declared in
- * web/DESIGN.md. */
-table.ledger tbody tr[data-direct="true"] {
+.table th {
+  text-align: left;
+  font-size: var(--text-12);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--graphite);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--rule-strong);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--rule);
+  vertical-align: baseline;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.table tbody tr:hover {
+  background: var(--wash);
+}
+
+.table th.num,
+.table td.num {
+  text-align: right;
+}
+
+.table__sort {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+}
+
+.table__sort:hover {
+  color: var(--ink);
+}
+
+/* `aria-sort` belongs on the `<th>`, not on the button inside it, so the arrow is
+ * drawn from the header. The button keeps the click target and the focus ring. */
+th[aria-sort="ascending"] .table__sort::after {
+  content: " ↑";
+}
+
+th[aria-sort="descending"] .table__sort::after {
+  content: " ↓";
+}
+
+/* A totals row: the same columns, one rule above, and never a heavier weight than
+ * the numbers it adds up. */
+.table tfoot td,
+.table tfoot th {
+  border-top: 1px solid var(--rule-strong);
+  border-bottom: 0;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* A second line inside a cell — the qualifier that belongs to the number above it
+ * (a fund's filing age, a company's contributing funds). */
+.note {
+  display: block;
+  font-size: var(--text-12);
+  color: var(--graphite);
+  line-height: 1.4;
+}
+
+/* A qualifier is prose, so it wraps and reads from the left even when the number it
+ * qualifies is right-aligned and nowrap. */
+.num .note {
+  text-align: start;
+  white-space: normal;
+}
+
+/* A chart is a `<figure>` with a `<figcaption>`; the browser's default 1em/40px
+ * indent is for a figure in running prose, not for one that is a block in a stack. */
+figure {
+  margin: 0;
+}
+
+/* The market edge: a 4px inset on the first cell, plus the country code in text.
+ * Pattern carries the two unplaced states, so the distinction survives a
+ * monochrome print and every colour-vision deficiency. */
+/* `> :first-child` rather than `td:first-child`: a table whose first column is the
+ * row's own name uses `<th scope="row">`, and the edge has to land on that cell too. */
+.tier-edge > :first-child {
+  box-shadow: inset 4px 0 0 var(--tier-none);
+}
+
+tr[data-tier="US"] > :first-child {
+  box-shadow: inset 4px 0 0 var(--tier-us);
+}
+
+tr[data-tier="DM"] > :first-child {
+  box-shadow: inset 4px 0 0 var(--tier-dm);
+}
+
+tr[data-tier="EM"] > :first-child {
+  box-shadow: inset 4px 0 0 var(--tier-em);
+}
+
+tr[data-tier="OTHER"] > :first-child {
+  box-shadow: inset 4px 0 0 var(--tier-none);
+}
+
+tr[data-country-missing="true"] > :first-child {
+  box-shadow: inset 4px 0 0 var(--tier-none);
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklch, var(--tier-none) 55%, transparent) 0 2px,
+    transparent 2px 5px
+  );
+  background-size: 4px 100%;
+  background-repeat: no-repeat;
+}
+
+tr[data-direct="true"] {
   background: var(--tint-direct);
 }
 
-table.ledger tbody tr[data-direct="true"]:hover {
+tr[data-direct="true"]:hover {
   background: var(--tint-direct-hover);
 }
 
-/* Geography is a second, independent axis (operator's instruction, 2026-11-02). The
- * row's *background* means position kind — a stock you hold directly — and one
- * background cannot carry two meanings, so a country gets its own channel: an edge on
- * the first cell plus the code as text in the row's second line. A row can carry both.
- * The stripe is on the cell rather than the row because a `tr` border is unreliable
- * under `border-collapse: separate`, and `inset` box-shadow costs no layout.
- *
- * **6px, not 3px** (operator's instruction, 2026-11-02, same day: the domiciles were
- * "hard to tell apart"). Two things were wrong and both are fixed here: the width, and
- * a palette whose US edge measured 1.85:1 on the page — a stripe under the 3:1 non-text
- * floor is a suggestion, not a signal. The cell's own 0.75rem left padding leaves 6px of
- * gap, so the wider edge never touches the company name, and `lib/theme.test.ts` holds
- * both edges to 3:1 on every background a row can have (`--bg`, `--surface`, both direct
- * tints) in both schemes.
- *
- * An untagged row keeps no *domicile*: a company whose filings disagree has no country, and
- * a default edge would be a guess. Since 2026-11-02 it does carry a mark, dashed and grey,
- * because a blank edge was being read as a broken stripe rather than as a refusal.
- *
- * **The palette is blue against ochre** (operator's instruction, 2026-11-02, adopting the
- * recommendation they were given): two hues on the colour-blind-safe blue–yellow axis,
- * neither of which carries a gain/loss or warning meaning in portfolio software. The inks
- * live in the two `--country-*` tokens with the measurements and the one deliberate
- * deviation from the recommendation.
- *
- * **Geography then split into three** (operator's instruction, 2026-11-02: ship the
- * developed/emerging classification "and don't forget the colour differentiation between
- * DM and EM"). It is **two shades of the ochre, never a third hue**, because a third hue
- * makes the reader compare three things instead of two. The constraint that bites is
- * this same 3:1 floor: two ochres that both clear it on every row background are confined
- * to a narrow lightness band, which caps their separation at about dE 37. The values in
- * the tokens above are the measured best of that band — 34.2 apart in the light scheme and
- * 33.2 in the dark, and 30.0 / 26.4 at worst under simulated colour-vision deficiency,
- * against a floor of 25. `lib/theme.test.ts` holds all three inks and all three pairs.
- *
- * A fourth bucket exists and is not a tier: `OTHER` is a domicile neither provider calls
- * developed or emerging (Cayman, Bermuda, Argentina, Russia, frontier Europe), which is 4.2%
- * of the release's classified companies. It keeps its country code and takes the neutral
- * ink below, because "not classified" and "not decided" are both answers a reader is
- * entitled to see, and the pattern underneath them (solid, dashed) says which is which. */
-table.ledger tbody tr[data-tier="US"] > :first-child {
-  box-shadow: inset 6px 0 0 var(--country-us);
+.country-tag {
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  color: var(--graphite);
+  white-space: nowrap;
 }
 
-table.ledger tbody tr[data-tier="DM"] > :first-child {
-  box-shadow: inset 6px 0 0 var(--country-dm);
-}
-
-table.ledger tbody tr[data-tier="EM"] > :first-child {
-  box-shadow: inset 6px 0 0 var(--country-em);
-}
-
-/* A domicile that is neither developed nor emerging — Bermuda, Cayman, Jersey, the
- * Marshall Islands, frontier Europe — takes the neutral edge. It is the same 6 px channel
- * and the same token as the dashed state below, so "we cannot place this" is one idea with
- * two reasons rather than two more colours to learn.
- *
- * The dashed variant is for the company whose holders' filings do not agree on a country at
- * all: `data-country-missing` is set by the ledger when no domicile was published. A
- * background image rather than the `inset` box-shadow the tiers use, because a box-shadow
- * cannot be dashed; `background-size` pins it to the same 6 px column so the two states sit
- * on one axis. `static-xray-frontend` §4b records why the pattern, not the tone, carries
- * the difference. */
-table.ledger tbody tr[data-tier="OTHER"] > :first-child {
-  box-shadow: inset 6px 0 0 var(--country-other);
-}
-
-table.ledger tbody tr[data-country-missing="true"] > :first-child {
-  background-image: repeating-linear-gradient(
-    to bottom,
-    var(--country-other) 0 5px,
-    transparent 5px 9px
-  );
-  background-repeat: no-repeat;
-  background-size: 6px 100%;
-  background-position: left top;
-}
-
-/* The bracketed difference in the `In VT` column wears the row's own geography ink
- * (operator's instruction, 2026-11-02). It is the second use of the same pair on purpose:
- * the edge repeats the country at the start of the row, and this repeats it at the one
- * cell where a reader is comparing two numbers rather than reading one — so "which names
- * am I light on, and are they American or not" can be scanned by column instead of by
- * crossing back to the first cell on every line. That is what makes the same two inks
- * worth spending twice; it is not a new hue, a new column, or a new metric.
- *
- * The meaning still lives in words: the sign is rendered (`+3.29%` / `-2.54%`), the caption
- * says which way round it is, and the country code is spelled out beside the name. A row
- * whose filings do not agree on a domicile keeps `--muted`: an ink for "unknown" would be
- * a default, and the absence of a country is the honest answer (`static-xray-frontend`
- * §4a, §8). */
 .delta {
-  color: var(--muted);
+  color: var(--graphite);
+  font-variant-numeric: tabular-nums;
 }
 
 .delta--up {
@@ -849,321 +1159,611 @@ table.ledger tbody tr[data-country-missing="true"] > :first-child {
   color: var(--delta-down);
 }
 
-table.ledger tbody th {
-  font-weight: 500;
+/* ------------------------------------------------------------------------- */
+/* Forms                                                                     */
+/* ------------------------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
-.sort-button {
+.field__label {
+  font-size: var(--text-12);
+  font-weight: 500;
+  color: var(--graphite);
+}
+
+.field__input,
+.field input[type="text"],
+.field input[type="search"],
+.field input[type="number"],
+.field select,
+.field textarea {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  font-size: var(--text-16);
+}
+
+.field textarea {
+  min-height: 6rem;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: var(--text-14);
+  line-height: 1.5;
+}
+
+.field__input:focus-visible,
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.field__hint {
+  font-size: var(--text-12);
+  color: var(--graphite);
+}
+
+.field__error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  font-size: var(--text-12);
+  color: var(--alert-ink);
+}
+
+/* Suggestions under the holdings input. */
+.suggest {
+  list-style: none;
+  margin: var(--space-1) 0 0;
+  padding: var(--space-1);
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  max-height: 18rem;
+  overflow-y: auto;
+}
+
+.suggest__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  background: none;
+  border: 0;
+  border-radius: 2px;
+  text-align: left;
+  cursor: pointer;
+  font-size: var(--text-14);
+}
+
+.suggest__item:hover,
+.suggest__item[aria-selected="true"] {
+  background: var(--wash-strong);
+}
+
+.suggest__ticker {
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  min-width: 4.5rem;
+}
+
+.suggest__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggest__meta {
+  font-size: var(--text-12);
+  color: var(--graphite);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Notices                                                                   */
+/* ------------------------------------------------------------------------- */
+
+.notice {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--rule-strong);
+  border-radius: var(--radius);
+  font-size: var(--text-14);
+  color: var(--ink);
+}
+
+.notice--alert {
+  border-left-color: var(--alert);
+  background: var(--alert-wash);
+}
+
+.notice--quiet {
+  background: transparent;
+  border-left-color: var(--rule);
+  color: var(--graphite);
+}
+
+/* The pre-redesign `Notice` component's tone names, kept as aliases so one notice
+ * component serves the whole site. `warn` is a quiet note, not an error: the
+ * palette has exactly one alert colour and it is reserved for things that failed. */
+.notice--warn {
+  border-left-color: var(--tier-dm);
+}
+
+.notice--error {
+  border-left-color: var(--alert);
+  background: var(--alert-wash);
+}
+
+.notice--accent {
+  border-left-color: var(--tier-us);
+}
+
+.notice__icon {
+  flex: none;
+  font-size: var(--text-14);
+  line-height: 1.5;
+}
+
+/* The compact not-advice line: on every page, one line, linking the full text. */
+.notice-line {
+  font-size: var(--text-12);
+  color: var(--graphite);
+  line-height: 1.5;
+}
+
+.notice-line a {
+  color: var(--graphite);
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Definitions: dotted underline + native popover                            */
+/* ------------------------------------------------------------------------- */
+
+.term {
+  appearance: none;
   background: none;
   border: 0;
   padding: 0;
   font: inherit;
   color: inherit;
-  text-transform: inherit;
-  letter-spacing: inherit;
-  font-weight: 650;
+  cursor: help;
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+  text-decoration-color: var(--graphite);
 }
 
-.sort-button::after {
-  content: "";
-  display: inline-block;
-  width: 0.7em;
+.term:hover {
+  text-decoration-color: var(--ink);
 }
 
-th[aria-sort="descending"] .sort-button::after {
-  content: "↓";
-}
-
-th[aria-sort="ascending"] .sort-button::after {
-  content: "↑";
-}
-
-.row-note {
-  display: block;
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-
-/* The country mark: the flag and the two-letter code together, boxed with a hairline so
- * the pair reads as a tag rather than as another word in the attribution. The flag is
- * the platform's glyph, not ours, so a colour emoji ignores `color`; `--muted` is the
- * ink of the code, which is the text a screen reader hears and the lettering Windows
- * draws in place of the flag (a Windows tag reads "US US"). `font-size` is the note's
- * own 0.78rem: a flag and two letters together are wider than either alone, and the
- * row's height is fixed, so the pair has to sit on the same baseline as the note. */
-.country-tag {
-  display: inline-block;
-  padding: 0 0.22rem;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  font-size: 0.78rem;
-  line-height: 1.3;
-  letter-spacing: 0.02em;
-  color: var(--muted);
-  vertical-align: baseline;
-}
-
-.chip {
-  display: inline-block;
-  padding: 0.05rem 0.4rem;
+.popover {
+  position: absolute;
+  inset: auto;
+  margin: 0;
+  max-width: 22rem;
+  padding: var(--space-3);
+  background: var(--surface);
+  color: var(--ink);
   border: 1px solid var(--rule-strong);
-  border-radius: 999px;
-  font-size: 0.78rem;
-  color: var(--muted);
-  white-space: nowrap;
+  border-radius: var(--radius);
+  box-shadow: 0 6px 24px color-mix(in oklch, var(--ink) 18%, transparent);
+  font-size: var(--text-14);
+  line-height: var(--leading-snug);
 }
 
-.chip--warn {
-  border-color: var(--warn);
-  color: var(--warn);
+.popover::backdrop {
+  background: transparent;
 }
 
-.metrics {
+.popover__link {
+  display: inline-block;
+  margin-top: var(--space-2);
+  font-size: var(--text-12);
+}
+
+/* Anchor positioning where the browser has it; the fallback is a centred
+ * popover, which is still readable and still dismissible. */
+@supports (anchor-name: --term) {
+  /* No shared `anchor-name` here: `Term` sets a unique one per instance inline,
+   * because a shared name resolves to the last element and would open every
+   * popover under the last word on the page. */
+  .popover {
+    position-anchor: --term;
+    top: anchor(bottom);
+    left: anchor(left);
+    margin-top: var(--space-1);
+    position-try-fallbacks: flip-block, flip-inline;
+  }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Empty states                                                              */
+/* ------------------------------------------------------------------------- */
+
+.empty {
   display: flex;
-  gap: 1.75rem;
-  flex-wrap: wrap;
-  margin: 1.25rem 0 0;
-  padding: 0;
-  list-style: none;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-4);
+  border: 1px dashed var(--rule-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
 }
 
-.metrics li {
-  min-width: 9rem;
+.empty__title {
+  font-family: var(--font-display);
+  font-size: var(--text-28);
+  font-weight: 500;
 }
 
-.metrics dt {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-}
-
-.metrics strong {
-  font-size: 1.05rem;
-}
-
-/* --- Compare: two columns that stay two columns until there is no room ------- */
-
-.compare {
+.ways-in {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
-  gap: 1.5rem;
-  margin: 1.5rem 0;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-3);
+}
+
+.way {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--paper);
+}
+
+.way__title {
+  font-size: var(--text-14);
+  font-weight: 500;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Prose (How it works, legal)                                               */
+/* ------------------------------------------------------------------------- */
+
+.prose {
+  max-width: var(--measure);
+  font-size: var(--text-16);
+  line-height: var(--leading-body);
+}
+
+.prose > * + * {
+  margin-top: var(--space-4);
+}
+
+.prose h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-28);
+  font-weight: 500;
+  margin-top: var(--space-7);
+  scroll-margin-top: 5rem;
+}
+
+.prose h3 {
+  font-size: var(--text-20);
+  font-weight: 500;
+  margin-top: var(--space-5);
+  scroll-margin-top: 5rem;
+}
+
+.prose p,
+.prose li {
+  max-width: var(--measure);
+}
+
+.prose ul,
+.prose ol {
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.prose a {
+  text-decoration: underline;
+}
+
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--wash);
+  padding: 0.05em 0.3em;
+  border-radius: 2px;
+}
+
+.prose blockquote {
+  margin: 0;
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--rule-strong);
+  color: var(--graphite);
+}
+
+.reading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+}
+
+@media (min-width: 60rem) {
+  .reading {
+    grid-template-columns: 14rem minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.toc {
+  position: sticky;
+  top: 5rem;
+  font-size: var(--text-14);
+  border-left: 1px solid var(--rule);
+  padding-left: var(--space-3);
+}
+
+.toc__title {
+  font-size: var(--text-12);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--graphite);
+  margin-bottom: var(--space-2);
+}
+
+.toc ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.toc a {
+  color: var(--graphite);
+  text-decoration: none;
+}
+
+.toc a:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Workspace: two panes, container-queried                                   */
+/* ------------------------------------------------------------------------- */
+
+.workspace {
+  container-type: inline-size;
+  container-name: workspace;
+}
+
+.workspace__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
   align-items: start;
 }
 
-.compare__side {
-  border: 1px solid var(--rule);
-  padding: 1rem;
+@container workspace (min-width: 58rem) {
+  .workspace__grid {
+    grid-template-columns: minmax(20rem, 24rem) minmax(0, 1fr);
+    gap: var(--space-6);
+  }
+
+  .workspace__holdings {
+    position: sticky;
+    top: 4.5rem;
+    max-height: calc(100vh - 6rem);
+    overflow-y: auto;
+    padding-right: var(--space-1);
+  }
 }
 
-.compare__side h2 {
-  margin-top: 0;
+/* ------------------------------------------------------------------------- */
+/* Print: the table is what prints                                           */
+/* ------------------------------------------------------------------------- */
+
+@media print {
+  :root {
+    --paper: #fff;
+    --surface: #fff;
+    --ink: #000;
+    --graphite: #333;
+    --rule: #bbb;
+    --rule-strong: #888;
+  }
+
+  body {
+    font-size: 10pt;
+  }
+
+  .site-header,
+  .site-footer,
+  .no-print,
+  .tabs,
+  .search-trigger,
+  .skip-link {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .workspace__grid {
+    display: block;
+  }
+
+  .panel,
+  .card,
+  .table-wrap {
+    border-color: #999;
+    break-inside: avoid;
+  }
+
+  .table th {
+    position: static;
+  }
+
+  .table tbody tr {
+    break-inside: avoid;
+  }
+
+  .answer {
+    font-size: 14pt;
+  }
 }
 
-/* --- A name that opens something: still a button, but reads as text --------- */
+.print-only {
+  display: none;
+}
 
-.row-button {
+/* ------------------------------------------------------------------------- */
+/* Search palette                                                            */
+/* ------------------------------------------------------------------------- */
+
+.search-dialog {
+  width: min(38rem, calc(100vw - 2rem));
+  max-height: min(32rem, calc(100vh - 4rem));
+  padding: 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 18px 60px color-mix(in oklch, var(--ink) 28%, transparent);
+  margin: 12vh auto auto;
+}
+
+.search-dialog::backdrop {
+  background: color-mix(in oklch, var(--ink) 32%, transparent);
+}
+
+.search-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.search-input {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  background: transparent;
+  font-size: var(--text-20);
+  outline: none;
+}
+
+.search-input::placeholder {
+  color: var(--graphite);
+}
+
+.search-results {
+  overflow-y: auto;
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.search-hint {
+  padding: var(--space-3);
+  font-size: var(--text-14);
+  color: var(--graphite);
+}
+
+.search-hit {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  grid-template-areas:
+    "kind label"
+    "kind detail";
+  gap: 0 var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
   background: none;
   border: 0;
-  padding: 0;
-  font: inherit;
-  color: var(--accent);
+  border-radius: var(--radius);
   text-align: left;
   cursor: pointer;
 }
 
-.row-button:hover {
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
+.search-hit[aria-selected="true"] {
+  background: var(--wash-strong);
 }
 
-/* --- Company drawer: a native dialog, styled to sit over the ledger --------- */
-
-.drawer {
-  border: 1px solid var(--rule-strong);
-  background: var(--bg);
-  color: var(--fg);
-  padding: 0;
-  max-width: min(44rem, calc(100vw - 2rem));
-  max-height: calc(100vh - 4rem);
-  width: 100%;
+.search-hit__kind {
+  grid-area: kind;
+  align-self: center;
+  font-size: var(--text-12);
+  color: var(--graphite);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
-.drawer::backdrop {
-  background: rgb(0 0 0 / 45%);
-}
-
-.drawer__body {
-  padding: 1rem 1.25rem 1.25rem;
-  overflow-y: auto;
-  max-height: calc(100vh - 4rem);
-}
-
-.drawer__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.drawer__head h2 {
-  margin: 0;
-  font-size: 1.15rem;
-}
-
-.drawer__ticker {
-  display: inline-block;
-  margin-left: 0.5rem;
-  font-size: 0.85rem;
-  font-weight: 400;
-  color: var(--muted);
-}
-
-.drawer__close {
-  flex: none;
-}
-
-.drawer__note {
-  font-size: 0.85rem;
-  margin-bottom: 0;
-}
-
-/* The landing page's starting point: widely held tickers, one click each. */
-.chips-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.5rem;
-  margin: 0.75rem 0 0;
-  font-size: 0.85rem;
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.chips button {
-  font-size: 0.8125rem;
-  padding: 0.1875rem 0.5rem;
-}
-
-.chips button:disabled {
-  opacity: 0.45;
-}
-
-/* --- Ledger: fund attribution, and the page of companies --------------------- */
-
-/*
- * Every fund a company is attributable to, as one chip each.
- *
- * The row used to slice this list to three and append "+N more", which hid two
- * attributions for anyone with five funds. The chips wrap instead: a long list
- * makes the row taller, never narrower, so nothing is ever clipped and nothing
- * hides behind a hover.
- */
-.fund-attrib {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 0.1rem 0.2rem;
-  margin-top: 0.1rem;
-  vertical-align: baseline;
-}
-
-/* Sized so two chips fit the company column of a 390 px phone: at that width the
-   cell is about 145 px, and one chip per line turned a five-fund row into five
-   lines. Two per line keeps the attribution complete and the row readable. */
-.fund-attrib__item {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.18rem;
-  padding: 0 0.25rem;
-  border: 1px solid var(--rule);
-  border-radius: 999px;
-  font-size: 0.68rem;
-  line-height: 1.5;
+.search-hit__label {
+  grid-area: label;
+  font-size: var(--text-14);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.fund-attrib__ticker {
-  font-family: var(--font-mono);
-  font-size: 0.66rem;
-  color: var(--fg);
+.search-hit__detail {
+  grid-area: detail;
+  font-size: var(--text-12);
+  color: var(--graphite);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.fund-attrib__weight {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-/* The control under the table: the tail is one click away, not one scroll away. */
-.table-more {
-  margin: 0.75rem 0 0;
-}
-
-.table-more button {
-  font-size: 0.85rem;
-}
-
-/* The coverage gap, explained where the ledger shows it rather than in a footnote. */
-.what-not-traced {
-  margin-top: 1.5rem;
-}
-
-.what-not-traced summary {
-  cursor: pointer;
-  color: var(--accent);
-  font-size: 0.95rem;
-}
-
-.what-not-traced p {
-  max-width: 46rem;
-  font-size: 0.9rem;
-}
-
-/* -- the page's method, below the table ---------------------------------- */
-
-/*
- * The X-Ray page's explanations, in one disclosure under the ledger (operator's
- * instruction, 2026-11-02: "too much information at the top of the page discussing
- * methodologies … all I really want are the metadata information you give in tables").
- * Nothing here is new content — every paragraph above the table moved in and kept its
- * facts — so the styling has one job: make the block read as the page's own method
- * section rather than as a second panel. Hence the 1 px `--rule` seam (the same
- * hairline the table is drawn with) and no background, border-radius or accent fill.
- */
-.how-to-read {
-  margin-top: 2rem;
+.search-foot {
+  padding: var(--space-2) var(--space-4);
   border-top: 1px solid var(--rule);
-  padding-top: 1rem;
+  font-size: var(--text-12);
+  color: var(--graphite);
 }
 
-/* A summary is a control, so it gets the accent ink the coverage-gap summary already
- * uses, and 0.25 rem of vertical padding: with the 0.95 rem type that clears WCAG
- * 2.2's 24 px target without turning a disclosure into a button. */
-.how-to-read > summary {
-  cursor: pointer;
-  color: var(--accent);
-  font-size: 0.95rem;
-  padding: 0.25rem 0;
+/* ------------------------------------------------------------------------- */
+/* Design page only (workbench, not a reader surface)                        */
+/* ------------------------------------------------------------------------- */
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--space-3);
 }
 
-/* The moved prose keeps a reading measure. The benchmark paragraph is the longest
- * sentence on the page, and a full-width line of it is unreadable however true it is.
- * `>` matters: the nested disclosures below carry their own, narrower measure (the
- * coverage-gap text is 46 rem) and this rule must not silently widen them. */
-.how-to-read > p {
-  max-width: 60rem;
-  font-size: 0.9rem;
+.swatch {
+  display: grid;
+  gap: 2px;
 }
 
-/* One step of separation so the outline reads as three levels — page, method, and the
- * coverage gap / per-fund sources inside it — instead of three equal headings. */
-.how-to-read .what-not-traced {
-  margin-top: 1rem;
+.swatch__chip {
+  display: block;
+  height: 2.5rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.type-row {
+  align-items: baseline;
+  gap: var(--space-4);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: var(--space-2);
 }
