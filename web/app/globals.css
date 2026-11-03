@@ -78,20 +78,26 @@
    * background — a stripe that is darker and quieter, never a second hue. */
   --country-em: #4a3410;
 
-  /* The same two hues as **text**, for the bracketed difference in the `In VT` column
-   * (operator's instruction, 2026-11-02: "I want the delta of plus or minus against
-   * benchmark VT to be in the same color code as the US vs international"). The inks are
-   * one step darker than the stripes because they answer to a stricter floor: a stripe is
-   * a graphic (3:1) and this is 13 px text (4.5:1), and the stripes measure 4.18:1 (blue)
-   * and 3.48:1 (ochre) on the darkest row background — enough for a 6 px bar, not enough
-   * for a number a reader has to compare. Same hue, same relationship, and matched in
-   * weight: #35638f is 6.30:1 on the page and **4.96:1** at worst (the direct-position
-   * hover tint), #7f5a1c 6.21:1 and **4.89:1**, so neither domicile is the hard one to
-   * read. Separation is untouched by the darkening — 69.6 dE normally, 70.8 / 67.9 / 53.3
-   * simulated for deuteranopia / protanopia / tritanopia — so a red-green reader still
-   * sees two inks rather than one (`lib/theme.test.ts`). */
-  --country-us-ink: #35638f;
-  --country-intl-ink: #7f5a1c;
+  /* The bracketed difference in `In VT` is **green when you hold more of the company than
+   * VT does and red when you hold less** (operator's instruction, 2026-11-02, after seeing
+   * the geography ink there: the sign is what the cell is read for). The hues are the
+   * searched neon pair — neon green `#39ff14`, neon red `#ff073a` — which is exactly what
+   * neon cannot do on a white page: `#39ff14` measures **1.36:1** on `--bg` and 1.07:1 on
+   * the direct-position hover, `#ff073a` 3.93:1 and 3.10:1, all under the 4.5:1 text floor.
+   * So the light scheme keeps each hue and its saturation and darkens until it clears:
+   * #0a6f1c is 6.36:1 on the page and **5.01:1** at worst, #c4002b 6.21:1 and **4.89:1**.
+   * The dark scheme takes the neon itself, where a light ink finally has room (`#39ff14` is
+   * 13.96:1 on `#0d1117`).
+   *
+   * Green against red is the one pair that **collapses for red-green readers**, which is
+   * why it is not the carrier: `formatSignedShare` renders `+` or `-` in the text, the
+   * caption says which way round it is, and `components.test.tsx` holds a test that every
+   * coloured bracket also carries its sign. The colour is reinforcement. The CVD gate in
+   * `lib/theme.test.ts` deliberately does not list this pair — listing it would either fail
+   * the gate or force a hue the operator did not ask for — and the geography edges keep
+   * their own gated pair on a different channel (`static-xray-frontend` §4a, §8). */
+  --delta-up: #0a6f1c;
+  --delta-down: #c4002b;
 
   /* The current section's pill: `--surface` mixed 20% darker, per the operator's
    * instruction of 2026-11-02 ("20% darker pill"). It is a token rather than a
@@ -151,17 +157,15 @@
     --country-us: #6c9bd2;
     --country-dm: #d9a54a;
     --country-em: #8b6d40;
-    /* In this scheme the stripes clear the 4.5:1 text floor for the blue and the developed
-     * ochre — 5.39:1 and 7.01:1 on the worst row background — but the *emerging* stripe
-     * does not (3.24:1), so the text ink stays a **two-group** channel: American, and
-     * everything else, at the developed ochre's value. A third ink would have to be
-     * lighter than the emerging stripe in this scheme and darker than it in the light one,
-     * and in the light scheme two ochre inks above 4.5:1 are confined to L* 18-42, which
-     * caps their separation at dE ~22 — under the 25 the colour-vision gate requires. So
-     * the bracket reinforces the primary axis ("is this row American?") and the 6 px edge
-     * carries the developed/emerging one, which is the axis a reader scans for. */
-    --country-us-ink: #6c9bd2;
-    --country-intl-ink: #d9a54a;
+    /* The neon itself, and here it works: on `#0d1117` `#39ff14` is 13.96:1 on the page and
+     * 11.51:1 on the tinted row, so the bracket reads the way the operator asked. The red is
+     * lifted one step with its hue unchanged — `#ff073a` measures 3.97:1 on the
+     * direct-position hover tint, under the floor, where #ff4d5e is 4.81:1 and 5.84:1 on the
+     * page. Light's two values are the same two hues, darkened far enough to be readable on
+     * white. The geography edge keeps this scheme's three stripes and its own gate; the
+     * bracket no longer shares them. */
+    --delta-up: #39ff14;
+    --delta-down: #ff4d5e;
     /* 20% in the opposite direction, and deliberately: on a #0d1117 page a darker pill
      * moves *toward* the page and erases the block the light scheme just gained, so the
      * dark scheme gets the same 20% step away from `--surface` instead. #151b22 at 120%
@@ -791,12 +795,12 @@ table.ledger tbody tr[data-tier="EM"] > :first-child {
   color: var(--muted);
 }
 
-table.ledger tbody tr[data-country="US"] .delta {
-  color: var(--country-us-ink);
+.delta--up {
+  color: var(--delta-up);
 }
 
-table.ledger tbody tr[data-country]:not([data-country="US"]) .delta {
-  color: var(--country-intl-ink);
+.delta--down {
+  color: var(--delta-down);
 }
 
 table.ledger tbody th {
