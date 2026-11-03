@@ -78,6 +78,21 @@
    * background — a stripe that is darker and quieter, never a second hue. */
   --country-em: #4a3410;
 
+  /* Neither developed nor emerging: the *neutral* the operator asked for on 2026-11-02
+   * ("we have some holdings that don't have a color to them"). It is a warm grey, not a
+   * fourth hue — the two-shades rule is about market tiers, and an unclassified domicile
+   * is the absence of a tier, so it takes the absent colour rather than a competing one.
+   * Two shades of grey would have to mean two different things, so instead one tone carries
+   * two states by *pattern*: solid on a row whose country is known but is not a managed
+   * market (Bermuda, Cayman, Jersey), dashed on a row whose country the filings do not
+   * agree on. Pattern is the one channel that survives every colour-vision deficiency and a
+   * black-and-white print, so the distinction does not depend on the ink at all.
+   *
+   * #74746b measures **3.82:1** on the darkest row background and separates from every tier
+   * ink by at least **dE 29.8 normally and 29.8 simulated** — the gate's floor is 25, and a
+   * grey that sat closer to the ochre would read as a third ochre (`lib/theme.test.ts`). */
+  --country-other: #74746b;
+
   /* The same two hues as **text**, for the bracketed difference in the `In VT` column
    * (operator's instruction, 2026-11-02: "I want the delta of plus or minus against
    * benchmark VT to be in the same color code as the US vs international"). The inks are
@@ -151,6 +166,10 @@
     --country-us: #6c9bd2;
     --country-dm: #d9a54a;
     --country-em: #8b6d40;
+    /* The same neutral, lightened for the dark scheme for the same reason the tiers are:
+     * a stripe has to be seen on #0d1117. #b0b0a6 is 6.31:1 on the darkest row background
+     * and at least dE 31.4 from all three tier inks, simulated worst case. */
+    --country-other: #b0b0a6;
     /* In this scheme the stripes clear the 4.5:1 text floor for the blue and the developed
      * ochre — 5.39:1 and 7.01:1 on the worst row background — but the *emerging* stripe
      * does not (3.24:1), so the text ink stays a **two-group** channel: American, and
@@ -772,6 +791,32 @@ table.ledger tbody tr[data-tier="DM"] > :first-child {
 
 table.ledger tbody tr[data-tier="EM"] > :first-child {
   box-shadow: inset 6px 0 0 var(--country-em);
+}
+
+/* A domicile that is neither developed nor emerging — Bermuda, Cayman, Jersey, the
+ * Marshall Islands, frontier Europe — takes the neutral edge. It is the same 6 px channel
+ * and the same token as the dashed state below, so "we cannot place this" is one idea with
+ * two reasons rather than two more colours to learn.
+ *
+ * The dashed variant is for the company whose holders' filings do not agree on a country at
+ * all: `data-country-missing` is set by the ledger when no domicile was published. A
+ * background image rather than the `inset` box-shadow the tiers use, because a box-shadow
+ * cannot be dashed; `background-size` pins it to the same 6 px column so the two states sit
+ * on one axis. `static-xray-frontend` §4b records why the pattern, not the tone, carries
+ * the difference. */
+table.ledger tbody tr[data-tier="OTHER"] > :first-child {
+  box-shadow: inset 6px 0 0 var(--country-other);
+}
+
+table.ledger tbody tr[data-country-missing="true"] > :first-child {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--country-other) 0 5px,
+    transparent 5px 9px
+  );
+  background-repeat: no-repeat;
+  background-size: 6px 100%;
+  background-position: left top;
 }
 
 /* The bracketed difference in the `In VT` column wears the row's own geography ink

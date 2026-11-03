@@ -223,6 +223,17 @@ const UI_PAIRS: Array<[fg: string, bg: string, why: string]> = [
     "tint-direct-hover",
     "the emerging geography edge on a direct-position row under the pointer",
   ],
+  // The neutral returned on 2026-11-02 for the two states that had no colour at all: a
+  // domicile in neither list (solid) and a company the release could not place (dashed).
+  // Both draw the same token, so one set of pairs covers both.
+  ["country-other", "bg", "the neutral edge on a plain row"],
+  ["country-other", "surface", "the neutral edge on a hovered row"],
+  ["country-other", "tint-direct", "the neutral edge on a direct-position row"],
+  [
+    "country-other",
+    "tint-direct-hover",
+    "the neutral edge on a direct-position row under the pointer",
+  ],
 ];
 
 function pairs(
@@ -289,6 +300,13 @@ describe("automatic light/dark", () => {
         ["country-us", "country-em", 40, "blue against the emerging ochre"],
         ["country-dm", "country-em", 30, "the two ochres against each other"],
         ["country-us-ink", "country-intl-ink", 40, "the two bracket inks"],
+        // The neutral has to read as "no tier" rather than as a washed-out tier, so it gets
+        // an uncorrected floor of 28 — the tightest the three tier pairs allow it without
+        // pretending a grey is a hue. Measured 30.2 / 29.5 / 31.1 in the light scheme and
+        // 32.5 / 34.0 / 31.4 in the dark; the simulated floor stays at 25 for every pair.
+        ["country-other", "country-us", 28, "the neutral against the blue tier"],
+        ["country-other", "country-dm", 28, "the neutral against the developed ochre"],
+        ["country-other", "country-em", 28, "the neutral against the emerging ochre"],
       ];
       const MIN_SIMULATED_SEPARATION = 25;
       const background = theme["bg"];

@@ -141,8 +141,9 @@ export function LedgerTable({
             ? " The country beside a company is the domicile its holders' filings" +
               " agree on by value. The row's left edge repeats it in colour — blue for" +
               " the United States, ochre for developed markets elsewhere, a deeper" +
-              " ochre for emerging ones — and stays blank where the filings do not" +
-              " agree, or where the country is neither developed nor emerging." +
+              " ochre for emerging ones. A grey edge marks a company with no market" +
+              " tier: solid where the domicile is known but is neither developed nor" +
+              " emerging, dashed where the filings do not agree on a country at all." +
               // Only when there is a bracket to colour: the column is absent without a
               // benchmark, and a sentence about an ink with nothing wearing it is noise.
               (benchmark
@@ -205,17 +206,21 @@ export function LedgerTable({
             const delta = benchmarkDelta(row.weight, benchmarkWeight);
             // The two axes, side by side and independent: `data-direct` makes the row's
             // background mean position kind, and `data-tier` makes a 6px edge on the
-            // first cell mean geography — American, developed ex-US, or emerging, under
-            // the convention `lib/country-tier.ts` records. A row can carry both; neither
-            // borrows the other's encoding. `data-country` keeps the raw code in the DOM
-            // so the edge can be traced back to the domicile that produced it, and a row
-            // with no country carries neither attribute rather than a default.
+            // first cell mean geography — American, developed ex-US, emerging, or a
+            // domicile in neither list — under the convention `lib/country-tier.ts`
+            // records. A row can carry both; neither borrows the other's encoding.
+            // `data-country` keeps the raw code in the DOM so the edge can be traced back
+            // to the domicile that produced it. A row the release could not place carries
+            // no `data-tier` and `data-country-missing` instead, which is what draws the
+            // dashed neutral edge: the operator's report was that such a row looked
+            // colourless rather than unplaced, so absence gets a mark of its own.
             return (
               <tr
                 key={row.company_id}
                 data-direct={row.held_directly ? "true" : undefined}
                 data-country={row.country ?? undefined}
                 data-tier={row.country ? tierOf(row.country) : undefined}
+                data-country-missing={row.country ? undefined : "true"}
               >
                 <th scope="row">
                   {onSelect ? (
