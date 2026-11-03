@@ -319,6 +319,14 @@ export function CompaniesLens({ model }: LensProps) {
   return (
     <div className="stack">
       <LensProblem model={model} />
+      {/*
+        First in the lens, above the lede and the filter, because it is the
+        portfolio's answer rather than a note about the table: a reader who opens
+        this tab is asking "what do I own", and a summary that sits below the filter
+        box — where it started — needs a scroll to find and reads as table chrome.
+      */}
+      <EffectiveHoldingsSummary effective={ledger.effective} />
+
       <LensLede>
         Every company you own a piece of, once, with its weight in your portfolio, the
         number of funds that hold it, and where in the mix it came from. The same company
@@ -358,8 +366,6 @@ export function CompaniesLens({ model }: LensProps) {
           Filters the table only. The export is the whole ledger.
         </p>
       </div>
-
-      <EffectiveHoldingsSummary effective={ledger.effective} />
 
       <LensSection
         title="Your companies"
