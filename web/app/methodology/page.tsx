@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
-import { LegalPage } from "@/components/LegalPage";
+import { ReadingLayout, type ReadingSection } from "@/components/prose/ReadingLayout";
+import { Term } from "@/components/prose/Term";
 import {
   CONTACT_EMAIL,
   EFFECTIVE_DATE,
@@ -12,114 +14,319 @@ import {
 export const metadata: Metadata = {
   title: "UnpackFund — methodology",
   description:
-    "How every number on UnpackFund is produced: sources, matching, coverage bands, freshness, and what the site does not do.",
+    "How every number on UnpackFund is produced: the filings it reads, how a holding becomes a company, the look-through arithmetic, coverage and the 70/60 bands, the three dates, concentration, overlap, market tiers, the benchmark, and what is not known.",
 };
+
+/**
+ * The headings, in order, for the table of contents.
+ *
+ * Written by hand next to the headings themselves rather than scraped from the
+ * rendered page: this file is a server component, and the layout is not going to
+ * run the page twice to find its own anchors. `ReadingLayout.test.tsx` renders
+ * every page and fails if a link here has no heading with that id, so the two
+ * cannot drift apart silently.
+ */
+const SECTIONS: readonly ReadingSection[] = [
+  { id: "sources", title: "What the site reads" },
+  { id: "holdings", title: "What a holding is" },
+  { id: "identity", title: "How a holding becomes a company" },
+  { id: "look-through", title: "How the look-through is computed" },
+  { id: "coverage", title: "Coverage, and the 70/60 bands" },
+  { id: "dates", title: "The three dates" },
+  { id: "concentration", title: "Concentration" },
+  { id: "overlap", title: "Overlap" },
+  { id: "markets", title: "Market tiers" },
+  { id: "country-decision", title: "How a country is decided", depth: 3 },
+  { id: "limits", title: "What is not known" },
+  { id: "benchmark", title: "The benchmark: VT" },
+  { id: "corrections", title: "Corrections" },
+  { id: "attribution", title: "Source attribution" },
+];
 
 export default function MethodologyPage() {
   return (
-    <LegalPage
+    <ReadingLayout
+      eyebrow="How it works"
       title="Methodology"
-      updated={EFFECTIVE_DATE}
-      version={`${METHODOLOGY_VERSION} · copy ${LEGAL_COPY_VERSION}`}
-      intro={
-        <p>
-          This page explains how every number on UnpackFund is produced, so a reader can
-          decide how much to trust it. When the method changes, the version above changes,
-          and the previous version stays readable in the site&rsquo;s public history.
-        </p>
-      }
+      lede="How every number on this site is produced, so a reader can decide how much to trust it. When the method changes, the version above changes, and the previous version stays readable in the site's public history."
+      meta={`Effective ${EFFECTIVE_DATE} · version ${METHODOLOGY_VERSION} · copy ${LEGAL_COPY_VERSION}`}
+      sections={SECTIONS}
     >
-      <h2>Where the data comes from</h2>
       <p>
-        Only from filings the US Securities and Exchange Commission publishes:{" "}
-        <strong>Form N-PORT</strong> for fund holdings, <strong>Form N-CEN</strong> for
-        fund identity and series, <strong>Form N-CSR</strong> and{" "}
-        <strong>497K/485BPOS</strong> for fund documents, and SEC <strong>XBRL</strong>{" "}
-        data for entity facts. Fund and company names are used descriptively. No issuer
-        website, no vendor feed, and no scraped source contributes a number to this site.
+        This page describes what the code does, not what it intends to do. Every number on
+        the site is computed by the pipeline described here, and where a claim on this
+        page and a number on another page disagree, the number is right and this page is a
+        bug. The vocabulary is defined in the <Link href="/glossary/">glossary</Link>.
       </p>
 
-      <h2>What a &ldquo;holding&rdquo; is</h2>
+      <h2 id="sources">What the site reads</h2>
       <p>
-        A fund&rsquo;s N-PORT filing lists its positions with a value and a percentage of
-        net assets. A fund that holds another fund is a holding like any other; the site
-        does not guess what is inside it unless that fund files holdings of its own, in
-        which case it has its own page.
+        Every number here comes from a filing the US Securities and Exchange Commission
+        publishes. <Term name="n-port">Form N-PORT</Term> supplies the holdings: each fund
+        lists its positions at a quarter-end, each with a value and a share of net assets.
+        EDGAR&rsquo;s submission records supply the filings themselves — which series
+        filed which form, and when — and two EDGAR ticker files supply identity: the
+        exchange list for operating companies, and the fund list that maps a symbol to a
+        CIK and a series. The GLEIF golden copy, which is CC0, supplies legal-entity
+        identity, jurisdiction, and the ISIN-to-LEI mapping for issuers that file no
+        N-PORT of their own.
       </p>
-
-      <h2>How a holding becomes a company</h2>
       <p>
-        Each position is matched to a company using identifiers in the filing and a
-        deterministic, versioned matching process. A position that cannot be matched is
-        counted as <strong>unmatched</strong> and stays visible as such: it is never
-        dropped, back-filled from another source, or silently treated as zero.
-      </p>
-
-      <p>
-        Not every position is a company. Cash, money-market sweep funds, and derivatives
-        have no company identity by definition, so they are part of a fund&rsquo;s assets
-        but never a mapping failure. A non-US issuer files no N-PORT and often has no SEC
-        ticker, so a position is matched through a legal-entity identifier where the
-        filing carries one and otherwise stays unmatched. That is why a broad
-        international fund can have thousands of unresolved positions that hold a small
-        share of its money — and why the coverage figure beside a portfolio is a share of
-        weight, never a count of rows.
-      </p>
-
-      <h2>Developed and emerging markets</h2>
-      <p>
-        A row&rsquo;s left edge is coloured by the market its country belongs to: blue for
-        the United States, one shade of ochre for the developed markets outside it, and a
-        deeper ochre for the emerging ones. The country comes from the filings; the market
-        does not. It is a <strong>classification</strong>, and classifications are
-        conventions that publishers genuinely disagree about.
+        No issuer website, no vendor feed and no scraped page contributes a number to this
+        site. A CUSIP is licensed data: the build reads one to match a position to a
+        company and never publishes it, so the numbers here can be recomputed from the
+        filings while the licensed identifier cannot be lifted from a page. Fund and
+        company names are used descriptively, no SEC seal or logo is used, and neither the
+        SEC nor GLEIF has reviewed or endorsed this site.
       </p>
 
       <p>
-        This site follows the <strong>FTSE Russell equity country classification</strong>,
-        as of 2 November 2026, because the funds it looks through are FTSE-indexed: the
-        labels here mean what they mean on those funds&rsquo; own index. Where this
-        differs from another publisher the difference is real, not an error — South Korea
-        and Poland are developed here and emerging to MSCI, Taiwan is emerging here and
-        advanced to the IMF, Greece is developed here and will not be for MSCI until its
-        May 2027 review, and Peru is frontier here and emerging to MSCI.
+        Three sources that exist are deliberately not read: a fund&rsquo;s annual
+        shareholder report (N-CSR), its summary prospectus (497K or 485BPOS), and the XBRL
+        company facts published under data.sec.gov. The three numbers a reader might
+        expect from those — a return, an expense ratio, a performance ranking — are absent
+        for that reason, and the one that is here, the holdings, is recomputed from the
+        positions rather than quoted from a summary.
       </p>
 
+      <h2 id="holdings">What a holding is</h2>
       <p>
-        The table behind the colours is written for this site from FTSE&rsquo;s published
-        criteria and cross-checked against the IMF&rsquo;s advanced-economy list and
-        MSCI&rsquo;s classification. No FTSE document, table or data file is reproduced
-        here, and FTSE Russell has not reviewed or endorsed this site. A country that
-        neither publisher calls developed or emerging — Cayman, Bermuda, Argentina, Russia
-        and the frontier markets among them — keeps its country code and takes a neutral
-        grey edge, because calling it emerging would be an invention. The country is a
-        domicile and not a measure of where a company earns its money: a company domiciled
-        in the Cayman Islands can earn almost everything it makes in China.
+        A fund&rsquo;s N-PORT lists positions, each with a value and a percentage of net
+        assets, and the release stores every percentage as whole{" "}
+        <Term name="basis-point">basis points</Term> so no stored value carries a
+        conversion error.
+      </p>
+      <p>
+        Four kinds of row matter. A security row is a holding in an issuer. A{" "}
+        <Term name="cash-line">cash line</Term> is money in cash or a cash equivalent:
+        part of the fund, and with no company behind it by definition. A derivative row is
+        an exposure rather than an issuer. A <Term name="fund">fund</Term> row is a
+        position in another registered fund, and it may be followed through to what that
+        fund holds — the next section says when.
+      </p>
+      <p>
+        Nothing is inferred from a fund&rsquo;s name, its marketing page, or the index it
+        tracks. If a position says it is a holding in a company, it is treated as one; if
+        it is a fund, it is treated as a fund; if it is cash, it is cash.
       </p>
 
-      <h2>How a company&rsquo;s country is decided</h2>
+      <h2 id="identity">How a holding becomes a company</h2>
+      <p>
+        Each position is matched to a <Term name="company">company</Term> through the
+        identifiers in the filing, deterministically, by the same rules on every build. An
+        SEC operating company is keyed by its CIK. An issuer that files no N-PORT is keyed
+        by a legal-entity identifier from GLEIF where the filing carries one. A ticker
+        never decides identity on its own: a ticker or a name that resolves without
+        corroboration is refused, which is why the same list of positions can resolve more
+        completely on one release than on another.
+      </p>
+      <p>
+        A position that cannot be matched is <Term name="unmapped-weight">unmapped</Term>:
+        counted, split by cause, and printed as weight. It is never dropped, never
+        back-filled from another source, and never spread across the companies that did
+        resolve — that last rule is what stops a fund with 40% of its weight explained
+        from looking average.
+      </p>
+      <p>
+        Every holding that resolves to the same company is summed into one row, so two
+        <Term name="share-class">share classes</Term> of one issuer are one company, and a
+        stock you hold yourself lands on the same row as any fund&rsquo;s holding of it.
+      </p>
+
+      <h2 id="look-through">How the look-through is computed</h2>
+      <p>
+        The ledger answers one question: how much of each company does this portfolio own,
+        directly or through the funds in it? That question is the{" "}
+        <Term name="look-through">look-through</Term>, and for a company i the weight is
+      </p>
+      <p className="mono">total(i) = w_direct(i) + Σ_k W_k · w(i,k)</p>
+      <p>
+        where w_direct(i) is the weight of a{" "}
+        <Term name="direct-holding">direct holding</Term>, W_k is your portfolio weight in
+        fund k, and w(i,k) is company i&rsquo;s weight inside fund k. Each factor is a
+        fraction of its own whole — W_k of the portfolio, w(i,k) of the fund&rsquo;s net
+        assets — and the products are added into the company&rsquo;s row. Nothing is
+        renormalised afterwards.
+      </p>
+      <p>
+        Two consequences are intended. A company held through three funds counts once, at
+        the sum of three products. A company a fund could not identify is not spread
+        across the ones it could, so the unresolved share lowers coverage rather than
+        inflating a resolved weight.
+      </p>
+      <p>
+        A fund that holds other registered funds is followed through them, up to three
+        hops, but only when that is worth publishing: the flattened vector replaces the
+        as-filed one when at least 5% of the wrapper&rsquo;s net assets arrives through
+        fund edges and the result fits in 6,000 rows. Below either bound — a target-date
+        fund with twelve sleeves, say — the page names the funds the wrapper holds and
+        claims no view inside them. A fund is never truncated to fit, because a shortened
+        vector would understate the weights it did publish without saying so.
+      </p>
+
+      <h2 id="coverage">Coverage, and the 70/60 bands</h2>
+      <p>
+        <Term name="coverage">Coverage</Term> is the share of a fund&rsquo;s weight that
+        could be attributed to a company: 100 × (weight with a company) ÷ (gross weight of
+        every position the fund files). Gross, not net: both sides of a short are real
+        exposure, so a fund that holds 100% long and 50% short is measured against 150%,
+        and the ratio cannot exceed 100%. By weight rather than by counting positions,
+        because a thousand tiny unresolved positions are not the same thing as a tenth of
+        the fund missing. A fund&rsquo;s own cash line counts against its coverage.
+      </p>
+      <p>Three bands decide what a fund page shows:</p>
+      <div className="table-wrap">
+        <table className="table">
+          <caption>What a fund&rsquo;s coverage decides</caption>
+          <thead>
+            <tr>
+              <th scope="col">Coverage</th>
+              <th scope="col">What the page shows</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>70% or more</td>
+              <td>Full metrics, with the coverage figure stated beside them.</td>
+            </tr>
+            <tr>
+              <td>60% to 70%</td>
+              <td>
+                Metrics labelled partial, with the coverage figure stated — an
+                approximation of the whole fund, not a measurement of it.
+              </td>
+            </tr>
+            <tr>
+              <td>Below 60%</td>
+              <td>
+                The holdings that were matched, and no concentration metrics — the page
+                says the fund is not covered.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        The thresholds are a product decision, not a statistical claim. Below 60%, a
+        concentration figure would describe the part of the portfolio that could be read
+        rather than the portfolio itself, and a reader would have no way to tell the
+        difference. The headline number also blends asset classes with different ceilings
+        — a debt row resolves only when its issuer is a corporate issuer, and cash never
+        does — so the release measures coverage inside each class as well, which is the
+        only version two funds can be compared on.
+      </p>
+
+      <h2 id="dates">The three dates</h2>
+      <p>
+        Every number here carries three dates, and the site keeps them apart. The{" "}
+        <Term name="reporting-period">reporting period</Term> is the quarter-end the
+        holdings describe: a date in the filing, not today. The{" "}
+        <Term name="filed-date">filed date</Term> is when EDGAR received the filing. The{" "}
+        <Term name="age">age</Term> is the distance between them, in days.
+      </p>
+      <p>
+        Holdings are quarterly, so a portfolio on this site typically describes a date{" "}
+        <strong>60 to 150 days</strong> in the past. Nothing here is called
+        &ldquo;updated&rdquo;: the site shows the age of what it displays rather than
+        hiding it, and a portfolio whose funds filed on different days shows the oldest
+        period and the longest gap.
+      </p>
+
+      <h2 id="concentration">Concentration</h2>
+      <p>Three figures, computed once from the summed company rows:</p>
+      <ul>
+        <li>
+          <Term name="hhi">HHI</Term> — the sum of the squared company weights in the
+          ledger, printed to four decimal places. 0 is money spread evenly across many
+          companies; 1 is money that is all in one.
+        </li>
+        <li>
+          <Term name="effective-number">Effective number of companies</Term> — 1 ÷ HHI,
+          printed to one decimal: how many equal-sized companies would spread the money
+          the same way.
+        </li>
+        <li>
+          <Term name="top-10">Top 10</Term> — the ten largest companies added together, as
+          a share of the whole portfolio.
+        </li>
+      </ul>
+      <p>
+        They are never computed per fund and then averaged: an average of fund indexes is
+        not the index of the portfolio. When a fund in the portfolio covers less than 60%
+        of its weight, the figures are withheld rather than computed over the part that
+        resolved.
+      </p>
+
+      <h2 id="overlap">Overlap</h2>
+      <p>
+        <Term name="overlap">Overlap</Term> compares two portfolios company by company:
+        for each company, the smaller of its two weights, added up — a fraction of
+        portfolio value held in the same companies on both sides. It is symmetric, and it
+        is not a count of shared tickers: two mixes can share no fund and still hold most
+        of the same companies.
+      </p>
+      <p>
+        Both sides are aggregated with the same rules as the ledger, so an unmapped
+        holding is disclosed on each side rather than redistributed. By construction,
+        overlap plus the weight only the first portfolio holds equals its resolved weight;
+        the compare page states that check, and a portfolio that does not account for
+        itself gets no overlap figure.
+      </p>
+
+      <h2 id="markets">Market tiers</h2>
+      <p>
+        The left edge of a ledger row answers a narrower question than it looks like it
+        does: is this company American, developed ex-US, emerging, or in neither list? The
+        country comes from the filings; the market does not. The site follows the{" "}
+        <Term name="market-tier">FTSE Russell equity country classification</Term> as of 2
+        November 2026, because the funds it looks through are FTSE-indexed.
+      </p>
+      <p>
+        A list this short is a set of decisions. South Korea, Poland and Greece are on the
+        developed list here, Taiwan is on the emerging list, and Peru is on neither. Where
+        another publisher sorts a country differently the difference is real, not an
+        error: a row states what this one classification says about a domicile, not what
+        the company is.
+      </p>
+      <p>
+        The two lists are this site&rsquo;s own transcription of that classification, with
+        the version date kept beside them. No FTSE document, table or data file is
+        reproduced here, and FTSE Russell has not reviewed or endorsed this site. A
+        country in neither list — Cayman, Bermuda, Argentina, Russia and the frontier
+        markets among them — keeps its country code and takes a neutral grey edge, because
+        calling it emerging would be an invention. The country is a domicile and not a
+        measure of where a company earns its money: a company domiciled in the Cayman
+        Islands can earn almost everything it makes in China.
+      </p>
+
+      <h3 id="country-decision">How a country is decided</h3>
       <p>
         In two steps, and the second one only runs when the first cannot answer. First the
         filings: every fund that holds the company reports a country of residence for it,
         and the country is published when one answer holds at least 80% of the traced
-        value across at least two independent filings. That is a consensus over
+        value across at least two independent filings. That is a consensus over{" "}
         <em>holders</em>, so it fails for a company only one fund reports, and for a
         company whose holders genuinely disagree.
       </p>
-
       <p>
         Second, for a company the filings cannot place, its own registry record: the
         jurisdiction on its legal-entity identifier from GLEIF, or, for a company that
         files with the SEC, the state or country of incorporation on its EDGAR record.
         Neither answer ever overrides a country the filings agreed on, and a company
-        neither record places is left unplaced rather than guessed. On the current release
-        that second step places about 2,470 of the 2,702 companies the filings alone could
-        not, and the two sources are checked against the filings on every build: GLEIF
-        agrees with the published country on 99.3% of the companies both cover, EDGAR on
-        98.0%, and a build that fell below those rates would be refused rather than
-        published.
+        neither record places is left unplaced rather than guessed. On the 2 November 2026
+        release that second step placed 2,472 of the 2,702 companies the filings alone
+        could not decide, which left 230 of 12,895 companies unplaced.
       </p>
-
+      <p>
+        Both sources are also asked about companies the vote did decide, and that
+        agreement is published beside the counts. On the same release, GLEIF agreed with
+        the published country on 5,958 of the 6,003 companies both answers covered
+        (99.25%) and EDGAR on 335 of the 342 (97.95%). A build is refused if GLEIF falls
+        below 97% or EDGAR below 95%: the floors sit two to three points under the
+        measured rates, which leaves room for the exceptions already understood — a Cayman
+        or Bermuda holdco whose filing gives the listing venue, a dual-domiciled name —
+        and none for a wrong code table.
+      </p>
       <p>
         A row with no market tier is therefore marked, not blank: a{" "}
         <strong>solid grey edge</strong> where the domicile is known but is neither
@@ -129,75 +336,62 @@ export default function MethodologyPage() {
         loses nothing.
       </p>
 
-      <h2>Coverage, and why some pages withhold numbers</h2>
+      <h2 id="limits">What is not known</h2>
+      <p>Three limits are printed rather than hidden.</p>
+      <ul>
+        <li>
+          Holdings are quarterly and old: a portfolio describes a date 60 to 150 days in
+          the past, and nothing here is live.
+        </li>
+        <li>
+          Coverage is incomplete: the share of weight that could not be attributed to a
+          company is stated beside the coverage figure, split into positions that could
+          not be identified and cash or derivatives that have no company.
+        </li>
+        <li>
+          A fund that covers less than 60% of its weight has its concentration withheld,
+          and a wrapper whose sleeves could not be flattened is shown as the funds it
+          holds rather than as the companies underneath.
+        </li>
+      </ul>
       <p>
-        Coverage is the share of a fund&rsquo;s assets, by weight, that could be matched
-        to a company. It is measured by weight rather than by counting positions, because
-        a thousand tiny unresolved positions are not the same thing as a tenth of the fund
-        missing. It decides what a fund page shows:
-      </p>
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Coverage</th>
-            <th scope="col">What the page shows</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>70% or more</td>
-            <td>Full metrics, with the coverage figure stated next to them.</td>
-          </tr>
-          <tr>
-            <td>60% to 70%</td>
-            <td>Metrics labelled partial, with the coverage figure stated.</td>
-          </tr>
-          <tr>
-            <td>Below 60%</td>
-            <td>
-              The holdings that were matched, and no concentration metrics — the page says
-              the fund is not covered.
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <p>
-        The thresholds are a product decision, not a statistical claim. Below 60%, a
-        concentration number would describe the part of the portfolio I could read rather
-        than the portfolio itself, and a reader would have no way to tell the difference.
+        Nothing on this site predicts anything. It does not show returns, prices, expense
+        ratios or performance rankings, it does not rank funds, and it does not tell
+        anyone what to buy. It shows what funds hold, how concentrated that is, and how
+        much of it could be read. It is not investment advice.
       </p>
 
-      <h2>Freshness</h2>
+      <h2 id="benchmark">The benchmark: VT</h2>
       <p>
-        Every number carries its own dates: the fund&rsquo;s reporting period, the date
-        the filing was filed, and the number of days between them. Holdings are quarterly,
-        so a portfolio on this site typically describes a date{" "}
-        <strong>60 to 150 days</strong> in the past. The site shows the age rather than
-        hiding it.
+        Every portfolio is compared against one fixed fund, VT — the Vanguard Total World
+        Stock ETF — and where the comparison is drawn, the column is the{" "}
+        <Term name="benchmark-weight">benchmark weight</Term>: each company&rsquo;s share
+        of VT&rsquo;s own portfolio, read from its N-PORT filing. That weight has nothing
+        to do with how much of the reader&rsquo;s portfolio is in VT, which is usually
+        none of it.
+      </p>
+      <p>
+        VT is not configurable. A benchmark a reader could pick is a comparison that can
+        be made to flatter a portfolio, and the point of a fixed one is that it cannot be
+        chosen after the answer is known. When a release publishes no benchmark, the
+        column is absent rather than filled with zeros, because a zero would claim VT
+        holds none of these companies.
       </p>
 
-      <h2>What the site does not do</h2>
-      <p>
-        It does not show returns, prices, expense ratios, or performance rankings. It does
-        not rank funds. It does not predict anything, and it does not tell anyone what to
-        buy. It shows what funds hold, how concentrated that is, and how much of it could
-        be read.
-      </p>
-
-      <h2>Corrections</h2>
+      <h2 id="corrections">Corrections</h2>
       <p>
         If a number here disagrees with a fund&rsquo;s own filing, the filing is right.
         Write to {CONTACT_EMAIL} with the fund and the date, and I will correct the
         pipeline and note the correction.
       </p>
 
-      <h2>Source attribution</h2>
+      <h2 id="attribution">Source attribution</h2>
       <p>
-        Source: SEC EDGAR — Form N-PORT, Form N-CEN, Form N-CSR, 497K/485BPOS, and XBRL
-        company facts — and the GLEIF golden copy (CC0) for legal-entity identity and
+        Source: SEC EDGAR — Form N-PORT filings, submission records, and the company and
+        fund ticker files — and the GLEIF golden copy (CC0) for legal-entity identity and
         jurisdiction. No SEC seal or logo is used, and neither the SEC nor GLEIF has
         reviewed, approved, or endorsed this site. {LEGAL_ENTITY} operates UnpackFund.
       </p>
-    </LegalPage>
+    </ReadingLayout>
   );
 }

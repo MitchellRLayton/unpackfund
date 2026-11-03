@@ -1,0 +1,212 @@
+/*
+ * `/compare`'s own grid, and nothing else.
+ *
+ * Anything that is a design decision shared with another surface — the panel, the
+ * meter, the bar, the table, the field — stays in `globals.css`, so this page can
+ * change shape without forking a primitive. What is here is the two-column layout
+ * and the row shape of a holdings list, which no other page has.
+ */
+
+.head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.headActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* Two columns side by side from a laptop up; stacked on a phone, where the two
+ * mixes are read one after the other rather than compared by eye. */
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+@media (min-width: 54rem) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-5);
+  }
+}
+
+.column {
+  min-width: 0;
+}
+
+.holdings {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.holding {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--rule);
+  flex-wrap: wrap;
+}
+
+.holding:last-child {
+  border-bottom: 0;
+}
+
+.ticker {
+  font-size: var(--text-14);
+  min-width: 4rem;
+}
+
+.fundName {
+  flex: 1 1 6rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-12);
+  color: var(--graphite);
+}
+
+/* The amount field is deliberately shorter than `.field__input`: it sits inside a
+ * row that already has a ticker, a name and two buttons, and a 2.5rem-tall input
+ * there would set the row's height from the form rather than from its numbers. */
+.amount {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  flex: none;
+}
+
+.amountInput {
+  width: 4.5rem;
+  min-height: 1.9rem;
+  padding: 0 var(--space-1);
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  font-size: var(--text-14);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.amountSuffix {
+  font-size: var(--text-12);
+  color: var(--graphite);
+}
+
+.addRow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.addField {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.swap {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* One scale for both bars: the label column is a fixed width and the bar column
+ * takes the rest, so Mix A's 60% and Mix B's 60% are the same length. */
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: 4rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.barLabel {
+  font-size: var(--text-12);
+  color: var(--graphite);
+}
+
+.barScale {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-12);
+  color: var(--graphite);
+  font-variant-numeric: tabular-nums;
+}
+
+.scaleRow {
+  display: grid;
+  grid-template-columns: 4rem minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+/* A block, not a flex column: the table should take the panel's full width while
+ * the "show all" button stays the width of its own label. */
+.tabPanel {
+  min-width: 0;
+}
+
+.tabPanel > * + * {
+  margin-top: var(--space-3);
+}
+
+/* "A VTI, VXUS" inside a table cell: the side is a word, the funds are tickers, and
+ * the pair wraps rather than pushing the table wider. */
+.funds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.5rem;
+  align-items: baseline;
+  font-size: var(--text-12);
+}
+
+.fundSide {
+  color: var(--graphite);
+}
+
+.fundList {
+  font-family: var(--font-mono);
+}
+
+.method {
+  border-top: 1px solid var(--rule);
+  padding-top: var(--space-4);
+}
+
+.method summary {
+  cursor: pointer;
+  font-size: var(--text-14);
+  color: var(--graphite);
+}
+
+.method summary:hover {
+  color: var(--ink);
+}
+
+.method > * + * {
+  margin-top: var(--space-3);
+}
+
+.copyStatus {
+  font-size: var(--text-12);
+  color: var(--graphite);
+}

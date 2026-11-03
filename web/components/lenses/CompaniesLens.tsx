@@ -1,0 +1,580 @@
+"use client";
+
+/**
+ * Companies: every company you own a piece of, once, with the funds that got you there.
+ *
+ * This is the table the rest of the page is a summary of. One row per company in the
+ * finished ledger — the ledger has already added the same company up across every fund
+ * that holds it, so a company in three funds appears once at its combined weight, and the
+ * funds behind it are on the row rather than in three places. That is the whole product in
+ * one table: the fund you bought is a route, and the companies are what you own.
+ *
+ * Five rules are visible in the markup:
+ *
+ * 1. **The market edge is never colour alone.** Each row carries `data-tier`, which the
+ *    design system turns into a 4px inset, *and* the two-letter country code and the tier
+ *    in words. A reader on a monochrome print, or with any colour-vision deficiency, gets
+ *    the same answer. A company whose country the release does not answer keeps its row
+ *    and its weight and loses only the colour: its edge is dashed, its code reads "no
+ *    code", and the tier cell says so.
+ * 2. **Every fund is named, never counted down to "+N".** The row lists each contributing
+ *    fund with its share and wraps to fit them, so a twelve-fund position grows the row
+ *    instead of hiding eleven funds behind a number (`static-xray-frontend` §6: a meaning
+ *    behind hover is a meaning half the readers never get). The bar above the list is the
+ *    same numbers on one scale, not a second source of truth.
+ * 3. **The bar is drawn on one scale for the table** — set by the largest company — and
+ *    that scale does not change when the table is filtered, so a filtered view is not
+ *    silently re-scaled into looking like the whole portfolio.
+ * 4. **Rank is a place in this table, not a rating.** It numbers the rows as they are
+ *    listed and renumbers when the sort changes. Nothing here ranks a company against
+ *    anything but the visitor's own weights.
+ * 5. **Sorting, filtering and paging are the view's, not the ledger's.** `sortBy` copies,
+ *    the filter searches name, ticker, country code and tier word, and the export is the
+ *    whole ledger — the caption says so, because a spreadsheet that looked like the page
+ *    would be a different answer. The table pages at 50 rows rather than virtualizing
+ *    (`static-xray-frontend` §8): a row whose fund list wraps has no fixed height, so a
+ *    window would have to clip the very list rule 2 exists to show, and a real page keeps
+ *    the table semantics a screen reader relies on instead of an `aria-rowindex` we
+ *    maintain by hand.
+ *
+ * The VT columns are the comparison, not a second holding: `benchmarkDelta` and
+ * `formatSignedShare` are ADR-0015's one place where two displayed weights are subtracted,
+ * the sign is always printed, and a release with no benchmark drops both columns rather
+ * than printing a column of zeros.
+ */
+
+import { useMemo, useState } from "react";
+
+import { PAGE_SIZE, pageOf } from "@/components/directory/paging";
+import { benchmarkDelta } from "@/lib/benchmark";
+import { TIER_AS_OF, TIER_CONVENTION, tierOf } from "@/lib/country-tier";
+import { saveCsv } from "@/lib/export";
+import { deltaInkClass, formatCount, formatShare, formatSignedShare } from "@/lib/format";
+import type { LedgerRow, LedgerSource } from "@/lib/types";
+import type { LensProps } from "@/components/workspace/types";
+
+import styles from "./CompaniesLens.module.css";
+import {
+  CellNote,
+  LensExport,
+  LensLede,
+  LensProblem,
+  LensSection,
+  LensState,
+} from "./lens-chrome";
+import { companiesCsv, lensCsvName } from "./lens-csv";
+import { lensGateState } from "./lens-gate";
+import { nextSort, sortBy, TIER_WORD, type SortState } from "./lens-math";
+
+type CompanySortKey = "name" | "country" | "weight" | "funds";
+
+interface Column {
+  /** `null` for a column that is not a sort: it prints and does not order. */
+  key: CompanySortKey | null;
+  label: string;
+  numeric: boolean;
+  /** The direction the first click on this column sorts in. */
+  first: "ascending" | "descending";
+  /** Only shown when the release publishes a benchmark (`static-xray-frontend` §4a). */
+  benchmark?: boolean;
+}
+
+/**
+ * The columns, in order: your weight, then how it compares with the benchmark, then the
+ * two columns that say where the weight came from. The VT pair sits between them because
+ * the difference only reads as a difference next to the number it is against.
+ */
+const COLUMNS: Column[] = [
+  { key: null, label: "Rank", numeric: true, first: "descending" },
+  { key: "name", label: "Company", numeric: false, first: "ascending" },
+  {
+    key: "country",
+    label: "Country, market",
+    numeric: false,
+    first: "ascending",
+  },
+  { key: "weight", label: "Your weight", numeric: true, first: "descending" },
+  {
+    key: null,
+    label: "VT",
+    numeric: true,
+    first: "descending",
+    benchmark: true,
+  },
+  {
+    key: null,
+    label: "Change vs VT",
+    numeric: true,
+    first: "descending",
+    benchmark: true,
+  },
+  { key: "funds", label: "Held by", numeric: true, first: "descending" },
+  { key: null, label: "From your funds", numeric: false, first: "descending" },
+];
+
+const COLUMN_LABEL: Record<CompanySortKey, string> = {
+  name: "Company",
+  country: "Country",
+  weight: "Your weight",
+  funds: "Held by",
+};
+
+/** The caption says which sort is on in the column's own words, not "descending". */
+function directionWords(
+  key: CompanySortKey,
+  direction: "ascending" | "descending",
+): string {
+  const ascending = direction === "ascending";
+  if (key === "name" || key === "country") return ascending ? "A first" : "Z first";
+  return ascending ? "smallest first" : "largest first";
+}
+
+const COMPARE: Record<CompanySortKey, (a: LedgerRow, b: LedgerRow) => number> = {
+  name: (a, b) =>
+    a.name.localeCompare(b.name) || a.company_id.localeCompare(b.company_id),
+  country: (a, b) =>
+    (a.country ?? "").localeCompare(b.country ?? "") || a.name.localeCompare(b.name),
+  weight: (a, b) => a.weight - b.weight || a.name.localeCompare(b.name),
+  funds: (a, b) => a.holder_count - b.holder_count || a.weight - b.weight,
+};
+
+/** Fund tickers on a row, largest contribution first — the ledger already orders them. */
+function sourcesOf(row: LedgerRow): LedgerSource[] {
+  return [...row.sources].sort((a, b) => b.weight - a.weight);
+}
+
+/**
+ * What one contributing source is called: a fund's ticker, or the visitor's own position
+ * marked as theirs. A direct holding is not a fund (ADR-0014), so it never wears a ticker
+ * that could be mistaken for one.
+ */
+function sourceLabel(source: LedgerSource): string {
+  return source.kind === "fund" ? source.ref : `${source.ref} (direct)`;
+}
+
+/**
+ * Where each segment starts and ends, as fractions of the row's whole width.
+ *
+ * A module-level function rather than arithmetic in the component body: the running total
+ * is a `let`, and `react-hooks/immutability` (React Compiler) treats a variable reassigned
+ * in a component as a value that outlives render. Here there is no `let` at all — each
+ * offset is the sum of the segments before it — so the rule has nothing to object to and
+ * the arithmetic reads as what it is. The funds list is a handful of entries at most, so
+ * the repeated sum costs nothing.
+ */
+function barSegments(
+  sources: readonly LedgerSource[],
+): Array<{ left: number; width: number }> {
+  const weights = sources.map((source) => Math.max(0, source.weight));
+  const whole = weights.reduce((sum, weight) => sum + weight, 0);
+  if (whole <= 0) return weights.map(() => ({ left: 0, width: 0 }));
+  return weights.map((weight, index) => {
+    const before = weights.slice(0, index).reduce((sum, other) => sum + other, 0);
+    return { left: before / whole, width: weight / whole };
+  });
+}
+
+/**
+ * The bar: the position's weight, divided into the funds that hold it.
+ *
+ * The filled part's length is the weight on the table's shared scale; inside it, each
+ * segment's width is that fund's share of the position, so the segments always add up to
+ * the fill. A 1px `--paper` border is the only thing separating one fund from the next:
+ * colour is reserved for the market tier, the coverage band and the benchmark difference,
+ * and two greys here would be a distinction with no legend.
+ */
+function FundBar({ row, maxWeight }: { row: LedgerRow; maxWeight: number }) {
+  const fill = maxWeight > 0 ? Math.max(0, row.weight) / maxWeight : 0;
+  const sources = sourcesOf(row);
+  const segments = barSegments(sources);
+
+  return (
+    <span className={`rowbar ${styles.bar}`}>
+      {sources.map((source, index) => {
+        const segment = segments[index];
+        if (!segment) return null;
+        return (
+          <span
+            key={`${source.kind}:${source.ref}`}
+            className="rowbar__fill"
+            style={{
+              left: `${segment.left * fill * 100}%`,
+              width: `${segment.width * fill * 100}%`,
+              borderRight:
+                index < sources.length - 1 ? "1px solid var(--paper)" : undefined,
+            }}
+            title={`${sourceLabel(source)}: ${formatShare(source.weight)} of your whole portfolio`}
+          />
+        );
+      })}
+    </span>
+  );
+}
+
+/**
+ * Every fund that paid for this position, named with its share of the visitor's mix.
+ *
+ * A list rather than a sentence, because a reader counting funds and a screen reader
+ * hearing "list, 3 items" both get the count from the structure. No truncation: the row
+ * wraps instead, and the page is short enough to take the height (this is why the table is
+ * paginated rather than windowed).
+ */
+function SourceList({ row }: { row: LedgerRow }) {
+  const sources = sourcesOf(row);
+  if (sources.length === 0) return <CellNote>no source</CellNote>;
+
+  return (
+    <ul className={styles.sources} aria-label={`Funds holding ${row.name}`}>
+      {sources.map((source) => (
+        <li className={styles.source} key={`${source.kind}:${source.ref}`}>
+          <span className={styles.sourceName}>{sourceLabel(source)}</span>{" "}
+          <span className={styles.sourceWeight}>{formatShare(source.weight)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function CompaniesLens({ model }: LensProps) {
+  const gate = lensGateState(model);
+  const ledger = model.ledger;
+  const releaseAsOf = model.releaseAsOf ?? "unknown";
+  const [sort, setSort] = useState<SortState<CompanySortKey>>({
+    key: "weight",
+    direction: "descending",
+  });
+  const [query, setQuery] = useState("");
+  // Pages are 1-based and clamped on the way out, so a filter that shortens the list while
+  // the reader is on page 40 shows the last page instead of an empty table.
+  const [page, setPage] = useState(1);
+
+  // The largest company in the whole ledger, not in the filtered view: one scale for the
+  // table, so filtering cannot rescale the bars into a different-looking portfolio.
+  const maxWeight = useMemo(() => {
+    if (!ledger) return 0;
+    return ledger.rows.reduce((max, row) => Math.max(max, row.weight), 0);
+  }, [ledger]);
+
+  const visible = useMemo(() => {
+    if (!ledger) return [];
+    const needle = query.trim().toLowerCase();
+    const matching =
+      needle.length === 0
+        ? ledger.rows
+        : ledger.rows.filter((row) => {
+            const code = (row.country ?? "").toLowerCase();
+            const tier = row.country ? TIER_WORD[tierOf(row.country)] : "no country";
+            return (
+              row.name.toLowerCase().includes(needle) ||
+              (row.ticker ?? "").toLowerCase().includes(needle) ||
+              code === needle ||
+              tier.toLowerCase().includes(needle)
+            );
+          });
+    return sortBy(matching, sort, COMPARE);
+  }, [ledger, query, sort]);
+
+  if (gate.kind === "blocked") {
+    return <LensState title={gate.title} body={gate.body} />;
+  }
+
+  if (!ledger) {
+    return (
+      <LensState
+        title="Working out the look-through"
+        body="The ledger is adding the funds' filings up. This lens reads only the finished ledger, so it waits for it."
+      />
+    );
+  }
+
+  if (ledger.rows.length === 0) {
+    return (
+      <LensState
+        title="No companies in this portfolio"
+        body="No filing in this release placed any of the weight you entered. Check the tickers in the holdings pane — a fund the release cannot answer for is a fund whose holdings cannot be seen."
+      />
+    );
+  }
+
+  const hasBenchmark = ledger.benchmark !== null;
+  const columns = COLUMNS.filter((column) => !column.benchmark || hasBenchmark);
+  const current = pageOf(visible, page, PAGE_SIZE);
+  const totalWeight = ledger.rows.reduce((sum, row) => sum + row.weight, 0);
+  const suppressed = ledger.funds.filter((fund) => fund.coverage_pct < 60);
+  const sortLabel = COLUMN_LABEL[sort.key];
+
+  /** Sorting and filtering replace the list, so the reader goes back to its first page. */
+  const resetPage = () => setPage(1);
+
+  const exportCompanies = () => {
+    saveCsv(
+      companiesCsv(ledger, releaseAsOf),
+      // The same file name shape as the other four lenses, so a folder of exports
+      // sorts by what it holds rather than by which component wrote it.
+      lensCsvName("companies", new Date(), releaseAsOf),
+    );
+  };
+
+  return (
+    <div className="stack">
+      <LensProblem model={model} />
+      <LensLede>
+        Every company you own a piece of, once, with its weight in your portfolio, the
+        number of funds that hold it, and where in the mix it came from. The same company
+        held through three funds is one row.
+      </LensLede>
+
+      {suppressed.length > 0 ? (
+        <p className="notice notice--quiet" role="status">
+          {formatCount(suppressed.length)}{" "}
+          {suppressed.length === 1 ? "fund is" : "funds are"} covered below 60% (
+          {suppressed.map((fund) => fund.ticker).join(", ")}), so no concentration figure
+          is shown for {suppressed.length === 1 ? "it" : "them"} anywhere. The weight{" "}
+          {suppressed.length === 1 ? "it contributes" : "they contribute"} is a floor: it
+          can only rise as coverage improves.
+        </p>
+      ) : null}
+
+      <div className="field">
+        <label className="field__label" htmlFor="companies-filter">
+          Filter companies
+        </label>
+        <input
+          id="companies-filter"
+          className="field__input"
+          type="search"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            resetPage();
+          }}
+          placeholder="Company, ticker, country code, or market"
+          aria-describedby="companies-filter-note"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <p className="field__hint" id="companies-filter-note">
+          Filters the table only. The export is the whole ledger.
+        </p>
+      </div>
+
+      <LensSection
+        title="Your companies"
+        action={
+          <LensExport label="every company in the ledger" onExport={exportCompanies} />
+        }
+      >
+        <p className="small muted">
+          {formatCount(visible.length)} of {formatCount(ledger.rows.length)} companies.
+          Counted by company, not by fund: the weights in this table add up to the part of
+          your portfolio a filing could place, {formatShare(totalWeight)} of the whole.
+        </p>
+        <div className="table-wrap">
+          <table className={`tier-edge table ${styles.compact}`}>
+            <caption>
+              One row per company: {formatCount(ledger.rows.length)}{" "}
+              {ledger.rows.length === 1 ? "company" : "companies"} in all, largest weight
+              first unless another column is sorted. Sorted by {sortLabel},{" "}
+              {directionWords(sort.key, sort.direction)}. This page shows rows{" "}
+              {formatCount(current.start)}–{formatCount(current.end)} of{" "}
+              {formatCount(current.total)}, page {formatCount(current.page)} of{" "}
+              {formatCount(current.pages)}: paging changes which rows are on screen, never
+              the count or the order. Every heading you can sort by is a button — choose
+              it to sort by that column, choose it again to reverse. Rank numbers the rows
+              as they are listed and renumbers with the sort; it is a place in this table,
+              not a judgement about a company. Your weight is a share of your whole
+              portfolio, and the same company is counted once however many funds hold it.
+              Held by is how many of your funds report it; a company you also hold
+              directly says so, since a direct holding is not a fund and is not in that
+              count. From your funds names every fund that holds the position, largest
+              part of your mix first, with each one&rsquo;s share of your portfolio — no
+              fund is hidden behind a count — and your own direct position where you have
+              one; the drawn bar above the list is the same numbers on one scale for the
+              table, set by the largest company in the ledger and unchanged by the filter,
+              with one division per fund.
+              {hasBenchmark ? (
+                <>
+                  {" "}
+                  VT is the Vanguard Total World Stock ETF, the one benchmark this table
+                  compares against, and the VT column is the company&rsquo;s weight inside
+                  VT&rsquo;s own portfolio: not a share of your mix, and not how much of
+                  VT you hold. The bracket is your weight minus VT&rsquo;s, in percentage
+                  points — (-1.20%) means you hold 1.20 points less of the company than VT
+                  does, and (+1.20%) means more. The bracket is green above zero and red
+                  below it, and has no colour at exactly zero; the sign is always printed,
+                  so the colour is emphasis and never the only reading. A company VT does
+                  not hold reads 0.00% there, which is a fact about VT&rsquo;s filing
+                  rather than a missing number.
+                </>
+              ) : null}{" "}
+              The left edge is the market tier — two-letter code in text, tier in words
+              beside it — following the {TIER_CONVENTION}, as of {TIER_AS_OF}. A company
+              whose domicile the release cannot answer keeps its row and its weight: its
+              edge is dashed, its code reads &ldquo;no code&rdquo;, and its tier says why.
+              The export is the whole ledger — every row, not this page. Press a company
+              name to open it.
+            </caption>
+            <thead>
+              <tr>
+                {columns.map((column) => {
+                  const active = column.key !== null && sort.key === column.key;
+                  if (column.key === null) {
+                    return (
+                      <th
+                        key={column.label}
+                        scope="col"
+                        className={column.numeric ? "num" : undefined}
+                      >
+                        {column.label}
+                      </th>
+                    );
+                  }
+                  const key = column.key;
+                  return (
+                    <th
+                      key={column.label}
+                      scope="col"
+                      className={column.numeric ? "num" : undefined}
+                      aria-sort={active ? sort.direction : "none"}
+                    >
+                      <button
+                        type="button"
+                        className="table__sort"
+                        onClick={() => {
+                          setSort((current) => nextSort(current, key, column.first));
+                          resetPage();
+                        }}
+                      >
+                        {column.label}
+                      </button>
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {current.rows.map((row, offset) => {
+                const tier = row.country === null ? null : tierOf(row.country);
+                // The rank is the row's place in the whole sorted table, not on its page.
+                const rank = current.start + offset;
+                const delta = benchmarkDelta(row.weight, row.benchmark_weight);
+                return (
+                  <tr
+                    key={row.company_id}
+                    data-tier={tier ?? undefined}
+                    data-country-missing={row.country === null ? "true" : undefined}
+                    onClick={() => model.openCompany(row.company_id)}
+                  >
+                    <td className="num">{formatCount(rank)}</td>
+                    <th scope="row" className={styles.company}>
+                      <button
+                        type="button"
+                        className="table__sort"
+                        aria-label={`Open ${row.name}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          model.openCompany(row.company_id);
+                        }}
+                      >
+                        {row.name}
+                      </button>
+                      {row.ticker ? <CellNote>{row.ticker}</CellNote> : null}
+                    </th>
+                    <td>
+                      {row.country === null ? (
+                        <>
+                          <span className="country-tag">no code</span>
+                          <CellNote>no country answer</CellNote>
+                        </>
+                      ) : (
+                        <>
+                          <span className="country-tag">{row.country}</span>
+                          <CellNote>
+                            {tier ? TIER_WORD[tier] : "no country answer"}
+                          </CellNote>
+                        </>
+                      )}
+                    </td>
+                    <td className="num">{formatShare(row.weight)}</td>
+                    {hasBenchmark ? (
+                      <td className="num">
+                        {row.benchmark_weight === null
+                          ? "—"
+                          : formatShare(row.benchmark_weight)}
+                      </td>
+                    ) : null}
+                    {hasBenchmark ? (
+                      <td className="num">
+                        {delta === null ? (
+                          "—"
+                        ) : (
+                          <span className={deltaInkClass(delta)}>
+                            {formatSignedShare(delta)}
+                          </span>
+                        )}
+                      </td>
+                    ) : null}
+                    <td className="num">
+                      {row.holder_count > 0 ? formatCount(row.holder_count) : "—"}
+                      {row.held_directly ? <CellNote>plus direct</CellNote> : null}
+                    </td>
+                    <td className={styles.fromFunds}>
+                      <FundBar row={row} maxWeight={maxWeight} />
+                      <SourceList row={row} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th scope="row" colSpan={3}>
+                  {query.trim().length > 0 ? "Matching companies" : "All companies"}
+                </th>
+                <td className="num">{formatShare(totalWeight)}</td>
+                {hasBenchmark ? <td className="num" /> : null}
+                {hasBenchmark ? <td className="num" /> : null}
+                <td className="num" />
+                <td>
+                  <CellNote>the rest of your mix is untraced weight or cash</CellNote>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div className={`${styles.pager} no-print`}>
+          <p className="small muted" role="status">
+            {current.total === 0 ? (
+              "No company matches this filter."
+            ) : (
+              <>
+                Showing rows {formatCount(current.start)}–{formatCount(current.end)} of{" "}
+                {formatCount(current.total)} · page {formatCount(current.page)} of{" "}
+                {formatCount(current.pages)}
+              </>
+            )}
+          </p>
+          <div className={styles.pager__buttons}>
+            <button
+              type="button"
+              className="btn btn--quiet btn--sm"
+              disabled={current.page <= 1}
+              onClick={() => setPage(current.page - 1)}
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              className="btn btn--quiet btn--sm"
+              disabled={current.page >= current.pages}
+              onClick={() => setPage(current.page + 1)}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </LensSection>
+    </div>
+  );
+}

@@ -294,7 +294,9 @@ export function decodeComparison(hash: string): CompareDecodeResult {
   const a = parseLegacyEntries(parsed.a ?? []);
   const b = parseLegacyEntries(parsed.b ?? []);
   if (!a || !b) return { ok: false, reason: "invalid-entry" };
-  if (a.length === 0) return { ok: false, reason: "empty" };
+  // Either side may be empty: `/compare` starts with nothing and lets a visitor fill
+  // B first. Only a link with no funds on either side is the empty view.
+  if (a.length === 0 && b.length === 0) return { ok: false, reason: "empty" };
   const portfolio: Portfolio = { mode: "bp", entries: a };
   return {
     ok: true,

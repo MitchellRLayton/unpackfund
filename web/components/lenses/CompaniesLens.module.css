@@ -1,0 +1,86 @@
+/**
+ * The Companies table: the fund list on each row, and the pager under it.
+ *
+ * The scroll window that used to live here is gone with the windowing. A row's fund list
+ * wraps, so a row has no fixed height, and a fixed-height window would have to clip the
+ * very list the row exists to show — the table pages at 50 rows instead
+ * (`components/directory/paging.ts`), and paper prints the page the reader is on.
+ */
+
+/* Eight columns beside a sidebar leave about 785 px at a 1280 px window, and the
+   default cell padding is 24 px of the 785. The funds column is the one a reader came
+   for, so the padding comes out of all eight rather than out of that one. Measured, not
+   guessed: at this padding the whole row fits and the table stops needing a sideways
+   scroll. */
+.compact :is(th, td) {
+  padding-inline: var(--space-2);
+}
+
+/* A long issuer name is allowed to use two lines; it is not allowed to widen the table
+   until the funds column falls off the right edge. */
+.company {
+  max-width: 15rem;
+}
+
+/* The cap has to sit on the button, not the cell: an auto-layout table sizes a column
+ * from its content and treats a cell's `max-width` as advice. */
+.company button {
+  max-width: 12rem;
+  text-wrap: balance;
+}
+
+/* The bar is a span inside a table cell and `.rowbar` gives it a height, which an inline
+   box ignores: it is made a block here rather than in the global sheet, so the shared
+   class keeps its meaning for every other table. */
+.bar {
+  display: block;
+  margin-bottom: var(--space-1);
+}
+
+/* The column that says where the weight came from. Capped, because a twelve-fund list
+   wrapped along one very long line is harder to read than the same list in a column. */
+.fromFunds {
+  max-width: 24rem;
+}
+
+/* Every fund on the row, named. `flex-wrap` is the rule that replaced the "+N": a long
+   list grows the row instead of being truncated, and each item stays whole. */
+.sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-12);
+  line-height: 1.5;
+}
+
+.source {
+  white-space: nowrap;
+}
+
+.sourceName {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.sourceWeight {
+  color: var(--graphite);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The pager, after `components/directory`: same announcement, same buttons, same order,
+   so a page that pages in two places does not page in two ways. */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.pager__buttons {
+  display: flex;
+  gap: var(--space-2);
+}

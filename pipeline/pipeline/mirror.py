@@ -1,20 +1,31 @@
-"""Copy the live release's fund documents onto disk so its pages can be generated.
+"""Copy the live release's page inputs onto disk so its pages can be generated.
 
-`pipeline.fund_pages` needs a release *directory*: `catalogue.json` beside `funds/*.json`.
-`refresh.yml` has one because it just built the release. A code deploy has no such
-directory and no reason to earn one — rebuilding twenty-six minutes of EDGAR data to
-publish a button is the wrong cost, and reusing the previous `site` artefact is worse,
-because the pages it holds belong to whichever release was live when *that* build ran.
+`pipeline.fund_pages` needs a release *directory*: `catalogue.json` beside `funds/*.json`,
+and — since the pages colour companies by domicile — `companies/countries.json` beside
+those. `refresh.yml` has such a directory because it just built the release. A code
+deploy has no such directory and no reason to earn one — rebuilding twenty-six minutes of
+EDGAR data to publish a button is the wrong cost, and reusing the previous `site` artefact
+is worse, because the pages it holds belong to whichever release was live when *that*
+build ran.
 
-So this reads what the ledger reads: the pointer, the catalogue it names, and one
-document per fund. Nothing is recomputed and nothing is interpreted beyond "is this a
-document for this ticker". The catalogue is written byte-for-byte and checked against
-the sha256 the pointer publishes; a fund document that is absent or unparseable fails
-the run instead of producing a page that says less than the ledger does.
+So this reads what the ledger reads: the pointer, the catalogue it names, one document
+per fund, and the release-wide objects the page generator declares. Nothing is recomputed
+and nothing is interpreted beyond "is this the object the pointer describes". The
+catalogue is written byte-for-byte and checked against the sha256 the pointer publishes;
+so is every declared object the pointer names a hash for; a required object that is
+absent or unparseable fails the run instead of producing a page that says less than the
+ledger does.
+
+**What is copied is not a list here.** `fund_pages.RELEASE_INPUTS` names every object a
+page is built from, and this module copies the release-wide entries from that tuple. That
+is deliberate: the country map was read by the generator for weeks while this module,
+which had its own hard-coded idea of the release, never fetched it, so every page in
+production would have printed "Not traced" for the market split. A second list is a way
+to be right on the day it is written and wrong later; a shared one is not.
 
 Why the public host rather than R2: this runs from a runner that has no object-store
-credentials, and the bytes a browser gets are exactly the bytes the site should be
-built from. It is a GET-only consumer, which is what `data.unpackfund.com` exists for.
+credentials, and the bytes a browser gets are exactly the bytes the site should be built
+from. It is a GET-only consumer, which is what `data.unpackfund.com` exists for.
 """
 
 from __future__ import annotations
@@ -29,6 +40,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .artifact import sha256_hex
+from .fund_pages import (
+    CATALOGUE_FILE,
+    FUNDS_FILE,
+    RELEASE_INPUTS,
+    ReleaseInput,
+    missing_release_inputs,
+)
 from .r2 import PublicReader, R2Error
 
 #: Where the browser reads the pointer. Production uses the live one; a mirror of a
@@ -45,6 +63,16 @@ DEFAULT_WORKERS = 16
 #: so mirroring it would download a file no page will ever read.
 SAFE_TICKER = re.compile(r"^[A-Z0-9.\-]{1,12}$")
 
+#: The release-wide objects a page is built from: every declared input that is neither
+#: the catalogue (copied first, because it names the funds) nor one document per fund
+#: (copied by the pool below). Derived, never typed out, so an input added to
+#: `RELEASE_INPUTS` is copied on the next run without an edit here.
+RELEASE_WIDE_INPUTS: tuple[ReleaseInput, ...] = tuple(
+    item
+    for item in RELEASE_INPUTS
+    if "{ticker}" not in item.path and item.path != CATALOGUE_FILE
+)
+
 
 class MirrorError(RuntimeError):
     """The public host did not hold what the live pointer says it holds."""
@@ -59,14 +87,24 @@ class MirrorReport:
     bytes: int
     fetched: int
     reused: int
+    #: Release-wide objects copied, by release-relative path, with their size in bytes.
+    objects: dict[str, int] = field(default_factory=dict)
+    #: Companies the release places, when it publishes a country map; 0 when it does not.
+    countries: int = 0
     missing: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
         megabytes = self.bytes / 1_000_000
+        geography = (
+            f"{self.countries:,} companies placed"
+            if self.countries
+            else "no country map — the market section will say so"
+        )
+        copied = f", {len(self.objects):,} release-wide object(s)" if self.objects else ""
         return (
             f"release {self.release}: {self.documents:,} of {self.funds:,} fund documents "
-            f"({megabytes:.0f} MB; {self.fetched:,} fetched, {self.reused:,} reused), "
-            f"catalogue sha256 {self.catalogue_sha256[:16]}…"
+            f"({megabytes:.0f} MB; {self.fetched:,} fetched, {self.reused:,} reused){copied}, "
+            f"{geography}, catalogue sha256 {self.catalogue_sha256[:16]}…"
         )
 
 
@@ -82,12 +120,25 @@ def _pointer(public: PublicReader, pointer_key: str, cache_bust: str | None) -> 
     return release, document
 
 
+def _published_sha256(pointee: dict, item: ReleaseInput) -> str | None:
+    """The hash the pointer publishes for one declared object, when it publishes one."""
+    if item.pointer is None:
+        return None
+    node: object = pointee.get("objects")
+    for key in item.pointer:
+        if not isinstance(node, dict):
+            return None
+        node = node.get(key)
+    digest = node.get("sha256") if isinstance(node, dict) else None
+    return digest if isinstance(digest, str) and digest else None
+
+
 def _catalogue(
-    public: PublicReader, release: str, pointee: dict, *, verify: bool
+    public: PublicReader, release: str, pointee: dict, *, verify: bool, cache_bust: str | None
 ) -> tuple[dict, bytes, str]:
-    key = f"releases/{release}/catalogue.json"
+    key = f"releases/{release}/{CATALOGUE_FILE}"
     try:
-        response = public.fetch(key)
+        response = public.fetch(key, cache_bust=cache_bust)
     except R2Error as error:
         raise MirrorError(f"{key}: {error}") from error
     if response.status != 200:
@@ -111,10 +162,55 @@ def _catalogue(
     return document, response.body, digest
 
 
-def _document(public: PublicReader, release: str, ticker: str) -> bytes:
-    key = f"releases/{release}/funds/{ticker}.json"
+def _release_wide(
+    public: PublicReader,
+    release: str,
+    pointee: dict,
+    *,
+    verify: bool,
+    cache_bust: str | None,
+) -> dict[str, bytes]:
+    """Fetch the declared release-wide objects, skipping an optional one a release lacks.
+
+    `companies/countries.json` is optional because a release publishes it only when it
+    placed at least one company. An older release without it is still a complete page
+    input set — the page says "Not traced" for the market split rather than colouring a
+    guess — but any other non-200 is a failure, and a 404 on a *required* object is one
+    too, because a page cannot be built from an object that does not exist.
+    """
+    copied: dict[str, bytes] = {}
+    for item in RELEASE_WIDE_INPUTS:
+        key = f"releases/{release}/{item.path}"
+        try:
+            response = public.fetch(key, cache_bust=cache_bust)
+        except R2Error as error:
+            raise MirrorError(f"{key}: {error}") from error
+        if response.status == 404 and not item.required:
+            # `item.what` is what the page loses; say so in the run, not only in the page.
+            print(f"mirror: {item.path} is not published by this release ({item.what})", file=sys.stderr)
+            continue
+        if response.status != 200:
+            raise MirrorError(f"{key}: HTTP {response.status}")
+        try:
+            json.loads(response.body)
+        except json.JSONDecodeError as error:
+            # A truncated copy would look like a release that resolved fewer companies.
+            raise MirrorError(f"{key}: not JSON ({error})") from error
+        published = _published_sha256(pointee, item)
+        if verify and published is not None:
+            digest = sha256_hex(response.body)
+            if digest != published:
+                raise MirrorError(
+                    f"{key}: sha256 {digest[:16]}… does not match the pointer's {published[:16]}…"
+                )
+        copied[item.path] = response.body
+    return copied
+
+
+def _document(public: PublicReader, release: str, ticker: str, *, cache_bust: str | None) -> bytes:
+    key = f"releases/{release}/{FUNDS_FILE.format(ticker=ticker)}"
     try:
-        response = public.fetch(key)
+        response = public.fetch(key, cache_bust=cache_bust)
     except R2Error as error:
         raise MirrorError(f"{key}: {error}") from error
     if response.status != 200:
@@ -130,6 +226,15 @@ def _document(public: PublicReader, release: str, ticker: str) -> bytes:
     return response.body
 
 
+def _country_count(body: bytes | None) -> int:
+    """How many companies the release placed, for the run's own log line."""
+    if body is None:
+        return 0
+    document = json.loads(body)
+    companies = document.get("companies") if isinstance(document, dict) else None
+    return len(companies) if isinstance(companies, dict) else 0
+
+
 def mirror(
     *,
     out: Path,
@@ -141,7 +246,7 @@ def mirror(
     reader: PublicReader | None = None,
     cache_bust: str | None = None,
 ) -> MirrorReport:
-    """Write `out/catalogue.json` and `out/funds/*.json` for one release.
+    """Write the release directory `pipeline.fund_pages` reads for one release.
 
     `release` overrides the pointer — for reproducing an older release, never for a
     deploy. Documents already on disk are reused rather than re-fetched (a CI cache
@@ -159,17 +264,25 @@ def mirror(
         except MirrorError:
             pointee = {}
 
-    # The pointer's hash describes the release it names, so an explicitly requested
-    # release is copied without that check: the operator asked for these bytes by name.
+    # The pointer's hashes describe the release it names, so an explicitly requested
+    # release is copied without those checks: the operator asked for these bytes by name.
+    verify = pointee.get("as_of") == release
     document, raw_catalogue, digest = _catalogue(
-        public, release, pointee, verify=pointee.get("as_of") == release
+        public, release, pointee, verify=verify, cache_bust=cache_bust
+    )
+    wide = _release_wide(
+        public, release, pointee, verify=verify, cache_bust=cache_bust
     )
     tickers = [ticker for ticker in document["funds"] if SAFE_TICKER.match(ticker)]
     if limit is not None:
         tickers = tickers[:limit]
 
     out.mkdir(parents=True, exist_ok=True)
-    (out / "catalogue.json").write_bytes(raw_catalogue)
+    (out / CATALOGUE_FILE).write_bytes(raw_catalogue)
+    for relative, body in wide.items():
+        target = out / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(body)
     funds_dir = out / "funds"
     funds_dir.mkdir(exist_ok=True)
 
@@ -193,7 +306,7 @@ def mirror(
     total_bytes = 0
 
     def fetch(ticker: str) -> bytes:
-        return _document(public, release, ticker)
+        return _document(public, release, ticker, cache_bust=cache_bust)
 
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         # `pool.map` yields in order, so the files are written in ticker order: a copied
@@ -202,12 +315,16 @@ def mirror(
             (funds_dir / f"{ticker}.json").write_bytes(body)
             total_bytes += len(body)
 
-    on_disk = {path.stem for path in funds_dir.glob("*.json")}
-    missing = sorted(ticker for ticker in tickers if ticker not in on_disk)
-    if missing:
-        shown = ", ".join(missing[:8]) + (f" (+{len(missing) - 8} more)" if len(missing) > 8 else "")
+    # The contract, checked against the directory that was actually written rather than
+    # against the loop's intentions: `missing_release_inputs` expands `RELEASE_INPUTS`,
+    # so a required object nobody copied is caught here even if no code path noticed it.
+    gaps = missing_release_inputs(out, tickers)
+    if gaps["required"]:
+        shown = ", ".join(gaps["required"][:8])
+        if len(gaps["required"]) > 8:
+            shown += f" (+{len(gaps['required']) - 8} more)"
         raise MirrorError(
-            f"{len(missing)} of {len(tickers):,} fund documents are missing from {funds_dir}: {shown}"
+            f"{len(gaps['required']):,} required page input(s) are missing from {out}: {shown}"
         )
 
     return MirrorReport(
@@ -218,19 +335,23 @@ def mirror(
         bytes=total_bytes,
         fetched=len(pending),
         reused=reused,
+        objects={relative: len(body) for relative, body in wide.items()},
+        countries=_country_count(wide.get("companies/countries.json")),
+        missing=gaps["optional"],
     )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m pipeline.mirror",
-        description="Copy the live release's catalogue and fund documents for page generation.",
+        description="Copy the release objects the fund-page generator reads.",
     )
     parser.add_argument(
         "--out",
         type=Path,
         required=True,
-        help="directory to write: catalogue.json and funds/<TICKER>.json",
+        help="directory to write: catalogue.json, funds/<TICKER>.json, and the "
+        "generator's other declared inputs (companies/countries.json)",
     )
     parser.add_argument("--base", default=DEFAULT_BASE, help=f"data host (default {DEFAULT_BASE})")
     parser.add_argument("--pointer", default=POINTER_KEY, help=f"pointer key (default {POINTER_KEY})")
@@ -258,7 +379,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"mirror: {error}", file=sys.stderr)
         return 1
     print(f"mirror: {report.summary()}")
-    print(f"mirror: wrote {args.out / 'catalogue.json'} and {args.out / 'funds'}")
+    print(f"mirror: wrote {args.out / CATALOGUE_FILE}, {args.out / 'funds'}", end="")
+    for relative in RELEASE_WIDE_INPUTS:
+        path = args.out / relative.path
+        if path.exists():
+            print(f", {path}", end="")
+    print()
     return 0
 
 

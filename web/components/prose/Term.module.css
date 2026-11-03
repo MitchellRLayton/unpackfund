@@ -1,0 +1,43 @@
+/*
+ * The definition popover's own three rules.
+ *
+ * `.term` and `.popover` are global primitives (globals.css), including the
+ * `@supports (anchor-name: --term)` block that places the popover under the
+ * word. What is here is what that sheet could not know: the popover element is a
+ * span, its short text is a block so the link falls to its own line, and a
+ * browser without anchor positioning needs somewhere sensible to put a popover
+ * in the top layer.
+ *
+ * Positions are passed inline from the component rather than written here,
+ * because each instance has to anchor to its own word — see `Term.tsx` for why
+ * the shared `--term` name in the global sheet is not enough.
+ */
+
+/* The span has to break the line before the link. */
+.short {
+  display: block;
+  margin: 0;
+}
+
+/*
+ * No anchor positioning: the global sheet's `position: absolute; inset: auto`
+ * leaves the popover at its static position, which can land over the sentence
+ * the reader is in the middle of. Centre it in the window instead — still a
+ * popover, still dismissed by Escape, a click outside, or the button again, and
+ * now with nowhere confusing to appear.
+ *
+ * The doubled class is deliberate: this sheet and `globals.css` both set a
+ * single class on the element, and CSS module injection order is not something
+ * to rely on when the rule has to win.
+ */
+@supports not (anchor-name: --term) {
+  .popover.popover {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    width: fit-content;
+    height: fit-content;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+  }
+}

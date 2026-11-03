@@ -4,6 +4,7 @@ import {
   MAX_FRAGMENT_CHARS,
   decodeComparison,
   decodePortfolio,
+  encodeComparison,
   encodePortfolio,
   equalWeights,
   fundWeights,
@@ -311,5 +312,37 @@ describe("weights and completeness", () => {
     const url = shareUrl("https://unpackfund.com/#stale", portfolio(fiveFunds));
     expect(url.startsWith("https://unpackfund.com/#v3.")).toBe(true);
     expect(url).not.toContain("stale");
+  });
+});
+
+describe("a comparison with only a second side", () => {
+  // `/compare` starts empty and lets a visitor fill either column first. A link that
+  // carries only B is a real comparison, not an empty view: it has to decode, and it
+  // has to keep B, or a reload silently drops the half the visitor just typed.
+  const onlyB = encodeComparison([], [{ ticker: "VTI", weight_bp: 10000 }]);
+
+  it("encodes as a comparison rather than as an empty fragment", () => {
+    expect(onlyB.startsWith("v2.")).toBe(true);
+  });
+
+  it("decodes with an empty A and a full B", () => {
+    const decoded = decodeComparison(`#${onlyB}`);
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    expect(decoded.a).toEqual([]);
+    expect(decoded.b).toEqual([{ ticker: "VTI", weight_bp: 10000 }]);
+    expect(decoded.portfolio.entries).toEqual([]);
+    expect(decoded.completeA).toBe(false);
+    expect(decoded.completeB).toBe(true);
+  });
+
+  it("still refuses a link with nothing on either side", () => {
+    const payload = Buffer.from(JSON.stringify({ a: [], b: [] }), "utf8")
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    const empty = `#v2.${payload}`;
+    expect(decodeComparison(empty)).toEqual({ ok: false, reason: "empty" });
   });
 });

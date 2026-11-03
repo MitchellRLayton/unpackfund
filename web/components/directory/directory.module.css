@@ -1,0 +1,43 @@
+/*
+ * Layout for the two directories and the fund surface.
+ *
+ * Only structure lives here: grids, gap, wrapping. Every colour, rule, radius and
+ * type size comes from the tokens in `globals.css`, so this module cannot drift
+ * from the rest of the redesign and cannot introduce a hue that means nothing.
+ */
+
+/* One quiet row: search twice as wide as a filter, four columns on a desktop. */
+.controls {
+  display: grid;
+  grid-template-columns:
+    minmax(12rem, 2.2fr) minmax(7rem, 1.2fr) minmax(7rem, 1fr)
+    minmax(8rem, 1.1fr);
+  gap: var(--space-3);
+  align-items: end;
+}
+
+@media (max-width: 52rem) {
+  .controls {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 32rem) {
+  .controls {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Pagination: the range on one side, the two buttons on the other. */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.pager__buttons {
+  display: flex;
+  gap: var(--space-2);
+}
