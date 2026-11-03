@@ -91,10 +91,42 @@ export default function MethodologyPage() {
         MSCI&rsquo;s classification. No FTSE document, table or data file is reproduced
         here, and FTSE Russell has not reviewed or endorsed this site. A country that
         neither publisher calls developed or emerging — Cayman, Bermuda, Argentina, Russia
-        and the frontier markets among them — keeps its country code and gets no colour,
-        because calling it emerging would be an invention. The country is a domicile and
-        not a measure of where a company earns its money: a company domiciled in the
-        Cayman Islands can earn almost everything it makes in China.
+        and the frontier markets among them — keeps its country code and takes a neutral
+        grey edge, because calling it emerging would be an invention. The country is a
+        domicile and not a measure of where a company earns its money: a company domiciled
+        in the Cayman Islands can earn almost everything it makes in China.
+      </p>
+
+      <h2>How a company&rsquo;s country is decided</h2>
+      <p>
+        In two steps, and the second one only runs when the first cannot answer. First the
+        filings: every fund that holds the company reports a country of residence for it,
+        and the country is published when one answer holds at least 80% of the traced
+        value across at least two independent filings. That is a consensus over
+        <em>holders</em>, so it fails for a company only one fund reports, and for a
+        company whose holders genuinely disagree.
+      </p>
+
+      <p>
+        Second, for a company the filings cannot place, its own registry record: the
+        jurisdiction on its legal-entity identifier from GLEIF, or, for a company that
+        files with the SEC, the state or country of incorporation on its EDGAR record.
+        Neither answer ever overrides a country the filings agreed on, and a company
+        neither record places is left unplaced rather than guessed. On the current release
+        that second step places about 2,470 of the 2,702 companies the filings alone could
+        not, and the two sources are checked against the filings on every build: GLEIF
+        agrees with the published country on 99.3% of the companies both cover, EDGAR on
+        98.0%, and a build that fell below those rates would be refused rather than
+        published.
+      </p>
+
+      <p>
+        A row with no market tier is therefore marked, not blank: a{" "}
+        <strong>solid grey edge</strong> where the domicile is known but is neither
+        developed nor emerging, and a <strong>dashed grey edge</strong> where no country
+        could be established at all. The two-letter code beside the company name is the
+        same information in text, so the colour is reinforcement and a monochrome print
+        loses nothing.
       </p>
 
       <h2>Coverage, and why some pages withhold numbers</h2>
@@ -162,8 +194,9 @@ export default function MethodologyPage() {
       <h2>Source attribution</h2>
       <p>
         Source: SEC EDGAR — Form N-PORT, Form N-CEN, Form N-CSR, 497K/485BPOS, and XBRL
-        company facts. No SEC seal or logo is used, and the SEC has not reviewed,
-        approved, or endorsed this site. {LEGAL_ENTITY} operates UnpackFund.
+        company facts — and the GLEIF golden copy (CC0) for legal-entity identity and
+        jurisdiction. No SEC seal or logo is used, and neither the SEC nor GLEIF has
+        reviewed, approved, or endorsed this site. {LEGAL_ENTITY} operates UnpackFund.
       </p>
     </LegalPage>
   );

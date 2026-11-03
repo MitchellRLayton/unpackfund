@@ -53,8 +53,14 @@ export const EFFECTIVE_DATE = "October 30, 2026";
  * developed ex-US against emerging — as well as the domicile it always carried, and the
  * page gained the section that says which convention is being followed and where other
  * publishers disagree with it.
+ *
+ * 1.2.0 (2026-11-02): a country is now decided in two steps rather than one. Where the
+ * holders' filings cannot agree, the company's own registry record is asked — GLEIF
+ * jurisdiction, then EDGAR's state of incorporation — and a company neither record
+ * places keeps a neutral edge instead of none. The page states both steps and the two
+ * new sources.
  */
-export const METHODOLOGY_VERSION = "1.1.0";
+export const METHODOLOGY_VERSION = "1.2.0";
 
 /**
  * Version of the copy above, for the change history in the footer of each page.
@@ -67,5 +73,10 @@ export const METHODOLOGY_VERSION = "1.1.0";
  * 1.2.0 (2026-11-02): the methodology explains the developed/emerging split, the
  * convention behind it, and the licence position — the table is ours, no FTSE
  * document is reproduced, and none of the three publishers has endorsed the site.
+ *
+ * 1.3.0 (2026-11-02): the source attribution names GLEIF as well as EDGAR, because the
+ * site now reads a jurisdiction out of the GLEIF golden copy (CC0) rather than only
+ * using it for entity identity, and the methodology says a company with no place at all
+ * is marked rather than left blank.
  */
-export const LEGAL_COPY_VERSION = "1.2.0";
+export const LEGAL_COPY_VERSION = "1.3.0";
