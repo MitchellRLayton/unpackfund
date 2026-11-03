@@ -206,6 +206,19 @@ export function formatFreshness(asOf: string, filedAt: string, lagDays: number):
   return `${formatIsoDate(asOf)} · filed ${formatIsoDate(filedAt)} · ${formatDays(lagDays)}`;
 }
 
+/**
+ * An effective-holdings count: `3.6`, `44.7`, `1,204`.
+ *
+ * One decimal below 100 and a whole number with thousands separators from 100 up, which
+ * is the operator's rule and also the honest one: at 1,204 companies the tenths are noise
+ * from the weights, not information about the portfolio. The threshold is on the value,
+ * not on the rounded value, so 99.96 prints `100.0` rather than jumping to `100`.
+ */
+export function formatEffective(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  return value < 100 ? oneDp.format(value) : integer.format(value);
+}
+
 /** Coverage bands are half-open on the lower edge (math §5). */
 export type CoverageBand = "full" | "partial" | "none";
 

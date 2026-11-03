@@ -7,8 +7,16 @@
  * readable rather than a bare percentage: the weight, how many positions the
  * filing has, the coverage band with its percentage, and the three filing dates
  * (the end of the reporting period, the day it was filed, and how many days ago
- * that was). The last column is the one number that only exists because the
- * others do — how much of your ten largest companies came through this fund.
+ * that was). The last group is what the fund is equivalent to on its own: the
+ * pair of equal-sized-holdings counts, read at 100% of the fund rather than as a
+ * share of the visitor's money, because that is the only way two funds in one
+ * table are comparable. The row above it — how much of your ten largest companies
+ * came through this fund — exists only because the others do.
+ *
+ * The effective pair gets its own grouped header and its own closing row: a fund's
+ * two counts are its own, while the portfolio's are computed once over the merged
+ * companies, so the last row is not the sum or the average of the rows above it and
+ * says so.
  *
  * Sortable, because "which fund is newest" and "which fund is largest" are the
  * two questions a table of funds gets asked, and the caption says which sort is
@@ -18,8 +26,13 @@
 
 import { useMemo, useState } from "react";
 
+import {
+  effectiveHoldingsForFund,
+  type EffectiveHoldings,
+} from "@/lib/effective-holdings";
 import { saveCsv } from "@/lib/export";
-import { formatCount, formatFreshness, formatShare } from "@/lib/format";
+import { formatCount, formatEffective, formatFreshness, formatShare } from "@/lib/format";
+import { Term } from "@/components/prose/Term";
 import type { LensProps } from "@/components/workspace/types";
 
 import {
@@ -59,6 +72,13 @@ const COLUMNS: Array<{
   { key: "asOf", label: "Reporting period, filed", numeric: false, first: "descending" },
   { key: "top10Share", label: "Your top ten", numeric: true, first: "descending" },
 ];
+
+/**
+ * The closing row is not a total, and this is the sentence that says so wherever the
+ * label is hovered or read out. It is one sentence because a tooltip is not a caption.
+ */
+const PORTFOLIO_ROW_HINT =
+  "Not an average of the rows above. Companies held by more than one fund merge, which lowers both counts.";
 
 const COLUMN_LABEL: Record<FundSortKey, string> = {
   ticker: "Fund",
@@ -125,7 +145,22 @@ export function FundsLens({ model }: LensProps) {
       docs,
       top10,
     });
-    return { rows: built, top10, sorted: sortBy(built, sort, COMPARE) };
+    // Each fund's own pair: the fund at 100%, with its own coverage band and its own
+    // merge, which is what makes two rows in this table comparable to each other.
+    const pair = new Map<string, EffectiveHoldings>();
+    for (const row of built) {
+      const document = docs.get(row.ticker);
+      if (document) pair.set(row.ticker, effectiveHoldingsForFund(document));
+    }
+    return {
+      rows: built,
+      top10,
+      sorted: sortBy(built, sort, COMPARE),
+      pair,
+      // The portfolio's own pair, merged across every fund and direct position at
+      // once. Read from the ledger, never summed or averaged down the column.
+      portfolio: ledger.effective,
+    };
   }, [ledger, docs, fundWeights, sort]);
 
   if (gate.kind === "blocked") {
@@ -142,7 +177,7 @@ export function FundsLens({ model }: LensProps) {
   }
 
   const releaseAsOf = model.releaseAsOf ?? "unknown";
-  const { sorted, top10 } = rows;
+  const { sorted, top10, pair, portfolio } = rows;
 
   if (sorted.length === 0) {
     return (
@@ -158,7 +193,25 @@ export function FundsLens({ model }: LensProps) {
   const sortLabel = COLUMN_LABEL[sort.key];
 
   const exportFunds = () => {
-    saveCsv(fundsCsv(sorted, releaseAsOf), lensCsvName("funds", new Date(), releaseAsOf));
+    saveCsv(
+      fundsCsv(sorted, releaseAsOf, pair),
+      lensCsvName("funds", new Date(), releaseAsOf),
+    );
+  };
+
+  /**
+   * One cell of the pair. A fund below the floor has no count and shows the table's
+   * no-number glyph: the row's own Coverage cell names the band and the percentage,
+   * which is the explanation, and a zero here would read as a measurement.
+   */
+  const pairCell = (ticker: string, key: "core" | "broad"): string => {
+    const value = pair.get(ticker)?.[key] ?? null;
+    return value === null ? "—" : formatEffective(value);
+  };
+
+  const portfolioCell = (key: "core" | "broad"): string => {
+    const value = portfolio[key];
+    return value === null ? "—" : formatEffective(value);
   };
 
   return (
@@ -190,8 +243,14 @@ export function FundsLens({ model }: LensProps) {
               through this fund — a share of the top ten, not of the fund, and the same
               ten companies for every row. A fund below full coverage contributes only the
               part of its filing that resolved, so its share there is a floor rather than
-              a ceiling. The last row adds unrounded values, so it can differ from the
-              column by a hundredth.
+              a ceiling. Effective holdings is the pair of equal-sized-holdings counts
+              read for each fund on its own, at 100% of that fund rather than as a share
+              of your money: Core counts the large positions, Broad counts everything. A
+              fund below 60% coverage has both withheld. The last two rows are the funds
+              added up and then your portfolio as a whole — the counts there are computed
+              once over your merged companies, so they are not the column added up, and
+              the row says so. The funds total adds unrounded values, so it can differ
+              from the column by a hundredth.
             </caption>
             <thead>
               <tr>
@@ -201,6 +260,7 @@ export function FundsLens({ model }: LensProps) {
                     <th
                       key={column.key}
                       scope="col"
+                      rowSpan={2}
                       className={column.numeric ? "num" : undefined}
                       aria-sort={active ? sort.direction : "none"}
                     >
@@ -218,6 +278,19 @@ export function FundsLens({ model }: LensProps) {
                     </th>
                   );
                 })}
+                {/* The only grouped pair in the table: two counts that are read
+                    together and mean nothing apart, each with its own word. */}
+                <th scope="colgroup" colSpan={2} className="num">
+                  Effective holdings
+                </th>
+              </tr>
+              <tr>
+                <th scope="col" className="num">
+                  <Term name="core">Core</Term>
+                </th>
+                <th scope="col" className="num">
+                  <Term name="broad">Broad</Term>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -246,6 +319,8 @@ export function FundsLens({ model }: LensProps) {
                   <td className="num">
                     {row.top10Share === null ? "—" : formatShare(row.top10Share)}
                   </td>
+                  <td className="num">{pairCell(row.ticker, "core")}</td>
+                  <td className="num">{pairCell(row.ticker, "broad")}</td>
                 </tr>
               ))}
             </tbody>
@@ -260,9 +335,33 @@ export function FundsLens({ model }: LensProps) {
                   {top10.total > 0 ? formatShare(totalTop10) : "—"}
                   <CellNote>of your ten largest; the rest is direct</CellNote>
                 </td>
+                <td className="num" />
+                <td className="num" />
+              </tr>
+              <tr>
+                <th
+                  scope="row"
+                  title={PORTFOLIO_ROW_HINT}
+                  aria-describedby="funds-portfolio-hint"
+                >
+                  Your portfolio
+                </th>
+                <td className="num" />
+                <td className="num" />
+                <td className="num" />
+                <td />
+                <td className="num" />
+                <td className="num">{portfolioCell("core")}</td>
+                <td className="num">{portfolioCell("broad")}</td>
               </tr>
             </tfoot>
           </table>
+          {/* The same sentence as the label's `title`, for a reader who never hovers:
+              a tooltip is the only affordance this table has for a hint, and `title`
+              alone is not reachable from the keyboard. */}
+          <p id="funds-portfolio-hint" className="visually-hidden">
+            {PORTFOLIO_ROW_HINT}
+          </p>
         </div>
       </LensSection>
     </div>

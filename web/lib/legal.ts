@@ -59,8 +59,13 @@ export const EFFECTIVE_DATE = "October 30, 2026";
  * jurisdiction, then EDGAR's state of incorporation — and a company neither record
  * places keeps a neutral edge instead of none. The page states both steps and the two
  * new sources.
+ *
+ * 1.3.0 (2026-11-03): the page gained the effective-holdings section — Core and Broad, the
+ * pair of equal-sized-holdings counts, with their shares, their formulas, the invariant
+ * between them, the coverage rule that withholds them, the overlap the merge removes, and
+ * what the pair does not say about how companies move together.
  */
-export const METHODOLOGY_VERSION = "1.2.0";
+export const METHODOLOGY_VERSION = "1.3.0";
 
 /**
  * Version of the copy above, for the change history in the footer of each page.

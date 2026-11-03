@@ -72,6 +72,7 @@ export default function GlossaryPage() {
             <div key={term.id} className={styles.entry}>
               <h3 id={term.id}>{term.label}</h3>
               <p>{term.definition}</p>
+              {term.expert ? <p className={styles.appears}>{term.expert}</p> : null}
               <p className={styles.appears}>Where it appears: {term.appears}</p>
             </div>
           ))}

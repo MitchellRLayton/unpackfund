@@ -5,6 +5,7 @@ import { FreshnessStrip, MetricsList } from "@/components/FreshnessStrip";
 import { LedgerTable } from "@/components/LedgerTable";
 import { Notice } from "@/components/Notice";
 import type { BenchmarkFacts, Ledger, LedgerRow, ReleaseDescriptor } from "@/lib/types";
+import { withEffective } from "../lib/testing/ledger";
 
 afterEach(cleanup);
 
@@ -81,7 +82,7 @@ const vt: BenchmarkFacts = {
   source_url: "https://www.sec.gov/example-vt",
 };
 
-const ledger: Ledger = {
+const ledgerBase: Omit<Ledger, "effective"> = {
   rows: [row("c_1", "NVIDIA Corp", 0.0751), row("c_2", "Apple Inc", 0.0659)],
   benchmark: null,
   metrics: {
@@ -117,6 +118,7 @@ const ledger: Ledger = {
     cash_and_derivatives_weight: 0.0148,
   },
 };
+const ledger = withEffective(ledgerBase);
 
 describe("FreshnessStrip", () => {
   it("prints the filing period, the lag, and the coverage in words", () => {
@@ -140,13 +142,14 @@ describe("FreshnessStrip", () => {
   });
 
   it("does not claim a date it does not have", () => {
-    const empty: Ledger = {
+    const emptyBase: Omit<Ledger, "effective"> = {
       ...ledger,
       rows: [],
       funds: [],
       oldest_as_of: null,
       max_lag_days: null,
     };
+    const empty = withEffective(emptyBase);
     render(<FreshnessStrip release={release} ledger={empty} />);
     expect(screen.getAllByText("—")).toHaveLength(2);
   });

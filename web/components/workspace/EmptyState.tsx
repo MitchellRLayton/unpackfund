@@ -54,21 +54,28 @@ function WorkedExample({ model }: { model: WorkspaceModel }) {
   // only fetch this screen makes, and only while the portfolio is empty.
   const { funds, pending } = useFunds(releaseData, EXAMPLE_TICKERS);
 
+  // The example's ledger is built once and used twice: the answer strip and the
+  // effective-holdings sentence both read it, and a second build would be a second answer
+  // to the same question.
+  const ledger = useMemo(() => {
+    if (funds.length < EXAMPLE_TICKERS.length) return null;
+    return buildLedger({
+      funds,
+      weights: EXAMPLE_WEIGHTS,
+      countries: model.countries,
+    });
+  }, [funds, model.countries]);
+
   const answer = useMemo(() => {
-    if (funds.length < EXAMPLE_TICKERS.length) {
+    if (ledger === null) {
       return buildAnswer({
         kind: "loading",
         pending: pending.length > 0 ? pending : EXAMPLE_TICKERS,
         fundCount: EXAMPLE_TICKERS.length,
       });
     }
-    const ledger = buildLedger({
-      funds,
-      weights: EXAMPLE_WEIGHTS,
-      countries: model.countries,
-    });
     return buildAnswer({ kind: "ready", ledger, funds });
-  }, [funds, pending, model.countries]);
+  }, [ledger, funds, pending]);
 
   return (
     <section className="card stack stack--tight" aria-labelledby="example-heading">
@@ -90,7 +97,7 @@ function WorkedExample({ model }: { model: WorkspaceModel }) {
           </li>
         ))}
       </ul>
-      <AnswerStrip answer={answer} />
+      <AnswerStrip answer={answer} effective={ledger?.effective} />
     </section>
   );
 }

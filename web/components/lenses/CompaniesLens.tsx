@@ -62,6 +62,7 @@ import {
   LensSection,
   LensState,
 } from "./lens-chrome";
+import { EffectiveHoldingsSummary } from "./EffectiveHoldingsSummary";
 import { companiesCsv, lensCsvName } from "./lens-csv";
 import { lensGateState } from "./lens-gate";
 import { nextSort, sortBy, TIER_WORD, type SortState } from "./lens-math";
@@ -357,6 +358,8 @@ export function CompaniesLens({ model }: LensProps) {
           Filters the table only. The export is the whole ledger.
         </p>
       </div>
+
+      <EffectiveHoldingsSummary effective={ledger.effective} />
 
       <LensSection
         title="Your companies"

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { CSV_COLUMNS, ledgerCsv, ledgerCsvName } from "./export";
 import type { Ledger, LedgerRow } from "./types";
+import { withEffective } from "./testing/ledger";
 
 /**
  * The export is the one place a computed number leaves the page, so its two
@@ -31,7 +32,7 @@ function row(over: Partial<LedgerRow> & Pick<LedgerRow, "name" | "weight">): Led
 }
 
 function ledgerOf(rows: LedgerRow[]): Ledger {
-  return {
+  return withEffective({
     rows,
     metrics: {
       hhi: null,
@@ -56,7 +57,7 @@ function ledgerOf(rows: LedgerRow[]): Ledger {
       cash_and_derivatives_with_weight: 0,
       cash_and_derivatives_weight: 0,
     },
-  };
+  });
 }
 
 describe("ledgerCsv", () => {
