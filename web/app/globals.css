@@ -884,18 +884,20 @@ th[aria-sort="ascending"] .sort-button::after {
   color: var(--muted);
 }
 
-/* The country code, as text: the same size as the note it sits in, tabular, and boxed
- * with a hairline so it reads as a tag rather than as another word in the attribution.
- * `--muted` is the ink at rest and it is already the pair `lib/theme.test.ts` checks
- * against `--bg`, `--surface` and both direct-row tints, so the tag cannot become
- * unreadable on the row it annotates. */
+/* The country mark: a flag glyph, boxed with a hairline so it reads as a tag rather
+ * than as another word in the attribution. The glyph is the platform's, not ours — a
+ * colour emoji ignores `color`, so `--muted` here only matters on the platforms that
+ * draw the two-letter code instead (Windows), where it is the same ink the tag used
+ * before the flag existed. `font-size` is a step up from the note's 0.78rem because a
+ * flag is drawn smaller than its em box; `line-height` keeps the taller glyph inside
+ * the row's fixed height, which is what stops the flag from moving the table. */
 .country-tag {
   display: inline-block;
-  padding: 0 0.25rem;
+  padding: 0 0.2rem;
   border: 1px solid var(--rule);
   border-radius: 2px;
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  line-height: 1.25;
   letter-spacing: 0.02em;
   color: var(--muted);
   vertical-align: baseline;
