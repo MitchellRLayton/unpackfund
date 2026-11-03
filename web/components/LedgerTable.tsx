@@ -17,7 +17,7 @@ import { useMemo, useState } from "react";
 import { benchmarkDelta } from "@/lib/benchmark";
 import { flagEmoji } from "@/lib/country-flag";
 import { TIER_AS_OF, tierOf } from "@/lib/country-tier";
-import { formatCount, formatShare, formatSignedShare } from "@/lib/format";
+import { deltaInkClass, formatCount, formatShare, formatSignedShare } from "@/lib/format";
 import type { BenchmarkFacts, LedgerRow } from "@/lib/types";
 
 type SortKey = "weight" | "benchmark" | "name" | "holder_count";
@@ -51,18 +51,9 @@ const SORT_LABEL: Record<SortKey, string> = {
   holder_count: "number of funds",
 };
 
-/**
- * The bracket's ink class, from the sign alone: green above the benchmark, red below,
- * `--muted` at an exact match — a difference of zero has no side to be on, so it gets no
- * ink. Written here rather than derived in CSS from a data attribute because the sign is
- * arithmetic (`formatSignedShare` owns the direction) while the row's `data-country` owns
- * the edge; two channels, two selectors, no shared cell.
- */
-function deltaInkClass(delta: number): string {
-  if (delta > 0) return "delta delta--up";
-  if (delta < 0) return "delta delta--down";
-  return "delta";
-}
+// `deltaInkClass` is imported from `@/lib/format`: the sign ink is one implementation
+// shared with the compare page's Δ column, so the two tables cannot disagree about which
+// side is green. Its reasoning lives beside the function.
 
 export function LedgerTable({
   rows,

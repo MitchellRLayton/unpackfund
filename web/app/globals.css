@@ -1125,3 +1125,45 @@ th[aria-sort="ascending"] .sort-button::after {
   max-width: 46rem;
   font-size: 0.9rem;
 }
+
+/* -- the page's method, below the table ---------------------------------- */
+
+/*
+ * The X-Ray page's explanations, in one disclosure under the ledger (operator's
+ * instruction, 2026-11-02: "too much information at the top of the page discussing
+ * methodologies … all I really want are the metadata information you give in tables").
+ * Nothing here is new content — every paragraph above the table moved in and kept its
+ * facts — so the styling has one job: make the block read as the page's own method
+ * section rather than as a second panel. Hence the 1 px `--rule` seam (the same
+ * hairline the table is drawn with) and no background, border-radius or accent fill.
+ */
+.how-to-read {
+  margin-top: 2rem;
+  border-top: 1px solid var(--rule);
+  padding-top: 1rem;
+}
+
+/* A summary is a control, so it gets the accent ink the coverage-gap summary already
+ * uses, and 0.25 rem of vertical padding: with the 0.95 rem type that clears WCAG
+ * 2.2's 24 px target without turning a disclosure into a button. */
+.how-to-read > summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 0.95rem;
+  padding: 0.25rem 0;
+}
+
+/* The moved prose keeps a reading measure. The benchmark paragraph is the longest
+ * sentence on the page, and a full-width line of it is unreadable however true it is.
+ * `>` matters: the nested disclosures below carry their own, narrower measure (the
+ * coverage-gap text is 46 rem) and this rule must not silently widen them. */
+.how-to-read > p {
+  max-width: 60rem;
+  font-size: 0.9rem;
+}
+
+/* One step of separation so the outline reads as three levels — page, method, and the
+ * coverage gap / per-fund sources inside it — instead of three equal headings. */
+.how-to-read .what-not-traced {
+  margin-top: 1rem;
+}

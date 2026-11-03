@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  type CatalogueTuple,
   DEFAULT_SORT,
+  defaultSort,
   type DirectoryRow,
   filterRows,
   shownCoverage,
@@ -40,12 +42,43 @@ describe("toRows", () => {
       "AVUV",
       "VOO",
     ]);
+    // Names and issuers are display text: a filing's all-caps string is title-cased,
+    // and the mixed-case Avantis strings come through as authored.
     expect(rows.at(4)).toEqual({
       ticker: "VOO",
-      name: "VANGUARD 500 INDEX FUND",
-      issuer: "VANGUARD INDEX FUNDS",
+      name: "Vanguard 500 Index Fund",
+      issuer: "Vanguard Index Funds",
       coverage: 99.1,
+      netAssets: null,
     });
+  });
+
+  it("reads the filed net assets from a five-element row", () => {
+    const rows = toRows({
+      // The real Avantis string: mixed case, so `displayName` leaves it whole.
+      AVUV: [
+        "Avantis U.S. Small Cap Value ETF",
+        "EA Series Trust",
+        1,
+        97.7,
+        34_500_000_000,
+      ],
+      AAAX: ["A Fund With No Filed Size", "SOME TRUST", 0, 40.0, null],
+    });
+    expect(rows.map((row) => row.ticker)).toEqual(["AAAX", "AVUV"]);
+    expect(rows[0]?.netAssets).toBeNull();
+    expect(rows[1]?.netAssets).toBe(34_500_000_000);
+    expect(rows[1]?.issuer).toBe("EA Series Trust");
+  });
+
+  it("treats a four-element row as no size, not as zero", () => {
+    // The live release 2026-11-02.7 was built before the fifth element existed, so
+    // the reader must see "no figure" rather than a fund that owns nothing.
+    const rows = toRows({
+      VOO: ["VANGUARD 500 INDEX FUND", "VANGUARD INDEX FUNDS", 0, 99.1],
+    });
+    expect(rows[0]?.netAssets).toBeNull();
+    expect(rows[0]?.name).toBe("Vanguard 500 Index Fund");
   });
 });
 
@@ -170,13 +203,114 @@ describe("filterRows issuer words and type words", () => {
 });
 
 describe("sortRows", () => {
-  const catalogue: Record<string, [string, string, number, number]> = {
-    AAAA: ["Amplius Aggressive Asset Allocation ETF", "EA Series Trust", 1, 27.0],
-    AAAAX: ["DWS RREEF Real Assets Fund", "DEUTSCHE DWS MARKET TRUST", 0, 49.0],
-    VTI: ["VANGUARD TOTAL STOCK MARKET ETF", "VANGUARD INDEX FUNDS", 1, 90.0],
-    AVUV: ["Avantis U.S. Small Cap Value ETF", "EA Series Trust", 1, 97.7],
+  // The figures are arranged so the three orders disagree, which is the point: a
+  // default that is actually applied cannot be confused with the ticker order it
+  // replaced, and the curated order is a third answer again.
+  const catalogue: Record<string, CatalogueTuple> = {
+    AAAA: [
+      "Amplius Aggressive Asset Allocation ETF",
+      "EA Series Trust",
+      1,
+      27.0,
+      1_000_000_000,
+    ],
+    AAAAX: [
+      "DWS RREEF Real Assets Fund",
+      "DEUTSCHE DWS MARKET TRUST",
+      0,
+      49.0,
+      25_000_000_000,
+    ],
+    VTI: [
+      "VANGUARD TOTAL STOCK MARKET ETF",
+      "VANGUARD INDEX FUNDS",
+      1,
+      90.0,
+      400_000_000_000,
+    ],
+    AVUV: [
+      "Avantis U.S. Small Cap Value ETF",
+      "EA Series Trust",
+      1,
+      97.7,
+      30_000_000_000,
+    ],
   };
   const rows = toRows(catalogue);
+
+  it("leads with the largest filed assets", () => {
+    expect(sortRows(rows, "assets").map((row) => row.ticker)).toEqual([
+      "VTI",
+      "AVUV",
+      "AAAAX",
+      "AAAA",
+    ]);
+  });
+
+  it("puts funds without a figure after the funds that have one, in ticker order", () => {
+    // A missing figure is not a small one: zero would sort it beside a genuinely
+    // empty fund, so it goes after every known answer.
+    const mixed = toRows({
+      AAAA: ["Amplius Aggressive Asset Allocation ETF", "EA Series Trust", 1, 27.0, null],
+      AAAAX: ["DWS RREEF Real Assets Fund", "DEUTSCHE DWS MARKET TRUST", 0, 49.0],
+      VTI: [
+        "VANGUARD TOTAL STOCK MARKET ETF",
+        "VANGUARD INDEX FUNDS",
+        1,
+        90.0,
+        400_000_000_000,
+      ],
+      AVUV: [
+        "Avantis U.S. Small Cap Value ETF",
+        "EA Series Trust",
+        1,
+        97.7,
+        30_000_000_000,
+      ],
+    });
+    expect(sortRows(mixed, "assets").map((row) => row.ticker)).toEqual([
+      "VTI",
+      "AVUV",
+      "AAAA",
+      "AAAAX",
+    ]);
+  });
+
+  it("breaks an equal-assets tie by ticker", () => {
+    const tied = toRows({
+      ZZZZ: ["A Fund", "A Trust", 1, 50.0, 5_000_000_000],
+      AAAA: ["Another Fund", "A Trust", 1, 50.0, 5_000_000_000],
+    });
+    expect(sortRows(tied, "assets").map((row) => row.ticker)).toEqual(["AAAA", "ZZZZ"]);
+  });
+
+  it("opens on assets by default when the release carries figures", () => {
+    expect(DEFAULT_SORT).toBe("assets");
+    expect(defaultSort(rows)).toBe("assets");
+    expect(sortRows(rows).map((row) => row.ticker)).toEqual(
+      sortRows(rows, "assets").map((row) => row.ticker),
+    );
+  });
+
+  it("falls back to the editorial order when the release carries no figures", () => {
+    // Live release 2026-11-02.7: four-element catalogue rows, so every `netAssets`
+    // is null and a size order would silently be ticker order. The page has to keep
+    // the order it shipped with and say why instead of claiming a ranking.
+    const assetless = toRows({
+      AAAA: ["Amplius Aggressive Asset Allocation ETF", "EA Series Trust", 1, 27.0],
+      AAAAX: ["DWS RREEF Real Assets Fund", "DEUTSCHE DWS MARKET TRUST", 0, 49.0],
+      VTI: ["VANGUARD TOTAL STOCK MARKET ETF", "VANGUARD INDEX FUNDS", 1, 90.0],
+      AVUV: ["Avantis U.S. Small Cap Value ETF", "EA Series Trust", 1, 97.7],
+    });
+    expect(defaultSort(assetless)).toBe("popular");
+    expect(sortRows(assetless).map((row) => row.ticker)).toEqual([
+      "VTI",
+      "AVUV",
+      "AAAA",
+      "AAAAX",
+    ]);
+    expect(sortRows(assetless)).toEqual(sortRows(assetless, "popular"));
+  });
 
   it("leads with the curated funds in curated order, then A–Z by ticker", () => {
     expect(sortRows(rows, "popular").map((row) => row.ticker)).toEqual([
@@ -185,13 +319,6 @@ describe("sortRows", () => {
       "AAAA",
       "AAAAX",
     ]);
-  });
-
-  it("is the popular order by default", () => {
-    expect(DEFAULT_SORT).toBe("popular");
-    expect(sortRows(rows).map((row) => row.ticker)).toEqual(
-      sortRows(rows, "popular").map((row) => row.ticker),
-    );
   });
 
   it("switches to plain ticker order on request", () => {
@@ -214,6 +341,9 @@ describe("sortRows", () => {
     const reversed: DirectoryRow[] = [...rows].reverse();
     expect(sortRows(reversed, "popular").map((row) => row.ticker)).toEqual(
       sortRows(rows, "popular").map((row) => row.ticker),
+    );
+    expect(sortRows(reversed, "assets").map((row) => row.ticker)).toEqual(
+      sortRows(rows, "assets").map((row) => row.ticker),
     );
   });
 });

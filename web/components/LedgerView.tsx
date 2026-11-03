@@ -13,6 +13,19 @@
  * Direct holdings join the ledger here, not in the aggregate: the portfolio knows
  * symbols, the release knows which company each symbol is, and `aggregate.ts` takes
  * resolved companies so it can stay a pure function of numbers (ADR-0014).
+ *
+ * The page's order is the answer first and the method underneath it (operator's
+ * instruction, 2026-11-02): `<h1>`, one line of count, the freshness strip, the
+ * concentration figures, the notices that report the state of *this* portfolio, the
+ * Companies heading and the ledger — and, only below the table, one "How to read this
+ * page" disclosure holding the explanations that used to open the page. The complaint
+ * was about order rather than content ("too much information at the top of the page
+ * discussing methodologies … all I really want are the metadata information you give in
+ * tables"), so nothing was deleted to get here: the benchmark column's four facts, what
+ * is not traced, the per-fund source table and the N-PORT note all still ship, after the
+ * numbers they explain. `LedgerView.test.tsx` pins the shape — one paragraph of prose
+ * above the table and this block as the first disclosure below it — so a later edit
+ * cannot drift the prose back up or quiet-delete a paragraph while tidying.
  */
 
 import Link from "next/link";
@@ -183,7 +196,7 @@ export function LedgerView() {
         ) : null}
         <Notice tone="info" title="Nothing in this portfolio yet">
           <p>
-            Add a fund, a stock, or cash on the <Link href="/">builder</Link> and the
+            Add a fund, a stock, or cash in the <Link href="/">Portfolio</Link> and the
             ledger appears here. The portfolio is stored in this page&apos;s URL, so the
             link you copy is the portfolio you see.
           </p>
@@ -328,6 +341,21 @@ export function LedgerView() {
         <FreshnessStrip release={release.data} ledger={ledger} />
       ) : null}
 
+      {/* The metadata the operator asked for, with both halves together: the strip above
+       * says where these numbers came from and how old they are, and these three figures
+       * say how concentrated they are. The concentration list used to sit below the
+       * notices, which put a paragraph of state between the two tables — the first screen
+       * read as prose with tables in it, the reverse of what was wanted. */}
+      <MetricsList ledger={ledger} />
+
+      {/* The four notices that follow are *state*, not method, which is why they stay above
+       * the table while every explanation moves: each reports something true about this
+       * particular portfolio — a symbol that could not be counted, a fund below the
+       * coverage floor, funds in the partial band, a benchmark that is missing — and a
+       * reader who scrolled past would be reading the table without knowing which of its
+       * weights are complete. Their bodies are tightened to the sentence that matters,
+       * because the mechanism they used to re-explain now lives in "How to read this
+       * page" below the table. */}
       {refused.length > 0 ? (
         <Notice
           tone="warn"
@@ -345,7 +373,7 @@ export function LedgerView() {
             ))}
           </p>
           <p>
-            The rest of the portfolio is unaffected: the ledger below does not include the
+            The rest of the portfolio is unaffected: the table below does not include the
             entries above, so its weights are shares of the portfolio you see.
           </p>
         </Notice>
@@ -357,10 +385,9 @@ export function LedgerView() {
           title={`${suppressed.map((fund) => fund.ticker).join(", ")} ${suppressed.length === 1 ? "is" : "are"} not covered`}
         >
           <p>
-            Coverage is below 60% of weight, so the concentration figures are not shown
-            for this portfolio rather than computed over the part that resolved. Their
-            share of the portfolio is shown, and the missing part is missing — not
-            averaged away.
+            Coverage is below 60% of weight, so no concentration figure is shown: one
+            computed over the part that resolved would describe a different portfolio, and
+            nothing is averaged across the gap.
           </p>
         </Notice>
       ) : null}
@@ -371,68 +398,28 @@ export function LedgerView() {
           title={`Partial coverage: ${partial.map((fund) => fund.ticker).join(", ")}`}
         >
           <p>
-            Those funds resolved 60–70% of their weight to companies. The concentration
-            figures below are computed over what resolved, so treat them as an
-            approximation of the whole fund rather than a measurement of it.
+            They resolved 60–70% of their weight, so the concentration figures cover what
+            resolved — an approximation of the whole fund, not a measurement of it.
           </p>
         </Notice>
       ) : null}
 
-      <MetricsList ledger={ledger} />
-
-      {ledger.metrics.cash_weight > 0 || ledger.metrics.unallocated_weight > 0 ? (
-        <p className="muted">
-          {ledger.metrics.cash_weight > 0 ? (
-            <>
-              Cash is {formatShare(ledger.metrics.cash_weight)} of your money. It has no
-              company behind it, so it is left out of coverage — and counted in
-              concentration, because it is still your money.
-            </>
-          ) : null}{" "}
-          {ledger.metrics.unallocated_weight > 0 ? (
-            <>
-              {formatShare(ledger.metrics.unallocated_weight)} is unallocated: no entry
-              accounts for it.
-            </>
-          ) : null}
-        </p>
-      ) : null}
-
-      <h2 id="ledger-start">Companies</h2>
-      {ledger.benchmark ? (
-        <p className="muted">
-          The <strong>{ledger.benchmark.ticker}</strong> column is each company&apos;s
-          share of {ledger.benchmark.ticker} — {ledger.benchmark.name}, filing period{" "}
-          {formatIsoDate(ledger.benchmark.as_of)} — not a share of your portfolio. It is
-          read from{" "}
-          <a href={ledger.benchmark.source_url} rel="noopener noreferrer" target="_blank">
-            {ledger.benchmark.ticker}&apos;s own SEC N-PORT filing
-            <span className="sr-only"> for {ledger.benchmark.ticker}</span>
-          </a>
-          , which traces {formatCoveragePct(ledger.benchmark.coverage_pct)} of its gross
-          weight to companies (filed weights slightly exceed 100% of net assets, so the
-          column sums to a little more than that). A 0.00% here means the company is
-          either absent from those traced holdings or filed at under 0.01% of{" "}
-          {ledger.benchmark.ticker}&apos;s NAV — the smallest weight this column can show.
-          Neither is the same as the fund not owning it. The figure in brackets is your
-          weight minus {ledger.benchmark.ticker}&apos;s, in percentage points — negative
-          means you hold less of the company than {ledger.benchmark.ticker} does, positive
-          more. The two are shares of different wholes (yours of your portfolio,{" "}
-          {ledger.benchmark.ticker}&apos;s of its own NAV), so the bracket compares two
-          holdings; it is not a share of your portfolio. It is computed from the unrounded
-          weights and rounded once, so subtracting the two printed numbers can be 0.01
-          away at a rounding boundary.
-        </p>
-      ) : (
+      {/* A missing benchmark is state too, and it has to arrive before the table it
+       * changes: without it the comparison column is simply absent, and the reason
+       * belongs with the other caveats a reader needs before reading weights — not
+       * halfway down, between the heading and the table. */}
+      {ledger.benchmark ? null : (
         <Notice tone="info" title="No benchmark comparison on this page">
           <p>
             {BENCHMARK_TICKER} could not be read from this release, so the comparison
             column is absent rather than filled with zeros — a zero would claim the
-            benchmark holds none of these companies. Everything above and below is the
-            portfolio&apos;s own arithmetic and is unaffected.
+            benchmark holds none of these companies. The portfolio&apos;s own figures are
+            unaffected.
           </p>
         </Notice>
       )}
+
+      <h2 id="ledger-start">Companies</h2>
       {releaseAsOf ? (
         <p className="table-more">
           <button
@@ -480,25 +467,169 @@ export function LedgerView() {
         </p>
       ) : null}
 
-      <details className="what-not-traced">
-        <summary>What is not traced, and why</summary>
-        <p>
-          Coverage counts money, not rows. In this portfolio the positions with no company
-          behind them are {formatCount(ledger.unmapped.positions_with_weight)} that carry
-          any weight: {formatCount(ledger.unmapped.securities_with_weight)} share
-          positions — mostly small non-US holdings filed through an identifier this
-          release could not resolve — and{" "}
-          {formatCount(ledger.unmapped.cash_and_derivatives_with_weight)} cash or
-          derivative lines inside the funds, which have no company by definition.
-        </p>
-        <p className="muted">
-          Another{" "}
-          {formatCount(ledger.unmapped.positions - ledger.unmapped.positions_with_weight)}{" "}
-          filed positions round to 0.00% of their fund. They are counted honestly but
-          cannot move a weight, so they are not shown as companies. Nothing is
-          redistributed across the companies that did resolve — that would make a
-          partly-read fund look average.{" "}
-          <Link href="/methodology/">How mapping works</Link>.
+      {/* The method, below the numbers it explains (operator's instruction, 2026-11-02).
+       *
+       * Everything from here to the closing details used to sit above the table, and it
+       * made the page open with methodology instead of with an answer. It is moved and
+       * tightened, never deleted: the benchmark column's four facts (what the column is,
+       * what 0.00% does and does not mean, which way round the bracket subtracts, and
+       * that it is computed unrounded and rounded once), the cash sentence, what is not
+       * traced, the per-fund source table and the N-PORT note all still ship — after the
+       * reader has the table, one click from it.
+       *
+       * Closed by default and opened by nothing: a reader who wants the method can ask for
+       * it, and a reader who came for the numbers never scrolls through it first. It is
+       * also the page's only top-level <details>, which is what `LedgerView.test.tsx`
+       * relies on when it holds the explanation to the block *after* the table rather than
+       * to a paragraph above it. The nested disclosures keep the old outline: the coverage
+       * gap and the per-fund table still hide behind their own summaries, one level in. */}
+      <details className="how-to-read">
+        <summary>How to read this page</summary>
+
+        {/* The benchmark column, carrying the same facts it had above the table with one
+         * repetition removed — a reader who asks what "In VT" is gets the whole answer at
+         * once, instead of meeting a wall of sentences between the heading and the column
+         * it explains. The short version stays where it is needed: the table's own caption
+         * names the benchmark, the direction of the bracket and the sign ink, because a
+         * caption is read with the table (`static-xray-frontend` §4a). The provenance link
+         * moves here, and `FreshnessStrip` still carries the portfolio's own provenance
+         * above the fold — DESIGN rule 1 is about the visitor's own numbers, not about a
+         * comparison column's method. */}
+        {ledger.benchmark ? (
+          <p className="muted">
+            The <strong>{ledger.benchmark.ticker}</strong> column is each company&apos;s
+            share of {ledger.benchmark.ticker} — {ledger.benchmark.name}, filing period{" "}
+            {formatIsoDate(ledger.benchmark.as_of)} — read from{" "}
+            <a
+              href={ledger.benchmark.source_url}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              {ledger.benchmark.ticker}&apos;s own SEC N-PORT filing
+              <span className="sr-only"> for {ledger.benchmark.ticker}</span>
+            </a>
+            , which traces {formatCoveragePct(ledger.benchmark.coverage_pct)} of its gross
+            weight to companies (filed weights slightly exceed 100% of net assets, so the
+            column sums to a little more than that). A 0.00% here means the company is
+            either absent from those traced holdings or filed at under 0.01% of{" "}
+            {ledger.benchmark.ticker}&apos;s NAV — the smallest weight this column can
+            show. Neither is the same as the fund not owning it. The figure in brackets is
+            your weight minus {ledger.benchmark.ticker}&apos;s, in percentage points:
+            negative means you hold less of the company than {ledger.benchmark.ticker}{" "}
+            does, positive more. The two are shares of different wholes — yours of your
+            portfolio, {ledger.benchmark.ticker}&apos;s of its own NAV — so the bracket
+            compares two holdings; it is not a share of your portfolio. It is computed
+            from the unrounded weights and rounded once, so subtracting the two printed
+            numbers can be 0.01 away at a rounding boundary.
+          </p>
+        ) : null}
+
+        {/* Cash and an unallocated remainder used to get a paragraph above the table, and
+         * the paragraph stays because it carries a fact the strip does not: what cash does
+         * to the arithmetic. The strip already states both amounts as cells, so nothing
+         * numeric is lost by moving this down — cash is outside coverage because it has no
+         * company behind it, and inside concentration because it is still your money. */}
+        {ledger.metrics.cash_weight > 0 || ledger.metrics.unallocated_weight > 0 ? (
+          <p className="muted">
+            {ledger.metrics.cash_weight > 0 ? (
+              <>
+                Cash is {formatShare(ledger.metrics.cash_weight)} of your money. It has no
+                company behind it, so it is left out of coverage — and counted in
+                concentration, because it is still your money.
+              </>
+            ) : null}{" "}
+            {ledger.metrics.unallocated_weight > 0 ? (
+              <>
+                {formatShare(ledger.metrics.unallocated_weight)} is unallocated: no entry
+                accounts for it.
+              </>
+            ) : null}
+          </p>
+        ) : null}
+
+        <details className="what-not-traced">
+          <summary>What is not traced, and why</summary>
+          <p>
+            Coverage counts money, not rows. In this portfolio the positions with no
+            company behind them are {formatCount(ledger.unmapped.positions_with_weight)}{" "}
+            that carry any weight: {formatCount(ledger.unmapped.securities_with_weight)}{" "}
+            share positions — mostly small non-US holdings filed through an identifier
+            this release could not resolve — and{" "}
+            {formatCount(ledger.unmapped.cash_and_derivatives_with_weight)} cash or
+            derivative lines inside the funds, which have no company by definition.
+          </p>
+          <p className="muted">
+            Another{" "}
+            {formatCount(
+              ledger.unmapped.positions - ledger.unmapped.positions_with_weight,
+            )}{" "}
+            filed positions round to 0.00% of their fund. They are counted honestly but
+            cannot move a weight, so they are not shown as companies. Nothing is
+            redistributed across the companies that did resolve — that would make a
+            partly-read fund look average.{" "}
+            <Link href="/methodology/">How mapping works</Link>.
+          </p>
+        </details>
+
+        <details style={{ marginTop: "1.5rem" }}>
+          <summary>Where each number comes from</summary>
+          <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
+            <table className="ledger">
+              <caption>Each fund, its filing period, and its coverage.</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Fund</th>
+                  <th scope="col">Filing period</th>
+                  <th scope="col" className="numeric">
+                    Lag
+                  </th>
+                  <th scope="col" className="numeric">
+                    Coverage
+                  </th>
+                  <th scope="col">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ledger.funds.map((fund) => (
+                  <tr key={fund.ticker}>
+                    <th scope="row">
+                      {fund.ticker}
+                      <span className="row-note">{fund.name}</span>
+                    </th>
+                    <td>
+                      {fund.as_of}
+                      <span className="row-note">filed {fund.filed_at}</span>
+                    </td>
+                    <td className="numeric">{formatDays(fund.lag_days)}</td>
+                    <td className="numeric">
+                      <span
+                        className={
+                          coverageBand(fund.coverage_pct) === "full"
+                            ? "chip"
+                            : "chip chip--warn"
+                        }
+                      >
+                        {coverageChip(fund.coverage_pct)}
+                      </span>
+                    </td>
+                    <td>
+                      <a href={fund.source_url} rel="noopener noreferrer" target="_blank">
+                        SEC N-PORT{" "}
+                        <span className="sr-only">filing for {fund.ticker}</span>
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+
+        <p className="muted" style={{ marginTop: "1.5rem", fontSize: "0.85rem" }}>
+          Weights come from Form N-PORT, as filed. Funds report securities only, so
+          positions outside the filing (cash, some derivatives) are absent, and weights
+          that do not sum to 100% are filed that way rather than corrected. A stock you
+          hold directly is counted once, at the weight you gave it.
         </p>
       </details>
 
@@ -507,66 +638,6 @@ export function LedgerView() {
         row={selected}
         onClose={() => setSelected(null)}
       />
-
-      <details style={{ marginTop: "1.5rem" }}>
-        <summary>Where each number comes from</summary>
-        <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
-          <table className="ledger">
-            <caption>Each fund, its filing period, and its coverage.</caption>
-            <thead>
-              <tr>
-                <th scope="col">Fund</th>
-                <th scope="col">Filing period</th>
-                <th scope="col" className="numeric">
-                  Lag
-                </th>
-                <th scope="col" className="numeric">
-                  Coverage
-                </th>
-                <th scope="col">Source</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ledger.funds.map((fund) => (
-                <tr key={fund.ticker}>
-                  <th scope="row">
-                    {fund.ticker}
-                    <span className="row-note">{fund.name}</span>
-                  </th>
-                  <td>
-                    {fund.as_of}
-                    <span className="row-note">filed {fund.filed_at}</span>
-                  </td>
-                  <td className="numeric">{formatDays(fund.lag_days)}</td>
-                  <td className="numeric">
-                    <span
-                      className={
-                        coverageBand(fund.coverage_pct) === "full"
-                          ? "chip"
-                          : "chip chip--warn"
-                      }
-                    >
-                      {coverageChip(fund.coverage_pct)}
-                    </span>
-                  </td>
-                  <td>
-                    <a href={fund.source_url} rel="noopener noreferrer" target="_blank">
-                      SEC N-PORT <span className="sr-only">filing for {fund.ticker}</span>
-                    </a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
-
-      <p className="muted" style={{ marginTop: "1.5rem", fontSize: "0.85rem" }}>
-        Weights come from Form N-PORT, as filed. Funds report securities only, so
-        positions outside the filing (cash, some derivatives) are absent, and weights that
-        do not sum to 100% are filed that way rather than corrected. A stock you hold
-        directly is counted once, at the weight you gave it.
-      </p>
     </>
   );
 }

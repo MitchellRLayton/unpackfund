@@ -136,7 +136,7 @@ def test_the_fund_offers_a_prefilled_ledger_link_it_built_the_apps_way():
     assert link is not None and link.startswith("/x/#v1.")
     payload = base64.urlsafe_b64decode(link.split("v1.", 1)[1] + "==").decode()
     assert payload == '[["AVUV",10000]]'
-    assert 'See all 3 holdings in the look-through ledger' in render(fund())
+    assert 'See all 3 holdings in the look-through X-Ray' in render(fund())
 
 
 def test_a_ticker_the_ledger_would_refuse_gets_no_prefill():

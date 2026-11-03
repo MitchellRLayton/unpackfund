@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { LedgerView } from "@/components/LedgerView";
 
 export const metadata: Metadata = {
-  title: "UnpackFund — your look-through ledger",
+  title: "UnpackFund — X-Ray: your look-through",
 };
 
 export default function LedgerPage() {

@@ -23,15 +23,15 @@ import {
   subscribe,
   writeComparison,
 } from "./fragment-store";
+import { MAX_HOLDINGS, tallyOf } from "./holdings";
 import { FULL_ALLOCATION_BP } from "./types";
 import type { FundWeight } from "./types";
 
-/**
- * Two portfolios share one fragment, and the fragment has a 2,000-character budget
- * (`fragment.ts`). Forty entries a side is what fits with the version prefix, so the
- * cap is set there: refusing an add is better than writing a link that will not open.
- */
-const MAX_ENTRIES = 40;
+// The cap is `holdings.MAX_HOLDINGS`, not a number of its own: two portfolios share one
+// fragment, and the fragment has a 2,000-character budget (`fragment.ts`). Forty entries
+// a side is what fits with the version prefix, so refusing an add is better than writing
+// a link that will not open. It is imported rather than restated so the builder and the
+// comparison cannot drift apart about how many rows a link may hold.
 
 export type Side = "a" | "b";
 
@@ -50,10 +50,6 @@ export interface Comparison {
   swap: () => void;
 }
 
-function balance(entries: FundWeight[]): number {
-  return entries.reduce((total, entry) => total + entry.weight_bp, 0);
-}
-
 export function useComparison(): Comparison {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
@@ -67,13 +63,25 @@ export function useComparison(): Comparison {
       if (!upper) return;
       const { a, b } = snapshot;
       const target = side === "a" ? a : b;
-      if (target.length >= MAX_ENTRIES) return;
+      if (target.length >= MAX_HOLDINGS) return;
       if (target.some((entry) => entry.ticker === upper)) return;
       const entry = { ticker: upper, weight_bp: 0 };
       const next = [...target, entry];
-      // A portfolio that is empty except for this fund is a single-fund portfolio:
-      // give it the whole allocation rather than leaving it at zero, which would
-      // read as "unallocated" for no reason.
+      // A side that is empty except for this fund is a single-fund portfolio: give it
+      // the whole allocation rather than leaving it at zero, which would read as
+      // "unallocated" for no reason. This is the builder's own preferred default (first
+      // holding 100%, second halves it, third thirds it), kept here so a one-fund side is
+      // a comparison and not an unfinished list.
+      //
+      // It cannot fire for an add that is not the first: `next.length === 1` is false the
+      // moment the side has any row, so the new entry arrives at 0 and every amount
+      // already on screen is left exactly as it was. That is the rule the builder had to
+      // fix on 2026-11-02 after the operator reported adding a fund reset a hand-weighted
+      // portfolio to equal weights — here the old bug was structurally impossible, and it
+      // must stay that way: a comparison's two sides are typed by hand, so an add that
+      // re-weighted them would silently rewrite the numbers the visitor was comparing.
+      // (`use-portfolio.add` needs `isEqualSplit` because it *does* re-split the app's own
+      // even split; this store never re-splits anything after the first row.)
       const weighted =
         next.length === 1 ? [{ ...entry, weight_bp: FULL_ALLOCATION_BP }] : next;
       update(side === "a" ? weighted : a, side === "b" ? weighted : b);
@@ -131,16 +139,26 @@ export function useComparison(): Comparison {
     update(snapshot.b, snapshot.a);
   }, [snapshot, update]);
 
+  // The complete-vs-short rule is `holdings.tallyOf`, the same call that prints the
+  // sentence on both pages, rather than a second sum compared to `FULL_ALLOCATION_BP`.
+  // One function decides both facts, so a side cannot be "fully allocated" on screen and
+  // incomplete to the gate that opens the overlap.
+  const tallyA = tallyOf(
+    "bp",
+    snapshot.a.map((entry) => entry.weight_bp),
+  );
+  const tallyB = tallyOf(
+    "bp",
+    snapshot.b.map((entry) => entry.weight_bp),
+  );
+
   return {
     a: snapshot.a,
     b: snapshot.b,
     ready: snapshot.ready,
     problem: snapshot.problem,
-    totalBp: { a: balance(snapshot.a), b: balance(snapshot.b) },
-    balanced: {
-      a: balance(snapshot.a) === FULL_ALLOCATION_BP,
-      b: balance(snapshot.b) === FULL_ALLOCATION_BP,
-    },
+    totalBp: { a: tallyA.total, b: tallyB.total },
+    balanced: { a: tallyA.complete, b: tallyB.complete },
     add,
     remove,
     setWeightBp,

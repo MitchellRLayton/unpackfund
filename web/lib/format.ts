@@ -90,6 +90,31 @@ export function formatSignedShare(delta: number): string {
   return `(${signed})`;
 }
 
+/**
+ * The ink a signed difference wears, from the sign alone: green above zero, red below,
+ * `--muted` at an exact zero — a difference of zero has no side to be on, so it gets no
+ * direction.
+ *
+ * It lives here beside `formatSignedShare` because the class and the sign are one
+ * decision in two channels, and the two callers must not drift into two
+ * implementations: the ledger's bracket against the benchmark (`LedgerTable`) and the
+ * compare page's company-by-company Δ column (`CompareView`). The colour is allowed to
+ * mean the sign only because it never carries it — the sign is always printed (the
+ * formatter's job), and each table's caption states which colour is which side, so a
+ * reader who cannot separate the green from the red loses nothing but emphasis
+ * (`static-xray-frontend` §4a, §8; ADR-0015 amendment 2026-11-02).
+ *
+ * A plain function rather than a stylesheet rule keyed off a data attribute — the way
+ * the geography edge works — because the sign is arithmetic: a selector can read a
+ * row's `data-country`, it cannot subtract two weights. The two channels stay separate
+ * even in the same cell: geography owns the row's edge, the sign owns this span.
+ */
+export function deltaInkClass(delta: number): string {
+  if (delta > 0) return "delta delta--up";
+  if (delta < 0) return "delta delta--down";
+  return "delta";
+}
+
 /** `90.3` → `90.3%`. Coverage is stored as a percentage, not a fraction. */
 export function formatCoveragePct(coveragePct: number): string {
   return `${oneDp.format(coveragePct)}%`;
