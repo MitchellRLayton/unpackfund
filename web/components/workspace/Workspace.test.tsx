@@ -319,6 +319,31 @@ describe("Workspace — the companies table", () => {
     expect(model.openCompany).toHaveBeenCalledWith("c_apple");
   });
 
+  it("keeps the caption to one line and puts the method under the table", () => {
+    renderWorkspace({ entries: ENTRIES, ledger: BENCHMARKED });
+
+    const panel = within(screen.getByRole("tabpanel"));
+    const table = panel.getByRole("table");
+    const caption = table.querySelector("caption")?.textContent ?? "";
+
+    // The operator's instruction (2026-11-03): the eight-sentence caption was a wall of
+    // text above the table that nobody read. What is left is what a reader needs while
+    // looking at the rows — what the table is, how it is ordered, what it compares against.
+    expect(caption).toContain("One row per company");
+    expect(caption).toContain("Sorted by Your weight, largest first");
+    expect(caption).toContain("Benchmark: VT");
+    expect(caption.length).toBeLessThan(120);
+
+    // The method is one click away, closed by default, and it is the only copy: the
+    // column meanings, the bracket's direction and the tier convention all live here.
+    const method = panel.getByText("How to read this table").closest("details");
+    expect(method).not.toBeNull();
+    expect(method?.hasAttribute("open")).toBe(false);
+    expect(method?.textContent).toContain("percentage points");
+    expect(method?.textContent).toContain("FTSE Russell");
+    expect(method?.textContent).toContain("every row, not this page");
+  });
+
   it("sorts on a header and says so on the header and in the caption", () => {
     renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
 
@@ -426,10 +451,8 @@ describe("Workspace — the holdings pane and the lenses", () => {
     // a row constant.
     expect(rows()[0]?.getAttribute("style")).toBeNull();
 
-    // Both the caption and the announcement say which rows these are, so nothing on the
-    // page claims to be the whole table.
-    expect(table.querySelector("caption")?.textContent).toContain("500 companies in all");
-    expect(table.querySelector("caption")?.textContent).toContain("rows 1–50 of 500");
+    // The pager says which rows these are, so nothing on the page claims to be the whole
+    // table. It is the only place that says it: the caption is one line (2026-11-03).
     expect(panel.getByText("Showing rows 1–50 of 500 · page 1 of 10")).toBeTruthy();
     expect(panel.getByRole("button", { name: "Previous" }).hasAttribute("disabled")).toBe(
       true,
@@ -463,9 +486,7 @@ describe("Workspace — the holdings pane and the lenses", () => {
     });
     // A different list, so the old page number would point at rows that are not there.
     expect(firstRank()).toBe("1");
-    expect(panel.getByRole("table").querySelector("caption")?.textContent).toContain(
-      "page 1 of",
-    );
+    expect(panel.getByText(/page 1 of/)).toBeTruthy();
   });
 
   it("names every fund on a row rather than counting the rest behind a number", () => {
@@ -536,9 +557,15 @@ describe("Workspace — the holdings pane and the lenses", () => {
     expect(bareHeaders).not.toContain("VT");
     expect(bareHeaders).not.toContain("Change vs VT");
     expect(bareHeaders).toHaveLength(6);
+    // The caption names the benchmark and the disclosure explains it; with no benchmark
+    // both are absent rather than empty.
     expect(bare.getByRole("table").querySelector("caption")?.textContent).not.toContain(
-      "VT is the Vanguard",
+      "Benchmark:",
     );
+    expect(bare.queryByText("How to read this table")).not.toBeNull();
+    expect(
+      bare.getByText("How to read this table").closest("details")?.textContent,
+    ).not.toContain("percentage points");
   });
 
   it("prints the difference with its sign and its colour, and no colour at zero", () => {
