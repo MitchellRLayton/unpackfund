@@ -5,7 +5,6 @@ import { SearchPalette } from "@/components/shell/SearchPalette";
 import { SiteFooter } from "@/components/shell/SiteFooter";
 import { SiteNav } from "@/components/shell/SiteNav";
 import "./globals.css";
-import "./intro.css";
 
 /**
  * The indexable flip is a build-time flag, not an edit.
@@ -40,34 +39,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        {/* The first-visit film has to hide the page before the first paint, and the
-            decision needs storage, which only exists in the browser. This is the one
-            place a blocking script earns its keep: it reads two marks and sets one
-            attribute, and `components/intro/IntroCurtain.tsx` makes the real decision a
-            few hundred milliseconds later with the tested policy in
-            `lib/intro-session.ts`. If the two ever disagree the hint loses, at the cost of
-            one frame. Keep the cooldown here in step with `COOLDOWN_MS`. */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{
-if(location.pathname!=="/"&&location.pathname!=="/index.html")return;
-var m=/[?&]intro=(force|off)/.exec(location.search);
-var play=false;
-if(m&&m[1]==="force")play=true;
-else if(!(m&&m[1]==="off")
-&&!matchMedia("(prefers-reduced-motion: reduce)").matches
-&&location.hash.length<2
-&&!document.hidden
-&&sessionStorage.getItem("unpackfund.intro.session")===null){
-var d=new Date();
-var day=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
-play=localStorage.getItem("unpackfund.intro.day")!==day;
-}
-if(play)document.documentElement.dataset.intro="play";
-}catch(e){}})();`,
-          }}
-        />
-        <div id="intro-curtain" className="intro-curtain" />
         <a className="skip-link" href="#main">
           Skip to content
         </a>
