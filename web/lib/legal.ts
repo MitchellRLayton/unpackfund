@@ -44,7 +44,7 @@ export const CONTACT_EMAIL = "unfetteredaccess@duck.com";
  * drafted. Set 2026-10-30, the promotion date; the pre-flight gate (P15) exists
  * so a promotion cannot ship a policy still dated to a draft.
  */
-export const EFFECTIVE_DATE = "November 3, 2026";
+export const EFFECTIVE_DATE = "November 4, 2026";
 
 /**
  * Bumped by hand when the method changes; the page and the copy must move together.
@@ -89,5 +89,9 @@ export const METHODOLOGY_VERSION = "1.3.0";
  * play, where it previously said the site wrote nothing to local storage. A date
  * replaced the earlier rolling timestamp, which is less data and a plainer sentence.
  * No new collection, no new third party; the policy is being made true again.
+ *
+ * 1.5.0 (2026-11-04): the first-visit film was removed, and the two storage marks it
+ * needed went with it. The policy's storage paragraph described those two values; it now
+ * says the site writes nothing to localStorage or sessionStorage, which is true again.
  */
-export const LEGAL_COPY_VERSION = "1.4.0";
+export const LEGAL_COPY_VERSION = "1.5.0";
