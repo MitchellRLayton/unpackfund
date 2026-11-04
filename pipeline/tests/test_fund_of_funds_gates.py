@@ -253,6 +253,7 @@ def test_attach_keeps_the_contract_key_order_and_omits_what_is_absent():
     # and are never copied from the parent's filed vector.
     assert list(plain) == [
         *list(original)[:12], "categories", "coverage_by_cat",
+        "identified_pct", "identified_by_cat",
         "holdings", "metrics", "components", "warnings",
     ]
 
@@ -271,6 +272,7 @@ def test_attach_keeps_the_contract_key_order_and_omits_what_is_absent():
     )
     assert list(flattened) == [
         *list(original)[:12], "categories", "coverage_by_cat",
+        "identified_pct", "identified_by_cat",
         "holdings", "metrics", "components", "lookthrough", "warnings",
     ]
     assert flattened["categories"]["equity"] == 9_000

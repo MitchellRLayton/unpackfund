@@ -11,6 +11,7 @@ import re
 
 from . import weights
 from .identifiers import UNNAMED_HOLDING, is_licensed, public_name
+from .classify import CATEGORY_ORDER
 
 import hashlib
 import json
@@ -68,6 +69,78 @@ def category_fields(holdings: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _identified(row: dict[str, Any]) -> bool:
+    """A row is identified when it resolved to a company *or* to any other identity.
+
+    ``identified`` is the wider of the two: a security's own identifier names what the
+    row *is* even when no company can be attached — a Treasury line, a fund share, a
+    cash sweep. Attribution implies identification, so a row carrying ``company_id``
+    counts as identified whether or not the flag was set; the reverse direction is the
+    whole point of the field, and the validator refuses a release where it is reversed.
+    """
+    return bool(row.get("company_id")) or bool(row.get("identified"))
+
+
+def published_row(row: dict[str, Any]) -> dict[str, Any]:
+    """A row as the contract publishes it: the caller's keys, plus the flag.
+
+    A composed vector arrives from the flattener as plain dictionaries that predate the
+    field, and the row shape is the *document's* contract — not each producer's — so the
+    document layer states it once, here, rather than asking every caller to remember it.
+
+    An absent flag derives from attribution, which can only *lower* the published
+    identification: a composed row whose security was named in the child vector reads as
+    unidentified here, never the other way round. Understating is the only safe
+    direction for a number that is checked against its own rows.
+    """
+    if "identified" in row:
+        return row
+    published: dict[str, Any] = {}
+    for key, value in row.items():
+        published[key] = value
+        if key == "weight_bp":
+            published["identified"] = bool(row.get("company_id"))
+    if "identified" not in published:
+        published["identified"] = bool(row.get("company_id"))
+    return published
+
+
+def identified_fields(
+    holdings: list[dict[str, Any]],
+    *,
+    identified_pct: float | None = None,
+    identified_by_cat: dict[str, float | None] | None = None,
+) -> dict[str, Any]:
+    """The two identification objects for a published vector (contract §1, additive).
+
+    ``coverage_pct`` counts the weight that resolved to a *company*; this counts the
+    weight that resolved to *anything* — a company, a named security, a fund share.
+    Measured on the wide release, 88.6 % of gross is identified against 62.5 % covered,
+    so the site understated what it knows by 26 points.
+
+    The derivation is the coverage derivation, not a second definition of it: the same
+    rows, the same gross denominator (``Σ|weight_bp|``, both sides of a short), the same
+    one-decimal rounding, and the same ``None``-for-no-weight rule — ``by_cat`` is
+    literally ``weights.category_coverage`` reading the identified flag instead of the
+    company flag, so the two splits cannot round differently. A caller that measures the
+    split from a wider source may pass either value in; the validator compares what the
+    document claims against these rows, so a document cannot publish an identity its own
+    vector does not carry.
+    """
+    by_cat = weights.category_coverage(
+        [(row["asset_cat"], row["weight_bp"], _identified(row)) for row in holdings]
+    )
+    if identified_by_cat is not None:
+        # The contract's six keys, in ``classify.CATEGORY_ORDER`` order, whatever order
+        # the caller's dict arrived in: key order is the published byte order.
+        by_cat = {name: identified_by_cat.get(name, by_cat[name]) for name in CATEGORY_ORDER}
+    if identified_pct is None:
+        gross = sum(abs(row["weight_bp"]) for row in holdings)
+        found = sum(abs(row["weight_bp"]) for row in holdings if _identified(row))
+        identified_pct = round(100 * found / gross, 1) if gross else 0.0
+    return {"identified_pct": identified_pct, "identified_by_cat": by_cat}
+
+
 def build_fund_artifact(
     *,
     ticker: str,
@@ -79,6 +152,8 @@ def build_fund_artifact(
     source_url: str,
     coverage_pct: float,
     etf: bool,
+    identified_pct: float | None = None,
+    identified_by_cat: dict[str, float | None] | None = None,
     holdings: list[dict[str, Any]],
     metrics: dict[str, float | None],
     warnings: list[str],
@@ -89,6 +164,10 @@ def build_fund_artifact(
     of a document is a function of the rows it publishes, so deriving it makes it
     impossible for a caller to publish a vector and a split that disagree — including the
     flattened path, where the rows are a composition rather than a filing (ADR-0016).
+    ``identified_pct`` / ``identified_by_cat`` follow the same rule when they are not
+    given, and are *checked* against it when they are: a caller may measure the wider
+    split from a source the rows do not carry, but the validator holds the published
+    number to the published vector.
     """
     lag_days = _days_between(filed_at, as_of)
     return {
@@ -116,6 +195,16 @@ def build_fund_artifact(
         # holding total; ``coverage_by_cat`` is the only coverage number that can be
         # compared across funds, because it measures inside one asset class.
         **category_fields(holdings),
+        # Additive to schema 1 (§1): what the fund can *name*, against what it can
+        # attribute. Sits between ``coverage_by_cat`` and ``holdings`` because it is
+        # the same statement one level wider — coverage says "a company", this says
+        # "a company or a named security" — and a consumer that ignores both reads the
+        # document it read before.
+        **identified_fields(
+            holdings,
+            identified_pct=identified_pct,
+            identified_by_cat=identified_by_cat,
+        ),
         "holdings": holdings,
         "metrics": metrics,
         "warnings": warnings,
@@ -137,6 +226,7 @@ def holding_row(
     ticker: str | None,
     asset_cat: str,
     weight_bp: int,
+    identified: bool | None = None,
 ) -> dict[str, Any]:
     """One published holding row.
 
@@ -164,6 +254,12 @@ def holding_row(
         "ticker": ticker if company_id and not is_licensed(ticker) else None,
         "asset_cat": asset_cat,
         "weight_bp": weight_bp,
+        # Last key of the row, and the row's widest statement: this weight can be
+        # named. ``None`` derives it from attribution, which is the honest default for
+        # a caller that only knows a company id — a row we can attribute is a row we
+        # have identified, and a caller that knows *more* (a resolved security
+        # identifier on a row with no company) passes ``identified=True`` explicitly.
+        "identified": bool(company_id) if identified is None else bool(identified),
     }
 
 #: Fields a flattened fund adds to the document, in contract order, between ``metrics``
@@ -206,7 +302,11 @@ def attach_fund_of_funds(
         "source_url": document["source_url"],
         "coverage_pct": coverage_pct,
         **category_fields(holdings),
-        "holdings": holdings,
+        # Recomputed, never carried over: a flattened vector is a different list of
+        # rows, so the old ratio would describe a vector this document no longer
+        # publishes.
+        **identified_fields(holdings),
+        "holdings": [published_row(row) for row in holdings],
         "metrics": metrics,
     }
     if components:

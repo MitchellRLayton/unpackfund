@@ -717,6 +717,21 @@ table {
   border-color: color-mix(in oklch, var(--alert) 45%, transparent);
 }
 
+/*
+ * The identified share, beside the attributed one.
+ *
+ * Same geometry as every other chip, but dashed and graphite: it is a second figure
+ * about the same fund, not a second reading of the same figure, and the band colours
+ * belong to attribution alone. The words do the disambiguating; the style only stops
+ * the two chips reading as one rank of coverage.
+ */
+.chip--identified {
+  color: var(--graphite);
+  border-style: dashed;
+  border-color: var(--rule);
+  background: transparent;
+}
+
 /* ------------------------------------------------------------------------- */
 /* Panels and cards                                                          */
 /* ------------------------------------------------------------------------- */

@@ -48,6 +48,7 @@ from . import (
     company_countries,
     filings,
     fund_lookthrough,
+    identifiers,
     manifest as manifest_mod,
     sec,
     securities,
@@ -263,6 +264,7 @@ def build_fund(
     collect_evidence: bool = False,
     issuers: gleif.IssuerIndex | None = None,
     fund_leis: Mapping[str, str] | None = None,
+    security_map: identifiers.SecurityMap | None = None,
 ) -> FundBuild:
     started = time.monotonic()
     found = filings.latest(ref)
@@ -287,6 +289,7 @@ def build_fund(
         evidence=evidence,
         issuers=issuers,
         fund_leis=fund_leis,
+        security_map=security_map,
     )
 
     # Gate 1 — the *investable* schedule reconciles to the fund's own NAV.
@@ -337,6 +340,12 @@ def build_fund(
         filed_at=found.filing_date,
         source_url=found.source_url,
         coverage_pct=vector.coverage_pct,
+        # Both levels are the build's answer, computed from the rows it is publishing
+        # (``weights.identified_split``), never left to be re-derived from the rows a
+        # consumer happens to hold: the validator checks the number it recomputes
+        # against this one, and the two must agree by construction, not by luck.
+        identified_pct=vector.identified_pct,
+        identified_by_cat=vector.identified_by_cat,
         holdings=[
             artifact.holding_row(
                 company_id=row.company_id,
@@ -344,6 +353,7 @@ def build_fund(
                 ticker=row.ticker,
                 asset_cat=row.asset_cat,
                 weight_bp=row.weight_bp,
+                identified=row.identified,
             )
             for row in vector.holdings
         ],
@@ -405,6 +415,7 @@ def _attempt(
     collect_evidence: bool = False,
     issuers: gleif.IssuerIndex | None = None,
     fund_leis: Mapping[str, str] | None = None,
+    security_map: identifiers.SecurityMap | None = None,
 ) -> tuple[FundBuild | None, str | None]:
     try:
         return (
@@ -415,6 +426,7 @@ def _attempt(
                 collect_evidence=collect_evidence,
                 issuers=issuers,
                 fund_leis=fund_leis,
+                security_map=security_map,
             ),
             None,
         )
@@ -484,6 +496,7 @@ def _walk(
     fund_leis: Mapping[str, str] | None = None,
     series_out: dict[str, str] | None = None,
     votes: company_countries.Tally | None = None,
+    security_map: identifiers.SecurityMap | None = None,
 ) -> tuple[list[FundBuild], list[dict[str, str]]]:
     """Build every fund once, collecting the artifacts and the failures.
 
@@ -542,6 +555,7 @@ def _walk(
                     collect_evidence=collect,
                     issuers=issuers,
                     fund_leis=fund_leis,
+                    security_map=security_map,
                 ),
                 ref,
             )
@@ -558,6 +572,7 @@ def _walk(
                         collect_evidence=collect,
                         issuers=issuers,
                         fund_leis=fund_leis,
+                        security_map=security_map,
                     ),
                 )
                 for ref in refs
@@ -783,6 +798,8 @@ def build_release(
     issuer_namespace: bool = True,
     country_fallback: bool = True,
     securities_source: dict | None = None,
+    security_identity: bool = True,
+    security_map: identifiers.SecurityMap | None = None,
 ) -> Path:
     started = time.monotonic()
     index = CompanyIndex.load()
@@ -807,6 +824,38 @@ def build_release(
         )
     else:
         _log("issuer namespace: disabled (--no-issuers)")
+
+    # The identified level's lookup (``identifiers.SecurityMap``), loaded **once** for
+    # the whole run and never re-read per fund: it is one immutable object over the
+    # newest identifier layer, and the walk hands the same instance to every fund. It
+    # answers one question per filing row — can this row's own identifier name a
+    # security even though the company ladder could not name its issuer — which is the
+    # difference between ``coverage_pct`` and ``identified_pct``.
+    #
+    # ``security_identity=False`` (``--no-security-identity``) or a missing layer leaves
+    # it ``None``, and identification then equals attribution by construction: that is
+    # the determinism control, and why a release built without the layer reproduces the
+    # numbers it published before this column existed.
+    if not security_identity:
+        security_map = None
+        _log("security map: disabled (--no-security-identity)")
+    elif security_map is None:
+        security_map = identifiers.load_security_map()
+        if security_map is None:
+            _log(
+                "security map: no layer on disk — identified will equal attributed "
+                "(harvest one, or pass --no-security-identity to say so explicitly)"
+            )
+        else:
+            _log(
+                f"security map: {len(security_map.figi_by_key):,} identifiers to a FIGI, "
+                f"{len(security_map.figis):,} FIGIs known (layer {security_map.release})"
+            )
+    else:
+        _log(
+            f"security map: {len(security_map.figi_by_key):,} identifiers to a FIGI "
+            f"(layer {security_map.release}, supplied by the caller)"
+        )
 
     release = release_id or time.strftime("%Y-%m-%d", time.gmtime()) + ".1"
     release_dir = out_dir / "releases" / release
@@ -852,6 +901,7 @@ def build_release(
             started=started,
             merge_evidence=evidence,
             series_out=fund_leis,
+            security_map=security_map,
         )
         table = evidence.table()
         _log(
@@ -890,6 +940,7 @@ def build_release(
         issuers=issuers,
         fund_leis=fund_leis or None,
         votes=country_tally,
+        security_map=security_map,
     )
 
     if failures and on_error == "fail":
@@ -1147,6 +1198,13 @@ def main(argv: list[str] | None = None) -> int:
         "the control for measuring what the pass is worth",
     )
     parser.add_argument(
+        "--no-security-identity",
+        action="store_true",
+        help="skip the security map (identifier → FIGI) and publish identification "
+        "equal to attribution; the control for measuring what the OpenFIGI layer is "
+        "worth, with identity frozen",
+    )
+    parser.add_argument(
         "--no-issuers",
         action="store_true",
         help="skip the foreign-issuer (GLEIF) namespace; the control build for "
@@ -1206,6 +1264,7 @@ def main(argv: list[str] | None = None) -> int:
             issuer_namespace=not args.no_issuers,
             country_fallback=not args.no_country_fallback,
             securities_source=securities_source,
+            security_identity=not args.no_security_identity,
         )
     except (
         GateError,

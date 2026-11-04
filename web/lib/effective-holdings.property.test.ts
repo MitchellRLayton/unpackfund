@@ -22,11 +22,11 @@ const portfolio = fc
     minLength: 1,
     maxLength: 60,
   })
-  .map((weights) => weights);
+  .map((weights: readonly number[]): readonly number[] => weights);
 
 function build(weights: readonly number[], unmatched = 0, positions = 0) {
   return effectiveHoldings({
-    companies: weights.map((weight) => ({
+    companies: weights.map((weight: number) => ({
       weight,
       sources: [{ weight }],
     })),
@@ -40,10 +40,10 @@ const RUNS = 10_000;
 describe("the invariants, on random portfolios", () => {
   it("the shares sum to 1 within 1e-12", () => {
     fc.assert(
-      fc.property(portfolio, (weights) => {
-        const total = weights.reduce((sum, weight) => sum + weight, 0);
-        const shares = weights.map((weight) => weight / total);
-        const sum = shares.reduce((acc, share) => acc + share, 0);
+      fc.property(portfolio, (weights: readonly number[]) => {
+        const total = weights.reduce((sum: number, weight: number) => sum + weight, 0);
+        const shares = weights.map((weight: number) => weight / total);
+        const sum = shares.reduce((acc: number, share: number) => acc + share, 0);
         expect(Math.abs(sum - 1)).toBeLessThanOrEqual(1e-12);
       }),
       { numRuns: RUNS },
@@ -52,7 +52,7 @@ describe("the invariants, on random portfolios", () => {
 
   it("1 <= Core <= Broad <= N, and equal weights put all three on N", () => {
     fc.assert(
-      fc.property(portfolio, (weights) => {
+      fc.property(portfolio, (weights: readonly number[]) => {
         const result = build(weights);
         expect(result.core).not.toBeNull();
         expect(result.core!).toBeGreaterThanOrEqual(1 - 1e-12);
@@ -65,7 +65,7 @@ describe("the invariants, on random portfolios", () => {
     // The identity case, stated separately because it is the only coincidence: equal
     // weights make Core, Broad and N the same number, and any deviation is a bug.
     fc.assert(
-      fc.property(fc.integer({ min: 1, max: 200 }), (count) => {
+      fc.property(fc.integer({ min: 1, max: 200 }), (count: number) => {
         const result = build(Array.from({ length: count }, () => 1));
         expect(result.core!).toBeCloseTo(count, 9);
         expect(result.broad!).toBeCloseTo(count, 9);
@@ -83,15 +83,15 @@ describe("the invariants, on random portfolios", () => {
         minLength: 1,
         maxLength: 40,
       })
-      .map((weights) =>
-        weights.map((weight) => ({
+      .map((weights: readonly number[]) =>
+        weights.map((weight: number) => ({
           weight,
           sources: [{ weight: weight * 0.6 }, { weight: weight * 0.4 }],
         })),
       );
 
     fc.assert(
-      fc.property(overlapping, (companies) => {
+      fc.property(overlapping, (companies: EffectiveInput["companies"]) => {
         const result = effectiveHoldings({
           companies,
           unmatchedWeight: 0,
@@ -111,9 +111,9 @@ describe("the invariants, on random portfolios", () => {
       fc.property(
         portfolio,
         fc.double({ min: 1e-6, max: 1e6, noNaN: true, noDefaultInfinity: true }),
-        (weights, k) => {
+        (weights: readonly number[], k: number) => {
           const base = build(weights);
-          const scaled = build(weights.map((weight) => weight * k));
+          const scaled = build(weights.map((weight: number) => weight * k));
           expect(scaled.core!).toBeCloseTo(base.core!, 9);
           expect(scaled.broad!).toBeCloseTo(base.broad!, 9);
           expect(scaled.companies).toBe(base.companies);
@@ -125,7 +125,7 @@ describe("the invariants, on random portfolios", () => {
 
   it("reordering the holdings changes nothing", () => {
     fc.assert(
-      fc.property(portfolio, (weights) => {
+      fc.property(portfolio, (weights: readonly number[]) => {
         const base = build(weights);
         const reversed = build(weights.slice().reverse());
         expect(reversed.core!).toBeCloseTo(base.core!, 12);
@@ -144,14 +144,20 @@ describe("the invariants, on random portfolios", () => {
       fc.property(
         portfolio,
         fc.double({ min: 0, max: 1e6, noNaN: true, noDefaultInfinity: true }),
-        (weights, cash) => {
+        (weights: readonly number[], cash: number) => {
           const without = effectiveHoldings({
-            companies: weights.map((weight) => ({ weight, sources: [{ weight }] })),
+            companies: weights.map((weight: number) => ({
+              weight,
+              sources: [{ weight }],
+            })),
             unmatchedWeight: 0,
             unmatchedPositions: 0,
           });
           const withCash = effectiveHoldings({
-            companies: weights.map((weight) => ({ weight, sources: [{ weight }] })),
+            companies: weights.map((weight: number) => ({
+              weight,
+              sources: [{ weight }],
+            })),
             unmatchedWeight: 0,
             unmatchedPositions: 0,
             excludedNonCompanyWeight: cash,
@@ -173,7 +179,7 @@ describe("the invariants, on random portfolios", () => {
         portfolio,
         fc.double({ min: 0, max: 1e6, noNaN: true, noDefaultInfinity: true }),
         fc.integer({ min: 1, max: 50 }),
-        (weights, unmatched, positions) => {
+        (weights: readonly number[], unmatched: number, positions: number) => {
           const base = build(weights);
           const partial = build(weights, unmatched, positions);
 
@@ -213,11 +219,11 @@ describe("the invariants, on random portfolios", () => {
       fc.property(
         portfolio,
         fc.double({ min: 1e-6, max: 1e6, noNaN: true }),
-        (weights, short) => {
+        (weights: readonly number[], short: number) => {
           const base = build(weights);
           const withShort = effectiveHoldings({
             companies: [
-              ...weights.map((weight) => ({ weight, sources: [{ weight }] })),
+              ...weights.map((weight: number) => ({ weight, sources: [{ weight }] })),
               { weight: -short, sources: [{ weight: -short }] },
             ],
             unmatchedWeight: 0,

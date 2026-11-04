@@ -23,7 +23,10 @@ from .conftest import corrupt_release, fund_document, write_release
 # because a number moved — the fixture's weights, metrics and order are the same.
 # 2026-11-02: + ``categories``, ``coverage_by_cat`` and the sample's ``components``
 # (ADR-0016). Additive again: no weight, metric or ordering changed.
-GOLDEN_SHA256 = "dcd727f3f064b77e2058b7c2d3db289e9ba10f8c2afb9b0994e0b39d86310e2e"
+# 2026-11-04: + ``identified_pct`` and ``identified_by_cat`` (the published split between
+# "we know which security this is" and "we know which company owns it"). Additive: the
+# fixture's weights, metrics and ordering are unchanged; the document gained two fields.
+GOLDEN_SHA256 = "42c8d1bf9606ba4be768d381afcf5408cfa5d31eceafa7fd0d67ae568661dcb8"
 
 
 def test_artifact_shape(document):
@@ -42,6 +45,8 @@ def test_artifact_shape(document):
         "coverage_pct",
         "categories",
         "coverage_by_cat",
+        "identified_pct",
+        "identified_by_cat",
         "holdings",
         "metrics",
         # The sample filing holds a fund position, so the published fixture carries its

@@ -55,6 +55,47 @@ def coverage_histogram(coverage_values: list[float]) -> dict[str, int]:
     return histogram
 
 
+def identified_totals(funds: list[dict[str, Any]]) -> dict[str, Any]:
+    """Release-wide identification, recomputed from the published documents.
+
+    The ``etf_count`` rule, for the same reason: a manifest number received as a
+    parameter can disagree with the files the manifest hashes, and this one is the
+    release's headline ("how much of what the universe holds can we name"). Reading the
+    rows makes it a property of the release rather than of a build argument.
+
+    ``total_bp`` is published beside ``identified_bp`` because a percentage whose
+    denominator lives only in the manifest is a number a reader has to take on trust:
+    this one states its own gross, which is the sum of the funds' ``Σ|weight_bp|``.
+    ``identified_by_cat`` is the same split inside each class, in
+    ``classify.CATEGORY_ORDER`` order, ``null`` where the class has no weight — the
+    ``coverage_by_cat`` rule, one level wider.
+    """
+    gross: dict[str, int] = {}
+    found: dict[str, int] = {}
+    for fund in funds:
+        for row in fund.get("holdings") or []:
+            size = abs(row["weight_bp"])
+            name = row.get("asset_cat")
+            gross[name] = gross.get(name, 0) + size
+            if row.get("company_id") or row.get("identified"):
+                found[name] = found.get(name, 0) + size
+    total_bp = sum(gross.values())
+    identified_bp = sum(found.values())
+    return {
+        "identified_pct": round(100 * identified_bp / total_bp, 1) if total_bp else 0.0,
+        "identified_bp": identified_bp,
+        "total_bp": total_bp,
+        "identified_by_cat": {
+            name: (
+                round(100 * found.get(name, 0) / gross[name], 1)
+                if gross.get(name)
+                else None
+            )
+            for name in classify.CATEGORY_ORDER
+        },
+    }
+
+
 def build_manifest(
     *,
     release_id: str,
@@ -111,6 +152,9 @@ def build_manifest(
         # seeing a malformed value, so the release states what both prefixes mean.
         "identity_namespaces": identity_namespaces or {"c_": {"kind": "sec_operating_company", "key": "cik", "source": "EDGAR"}},
         "coverage_histogram": coverage_histogram([f["coverage_pct"] for f in funds]),
+        # Additive beside the histogram: the histogram asks "is this fund covered", this
+        # states how much of the release can be named at all (§5).
+        **identified_totals(funds),
         "mapping_rungs": rung_counts,
         "asset_cat_counts": asset_cat_counts,
         # Which sources placed a company's country, and where EDGAR's answers came

@@ -512,3 +512,83 @@ describe("the ledger when the percentages do not add up", () => {
     expect(screen.queryByRole("table")).toBeNull();
   });
 });
+
+/**
+ * The two coverage shares, on the page a reader checks a fund's coverage on.
+ *
+ * `task-15` asks for both numbers: the share tied to a named company (attribution, the
+ * headline every metric depends on) and the share whose security is known
+ * (identification, a weaker test and therefore the larger number). The tests below pin
+ * the two halves of the release contract — the second figure appears when the release
+ * carries it, and the page is byte-for-byte what it was before when it does not.
+ */
+describe("the fund table's coverage column", () => {
+  const fundWithIdentified = {
+    ...ledger.funds[0]!,
+    coverage_pct: 88.6,
+    identified_pct: 99.5,
+    coverage_by_cat: {
+      equity: 97.1,
+      debt: 41.2,
+      cash: null,
+      derivative: null,
+      fund: null,
+      other: null,
+    },
+    identified_by_cat: {
+      equity: 99.9,
+      debt: 88.0,
+      cash: null,
+      derivative: null,
+      fund: null,
+      other: null,
+    },
+  };
+
+  function renderLedgerWith(funds: typeof ledger.funds) {
+    useFunds.mockImplementation(() => ({ funds: [], pending: [], error: null }));
+    useLedger.mockReturnValue({
+      ledger: { ...ledger, funds },
+      error: null,
+      mode: "main",
+      durationMs: 3,
+    });
+    render(<LedgerView />);
+  }
+
+  it("puts the identified share beside the attributed one, and labels both", () => {
+    renderLedgerWith([fundWithIdentified]);
+
+    // Attribution keeps the chip and the sentence a reader already knows; the second
+    // figure names its own quantity rather than borrowing the word "coverage".
+    expect(screen.getByText("88.6% attributed to companies")).toBeTruthy();
+    expect(screen.getByText("99.5% of weight identified")).toBeTruthy();
+    expect(screen.queryByText("88.6% covered")).toBeNull();
+  });
+
+  it("shows the equity sleeve with both of its figures", () => {
+    renderLedgerWith([fundWithIdentified]);
+
+    expect(
+      screen.getByText("equity 97.1% covered · 99.9% identified", { exact: false }),
+    ).toBeTruthy();
+    // A class the fund does not hold is not printed as 0%.
+    expect(screen.queryByText(/cash 0\.0%/)).toBeNull();
+  });
+
+  it("renders exactly as before when the release has no identified figures", () => {
+    renderLedgerWith(ledger.funds);
+
+    expect(screen.getByText("90.3% covered")).toBeTruthy();
+    expect(screen.queryByText(/of weight identified/)).toBeNull();
+    expect(screen.queryByText(/attributed to companies/)).toBeNull();
+    // No sleeve, and no paragraph explaining a number that is not on the page.
+    expect(screen.queryByText(/Two shares, two questions/)).toBeNull();
+  });
+
+  it("keeps the one-line explanation under the table, not above it", () => {
+    renderLedgerWith([fundWithIdentified]);
+
+    expect(screen.getByText(/Two shares, two questions/, { exact: false })).toBeTruthy();
+  });
+});

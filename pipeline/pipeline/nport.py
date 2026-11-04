@@ -112,6 +112,13 @@ class Holding:
     inv_country: str | None
     payoff_profile: str | None
     is_derivative: bool
+    #: Every ``identifiers/other`` value filed for the row, upper-cased, in filed
+    #: order. A live join key like ``cusip``/``isin``: it never reaches a published
+    #: artifact, because one filer's ``otherDesc`` can be ``CUSIP`` or a SEDOL.
+    #: Trailing and defaulted so every hand-built ``Holding`` in the tests keeps
+    #: working — the field is additive. Populated from the ``value`` attribute,
+    #: which is where every filing measured (2026-11-04) actually puts it.
+    other_ids: tuple[str, ...] = ()
 
 
 @dataclass
@@ -188,6 +195,7 @@ def parse(xml: bytes) -> NportFiling:
                     # presence of that subtree is the reliable signal, since
                     # assetCat and payoffProfile are both optional in practice.
                     is_derivative=_find(row, "derivativeInfo") is not None,
+                    other_ids=_other_ids(identifiers),
                 )
             )
 
@@ -227,6 +235,31 @@ def _none_if_placeholder(value: str | None) -> str | None:
         return None
     cleaned = value.strip().upper()
     return None if cleaned in _PLACEHOLDERS else value.strip()
+
+
+def _other_ids(identifiers: ET.Element | None) -> tuple[str, ...]:
+    """The row's extra identifiers, from every ``identifiers/other`` child.
+
+    The form spells one as ``<other otherDesc="BBGID" value="…"/>``: the
+    identifier is in the ``value`` **attribute** and the element's own text is
+    empty, in all 28,670 ``other`` values measured across 400 cached filings
+    (2026-11-04). The element text is read first because that is what the schema
+    allows, then the attribute, so neither spelling is dropped silently.
+
+    ``otherDesc`` is not kept: it names the *kind* (``SEDOL``, ``BBGID``,
+    ``Internal``, …), and a caller that needs a security identifier has to test
+    the value itself (``identifiers.valid_figi``). Placeholders are dropped
+    through the same helper ``cusip`` uses, so ``N/A`` cannot arrive as an id.
+    """
+    values: list[str] = []
+    for node in _children(identifiers, "other"):
+        cleaned = _none_if_placeholder(_text(node) or node.get("value"))
+        if cleaned is None:
+            continue
+        value = cleaned.upper()
+        if value not in values:
+            values.append(value)
+    return tuple(values)
 
 
 def _holding_name(row: ET.Element) -> str:

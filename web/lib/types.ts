@@ -41,6 +41,16 @@ export interface ReleaseDescriptor {
   etf_classifier: string | null;
   company_count: number;
   coverage_histogram: Record<string, number>;
+  /**
+   * The release's own identification share: weight whose security is known, whether or
+   * not a company was attributed to it. Additive and optional — a release published
+   * before the pipeline measured it carries no such key, and the app then shows the
+   * attributed figure alone rather than a zero or a guess.
+   */
+  identified_pct?: number | null;
+  identified_bp?: number | null;
+  total_bp?: number | null;
+  identified_by_cat?: Record<AssetCategory, number | null>;
   mapping_rungs: Record<string, number>;
   asset_cat_counts: Record<string, number>;
   objects: {
@@ -271,6 +281,13 @@ export interface Holding {
   asset_cat: AssetCategory;
   /** Integer basis points of the fund's filed NAV, never renormalised. */
   weight_bp: number;
+  /**
+   * Whether the filing's own security identifier for this row resolved to a known
+   * security — the weaker test that `identified_pct` aggregates. Optional: absent on
+   * every release published before the field existed, and `false` is not a claim that
+   * the row is unknown, only that nothing identified it.
+   */
+  identified?: boolean;
 }
 
 export interface FundMetrics {
@@ -322,6 +339,16 @@ export interface FundDocument {
    * Optional for the same reason as `categories`.
    */
   coverage_by_cat?: Record<AssetCategory, number | null>;
+  /**
+   * The fund's identification share: 100 × (weight whose security is known) ÷ gross.
+   * Always at least `coverage_pct`, because attribution to a company is the stricter
+   * test: a row can be a known security with no company behind it (a Treasury, a repo,
+   * a registered fund). Optional for the same reason as `categories` — a document from
+   * an earlier release carries no such key, and the page then shows one number, not two.
+   */
+  identified_pct?: number | null;
+  /** The same two shares per asset class, the counterpart of `coverage_by_cat`. */
+  identified_by_cat?: Record<AssetCategory, number | null>;
   holdings: Holding[];
   metrics: FundMetrics;
   warnings: WarningCode[];
@@ -625,6 +652,9 @@ export interface Ledger {
       | "lag_days"
       | "coverage_pct"
       | "source_url"
+      | "identified_pct"
+      | "coverage_by_cat"
+      | "identified_by_cat"
     >
   >;
   /** Oldest filing period in the portfolio, for the freshness strip. */

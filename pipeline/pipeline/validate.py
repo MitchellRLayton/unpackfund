@@ -97,6 +97,15 @@ CONTRACT_WINDOW = (9_900, 10_000)
 HHI_TOLERANCE = 1e-6
 EFFECTIVE_N_TOLERANCE = 1e-6
 PERCENT_TOLERANCE = 1e-4
+#: The identification fields publish one decimal — ``round(..., 1)``, the same helper
+#: ``coverage_pct`` and ``coverage_by_cat`` use — so a correct value is the exact ratio
+#: rounded, and comparing against the unrounded recomputation to ``PERCENT_TOLERANCE``
+#: alone would fail it by its own rounding. The band is therefore half a rounding unit
+#: plus the tolerance: smaller than any disagreement worth a failure, and still ~20×
+#: tighter than the one-point inversion this check exists to catch.
+IDENTIFIED_PERCENT_SLACK = 0.05 + PERCENT_TOLERANCE
+#: The manifest's integers are compared exactly; its percentages use the band above.
+MANIFEST_TOLERANCE = 1e-3
 
 
 class Report:
@@ -211,6 +220,275 @@ def _total_ceiling(document: dict) -> int:
     exists for — a weight accidentally multiplied by 10,000.
     """
     return MAX_COMPOSED_TOTAL_BP if document.get("lookthrough") else MAX_TOTAL_BP
+
+
+def _identified_split(holdings: list[dict[str, Any]]) -> dict[str, Any]:
+    """``Σ|weight_bp|`` and the identified part of it, overall and per class.
+
+    Recomputed from the rows the document publishes, never read from the document's own
+    summary fields: the numbers this gate disagrees with are the summary fields.
+    """
+    gross = 0
+    found = 0
+    by_gross: dict[str, int] = {}
+    by_found: dict[str, int] = {}
+    for row in holdings:
+        size = abs(row["weight_bp"])
+        name = row.get("asset_cat")
+        gross += size
+        by_gross[name] = by_gross.get(name, 0) + size
+        if row.get("company_id") or row.get("identified"):
+            found += size
+            by_found[name] = by_found.get(name, 0) + size
+    return {"gross": gross, "found": found, "by_gross": by_gross, "by_found": by_found}
+
+
+def _check_identified(document: dict, report: Report) -> None:
+    """Identification is a superset of attribution, and the release publishes both.
+
+    ``coverage_pct`` counts the weight that resolved to a company; ``identified_pct``
+    counts the weight that resolved to anything — the same rows, plus every named
+    security, fund share, Treasury line and cash sweep. Four promises are held here:
+
+    - the published ratio is the ratio of the rows the document publishes, so it cannot
+      claim an identity its own vector does not carry;
+    - the per-class split is the same computation inside one class, with ``null`` for a
+      class that holds no weight (a percentage of nothing is undefined, not zero);
+    - **identification never falls below attribution.** An ``identified_pct`` below
+      ``coverage_pct`` is a mis-wired identifier map, and publishing it would print two
+      numbers that contradict each other on the same page. This is the gate that catches
+      the wiring, not the arithmetic, so it is checked against the published
+      ``coverage_pct`` rather than against a recomputation of it;
+    - a row carrying ``company_id`` carries ``identified: true``. A weight that reached
+      a company was, by that fact, identified.
+
+    Absent, the fields are valid: they are additive to fund schema 1, so a release built
+    before the contract asked for them still validates (the ``net_assets`` rule). Half
+    present — one field without the other, or a document that publishes the summary and
+    rows that do not carry the flag — is the defect, and that is a failure.
+    """
+    ticker = document.get("ticker", "?")
+    holdings = document.get("holdings") or []
+    has_pct = "identified_pct" in document
+    has_cat = "identified_by_cat" in document
+    has_flag = any("identified" in row for row in holdings)
+    if not (has_pct or has_cat or has_flag):
+        return
+    if not (has_pct and has_cat):
+        published = "identified_pct" if has_pct else "identified_by_cat"
+        report.fail(
+            f"{ticker}.identified_by_cat",
+            f"missing: the document publishes {published} without it",
+        )
+        return
+    pct = document["identified_pct"]
+    if isinstance(pct, bool) or not isinstance(pct, (int, float)) or not 0 <= pct <= 100:
+        report.fail(f"{ticker}.identified_pct", f"{pct!r} is not a percentage")
+        return
+
+    for row in holdings:
+        name = row.get("name")
+        if "identified" not in row:
+            report.fail(
+                f"{ticker}.holdings.identified",
+                f"{name!r} ({row.get('weight_bp')} bp) has no identified flag while the "
+                "document publishes identified_pct",
+            )
+            continue
+        if not isinstance(row["identified"], bool):
+            report.fail(
+                f"{ticker}.holdings.identified",
+                f"{name!r}: {row['identified']!r} is not a boolean",
+            )
+        if row.get("company_id") and row["identified"] is False:
+            report.fail(
+                f"{ticker}.holdings.identified",
+                f"{name!r} ({row['weight_bp']} bp) carries company_id {row['company_id']} "
+                "with identified: false — attribution implies identification",
+            )
+
+    split = _identified_split(holdings)
+    exact = 100 * split["found"] / split["gross"] if split["gross"] else 0.0
+    if abs(pct - exact) > IDENTIFIED_PERCENT_SLACK:
+        report.fail(
+            f"{ticker}.identified_pct",
+            f"{pct} != {exact:.4f} recomputed from the vector "
+            f"({split['found']} of {split['gross']} bp identified)",
+        )
+
+    coverage = document.get("coverage_pct")
+    if (
+        isinstance(coverage, (int, float))
+        and not isinstance(coverage, bool)
+        and pct < coverage
+    ):
+        report.fail(
+            f"{ticker}.identified_pct",
+            f"{pct} < coverage_pct {coverage} — identification is a superset of "
+            "attribution, so this document is mis-wired",
+        )
+
+    by_cat = document["identified_by_cat"]
+    if not isinstance(by_cat, dict):
+        report.fail(f"{ticker}.identified_by_cat", f"{by_cat!r} is not an object")
+        return
+    unknown = sorted(set(by_cat) - set(CATEGORY_ORDER))
+    missing = [name for name in CATEGORY_ORDER if name not in by_cat]
+    if unknown or missing:
+        report.fail(f"{ticker}.identified_by_cat", f"missing {missing}, unknown {unknown}")
+        return
+    for name in CATEGORY_ORDER:
+        published = by_cat[name]
+        gross = split["by_gross"].get(name, 0)
+        if not gross:
+            if published is not None:
+                report.fail(
+                    f"{ticker}.identified_by_cat.{name}",
+                    f"{published!r} for a class with no weight; expected null",
+                )
+            continue
+        if published is None:
+            report.fail(
+                f"{ticker}.identified_by_cat.{name}",
+                f"null for a class holding {gross} bp",
+            )
+            continue
+        if isinstance(published, bool) or not isinstance(published, (int, float)):
+            report.fail(
+                f"{ticker}.identified_by_cat.{name}", f"{published!r} is not a percentage"
+            )
+            continue
+        expected = 100 * split["by_found"].get(name, 0) / gross
+        if abs(published - expected) > IDENTIFIED_PERCENT_SLACK:
+            report.fail(
+                f"{ticker}.identified_by_cat.{name}",
+                f"{published} != {expected:.4f} recomputed "
+                f"({split['by_found'].get(name, 0)} of {gross} bp identified)",
+            )
+
+
+def _check_identified_release(
+    manifest: dict, funds: list[dict], report: Report
+) -> None:
+    """The manifest's four identification fields, against every fund document.
+
+    Those fields are derived from the documents precisely so they cannot disagree with
+    the files the manifest hashes (the ``etf_count`` rule); this is the check that holds
+    the derivation to it. A release states all four or none — half a block is a manifest
+    that will be read as a partial claim by whichever consumer reads last.
+    """
+    failures_before = report.failures
+    fields = ("identified_pct", "identified_bp", "total_bp", "identified_by_cat")
+    present = [field for field in fields if field in manifest]
+    documented = any("identified_pct" in fund for fund in funds)
+    if not present:
+        if documented:
+            report.fail(
+                "manifest.identified",
+                "the funds publish identified_pct but the manifest states none of the four fields",
+            )
+        else:
+            report.ok("identified", "absent (release predates the field)")
+        return
+    if len(present) != len(fields):
+        absent = [field for field in fields if field not in manifest]
+        report.fail("manifest.identified", f"published {present}, missing {absent}")
+        return
+    if not documented:
+        report.fail(
+            "manifest.identified",
+            "the manifest states identification but no fund document carries it",
+        )
+        return
+
+    totals = {"gross": 0, "found": 0, "by_gross": {}, "by_found": {}}
+    for fund in funds:
+        part = _identified_split(fund.get("holdings") or [])
+        totals["gross"] += part["gross"]
+        totals["found"] += part["found"]
+        for name, size in part["by_gross"].items():
+            totals["by_gross"][name] = totals["by_gross"].get(name, 0) + size
+        for name, size in part["by_found"].items():
+            totals["by_found"][name] = totals["by_found"].get(name, 0) + size
+
+    pct = manifest["identified_pct"]
+    identified_bp = manifest["identified_bp"]
+    total_bp = manifest["total_bp"]
+    if isinstance(pct, bool) or not isinstance(pct, (int, float)) or not 0 <= pct <= 100:
+        report.fail("manifest.identified_pct", f"{pct!r} is not a percentage")
+    for field, value in (("identified_bp", identified_bp), ("total_bp", total_bp)):
+        if isinstance(value, bool) or not isinstance(value, int):
+            report.fail(f"manifest.{field}", f"{value!r} is not an integer")
+    if (
+        isinstance(identified_bp, int)
+        and isinstance(total_bp, int)
+        and identified_bp > total_bp
+    ):
+        report.fail(
+            "manifest.identified_bp",
+            f"{identified_bp:,} bp identified exceeds {total_bp:,} bp published",
+        )
+    # Integers, so the comparison is exact: an bp of difference came from a document
+    # the manifest did not read.
+    if isinstance(identified_bp, int) and identified_bp != totals["found"]:
+        report.fail(
+            "manifest.identified_bp",
+            f"{identified_bp:,} != {totals['found']:,} recomputed from the funds",
+        )
+    if isinstance(total_bp, int) and total_bp != totals["gross"]:
+        report.fail(
+            "manifest.total_bp",
+            f"{total_bp:,} != {totals['gross']:,} recomputed from the funds",
+        )
+    exact = 100 * totals["found"] / totals["gross"] if totals["gross"] else 0.0
+    if isinstance(pct, (int, float)) and not isinstance(pct, bool):
+        if abs(pct - exact) > IDENTIFIED_PERCENT_SLACK + MANIFEST_TOLERANCE:
+            report.fail(
+                "manifest.identified_pct",
+                f"{pct} != {exact:.4f} recomputed from the funds",
+            )
+
+    by_cat = manifest["identified_by_cat"]
+    if not isinstance(by_cat, dict):
+        report.fail("manifest.identified_by_cat", f"{by_cat!r} is not an object")
+        return
+    unknown = sorted(set(by_cat) - set(CATEGORY_ORDER))
+    missing = [name for name in CATEGORY_ORDER if name not in by_cat]
+    if unknown or missing:
+        report.fail("manifest.identified_by_cat", f"missing {missing}, unknown {unknown}")
+        return
+    for name in CATEGORY_ORDER:
+        published = by_cat[name]
+        gross = totals["by_gross"].get(name, 0)
+        if not gross:
+            if published is not None:
+                report.fail(
+                    f"manifest.identified_by_cat.{name}",
+                    f"{published!r} for a class with no weight; expected null",
+                )
+            continue
+        if published is None:
+            report.fail(
+                f"manifest.identified_by_cat.{name}",
+                f"null for a class holding {gross} bp",
+            )
+            continue
+        if isinstance(published, bool) or not isinstance(published, (int, float)):
+            report.fail(
+                f"manifest.identified_by_cat.{name}", f"{published!r} is not a percentage"
+            )
+            continue
+        expected = 100 * totals["by_found"].get(name, 0) / gross
+        if abs(published - expected) > IDENTIFIED_PERCENT_SLACK + MANIFEST_TOLERANCE:
+            report.fail(
+                f"manifest.identified_by_cat.{name}",
+                f"{published} != {expected:.4f} recomputed from the funds",
+            )
+    if report.failures == failures_before:
+        report.ok(
+            "identified",
+            f"{pct}% of gross identified ({identified_bp:,} of {total_bp:,} bp)",
+        )
 
 
 def _check_fund(document: dict, report: Report) -> None:
@@ -331,6 +609,7 @@ def _check_fund(document: dict, report: Report) -> None:
         report.fail(f"{ticker}.metrics.top10_pct", str(metrics["top10_pct"]))
 
     _check_categories(document, report)
+    _check_identified(document, report)
     _check_fund_of_funds(document, report)
 
 
@@ -1380,6 +1659,7 @@ def validate(release_dir: Path) -> int:
     for document in funds:
         _check_fund(document, report)
     _check_fund_of_funds_release(funds, report)
+    _check_identified_release(manifest, funds, report)
     _check_catalogue(release_dir, manifest, funds, report)
     _check_benchmarks(release_dir, funds, report)
     _check_company_countries(release_dir, report)
