@@ -375,3 +375,51 @@ def test_other_ids_default_to_empty_on_a_hand_built_holding():
     from pipeline import fixtures
 
     assert fixtures.sample_filing().holdings[0].other_ids == ()
+
+
+# --- the layer selector --------------------------------------------------------------
+#
+# Found by a real build on 2026-11-04: a harvest that writes into a working directory
+# beside the release directories (`identifier-layer/live/`) made `newest_layer_with_maps`
+# pick `live` out of the lexical sort, and the build then read a 48 kB partial map
+# *instead of* the 283,974-key layer sitting beside it. It did not fail loudly — it
+# published almost no security identity, which is the quiet version of the same bug.
+
+def _layer(tmp_path, name, payload):
+    layer = tmp_path / name
+    layer.mkdir()
+    (layer / "isin_map.json").write_text(json.dumps(payload))
+    return layer
+
+
+def test_a_working_directory_never_outranks_a_release(tmp_path):
+    _layer(tmp_path, "2026-10-30.5", {"A": {"composite_figi": REAL_FIGI_COMPOSITE}})
+    _layer(tmp_path, "live", {"B": {"composite_figi": REAL_FIGI_COMPOSITE}})
+
+    assert identifiers.newest_layer_with_maps(tmp_path).name == "2026-10-30.5"
+
+
+def test_the_newest_layer_is_the_newest_date_not_the_last_path(tmp_path):
+    _layer(tmp_path, "2026-09-30.10", {"A": {"composite_figi": REAL_FIGI_COMPOSITE}})
+    _layer(tmp_path, "2026-10-04", {"A": {"composite_figi": REAL_FIGI_COMPOSITE}})
+
+    assert identifiers.newest_layer_with_maps(tmp_path).name == "2026-10-04"
+
+
+def test_a_same_day_suffix_orders_above_the_bare_date(tmp_path):
+    _layer(tmp_path, "2026-11-04", {"A": {"composite_figi": REAL_FIGI_COMPOSITE}})
+    _layer(tmp_path, "2026-11-04.2", {"A": {"composite_figi": REAL_FIGI_COMPOSITE}})
+
+    assert identifiers.newest_layer_with_maps(tmp_path).name == "2026-11-04.2"
+
+
+def test_a_release_directory_without_a_map_is_skipped(tmp_path):
+    _layer(tmp_path, "2026-10-30.5", {"A": {"composite_figi": REAL_FIGI_COMPOSITE}})
+    (tmp_path / "2026-11-04").mkdir()
+    (tmp_path / "2026-11-04" / "harvest.json").write_text("{}")
+
+    assert identifiers.newest_layer_with_maps(tmp_path).name == "2026-10-30.5"
+
+
+def test_no_layer_at_all_returns_none(tmp_path):
+    assert identifiers.newest_layer_with_maps(tmp_path) is None

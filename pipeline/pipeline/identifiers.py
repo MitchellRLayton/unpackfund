@@ -1706,22 +1706,50 @@ SECURITY_MAP_FILES = ("isin_map.json", "cusip_map.json", "figi_map.json")
 FIGI_RECORD_FIELDS = ("composite_figi", "figi", "share_class_figi")
 
 
+#: A layer directory is named for the release it holds: ``YYYY-MM-DD`` with an
+#: optional ``.N`` suffix for a second harvest of the same day.
+LAYER_DIRECTORY_RE = re.compile(r"\A(\d{4})-(\d{2})-(\d{2})(?:\.(\d+))?\Z")
+
+
+def _layer_order(path: Path) -> tuple[int, int, int, int] | None:
+    """Sort key for a layer directory name, or ``None`` when it is not one."""
+    match = LAYER_DIRECTORY_RE.match(path.name)
+    if match is None:
+        return None
+    year, month, day, suffix = match.groups()
+    return (int(year), int(month), int(day), int(suffix or 0))
+
+
 def newest_layer_with_maps(root: Path | None = None) -> Path | None:
     """The newest ``data/identifier-layer/<release>/`` holding any map file.
 
-    Release directories are named for the release, so the lexical last is the
-    newest. Directories without a map are skipped rather than returned: a harvest
-    that created a release directory and wrote only its index must not hide the
+    A layer directory is named for the release it holds — ``2026-10-30.5``,
+    ``2026-11-04``, ``2026-11-04.1`` — and those names are ordered by their *date
+    fields*, not as strings, so the newest layer is the newest date rather than the
+    alphabetically last path. Only names of that shape are candidates: a working
+    directory beside them (``live/``, ``scratch/``) is where a running harvest
+    writes whatever it has so far, and choosing it because ``l`` sorts after
+    ``2`` would silently swap a 283,974-key layer for a partial one — a build that
+    reads as a corpus with almost no securities in it, which is the failure this
+    function exists to make impossible.
+
+    Directories without a map are skipped rather than returned: a harvest that
+    created a release directory and wrote only its index must not hide the
     previous layer's maps from the build.
     """
     directory = root or (paths.REPO_ROOT / "data" / "identifier-layer")
-    candidates = sorted(
-        path
+    candidates = [
+        (order, path)
         for path in directory.glob("*")
         if path.is_dir()
+        and _layer_order(path) is not None
         and any((path / name).is_file() for name in SECURITY_MAP_FILES)
-    )
-    return candidates[-1] if candidates else None
+        for order in (_layer_order(path),)
+        if order is not None
+    ]
+    if not candidates:
+        return None
+    return max(candidates)[1]
 
 
 def _record_figis(record: Any) -> list[str]:

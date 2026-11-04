@@ -800,6 +800,7 @@ def build_release(
     securities_source: dict | None = None,
     security_identity: bool = True,
     security_map: identifiers.SecurityMap | None = None,
+    layer_dir: Path | None = None,
 ) -> Path:
     started = time.monotonic()
     index = CompanyIndex.load()
@@ -840,7 +841,7 @@ def build_release(
         security_map = None
         _log("security map: disabled (--no-security-identity)")
     elif security_map is None:
-        security_map = identifiers.load_security_map()
+        security_map = identifiers.load_security_map(layer_dir)
         if security_map is None:
             _log(
                 "security map: no layer on disk — identified will equal attributed "
@@ -1198,6 +1199,14 @@ def main(argv: list[str] | None = None) -> int:
         "the control for measuring what the pass is worth",
     )
     parser.add_argument(
+        "--layer",
+        type=Path,
+        default=None,
+        help="identifier layer to read instead of the newest under "
+        "data/identifier-layer (so a release can name the layer it was built "
+        "against, and a half-written layer beside it cannot be chosen by accident)",
+    )
+    parser.add_argument(
         "--no-security-identity",
         action="store_true",
         help="skip the security map (identifier → FIGI) and publish identification "
@@ -1265,6 +1274,7 @@ def main(argv: list[str] | None = None) -> int:
             country_fallback=not args.no_country_fallback,
             securities_source=securities_source,
             security_identity=not args.no_security_identity,
+        layer_dir=args.layer,
         )
     except (
         GateError,
