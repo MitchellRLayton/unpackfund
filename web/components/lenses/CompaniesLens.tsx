@@ -30,8 +30,8 @@
  *    anything but the visitor's own weights.
  * 5. **Sorting, filtering and paging are the view's, not the ledger's.** `sortBy` copies,
  *    the filter searches name, ticker, country code and tier word, and the export is the
- *    whole ledger — the caption says so, because a spreadsheet that looked like the page
- *    would be a different answer. The table pages at 50 rows rather than virtualizing
+ *    whole ledger — the disclosure under the table says so, because a spreadsheet that
+ *    looked like the page would be a different answer. The table pages at 50 rows rather than virtualizing
  *    (`static-xray-frontend` §8): a row whose fund list wraps has no fixed height, so a
  *    window would have to clip the very list rule 2 exists to show, and a real page keeps
  *    the table semantics a screen reader relies on instead of an `aria-rowindex` we
@@ -41,6 +41,17 @@
  * `formatSignedShare` are ADR-0015's one place where two displayed weights are subtracted,
  * the sign is always printed, and a release with no benchmark drops both columns rather
  * than printing a column of zeros.
+ *
+ * **The caption is one line** (operator's instruction, 2026-11-03). It used to carry all
+ * five rules above as prose — eight sentences between the heading and the first row, which
+ * is a wall of text nobody reads and which pushed the table down the page. What stays in
+ * the caption is what a reader needs *while looking at the rows*: what the table is, how it
+ * is ordered, and what the comparison column is against. The rest is in the `<details>`
+ * under the table, closed by default, which is the shape `/x` uses for its method block.
+ * The operator accepted the cost in as many words — the caption is no longer a description
+ * a screen reader announces with the table — so do not "restore" the long version for
+ * accessibility: the disclosure is reachable by keyboard and by a screen reader, and it is
+ * the only copy.
  */
 
 import { useMemo, useState } from "react";
@@ -297,7 +308,10 @@ export function CompaniesLens({ model }: LensProps) {
     );
   }
 
-  const hasBenchmark = ledger.benchmark !== null;
+  // Held as a value, not only as a flag: the caption and the disclosure both print the
+  // benchmark's own ticker and name, and a boolean does not narrow `ledger.benchmark`.
+  const benchmark = ledger.benchmark;
+  const hasBenchmark = benchmark !== null;
   const columns = COLUMNS.filter((column) => !column.benchmark || hasBenchmark);
   const current = pageOf(visible, page, PAGE_SIZE);
   const totalWeight = ledger.rows.reduce((sum, row) => sum + row.weight, 0);
@@ -380,48 +394,20 @@ export function CompaniesLens({ model }: LensProps) {
         </p>
         <div className="table-wrap">
           <table className={`tier-edge table ${styles.compact}`}>
+            {/*
+              The caption is one line, on the operator's instruction (2026-11-03): the
+              eight-sentence version that used to live here was a wall of text above the
+              table, and nobody reads a wall of text. What a reader needs while looking at
+              the rows is what the table is, how it is ordered, and what the comparison
+              column is against; everything else — the column meanings, the bracket's
+              direction and ink, the market tier's convention, the export's scope — is one
+              click away in the disclosure under the table, which is the same shape `/x`
+              uses for its method block (`static-xray-frontend` §4a, v1.0.27).
+            */}
             <caption>
-              One row per company: {formatCount(ledger.rows.length)}{" "}
-              {ledger.rows.length === 1 ? "company" : "companies"} in all, largest weight
-              first unless another column is sorted. Sorted by {sortLabel},{" "}
-              {directionWords(sort.key, sort.direction)}. This page shows rows{" "}
-              {formatCount(current.start)}–{formatCount(current.end)} of{" "}
-              {formatCount(current.total)}, page {formatCount(current.page)} of{" "}
-              {formatCount(current.pages)}: paging changes which rows are on screen, never
-              the count or the order. Every heading you can sort by is a button — choose
-              it to sort by that column, choose it again to reverse. Rank numbers the rows
-              as they are listed and renumbers with the sort; it is a place in this table,
-              not a judgement about a company. Your weight is a share of your whole
-              portfolio, and the same company is counted once however many funds hold it.
-              Held by is how many of your funds report it; a company you also hold
-              directly says so, since a direct holding is not a fund and is not in that
-              count. From your funds names every fund that holds the position, largest
-              part of your mix first, with each one&rsquo;s share of your portfolio — no
-              fund is hidden behind a count — and your own direct position where you have
-              one; the drawn bar above the list is the same numbers on one scale for the
-              table, set by the largest company in the ledger and unchanged by the filter,
-              with one division per fund.
-              {hasBenchmark ? (
-                <>
-                  {" "}
-                  VT is the Vanguard Total World Stock ETF, the one benchmark this table
-                  compares against, and the VT column is the company&rsquo;s weight inside
-                  VT&rsquo;s own portfolio: not a share of your mix, and not how much of
-                  VT you hold. The bracket is your weight minus VT&rsquo;s, in percentage
-                  points — (-1.20%) means you hold 1.20 points less of the company than VT
-                  does, and (+1.20%) means more. The bracket is green above zero and red
-                  below it, and has no colour at exactly zero; the sign is always printed,
-                  so the colour is emphasis and never the only reading. A company VT does
-                  not hold reads 0.00% there, which is a fact about VT&rsquo;s filing
-                  rather than a missing number.
-                </>
-              ) : null}{" "}
-              The left edge is the market tier — two-letter code in text, tier in words
-              beside it — following the {TIER_CONVENTION}, as of {TIER_AS_OF}. A company
-              whose domicile the release cannot answer keeps its row and its weight: its
-              edge is dashed, its code reads &ldquo;no code&rdquo;, and its tier says why.
-              The export is the whole ledger — every row, not this page. Press a company
-              name to open it.
+              One row per company. Sorted by {sortLabel},{" "}
+              {directionWords(sort.key, sort.direction)}.
+              {benchmark ? ` Benchmark: ${benchmark.ticker}.` : null}
             </caption>
             <thead>
               <tr>
@@ -551,6 +537,56 @@ export function CompaniesLens({ model }: LensProps) {
             </tfoot>
           </table>
         </div>
+
+        {/*
+          The method, under the table and closed by default (operator's instruction,
+          2026-11-03). It was a caption of eight sentences, read by nobody and pushing the
+          rows down the page; the facts are the same and the shape is `/x`'s: the answer
+          first, the explanation one click from it.
+        */}
+        <details className={`${styles.method} no-print`}>
+          <summary>How to read this table</summary>
+          <p className="small muted">
+            <strong>Rank</strong> numbers the rows as they are listed and renumbers with
+            the sort: it is a place in this table, not a judgement about a company.{" "}
+            <strong>Your weight</strong> is a share of your whole portfolio, counted once
+            per company however many funds hold it. <strong>Held by</strong> is how many
+            of your funds report it; a company you also hold directly says so, because a
+            direct holding is not a fund and is not in that count.{" "}
+            <strong>From your funds</strong> names every fund that holds the position,
+            largest part of your mix first, with each one&rsquo;s share — no fund is
+            hidden behind a count — and the bar above the list is those same shares on one
+            scale for the whole table, set by the largest company in it and unchanged by
+            the filter.
+          </p>
+          {benchmark ? (
+            <p className="small muted">
+              <strong>{benchmark.ticker}</strong> is {benchmark.name}, the one benchmark
+              this table compares against, and the {benchmark.ticker} column is the
+              company&rsquo;s weight inside {benchmark.ticker}&rsquo;s own portfolio: not
+              a share of your mix, and not how much of {benchmark.ticker} you hold. The
+              bracket is your weight minus {benchmark.ticker}&rsquo;s, in percentage
+              points — (-1.20%) means you hold 1.20 points less of the company than{" "}
+              {benchmark.ticker} does. It is green above zero and red below it, with no
+              colour at exactly zero, and the sign is always printed, so the colour is
+              emphasis and never the only reading. A company {benchmark.ticker} does not
+              hold reads 0.00% there, which is a fact about {benchmark.ticker}&rsquo;s
+              filing rather than a missing number.
+            </p>
+          ) : null}
+          <p className="small muted">
+            <strong>The left edge</strong> is the market tier — two-letter code in text,
+            tier in words beside it — following the {TIER_CONVENTION}, as of {TIER_AS_OF}.
+            A company whose domicile the release cannot answer keeps its row and its
+            weight: its edge is dashed, its code reads &ldquo;no code&rdquo;, and its tier
+            says why.
+          </p>
+          <p className="small muted">
+            <strong>Paging</strong> changes which rows are on screen, never the count or
+            the order. The <strong>export</strong> is the whole ledger — every row, not
+            this page. Press a company name to open it.
+          </p>
+        </details>
 
         <div className={`${styles.pager} no-print`}>
           <p className="small muted" role="status">

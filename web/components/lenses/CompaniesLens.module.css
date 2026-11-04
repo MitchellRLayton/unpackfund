@@ -70,6 +70,23 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The method, under the table: the same disclosure `EffectiveHoldingsSummary` uses, so a
+   reader who has opened one of these on the page knows what the other is. Closed by
+   default — the table is the answer and this is the footnote to it. */
+.method {
+  font-size: var(--text-14);
+}
+
+.method summary {
+  color: var(--graphite);
+  cursor: pointer;
+  font-size: var(--text-14);
+}
+
+.method p {
+  margin: var(--space-2) 0 0;
+}
+
 /* The pager, after `components/directory`: same announcement, same buttons, same order,
    so a page that pages in two places does not page in two ways. */
 .pager {

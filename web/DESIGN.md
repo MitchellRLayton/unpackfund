@@ -67,6 +67,29 @@ Two rules make that an architecture rather than a tidy-up:
   caption still names the benchmark, the bracket's direction and the sign ink, because a caption is read with the
   table, so no row has a meaning that is only available one click away.
 
+## The Companies table's caption is one line (operator's instruction, 2026-11-03)
+
+The Portfolio workspace's `Your companies` table carried its whole method as a `<caption>`: eight sentences between the
+section heading and the first row, explaining rank, weight, "Held by", "From your funds", the bar, the VT bracket and
+its inks, the market tier, the export's scope and paging. It was accurate, complete, and unread — "too long and no one
+is going to read this". The operator asked for it to be moved out of the way, or cut to something like "Benchmark: VT".
+
+What shipped is both halves of that sentence:
+
+- **The caption is one line**: what the table is, how it is sorted, and — when the release publishes one — the
+  benchmark's ticker. `One row per company. Sorted by Your weight, largest first. Benchmark: VT.` A test holds it under
+  120 characters, so it cannot grow back into a paragraph.
+- **The method is a `<details>` under the table**, closed by default, holding the same facts: the column meanings, the
+  bracket's direction and sign ink, the tier convention and its vintage, and the export's scope. It is the shape `/x`
+  already uses (above), so the two pages teach the same gesture.
+
+The operator accepted the cost in as many words — "It doesn't need to support screen readers either" — so the caption
+no longer *is* the table's description: a screen reader hears the short caption and reads the disclosure only if it
+opens it. The disclosure is real, reachable content, keyboard included, and it is the only copy: do not "restore" the
+long caption for accessibility. The count line above the table (`1,269 of 1,269 companies…`) and the pager below it
+(`Showing rows 1–50 of 1,269 · page 1 of 26`) still say the two facts a reader might otherwise have got from the
+caption.
+
 ## Tokens
 
 Defined once in `app/globals.css` as custom properties, light and dark through `prefers-color-scheme`.
