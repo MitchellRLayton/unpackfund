@@ -37,6 +37,12 @@ const SECTIONS: readonly ReadingSection[] = [
   { id: "effective-holdings", title: "Effective holdings" },
   { id: "overlap", title: "Overlap" },
   { id: "markets", title: "Market tiers" },
+  { id: "markets-divergence", title: "Where the two conventions disagree", depth: 3 },
+  {
+    id: "markets-rules",
+    title: "The three segments, and the rules that place a domicile",
+    depth: 3,
+  },
   { id: "country-decision", title: "How a country is decided", depth: 3 },
   { id: "country-contested", title: "When the vote cannot decide", depth: 3 },
   { id: "limits", title: "What is not known" },
@@ -400,27 +406,146 @@ export default function MethodologyPage() {
         The left edge of a ledger row answers a narrower question than it looks like it
         does: is this company American, developed outside the United States, or emerging?
         The country comes from the filings; the market does not. The site follows the{" "}
-        <Term name="market-tier">FTSE Russell equity country classification</Term> as of 5
-        November 2026, because the funds it looks through are FTSE-indexed.
+        <Term name="market-tier">MSCI-aligned country classification</Term> as of 5
+        November 2026, because most of the funds it looks through are MSCI-benchmarked —
+        iShares, Avantis and DFA — and Vanguard is the FTSE exception. The FTSE Russell
+        view is one click away, and every label says which convention it is using.
       </p>
       <p>
-        A list this short is a set of decisions. South Korea, Poland and Greece are on the
-        developed list here, Taiwan is on the emerging list, and Peru is on neither. Where
-        another publisher sorts a country differently the difference is real, not an
-        error: a row states what this one classification says about a domicile, not what
-        the company is.
+        The data carries five tiers — developed, emerging, frontier, standalone and
+        unclassified — and the bar draws three segments. Developed is developed ex-US;
+        everything else is emerging. Frontier and standalone therefore fold into emerging,
+        which is why a market can change tier without changing a number.
       </p>
+
+      <h3 id="markets-divergence">Where the two conventions disagree</h3>
       <p>
-        The lists are this site&rsquo;s own transcription of that classification, with the
-        version date kept beside them. No FTSE document, table or data file is reproduced
-        here, and FTSE Russell has not reviewed or endorsed this site.
+        Nine markets land in a different tier depending on the publisher, and three more
+        are listed because a change is pending or has just happened. Only Korea, Poland
+        and Greece change the three-segment bar; the other six change a label in the
+        country table and no number, because frontier and standalone fold into emerging.
+        Every other country maps the same way under both once FTSE&rsquo;s advanced and
+        secondary emerging tiers are collapsed into one emerging tier.
       </p>
+      <div className="table-wrap">
+        <table className="table">
+          <caption>Markets the two conventions sort differently</caption>
+          <thead>
+            <tr>
+              <th scope="col">Market</th>
+              <th scope="col">FTSE Russell</th>
+              <th scope="col">MSCI</th>
+              <th scope="col">Pending change</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>South Korea</td>
+              <td>Developed</td>
+              <td>Emerging</td>
+              <td>
+                None. MSCI kept Korea off its developed-market watch list in June 2026;
+                the earliest realistic move is 2028 or later.
+              </td>
+            </tr>
+            <tr>
+              <td>Poland</td>
+              <td>Developed</td>
+              <td>Emerging</td>
+              <td>None.</td>
+            </tr>
+            <tr>
+              <td>Greece</td>
+              <td>Developed</td>
+              <td>Emerging</td>
+              <td>
+                MSCI moves it to developed at the May 2027 Index Review, effective 1 June
+                2027.
+              </td>
+            </tr>
+            <tr>
+              <td>Indonesia</td>
+              <td>Emerging</td>
+              <td>Emerging</td>
+              <td>
+                MSCI is consulting on standalone status; the decision is due on or before
+                30 June 2027.
+              </td>
+            </tr>
+            <tr>
+              <td>Peru</td>
+              <td>Frontier</td>
+              <td>Emerging</td>
+              <td>None.</td>
+            </tr>
+            <tr>
+              <td>Vietnam</td>
+              <td>Emerging</td>
+              <td>Frontier</td>
+              <td>Not on MSCI&rsquo;s emerging-market watch list.</td>
+            </tr>
+            <tr>
+              <td>Romania</td>
+              <td>Emerging</td>
+              <td>Frontier</td>
+              <td>None.</td>
+            </tr>
+            <tr>
+              <td>Iceland</td>
+              <td>Emerging</td>
+              <td>Frontier</td>
+              <td>None.</td>
+            </tr>
+            <tr>
+              <td>Bulgaria</td>
+              <td>Frontier</td>
+              <td>Standalone</td>
+              <td>
+                MSCI moves it to frontier at the May 2027 Index Review, effective 1 June
+                2027.
+              </td>
+            </tr>
+            <tr>
+              <td>Argentina</td>
+              <td>Not in FTSE&rsquo;s scheme</td>
+              <td>Standalone</td>
+              <td>None.</td>
+            </tr>
+            <tr>
+              <td>Nigeria</td>
+              <td>Frontier</td>
+              <td>Frontier</td>
+              <td>Same tier; listed because FTSE added it in September 2026.</td>
+            </tr>
+            <tr>
+              <td>Turkey</td>
+              <td>Emerging</td>
+              <td>Emerging</td>
+              <td>
+                MSCI may consult on its treatment; the index has been frozen since October
+                2026.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        The table is this site&rsquo;s own transcription, written to each
+        publisher&rsquo;s published criteria and checked against its announcements, with
+        the version date kept beside it. No MSCI or FTSE Russell document, table,
+        constituent list or data file is reproduced here, and neither publisher has
+        reviewed, approved or endorsed this site. UnpackFund is not affiliated with,
+        endorsed by, or licensed by MSCI or FTSE Russell; the names identify the standard
+        and nothing more.
+      </p>
+
+      <h3 id="markets-rules">The three segments, and the rules that place a domicile</h3>
       <p>
         <strong>Three buckets, and no fourth.</strong> A reader compares this split
         against an issuer&rsquo;s own factsheet, and &ldquo;no market tier&rdquo; is a
-        question the page could not answer rather than an answer. So a domicile FTSE does
-        not classify is placed by one of three stated rules, and the Markets bar draws
-        exactly three segments:
+        question the page could not answer rather than an answer. So a domicile the
+        provider does not classify is placed by one of the rules below, and the Markets
+        bar draws exactly three segments:
       </p>
       <ul>
         <li>
@@ -429,28 +554,29 @@ export default function MethodologyPage() {
           the Marshall Islands, Panama, the Bahamas, Gibraltar and Monaco are where a
           company is <em>registered</em>, not where it trades. Most of the weight in these
           domiciles is an American operating business listed in New York — Carnival, Arch
-          Capital, RenaissanceRe, Everest, NCL, Genpact, Axalta — and FTSE reaches the
-          same place from the other direction, classifying those companies by country of
-          risk. This is the largest single correction the convention makes: on the 4
-          November 2026 release these domiciles were 1.44% of gross weight.
+          Capital, RenaissanceRe, Everest, NCL, Genpact, Axalta — and both publishers
+          reach the same place from the other direction, classifying those companies by
+          country of risk. This is the largest single correction the convention makes: on
+          the 4 November 2026 release these domiciles were 1.44% of gross weight.
         </li>
         <li>
           <strong>Puerto Rico is the United States</strong>, because it is a United States
           territory.
         </li>
         <li>
-          <strong>The European frontier is developed ex-US.</strong> Bulgaria, Croatia,
-          Cyprus, Estonia, Latvia, Lithuania, Malta, Slovakia and Slovenia are frontier to
-          FTSE and advanced to the IMF; they are in the single market and trade in Europe,
-          and calling them emerging would put Estonia in the same bucket as Vietnam.
+          <strong>Luxembourg is developed ex-US under MSCI.</strong> MSCI has no
+          Luxembourg market and classifies Luxembourg-incorporated issuers by where they
+          operate, so the domicile stands in for a developed European market; the override
+          table corrects the ones where that is wrong.
         </li>
         <li>
-          <strong>Everything else with no FTSE tier is emerging.</strong> That is the
-          frontier markets — Kazakhstan, Argentina, Peru, Morocco, Nigeria, Mauritius,
-          Kenya, Sri Lanka, Bangladesh, Pakistan, Bahrain, Oman, Jordan, Tunisia,
-          Botswana, Ghana, Papua New Guinea, the Faroe Islands, Russia (suspended) and
-          Liechtenstein. A three-bucket view has no fourth place for them, and frontier is
-          closer to emerging than to either of the other two.
+          <strong>Everything that is not developed is emerging.</strong> Frontier,
+          standalone and unclassified all fold in — Kazakhstan, Morocco, Nigeria,
+          Mauritius, Kenya, Sri Lanka, Bangladesh, Pakistan, Bahrain, Oman, Jordan,
+          Tunisia, Botswana, Ghana, Papua New Guinea, the Faroe Islands, Russia
+          (suspended) and Liechtenstein — and so does a market the provider does not
+          classify at all. A three-segment view has no fourth place for them, and frontier
+          is closer to emerging than to either of the other two.
         </li>
       </ul>
       <p>
@@ -465,12 +591,22 @@ export default function MethodologyPage() {
         an emerging-markets fund can show a United States segment at all.
       </p>
       <p>
-        The fix is a country-of-risk assignment for offshore-domiciled companies, which is
-        what FTSE and MSCI publish and what no free structured source provides. GLEIF
-        publishes a headquarters address, but it returns Bermuda for Arch Capital and
-        Dublin for Experian, so it is not a substitute. Until that is decided, the rule
-        above is stated rather than hidden, and the number it produces is the number this
-        page describes.
+        The correction is a country-of-risk assignment for the companies where the
+        publisher&rsquo;s answer is well established and the weight is material, held in
+        an override table the operator can extend. The release publishes how much weight
+        the overrides moved, so what remains is a number rather than a claim.
+        GLEIF&rsquo;s headquarters address is not a substitute: it returns Bermuda for
+        Arch Capital and Dublin for Experian.
+      </p>
+      <p>
+        <strong>The European frontier is no longer developed ex-US.</strong> Under FTSE
+        this site placed nine European frontier markets — Bulgaria, Croatia, Cyprus,
+        Estonia, Latvia, Lithuania, Malta, Slovakia and Slovenia — in developed ex-US by a
+        rule of its own, because they are in the single market and the IMF calls them
+        advanced economies. Under MSCI the publisher&rsquo;s answer ships: four of them
+        are frontier, four have no MSCI market at all, and Bulgaria is standalone, and
+        every one of those folds into emerging. The FTSE view still places them in
+        developed ex-US, so the toggle shows the difference rather than hiding it.
       </p>
 
       <h3 id="country-decision">How a country is decided</h3>
