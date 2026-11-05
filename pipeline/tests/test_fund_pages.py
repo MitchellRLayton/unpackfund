@@ -422,12 +422,15 @@ def test_a_position_with_no_company_is_placed_by_the_country_its_own_filing_stat
         r'<tr><td>([^<]+)</td><td class="mono">([^<]*)</td><td class="num">([\d.]+)%</td></tr>',
         page,
     )
+    # Japan is developed and Korea is emerging under MSCI, so the two unidentified rows
+    # land in different segments — which is the point of reading the filing's own country
+    # rather than dropping them.
     assert {label: float(share) for label, _codes, share in rows} == {
-        "United States": 50.0, "International Developed ex-US": 50.0,
+        "United States": 50.0, "International Developed ex-US": 30.0, "Emerging Markets": 20.0,
     }
     # The row prints the country it was placed by, and carries the tier edge.
     assert '<tr data-country="JP" data-tier="DM">' in page
-    assert '<tr data-country="KR" data-tier="DM">' in page
+    assert '<tr data-country="KR" data-tier="EM">' in page
 
 
 def test_cash_and_derivatives_are_outside_the_bar_even_with_a_filed_country():
@@ -484,22 +487,25 @@ def test_a_fund_with_no_mapped_weight_has_no_split_to_draw():
 
 
 def test_the_tier_table_matches_the_apps_own_convention():
-    """One classification, not two. The page is generated; the app is the source."""
-    source = Path(__file__).resolve().parents[2] / "web" / "lib" / "country-tier.ts"
-    text = source.read_text()
+    """One classification, not two. Both modules are generated from the same JSON.
 
-    def codes(name: str) -> set[str]:
-        block = re.search(rf"const {name}[^=]*= new Set\(\[(.*?)\]\)", text, re.S).group(1)
-        return set(re.findall(r'"([A-Z]{2})"', block))
+    The page used to restate the app's table and a test parsed the TypeScript to hold
+    them equal. That worked while there was one provider; with two it would have meant
+    parsing a generated module out of a generated module. The table now lives in
+    `classification/classification.json` and both languages are emitted from it, so
+    this test checks the thing that can still go wrong — a generator that emits the
+    two modules differently — rather than a hand edit that cannot happen.
+    """
+    from pipeline import classification_generated
 
-    assert codes("DEVELOPED_EX_US") == set(fund_pages.DEVELOPED_EX_US)
-    assert codes("EMERGING") == set(fund_pages.EMERGING)
-    assert f'TIER_AS_OF = "{fund_pages.TIER_AS_OF}"' in text
-    assert f'TIER_CONVENTION = "{fund_pages.TIER_CONVENTION}"' in text
-    # The two lists cannot overlap, and the United States is neither.
-    assert not set(fund_pages.DEVELOPED_EX_US) & set(fund_pages.EMERGING)
-    assert "US" not in fund_pages.DEVELOPED_EX_US
-    assert "US" not in fund_pages.EMERGING
+    assert fund_pages.TIER_AS_OF == classification_generated.TIER_AS_OF
+    assert fund_pages.TIER_CONVENTION == classification_generated.PROVIDER_LABELS["MSCI"]
+    assert classification_generated.DEFAULT_PROVIDER == "MSCI"
+    # The page prints one convention and says which; it does not offer a toggle.
+    assert "MSCI" in fund_pages.TIER_CONVENTION
+    # The three segments are the app's three segments, in the same order.
+    assert [key for key, _label in fund_pages.TIERS] == ["US", "DM", "EM"]
+    assert set(fund_pages.TIER_CLASS) == {"US", "DM", "EM"}
 
 
 def test_an_unlisted_domicile_is_placed_by_one_of_the_three_rules():
@@ -512,17 +518,24 @@ def test_an_unlisted_domicile_is_placed_by_one_of_the_three_rules():
         assert fund_pages.tier_of(code) == "US"
     # A United States territory is the United States.
     assert fund_pages.tier_of("PR") == "US"
-    # The European frontier is developed ex-US, not emerging.
-    for code in ("BG", "CY", "EE", "HR", "LT", "LV", "MT", "SI", "SK"):
-        assert fund_pages.tier_of(code) == "DM"
-    # Everything else with no FTSE tier is emerging.
+    # MSCI calls Korea, Poland and Greece emerging; FTSE calls them developed. The page
+    # follows MSCI, which is what the funds it looks through benchmark to.
+    for code in ("KR", "PL", "GR"):
+        assert fund_pages.tier_of(code) == "EM"
+    # Frontier and standalone fold into emerging, because a third bucket has no fourth
+    # place. The European frontier is the visible case: FTSE says developed, MSCI says
+    # frontier, and the provider's answer is the one that ships.
     for code in ("KZ", "AR", "PE", "MA", "NG", "MU", "KE", "RU", "FO", "LI"):
+        assert fund_pages.tier_of(code) == "EM"
+    for code in ("BG", "CY", "EE", "HR", "LT", "LV", "MT", "SI", "SK"):
         assert fund_pages.tier_of(code) == "EM"
     # `None` is "the release has no country", which is a different statement.
     assert fund_pages.tier_of(None) is None
     assert fund_pages.tier_of("") is None
     # The residue rule is total, so a lower-case code must not fall through to emerging.
-    assert fund_pages.tier_of("kr") == "DM"
+    # Korea is the case that shows it: emerging under MSCI, and "kr" must agree with "KR".
+    assert fund_pages.tier_of("kr") == "EM"
+    assert fund_pages.tier_of("ch") == "DM"
     assert fund_pages.tier_of(" ky ") == "US"
 
 
