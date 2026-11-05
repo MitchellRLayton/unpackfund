@@ -65,9 +65,10 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-from pipeline import classify, gleif
+from pipeline import classification_generated, classify, gleif
 
 from .artifact import sha256_hex
 
@@ -103,6 +104,15 @@ CONTESTED_RULE = (
     "for a company the vote does not decide, the country holding the largest share of "
     "its traced value, at or above 40%; used only to place the position in a market "
     "bucket, never as the company's country tag"
+)
+
+#: The override rule, published beside the vote's rule. It runs *first*, and it is the
+#: only step in the cascade that is not derived from a filing: a reader is entitled to
+#: know that a hand-maintained table can outrank the vote, and to see which companies
+#: it moved.
+OVERRIDE_RULE = (
+    "a hand-maintained table of companies whose registered office is not where the "
+    "business is; it runs before the vote and its rows are published in `overrides`"
 )
 
 #: The fallback rule, published in the object beside the vote's rule: a reader is
@@ -285,15 +295,34 @@ class Tally:
         return len(self.dollars)
 
 
+#: Two-letter strings that are *shaped* like a country code and are not one.
+#:
+#: ``XX`` is ISO 3166-1's user-assigned code and appears in ``invCountry`` as a
+#: placeholder for "no country"; it is not a country under any publisher's table, so
+#: accepting it would put 53,766 bp of the 2026-11-05 release into Emerging Markets on
+#: the strength of a blank. ``NA`` is deliberately **not** here: it is Namibia's real
+#: code, and the release carries no ``NA`` rows, so denying it would be a guess about
+#: a filer's intent rather than a fact about the vocabulary.
+PLACEHOLDER_CODES = frozenset({"XX"})
+
+
 def is_country_code(value: object) -> bool:
     """ISO 3166-1 alpha-2, uppercase: two letters and nothing else.
 
     Deliberately strict. ``invCountry`` also carries blanks, country *names*
     (``UNITED STATES``), and three-letter codes from filers who used a different
     vocabulary; accepting them would put an unvetted string in a published field and
-    in a colour, and a two-letter field is what the consumer's tag can render.
+    in a colour, and a two-letter field is what the consumer's tag can render. The
+    placeholder codes in ``PLACEHOLDER_CODES`` are shaped like a country and are not
+    one, so they are refused here rather than downstream.
     """
-    return isinstance(value, str) and len(value) == 2 and value.isalpha() and value.isupper()
+    return (
+        isinstance(value, str)
+        and len(value) == 2
+        and value.isalpha()
+        and value.isupper()
+        and value not in PLACEHOLDER_CODES
+    )
 
 
 def decide(tally: Tally) -> tuple[dict[str, str], dict[str, int]]:
@@ -690,6 +719,140 @@ def _enforce(source: str, bp: int, compared: int, floor: int) -> None:
     )
 
 
+#: The hand-maintained override table, and the reasons a row may carry.
+#:
+#: The vote answers "where do the funds say this company is", and for a company
+#: registered in a haven that answer is the *listing venue*, not the business. The
+#: table in front of it answers the narrower question the Markets bar actually asks:
+#: where does the operating business sit. It is deliberately small, hand-written, and
+#: sourced row by row — a rule that guessed would be a worse answer than the vote.
+OVERRIDES_FILE = Path(__file__).resolve().parent.parent / "overrides" / "country_overrides.csv"
+
+#: The vocabulary of ``reason``. Closed on purpose: a free-text reason is a comment,
+#: and a comment cannot be counted, filtered, or checked for having gone stale.
+OVERRIDE_REASONS = frozenset(
+    {
+        # A Chinese operating business registered in Cayman, usually through a VIE.
+        "VIE_CAYMAN",
+        # An American business that re-domiciled to Ireland, Switzerland or Luxembourg
+        # for tax reasons and kept its operations, its listing and its filing status.
+        "REDOMICILE",
+        # A holding company whose registered office is a haven and whose business is
+        # somewhere else — the Bermuda insurers, the Latin American holdcos.
+        "HOLDCO_RISK",
+        # A depositary receipt whose issuer is elsewhere.
+        "ADR",
+        # Anything the four above do not describe. Rare by design.
+        "OTHER",
+    }
+)
+
+#: The columns the table must carry, in order.
+OVERRIDE_COLUMNS = ("company_id", "iso2", "reason", "source_url", "added_on", "note")
+
+
+class OverrideError(ValueError):
+    """The override table is malformed. A build error, not a data error."""
+
+
+def load_overrides(path: Path | None = None) -> dict[str, dict[str, str]]:
+    """Read the override table into ``company_id -> row``.
+
+    Validated on the way in, because every failure mode here is silent otherwise: a
+    mistyped country code would publish a colour with no label, a duplicate row would
+    make the published count disagree with the file, and a missing reason would make
+    the table impossible to audit. A malformed table stops the build.
+    """
+    import csv
+
+    source = Path(path) if path is not None else OVERRIDES_FILE
+    if not source.exists():
+        return {}
+    rows: dict[str, dict[str, str]] = {}
+    with source.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        missing = [name for name in OVERRIDE_COLUMNS if name not in (reader.fieldnames or ())]
+        if missing:
+            raise OverrideError(f"{source.name}: missing column(s) {missing}")
+        for line, row in enumerate(reader, start=2):
+            company_id = (row.get("company_id") or "").strip()
+            iso2 = (row.get("iso2") or "").strip().upper()
+            reason = (row.get("reason") or "").strip()
+            if not company_id:
+                raise OverrideError(f"{source.name}:{line}: empty company_id")
+            if not is_country_code(iso2):
+                raise OverrideError(f"{source.name}:{line}: {iso2!r} is not an alpha-2 code")
+            if reason not in OVERRIDE_REASONS:
+                raise OverrideError(f"{source.name}:{line}: unknown reason {reason!r}")
+            if company_id in rows:
+                raise OverrideError(f"{source.name}:{line}: duplicate row for {company_id}")
+            rows[company_id] = {
+                "iso2": iso2,
+                "reason": reason,
+                "source_url": (row.get("source_url") or "").strip(),
+                "added_on": (row.get("added_on") or "").strip(),
+                "note": (row.get("note") or "").strip(),
+            }
+    return rows
+
+
+def apply_overrides(
+    countries: Mapping[str, str],
+    overrides: Mapping[str, Mapping[str, str]],
+    *,
+    companies: Iterable[str] | None = None,
+    tally: Tally | None = None,
+    log: Any = None,
+) -> tuple[dict[str, str], dict[str, Any]]:
+    """Put the override table in front of the vote.
+
+    Returns the corrected map and the statistics the object publishes. Three counts,
+    because they answer three different questions and a single number would hide the
+    one that matters: ``changed`` is a company the vote placed somewhere else (the
+    correction), ``supplied`` is a company the vote refused (the rescue), and
+    ``unmatched`` is a row that named a company this release does not publish — a
+    stale row, which is a warning rather than a failure so that a release built from a
+    narrower universe still builds.
+    """
+    allowed = set(companies) if companies is not None else None
+    corrected = dict(countries)
+    changed: list[str] = []
+    supplied: list[str] = []
+    unmatched: list[str] = []
+    for company_id in sorted(overrides):
+        row = overrides[company_id]
+        if allowed is not None and company_id not in allowed:
+            unmatched.append(company_id)
+            continue
+        previous = corrected.get(company_id)
+        if previous == row["iso2"]:
+            # The vote already agreed. Not an error, and not a correction either: the
+            # row is redundant today and stays as a guard for the next release.
+            continue
+        corrected[company_id] = row["iso2"]
+        (changed if previous is not None else supplied).append(company_id)
+    if unmatched and log is not None:
+        log(
+            f"country overrides: {len(unmatched)} row(s) name a company this release "
+            f"does not publish: {', '.join(unmatched[:5])}"
+            + (" …" if len(unmatched) > 5 else "")
+        )
+    weight_bp = 0
+    if tally is not None:
+        total = sum(sum(per.values()) for per in tally.dollars.values())
+        moved = sum(sum(tally.dollars.get(cid, {}).values()) for cid in changed + supplied)
+        weight_bp = int(round(10_000 * moved / total)) if total else 0
+    stats = {
+        "applied": len(changed) + len(supplied),
+        "changed": len(changed),
+        "supplied": len(supplied),
+        "unmatched": len(unmatched),
+        "weight_bp": weight_bp,
+        "companies": sorted(changed + supplied),
+    }
+    return corrected, stats
+
+
 def build_object(
     as_of: str,
     countries: Mapping[str, str],
@@ -698,6 +861,7 @@ def build_object(
     invalid_rows: int = 0,
     fallback: Mapping[str, Any] | None = None,
     contested_map: Mapping[str, str] | None = None,
+    overrides: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The published object: the map, its provenance, and its own coverage.
 
@@ -730,12 +894,20 @@ def build_object(
         "invalid_rows": int(invalid_rows),
     }
     if fallback is not None:
+        nport = int((fallback.get("sources") or {}).get("nport", 0))
+        # The override runs in front of the vote, so the map the fallback counted
+        # already holds the overridden companies. Subtracting them keeps ``nport``
+        # meaning what it says — the companies the vote itself placed — and keeps the
+        # four sources summing to ``with_country``.
+        applied = int((overrides or {}).get("applied", 0))
         document["sources"] = {
-            "nport": int((fallback.get("sources") or {}).get("nport", 0)),
+            "nport": max(0, nport - applied),
             "gleif": int((fallback.get("sources") or {}).get("gleif", 0)),
             "edgar": int((fallback.get("sources") or {}).get("edgar", 0)),
             "cover_page": int((fallback.get("sources") or {}).get("cover_page", 0)),
         }
+        if overrides is not None:
+            document["sources"]["override"] = applied
         agreement = fallback.get("agreement") or {}
         document["agreement"] = {
             "gleif_bp": int(agreement.get("gleif_bp", 0)),
@@ -745,6 +917,27 @@ def build_object(
             "cover_page_bp": int(agreement.get("cover_page_bp", 0)),
             "cover_page_compared": int(agreement.get("cover_page_compared", 0)),
         }
+    # Additive by presence: a release that ran no override table publishes neither key.
+    # ``overrides`` is the audit trail — which companies the table moved, how many, and
+    # how much weight that was — because a hand-maintained correction that is not
+    # published is indistinguishable from a bug.
+    if overrides is not None:
+        document["override_rule"] = OVERRIDE_RULE
+        document["overrides"] = {
+            "applied": int(overrides.get("applied", 0)),
+            "changed": int(overrides.get("changed", 0)),
+            "supplied": int(overrides.get("supplied", 0)),
+            "unmatched": int(overrides.get("unmatched", 0)),
+            "weight_bp": int(overrides.get("weight_bp", 0)),
+            "companies": list(overrides.get("companies") or ()),
+        }
+    # The convention the *tiers* are read under, published beside the map so a consumer
+    # cannot apply one publisher's table to another's country codes without noticing.
+    document["classification"] = {
+        "provider": classification_generated.DEFAULT_PROVIDER,
+        "as_of": classification_generated.TIER_AS_OF,
+        "label": classification_generated.PROVIDER_LABELS[classification_generated.DEFAULT_PROVIDER],
+    }
     document["companies"] = codes
     # Additive by presence, and a *separate* map on purpose: it answers a different
     # question from ``companies`` and must never be read as the company's country.
