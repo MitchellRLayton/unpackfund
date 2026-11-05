@@ -1,0 +1,1379 @@
+{
+  "schema_version": 1,
+  "kind": "country_classification",
+  "as_of": "2026-11-05",
+  "note": "A country's market tier is a widely published fact; a provider's compilation is licensed material. This file is written to each provider's published criteria and cross-checked against its announcements. No provider document, table or data file is reproduced, and nothing here is fetched at build or run time.",
+  "bucket_rules": {
+    "note": "The bar draws three segments. A tier folds into one of them, and two product rules place a domicile the provider does not classify. These are our rules, not the provider's, and they are stated here rather than buried in code.",
+    "fold": {
+      "DEVELOPED": "DM",
+      "EMERGING": "EM",
+      "FRONTIER": "EM",
+      "STANDALONE": "EM",
+      "UNCLASSIFIED": "EM"
+    },
+    "shared": {
+      "BM": "US",
+      "BS": "US",
+      "GG": "US",
+      "GI": "US",
+      "IM": "US",
+      "JE": "US",
+      "KY": "US",
+      "MC": "US",
+      "MH": "US",
+      "PA": "US",
+      "PR": "US",
+      "US": "US",
+      "VG": "US"
+    },
+    "shared_note": "Puerto Rico is a United States territory. The eleven offshore holding domiciles are where a company is registered, not where it operates: most of the weight in them is an American business listed in New York, which is why the default is the United States. The minority this gets wrong \u2014 Chinese operating businesses registered in Cayman \u2014 is corrected by pipeline/overrides/country_overrides.csv, not by this rule. Cura\u00e7ao is deliberately absent: it is not in the set that shipped on 2026-11-05, and adding it would change the FTSE view.",
+    "by_provider": {
+      "FTSE": {
+        "BG": "DM",
+        "CY": "DM",
+        "EE": "DM",
+        "HR": "DM",
+        "LT": "DM",
+        "LV": "DM",
+        "MT": "DM",
+        "SI": "DM",
+        "SK": "DM"
+      },
+      "MSCI": {
+        "LU": "DM"
+      }
+    },
+    "by_provider_note": "FTSE classifies nine European frontier markets as frontier while the IMF calls all nine advanced economies; they are in the single market and trade in Europe, so the FTSE view places them in developed ex-US. MSCI classifies them as frontier, so the MSCI view does not: the provider's answer is the one that ships. Luxembourg is the reverse case \u2014 MSCI has no Luxembourg market and classifies Luxembourg-incorporated issuers by their operating market, so the domicile is a proxy for a developed European market and the override table corrects the ones that are not (Spotify is United States)."
+  },
+  "providers": {
+    "MSCI": {
+      "name": "MSCI",
+      "label": "MSCI-aligned classification, maintained by UnpackFund",
+      "is_default": true,
+      "source_url": "https://www.msci.com/our-solutions/indexes/market-classification",
+      "rows": [
+        {
+          "iso2": "AE",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "AR",
+          "tier": "STANDALONE",
+          "provider_label": "Standalone Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification",
+          "notes": "Standalone under MSCI. The bucket is emerging either way, so this row changes a label, not a number."
+        },
+        {
+          "iso2": "AT",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "AU",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "BD",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "BE",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "BG",
+          "tier": "STANDALONE",
+          "provider_label": "Standalone Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": "2027-06-01",
+          "announced_on": "2026-03-31",
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification",
+          "notes": "MSCI moves Bulgaria to Frontier Markets at the May 2027 Index Review."
+        },
+        {
+          "iso2": "BG",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "2027-06-01",
+          "effective_to": null,
+          "announced_on": "2026-03-31",
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification",
+          "notes": "Bulgaria leaves Standalone for Frontier at the May 2027 Index Review."
+        },
+        {
+          "iso2": "BH",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "BR",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "CA",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "CH",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "CL",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "CN",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "CO",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "CZ",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "DE",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "DK",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "EE",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "EG",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "ES",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "FI",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "FR",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "GB",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "GR",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": "2027-06-01",
+          "announced_on": "2026-03-31",
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification",
+          "notes": "MSCI moves Greece to Developed Markets at the May 2027 Index Review."
+        },
+        {
+          "iso2": "GR",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "2027-06-01",
+          "effective_to": null,
+          "announced_on": "2026-03-31",
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification",
+          "notes": "Greece joins Developed Markets at the May 2027 Index Review."
+        },
+        {
+          "iso2": "HK",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "HR",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "HU",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "ID",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification",
+          "notes": "MSCI launched a consultation on 2026-10-15 to reclassify Indonesia from Emerging to Standalone; feedback is due 2027-04-30 and the decision is due on or before 2027-06-30. No row is added until the decision is announced."
+        },
+        {
+          "iso2": "IE",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "IL",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "IN",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "IS",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification",
+          "notes": "Frontier under MSCI. The bucket is emerging either way \u2014 frontier folds into emerging \u2014 so this row changes a label, not a number. It is the one row in this file not confirmed against a primary source."
+        },
+        {
+          "iso2": "IT",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "JO",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "JP",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "KE",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "KR",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "KW",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "KZ",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "LK",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "LT",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "MA",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "MU",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "MX",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "MY",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "NG",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "NL",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "NO",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "NZ",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "OM",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "PE",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "PH",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "PK",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "PL",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "PT",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "QA",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "RO",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "RS",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "SA",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "SE",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "SG",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "SI",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "TH",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "TN",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "TR",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "TW",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "US",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "VN",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        },
+        {
+          "iso2": "ZA",
+          "tier": "EMERGING",
+          "provider_label": "Emerging Markets",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.msci.com/our-solutions/indexes/market-classification"
+        }
+      ]
+    },
+    "FTSE": {
+      "name": "FTSE Russell",
+      "label": "FTSE Russell-aligned classification, maintained by UnpackFund",
+      "is_default": false,
+      "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification",
+      "rows": [
+        {
+          "iso2": "AE",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "AT",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "AU",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "BD",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "BE",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "BG",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "BH",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "BR",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "CA",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "CH",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "CL",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "CN",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "CO",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "CY",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "CZ",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "DE",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "DK",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "EE",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "EG",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "ES",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "FI",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "FR",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "GB",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "GR",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "HK",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "HR",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "HU",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "ID",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "IE",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "IL",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "IN",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "IS",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "IT",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "JO",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "JP",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "KE",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "KR",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "KW",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "KZ",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "LK",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "LT",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "LU",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "LV",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "MA",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "MT",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "MU",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "MX",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "MY",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "NG",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "NL",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "NO",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "NZ",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "OM",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "PA",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "PE",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "PH",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "PK",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "PL",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "PT",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "QA",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "RO",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "RS",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "SA",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "SE",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "SG",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "SI",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "SK",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "TH",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "TN",
+          "tier": "FRONTIER",
+          "provider_label": "Frontier",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "TR",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "TW",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "US",
+          "tier": "DEVELOPED",
+          "provider_label": "Developed",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "VN",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        },
+        {
+          "iso2": "ZA",
+          "tier": "EMERGING",
+          "provider_label": "Emerging",
+          "effective_from": "1900-01-01",
+          "effective_to": null,
+          "announced_on": null,
+          "source_url": "https://www.lseg.com/en/ftse-russell/equity-country-classification"
+        }
+      ]
+    }
+  }
+}
