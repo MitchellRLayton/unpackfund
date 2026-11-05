@@ -666,25 +666,23 @@ def render_page(
         # outside it, 9.1% in emerging markets, and 2.3% is in companies whose
         # domicile this release does not publish` — the design system's split
         # sentence, in the same three words the bar and the table use.
-        parts = []
-        for index, segment in enumerate(segments):
-            value = f"<strong>{segment.share:.2f}%</strong>"
-            if segment.key == "US":
-                phrase = "in the United States"
-            elif segment.key == "DM":
-                phrase = "in international developed markets outside it"
-            elif segment.key == "EM":
-                phrase = "in emerging markets"
-            elif segment.key == "OTHER":
-                phrase = "in domiciles in neither list"
-            else:
-                phrase = "is in companies whose domicile this release does not publish"
-            if index == 0 and not phrase.startswith("is "):
-                phrase = f"is {phrase}"
-            parts.append(f"{value} {phrase}")
+        phrases = {
+            "US": "is in the United States",
+            "DM": "in international developed markets outside it",
+            "EM": "in emerging markets",
+        }
+        parts = [
+            f"<strong>{segment.share:.2f}%</strong> {phrases[segment.key]}"
+            for segment in segments
+        ]
+        # The denominator is the weight the bar draws, not the share that maps to a
+        # *company* — those differ now that a position with no company can be placed by
+        # its own filed country. Naming coverage here made 62.53% read as a share of
+        # 96.0% when it is a share of 99.7%.
         answer += (
-            f'\n        <p class="answer__sentence">Of the {coverage:.1f}% of the fund we can map '
-            f"to a company, {_join(parts)}.</p>"
+            f'\n        <p class="answer__sentence">Of the '
+            f"<strong>{split.placed_bp / 100:.1f}%</strong> of the fund the release can place in a "
+            f"market, {_join(parts)}.</p>"
         )
 
     note_parts = [
