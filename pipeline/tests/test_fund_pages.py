@@ -382,7 +382,10 @@ def test_the_short_answer_names_the_three_buckets_the_way_the_bar_does():
     """
     page = render(tiered(), countries=COUNTRIES)
     sentence = re.search(r'<p class="answer__sentence">Of the .*?</p>', page, re.S).group(0)
-    assert "in the United States" in sentence
+    # The lead names the base the shares are a share *of*: the weight the bar draws,
+    # not the narrower share that maps to a company.
+    assert "9.1%</strong> of the fund the release can place in a market" in sentence
+    assert "<strong>56.04%</strong> is in the United States" in sentence
     assert "in international developed markets outside it" in sentence
     assert "in emerging markets" in sentence
     assert "other developed markets" not in page
