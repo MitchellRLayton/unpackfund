@@ -408,6 +408,52 @@ def test_validator_accepts_a_contested_map_beside_the_decided_one(tmp_path):
     assert validate.validate(release_dir) == 0
 
 
+def _undecide(release_dir, contested: dict[str, str]) -> None:
+    """Move every decided company into the contested map, and re-hash the object.
+
+    The shape a release has when the vote refused a company: the shard is published,
+    the shard carries no `country`, and the contested map is the only answer.
+    """
+    # The shard is the company's own record, so it has to lose the country too: the
+    # projection gate compares the map against the shards, not against itself.
+    for shard_path in (release_dir / "companies").glob("c_*.json"):
+        shard = json.loads(shard_path.read_text())
+        if "country" in shard:
+            del shard["country"]
+            shard_path.write_bytes(company_countries.canonical_bytes(shard))
+    path = release_dir / "companies/countries.json"
+    document = json.loads(path.read_text())
+    document["contested_rule"] = company_countries.CONTESTED_RULE
+    document["contested"] = contested
+    document["companies"] = {}
+    document["counts"]["with_country"] = 0
+    document["counts"]["us"] = 0
+    document["counts"]["non_us"] = 0
+    document["counts"]["undecided"] = document["counts"]["companies"]
+    payload = company_countries.canonical_bytes(document)
+    path.write_bytes(payload)
+    _repair_descriptor(release_dir, payload)
+
+
+def test_validator_accepts_a_contested_company_that_has_a_shard_and_no_country(tmp_path):
+    """The normal shape: a contested company is one the vote did not decide.
+
+    It has a company shard — the release publishes it — and no `country` on that
+    shard, because the vote declined. Checking the contested map against the
+    *decided* companies instead of the *published* ones refuses every release that
+    used it, which is what happened to 2026-11-05.1 on three companies.
+    """
+    release_dir = _release(tmp_path)
+    _undecide(release_dir, {APPLE: "IE"})
+    assert validate.validate(release_dir) == 0
+
+
+def test_validator_rejects_a_contested_company_the_release_does_not_publish(tmp_path):
+    release_dir = _release(tmp_path)
+    _undecide(release_dir, {"c_9999999999": "IE"})
+    assert validate.validate(release_dir) == 1
+
+
 def test_validator_recomputes_the_counts(tmp_path):
     release_dir = _release(tmp_path)
     path = release_dir / "companies/countries.json"

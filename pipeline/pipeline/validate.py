@@ -1025,6 +1025,10 @@ def _check_company_countries(release_dir: Path, report: Report) -> None:
     published = path.exists()
 
     decided: dict[str, str] = {}
+    #: Every company the release publishes a shard for, decided or not. The contested
+    #: map is checked against this, not against `decided`: a contested company is by
+    #: definition one the vote did not decide, so it has a shard and no country.
+    shard_ids: set[str] = set()
     shards = 0
     for shard_path in sorted((release_dir / "companies").glob("*.json")):
         if shard_path.name in {"index.json", "countries.json"}:
@@ -1035,6 +1039,7 @@ def _check_company_countries(release_dir: Path, report: Report) -> None:
             report.fail("countries.shard", f"{shard_path.name} is unreadable")
             continue
         shards += 1
+        shard_ids.add(shard.get("company_id") or shard_path.stem)
         country = shard.get("country")
         if country is None:
             continue
@@ -1174,7 +1179,7 @@ def _check_company_countries(release_dir: Path, report: Report) -> None:
                     f"contested names {overlap}, which the map already decided — the two "
                     "answers must be disjoint or a reader cannot tell which is which",
                 )
-            unknown = sorted(set(contested_map) - set(decided) - set(published_map))[:3]
+            unknown = sorted(set(contested_map) - shard_ids)[:3]
             if unknown:
                 report.fail(
                     "countries.contested",
