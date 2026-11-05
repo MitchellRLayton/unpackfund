@@ -427,11 +427,12 @@ export default function MethodologyPage() {
           <strong>An offshore holding domicile is the United States.</strong> Bermuda, the
           Cayman Islands, the British Virgin Islands, Jersey, Guernsey, the Isle of Man,
           the Marshall Islands, Panama, the Bahamas, Gibraltar and Monaco are where a
-          company is <em>registered</em>, not where it trades: the operating business is
-          usually American and the shares are listed in New York. FTSE reaches the same
-          place from the other direction, classifying these companies by country of risk.
-          This is the largest single correction the convention makes — on the 4 November
-          2026 release these domiciles were 1.44% of gross weight.
+          company is <em>registered</em>, not where it trades. Most of the weight in these
+          domiciles is an American operating business listed in New York — Carnival, Arch
+          Capital, RenaissanceRe, Everest, NCL, Genpact, Axalta — and FTSE reaches the
+          same place from the other direction, classifying those companies by country of
+          risk. This is the largest single correction the convention makes: on the 4
+          November 2026 release these domiciles were 1.44% of gross weight.
         </li>
         <li>
           <strong>Puerto Rico is the United States</strong>, because it is a United States
@@ -453,10 +454,23 @@ export default function MethodologyPage() {
         </li>
       </ul>
       <p>
-        The country is a domicile and not a measure of where a company earns its money: a
-        company domiciled in the Cayman Islands can earn almost everything it makes in
-        China. The tier says which market its shares belong to, which is the question a
-        fund factsheet answers.
+        The country is a domicile and not a measure of where a company earns its money,
+        and the offshore rule is the one place where that gap is large enough to see. A
+        Cayman-incorporated company can earn almost everything it makes in China, and the
+        rule above still places it in the United States. That is right for the majority of
+        the weight in those domiciles and wrong for a named minority: Tencent, NetEase,
+        PDD, JD.com, Baidu, Trip.com, Meituan, Xiaomi, Kuaishou, WH Group, XPeng and their
+        peers are all Cayman-incorporated, and they belong in emerging markets. On the 5
+        November 2026 release that minority is about 0.44% of gross weight, and it is why
+        an emerging-markets fund can show a United States segment at all.
+      </p>
+      <p>
+        The fix is a country-of-risk assignment for offshore-domiciled companies, which is
+        what FTSE and MSCI publish and what no free structured source provides. GLEIF
+        publishes a headquarters address, but it returns Bermuda for Arch Capital and
+        Dublin for Experian, so it is not a substitute. Until that is decided, the rule
+        above is stated rather than hidden, and the number it produces is the number this
+        page describes.
       </p>
 
       <h3 id="country-decision">How a country is decided</h3>
