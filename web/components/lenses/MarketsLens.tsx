@@ -258,7 +258,7 @@ export function MarketsLens({ model }: LensProps) {
               bar draws the same weight on one scale for the whole table, set by the
               largest country.{" "}
               {split.countries.length > 0
-                ? `Developed and emerging follow the ${TIER_CONVENTION}, as of ${TIER_AS_OF}; offshore holding domiciles such as Bermuda and the Cayman Islands are the United States, because that is where their shares trade.`
+                ? `Developed and emerging follow the ${TIER_CONVENTION}, as of ${TIER_AS_OF}; offshore holding domiciles such as Bermuda and the Cayman Islands are the United States, because most of the weight in them is an American business listed in New York.`
                 : ""}
             </caption>
             <thead>
