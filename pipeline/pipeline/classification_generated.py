@@ -187,19 +187,23 @@ TIER_FOLD = {
 }
 
 SHARED_BUCKETS = {
+    'AS': 'US',
     'BM': 'US',
     'BS': 'US',
     'GG': 'US',
     'GI': 'US',
+    'GU': 'US',
     'IM': 'US',
     'JE': 'US',
     'KY': 'US',
     'MC': 'US',
     'MH': 'US',
+    'MP': 'US',
     'PA': 'US',
     'PR': 'US',
     'US': 'US',
     'VG': 'US',
+    'VI': 'US',
 }
 
 PROVIDER_BUCKETS = {

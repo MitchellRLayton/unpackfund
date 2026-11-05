@@ -214,19 +214,23 @@ export const TIER_FOLD: Readonly<Record<MarketTier, CountryTier>> = {
  * `shared` applies to every provider; `byProvider` overrides it for one.
  */
 export const SHARED_BUCKETS: Readonly<Record<string, CountryTier>> = {
+  "AS": "US",
   "BM": "US",
   "BS": "US",
   "GG": "US",
   "GI": "US",
+  "GU": "US",
   "IM": "US",
   "JE": "US",
   "KY": "US",
   "MC": "US",
   "MH": "US",
+  "MP": "US",
   "PA": "US",
   "PR": "US",
   "US": "US",
   "VG": "US",
+  "VI": "US",
 };
 
 export const PROVIDER_BUCKETS: Readonly<Record<Provider, Readonly<Record<string, CountryTier>>>> = {
@@ -253,18 +257,23 @@ export interface TierOptions {
   asOf?: string;
 }
 
-const BY_PROVIDER: Readonly<Record<Provider, ReadonlyMap<string, readonly ClassificationRow[]>>> =
-  Object.fromEntries(
-    PROVIDERS.map((provider) => {
-      const index = new Map<string, ClassificationRow[]>();
-      for (const row of CLASSIFICATION_ROWS[provider]) {
-        const rows = index.get(row[0]);
-        if (rows) rows.push(row);
-        else index.set(row[0], [row]);
-      }
-      return [provider, index];
-    }),
-  ) as Readonly<Record<Provider, ReadonlyMap<string, readonly ClassificationRow[]>>>;
+function indexOf(provider: Provider): ReadonlyMap<string, readonly ClassificationRow[]> {
+  const index = new Map<string, ClassificationRow[]>();
+  for (const row of CLASSIFICATION_ROWS[provider]) {
+    const rows = index.get(row[0]);
+    if (rows) rows.push(row);
+    else index.set(row[0], [row]);
+  }
+  return index;
+}
+
+// Written out rather than built with `Object.fromEntries`, which widens to
+// `Record<string, …>` and would let a provider be added to the data without a
+// compile error here. A missing provider is a type error, not a silent gap.
+const BY_PROVIDER: Readonly<Record<Provider, ReadonlyMap<string, readonly ClassificationRow[]>>> = {
+  MSCI: indexOf("MSCI"),
+  FTSE: indexOf("FTSE"),
+};
 
 /**
  * The provider's tier for a domicile, or `null` when there is no domicile to classify.

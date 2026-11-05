@@ -150,6 +150,12 @@ def test_the_ftse_view_still_says_what_it_said_before_the_migration() -> None:
 
     The table that shipped on 2026-11-05, re-derived from its five sets. Asking for FTSE
     must show exactly what the site showed before MSCI became the default.
+
+    One deliberate exception, and it is a correction rather than a migration: the four
+    United States territories other than Puerto Rico (Guam, American Samoa, the Northern
+    Mariana Islands, the Virgin Islands) were absent from the shipped table and fell
+    through to emerging. They are United States territory under both publishers, so they
+    are now in the shared bucket and the FTSE view moves with them.
     """
     developed_ex_us = set(
         "AT AU BE CA CH DE DK ES FI FR GB GR HK IE IL IT JP KR LU NL NO NZ PL PT SE SG".split()
@@ -158,8 +164,10 @@ def test_the_ftse_view_still_says_what_it_said_before_the_migration() -> None:
     offshore = set("BM BS GG GI IM JE KY MC MH PA VG".split())
     advanced_frontier = set("BG CY EE HR LT LV MT SI SK".split())
 
+    territories = set("AS GU MP VI".split())
+
     def shipped(code: str) -> str:
-        if code == "US" or code == "PR" or code in offshore:
+        if code == "US" or code == "PR" or code in offshore or code in territories:
             return "US"
         if code in developed_ex_us or code in advanced_frontier:
             return "DM"

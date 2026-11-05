@@ -13,21 +13,25 @@
       "UNCLASSIFIED": "EM"
     },
     "shared": {
+      "AS": "US",
       "BM": "US",
       "BS": "US",
       "GG": "US",
       "GI": "US",
+      "GU": "US",
       "IM": "US",
       "JE": "US",
       "KY": "US",
       "MC": "US",
       "MH": "US",
+      "MP": "US",
       "PA": "US",
       "PR": "US",
       "US": "US",
-      "VG": "US"
+      "VG": "US",
+      "VI": "US"
     },
-    "shared_note": "Puerto Rico is a United States territory. The eleven offshore holding domiciles are where a company is registered, not where it operates: most of the weight in them is an American business listed in New York, which is why the default is the United States. The minority this gets wrong \u2014 Chinese operating businesses registered in Cayman \u2014 is corrected by pipeline/overrides/country_overrides.csv, not by this rule. Cura\u00e7ao is deliberately absent: it is not in the set that shipped on 2026-11-05, and adding it would change the FTSE view.",
+    "shared_note": "Puerto Rico, Guam, American Samoa, the Northern Mariana Islands and the United States Virgin Islands are United States territories, so a company registered in one of them is a United States company. The eleven offshore holding domiciles are where a company is registered, not where it operates: most of the weight in them is an American business listed in New York, which is why the default is the United States. The minority this gets wrong — Chinese operating businesses registered in Cayman — is corrected by pipeline/overrides/country_overrides.csv, not by this rule. Curaçao is deliberately absent: it is not in the set that shipped on 2026-11-05, and adding it would change the FTSE view.",
     "by_provider": {
       "FTSE": {
         "BG": "DM",
@@ -44,7 +48,7 @@
         "LU": "DM"
       }
     },
-    "by_provider_note": "FTSE classifies nine European frontier markets as frontier while the IMF calls all nine advanced economies; they are in the single market and trade in Europe, so the FTSE view places them in developed ex-US. MSCI classifies them as frontier, so the MSCI view does not: the provider's answer is the one that ships. Luxembourg is the reverse case \u2014 MSCI has no Luxembourg market and classifies Luxembourg-incorporated issuers by their operating market, so the domicile is a proxy for a developed European market and the override table corrects the ones that are not (Spotify is United States)."
+    "by_provider_note": "FTSE classifies nine European frontier markets as frontier while the IMF calls all nine advanced economies; they are in the single market and trade in Europe, so the FTSE view places them in developed ex-US. MSCI classifies them as frontier, so the MSCI view does not: the provider's answer is the one that ships. Luxembourg is the reverse case — MSCI has no Luxembourg market and classifies Luxembourg-incorporated issuers by their operating market, so the domicile is a proxy for a developed European market and the override table corrects the ones that are not (Spotify is United States)."
   },
   "providers": {
     "MSCI": {
@@ -364,7 +368,7 @@
           "effective_to": null,
           "announced_on": null,
           "source_url": "https://www.msci.com/our-solutions/indexes/market-classification",
-          "notes": "Frontier under MSCI. The bucket is emerging either way \u2014 frontier folds into emerging \u2014 so this row changes a label, not a number. It is the one row in this file not confirmed against a primary source."
+          "notes": "Frontier under MSCI. The bucket is emerging either way — frontier folds into emerging — so this row changes a label, not a number. It is the one row in this file not confirmed against a primary source."
         },
         {
           "iso2": "IT",

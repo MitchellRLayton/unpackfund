@@ -38,7 +38,9 @@ const ALL_CODES = Array.from({ length: 26 * 26 }, (_, index) => {
 /** The table that shipped on 2026-11-05, kept here as the regression oracle. */
 const SHIPPED_FTSE = {
   developedExUs: new Set(
-    "AT AU BE CA CH DE DK ES FI FR GB GR HK IE IL IT JP KR LU NL NO NZ PL PT SE SG".split(" "),
+    "AT AU BE CA CH DE DK ES FI FR GB GR HK IE IL IT JP KR LU NL NO NZ PL PT SE SG".split(
+      " ",
+    ),
   ),
   emerging: new Set(
     "AE BR CL CO CN CZ EG HU ID IN IS KW MX MY PH QA RO SA TH TR TW VN ZA".split(" "),
@@ -48,10 +50,20 @@ const SHIPPED_FTSE = {
   advancedFrontier: new Set("BG CY EE HR LT LV MT SI SK".split(" ")),
 };
 
+//: The four United States territories other than Puerto Rico. They were absent from the
+//: table that shipped on 2026-11-05 and fell through to emerging; they are United States
+//: territory under both publishers, so they are now in the shared bucket. This is the one
+//: deliberate difference between the shipped FTSE view and the current one, and it is a
+//: correction rather than a migration.
+const TERRITORIES_ADDED = new Set(["AS", "GU", "MP", "VI"]);
+
 function shippedTier(code: string): "US" | "DM" | "EM" {
   if (code === "US") return "US";
-  if (SHIPPED_FTSE.usTerritory.has(code) || SHIPPED_FTSE.offshoreHoldco.has(code)) return "US";
-  if (SHIPPED_FTSE.developedExUs.has(code) || SHIPPED_FTSE.advancedFrontier.has(code)) return "DM";
+  if (TERRITORIES_ADDED.has(code)) return "US";
+  if (SHIPPED_FTSE.usTerritory.has(code) || SHIPPED_FTSE.offshoreHoldco.has(code))
+    return "US";
+  if (SHIPPED_FTSE.developedExUs.has(code) || SHIPPED_FTSE.advancedFrontier.has(code))
+    return "DM";
   return "EM";
 }
 
@@ -115,7 +127,9 @@ describe("the market classification", () => {
 
   it("holds only upper-case two-letter domicile codes", () => {
     const malformed = PROVIDERS.flatMap((provider) =>
-      CLASSIFICATION_ROWS[provider].map((row) => row[0]).filter((code) => !/^[A-Z]{2}$/.test(code)),
+      CLASSIFICATION_ROWS[provider]
+        .map((row) => row[0])
+        .filter((code) => !/^[A-Z]{2}$/.test(code)),
     );
     expect(malformed).toEqual([]);
   });
@@ -147,7 +161,19 @@ describe("the market classification", () => {
   });
 
   it("folds frontier and standalone into emerging, because a third bucket has no fourth place", () => {
-    for (const code of ["VN", "RO", "IS", "KZ", "MA", "NG", "MU", "KE", "LK", "BD", "PK"]) {
+    for (const code of [
+      "VN",
+      "RO",
+      "IS",
+      "KZ",
+      "MA",
+      "NG",
+      "MU",
+      "KE",
+      "LK",
+      "BD",
+      "PK",
+    ]) {
       expect({ code, tier: tierOf(code) }).toEqual({ code, tier: "EM" });
       expect({ code, tier: marketTierOf(code) }).toEqual({ code, tier: "FRONTIER" });
     }
@@ -176,7 +202,19 @@ describe("the market classification", () => {
     // Where a company is registered, not where it trades. On the 2026-11-05 release
     // these were 1.44% of gross weight and 96% of everything the old fourth bucket held.
     for (const provider of PROVIDERS) {
-      for (const code of ["BM", "KY", "VG", "GG", "JE", "IM", "PA", "MH", "BS", "GI", "MC"]) {
+      for (const code of [
+        "BM",
+        "KY",
+        "VG",
+        "GG",
+        "JE",
+        "IM",
+        "PA",
+        "MH",
+        "BS",
+        "GI",
+        "MC",
+      ]) {
         expect({ provider, code, tier: tierOf(code, { provider }) }).toEqual({
           provider,
           code,
@@ -196,7 +234,10 @@ describe("the market classification", () => {
     // MSCI calls them frontier, so the MSCI view folds them into emerging: the
     // provider's answer is the one that ships.
     for (const code of ["BG", "CY", "EE", "HR", "LT", "LV", "MT", "SI", "SK"]) {
-      expect({ code, tier: tierOf(code, { provider: "FTSE" }) }).toEqual({ code, tier: "DM" });
+      expect({ code, tier: tierOf(code, { provider: "FTSE" }) }).toEqual({
+        code,
+        tier: "DM",
+      });
       expect({ code, tier: tierOf(code) }).toEqual({ code, tier: "EM" });
     }
   });
