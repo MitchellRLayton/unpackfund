@@ -12,7 +12,7 @@
  * data, not a turn of phrase), and a template with a number in it can be tested.
  */
 
-import { tierOf } from "@/lib/country-tier";
+import { DEFAULT_PROVIDER, tierOf, type Provider } from "@/lib/country-tier";
 import { coverageBand, formatCoveragePct, formatWeightBp } from "@/lib/format";
 import type { Tally } from "@/lib/holdings";
 import type { LedgerRow } from "@/lib/types";
@@ -155,12 +155,13 @@ export interface MarketSplit {
 export function marketSplit(
   rows: readonly { company_id: string; weight: number }[],
   countries: Record<string, string> | null,
+  provider: Provider = DEFAULT_PROVIDER,
 ): MarketSplit {
   let us = 0;
   let dm = 0;
   let em = 0;
   for (const row of rows) {
-    const tier = tierOf(countries ? countries[row.company_id] : null);
+    const tier = tierOf(countries ? countries[row.company_id] : null, { provider });
     if (tier === "US") us += row.weight;
     else if (tier === "DM") dm += row.weight;
     else if (tier === "EM") em += row.weight;

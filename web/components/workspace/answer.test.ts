@@ -98,10 +98,26 @@ describe("buildAnswer — a portfolio the ledger has produced", () => {
   });
 
   it("splits the placed weight by market tier and sums to the whole", () => {
-    // FTSE Russell counts South Korea as developed, so KR sits with CH and only Taiwan
-    // is emerging here. The split is computed by `tierOf`, not by the test.
+    // MSCI counts South Korea as emerging, so KR sits with Taiwan and only Switzerland
+    // is developed ex-US here. The split is computed by `tierOf`, not by the test, and
+    // the sentence names the convention that decided it.
     expect(flat(answer.sentences[2])).toBe(
-      "By market: 70.0% in the United States, 21.0% in international developed markets outside it, 9.0% in emerging markets.",
+      "By market, under the MSCI convention: 70.0% in the United States, 15.0% in international developed markets outside it, 15.0% in emerging markets.",
+    );
+  });
+
+  it("places the same weight under the other convention when the reader picks it", () => {
+    // The one country that moves: FTSE Russell counts South Korea as developed, so the
+    // 6 points it carries leave emerging and join developed ex-US. The answer strip and
+    // the Markets bar read one choice, so the sentence has to follow it.
+    const ftse = buildAnswer({
+      kind: "ready",
+      ledger,
+      funds: [vti, vxus, bnd],
+      provider: "FTSE",
+    });
+    expect(flat(ftse.sentences[2])).toBe(
+      "By market, under the FTSE Russell convention: 70.0% in the United States, 21.0% in international developed markets outside it, 9.0% in emerging markets.",
     );
   });
 
@@ -151,7 +167,9 @@ describe("buildAnswer — the honest refusals", () => {
     });
     const answer = buildAnswer({ kind: "ready", ledger, funds: [partial] });
     const markets = flat(answer.sentences[2]);
-    expect(markets).toContain("By market: 90.0% in the United States");
+    expect(markets).toContain(
+      "By market, under the MSCI convention: 90.0% in the United States",
+    );
     expect(markets).toContain("not placed in a market");
     expect(markets).toContain(
       "untraced weight, cash, or a company with no country answer",
@@ -180,7 +198,7 @@ describe("buildAnswer — the honest refusals", () => {
     });
     const answer = buildAnswer({ kind: "ready", ledger, funds: [document] });
     expect(flat(answer.sentences[2])).toBe(
-      "By market: 50.0% in the United States, 50.0% in international developed markets outside it, 0.0% in emerging markets.",
+      "By market, under the MSCI convention: 50.0% in the United States, 50.0% in international developed markets outside it, 0.0% in emerging markets.",
     );
   });
 

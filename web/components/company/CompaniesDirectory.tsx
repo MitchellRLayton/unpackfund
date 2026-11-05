@@ -19,6 +19,8 @@ import { useMemo, useState } from "react";
 
 import { flagEmoji } from "@/lib/country-flag";
 import { tierOf } from "@/lib/country-tier";
+
+import { useProvider } from "@/components/lenses/provider-preference";
 import { formatCount } from "@/lib/format";
 import type { ReleaseDescriptor } from "@/lib/types";
 
@@ -59,6 +61,9 @@ export function CompaniesDirectory({
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<CompanyOrder | null>(null);
   const [page, setPage] = useState(1);
+  // The row's edge is a tier, and a tier is a convention: the same one the Markets
+  // lens shows, read from the URL.
+  const { provider } = useProvider();
 
   const searching = query.trim().length > 0;
 
@@ -261,7 +266,9 @@ export function CompaniesDirectory({
                     {current.rows.map((row) => (
                       <tr
                         key={row.id}
-                        data-tier={row.country ? tierOf(row.country) : undefined}
+                        data-tier={
+                          row.country ? tierOf(row.country, { provider }) : undefined
+                        }
                         data-country-missing={row.country ? undefined : "true"}
                       >
                         <th scope="row">

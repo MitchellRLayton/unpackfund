@@ -58,7 +58,7 @@ import { useMemo, useState } from "react";
 
 import { PAGE_SIZE, pageOf } from "@/components/directory/paging";
 import { benchmarkDelta } from "@/lib/benchmark";
-import { TIER_AS_OF, TIER_CONVENTION, tierOf } from "@/lib/country-tier";
+import { TIER_AS_OF, tierConvention, tierOf } from "@/lib/country-tier";
 import { saveCsv } from "@/lib/export";
 import { deltaInkClass, formatCount, formatShare, formatSignedShare } from "@/lib/format";
 import type { LedgerRow, LedgerSource } from "@/lib/types";
@@ -77,6 +77,7 @@ import { EffectiveHoldingsSummary } from "./EffectiveHoldingsSummary";
 import { companiesCsv, lensCsvName } from "./lens-csv";
 import { lensGateState } from "./lens-gate";
 import { nextSort, sortBy, TIER_WORD, type SortState } from "./lens-math";
+import { useProvider } from "./provider-preference";
 
 type CompanySortKey = "name" | "country" | "weight" | "funds";
 
@@ -248,6 +249,7 @@ function SourceList({ row }: { row: LedgerRow }) {
 }
 
 export function CompaniesLens({ model }: LensProps) {
+  const { provider } = useProvider();
   const gate = lensGateState(model);
   const ledger = model.ledger;
   const releaseAsOf = model.releaseAsOf ?? "unknown";
@@ -275,7 +277,7 @@ export function CompaniesLens({ model }: LensProps) {
         ? ledger.rows
         : ledger.rows.filter((row) => {
             const code = (row.country ?? "").toLowerCase();
-            const tier = row.country ? tierOf(row.country) : null;
+            const tier = row.country ? tierOf(row.country, { provider }) : null;
             const tierWord = tier ? TIER_WORD[tier] : "no country";
             return (
               row.name.toLowerCase().includes(needle) ||
@@ -285,7 +287,7 @@ export function CompaniesLens({ model }: LensProps) {
             );
           });
     return sortBy(matching, sort, COMPARE);
-  }, [ledger, query, sort]);
+  }, [ledger, query, sort, provider]);
 
   if (gate.kind === "blocked") {
     return <LensState title={gate.title} body={gate.body} />;
@@ -450,7 +452,8 @@ export function CompaniesLens({ model }: LensProps) {
             </thead>
             <tbody>
               {current.rows.map((row, offset) => {
-                const tier = row.country === null ? null : tierOf(row.country);
+                const tier =
+                  row.country === null ? null : tierOf(row.country, { provider });
                 // The rank is the row's place in the whole sorted table, not on its page.
                 const rank = current.start + offset;
                 const delta = benchmarkDelta(row.weight, row.benchmark_weight);
@@ -577,10 +580,10 @@ export function CompaniesLens({ model }: LensProps) {
           ) : null}
           <p className="small muted">
             <strong>The left edge</strong> is the market tier — two-letter code in text,
-            tier in words beside it — following the {TIER_CONVENTION}, as of {TIER_AS_OF}.
-            A company whose domicile the release cannot answer keeps its row and its
-            weight: its edge is dashed, its code reads &ldquo;no code&rdquo;, and its tier
-            says why.
+            tier in words beside it — following the {tierConvention(provider)}, as of{" "}
+            {TIER_AS_OF}. A company whose domicile the release cannot answer keeps its row
+            and its weight: its edge is dashed, its code reads &ldquo;no code&rdquo;, and
+            its tier says why.
           </p>
           <p className="small muted">
             <strong>Paging</strong> changes which rows are on screen, never the count or

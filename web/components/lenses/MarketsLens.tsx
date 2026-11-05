@@ -24,7 +24,13 @@
 
 import { useMemo } from "react";
 
-import { TIER_AS_OF, TIER_CONVENTION } from "@/lib/country-tier";
+import { flagEmoji } from "@/lib/country-flag";
+import {
+  PROVIDERS,
+  PROVIDER_NAMES,
+  TIER_AS_OF,
+  tierConvention,
+} from "@/lib/country-tier";
 import { saveCsv } from "@/lib/export";
 import { formatCount, formatShare } from "@/lib/format";
 import type { LensProps } from "@/components/workspace/types";
@@ -32,7 +38,17 @@ import type { LensProps } from "@/components/workspace/types";
 import { LensExport, LensLede, LensProblem, LensSection, LensState } from "./lens-chrome";
 import { lensCsvName, marketsCsv } from "./lens-csv";
 import { lensGateState } from "./lens-gate";
-import { BUCKET_WORD, TIER_WORD, marketSplit, type MarketBucket } from "./lens-math";
+import {
+  BUCKET_WORD,
+  PROVIDER_SHORT,
+  TIER_WORD,
+  bucketWord,
+  marketSplit,
+  otherProvider,
+  providerMoves,
+  type MarketBucket,
+} from "./lens-math";
+import { useProvider } from "./provider-preference";
 
 /** The bar segment and the row-bar fill for each segment. */
 const SEGMENT_BACKGROUND: Record<MarketBucket, string> = {
@@ -50,7 +66,15 @@ const ROW_FILL: Record<MarketBucket, string> = {
 /** Below this a term is a rounding artefact, not a fact worth a clause. */
 const NEGLIGIBLE = 0.00005;
 
+/**
+ * How much of the bar a country must be before the convention that moves it is worth a
+ * sentence: one per cent. Below that the move is real but invisible — a reader cannot see
+ * a tenth of a point change a segment — and a callout for it would be noise.
+ */
+const NOTABLE_MOVE = 0.01;
+
 export function MarketsLens({ model }: LensProps) {
+  const { provider, setProvider } = useProvider();
   const gate = lensGateState(model);
   const ledger = model.ledger;
   const countryOf = model.countryOf;
@@ -68,6 +92,7 @@ export function MarketsLens({ model }: LensProps) {
       metrics: ledger.metrics,
       funds,
       weights: fundWeights,
+      provider,
     });
 
     const maxCountry = split.countries.reduce(
@@ -75,8 +100,8 @@ export function MarketsLens({ model }: LensProps) {
       0,
     );
 
-    return { split, maxCountry };
-  }, [ledger, countryOf, contested, funds, fundWeights]);
+    return { split, maxCountry, moves: providerMoves(split.countries, provider) };
+  }, [ledger, countryOf, contested, funds, fundWeights, provider]);
 
   if (gate.kind === "blocked") {
     return <LensState title={gate.title} body={gate.body} />;
@@ -103,9 +128,14 @@ export function MarketsLens({ model }: LensProps) {
     );
   }
 
-  const { split, maxCountry } = analysis;
+  const { split, maxCountry, moves } = analysis;
   const releaseAsOf = model.releaseAsOf ?? "unknown";
   const { outside } = split;
+  const other = otherProvider(provider);
+  // The countries worth a sentence: the ones a reader can actually see move.
+  const notable = moves.filter(
+    (move) => split.placed > 0 && move.weight / split.placed >= NOTABLE_MOVE,
+  );
 
   const exportMarkets = () => {
     saveCsv(
@@ -163,10 +193,34 @@ export function MarketsLens({ model }: LensProps) {
         markets. Weight is a share of the weight the filings place in a market — cash,
         derivatives and positions whose filing states no country sit outside the bar and
         are named under it. The countries behind the segments are in the second table,
-        with the two-letter code printed rather than implied.
+        with the two-letter code printed rather than implied. Which publisher&rsquo;s
+        convention decides that is your choice, and every label below names the one in
+        use.
       </LensLede>
 
       <div className="stack stack--tight">
+        {/* The convention, before the bar it decides. Two buttons rather than a select:
+         * both choices are visible, the current one is pressed, and a reader can see
+         * that there is a choice at all without opening anything. */}
+        <div className="row row--between">
+          <p className="small muted" id="markets-provider-label">
+            Classify by:
+          </p>
+          <div role="group" aria-labelledby="markets-provider-label" className="row">
+            {PROVIDERS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                className={`btn btn--sm${option === provider ? "btn--primary" : ""}`}
+                aria-pressed={option === provider}
+                onClick={() => setProvider(option)}
+              >
+                {PROVIDER_SHORT[option]}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="bar bar--tall" aria-hidden="true">
           {split.tiers.map((tier) => (
             <span
@@ -187,10 +241,35 @@ export function MarketsLens({ model }: LensProps) {
                 className={`legend__swatch ${SEGMENT_BACKGROUND[tier.bucket]}`}
                 aria-hidden="true"
               />
-              {BUCKET_WORD[tier.bucket]}
+              {bucketWord(tier.bucket, provider)}
             </span>
           ))}
         </div>
+
+        {/* The one country a reader would otherwise have to notice for themselves. A
+         * segment that moves when the convention changes is not a rounding difference:
+         * it is two publishers disagreeing, and the sentence says so and offers the
+         * other convention rather than leaving the reader to find the toggle. */}
+        {notable.map((move) => (
+          <div key={move.code} className="notice notice--quiet">
+            <p className="small">
+              <span className="country-tag">
+                {flagEmoji(move.code)} {move.code}
+              </span>{" "}
+              is {BUCKET_WORD[move.from]} under {PROVIDER_NAMES[provider]} and{" "}
+              {BUCKET_WORD[move.to]} under {PROVIDER_NAMES[other]} — the two publishers
+              disagree about it, and the bar follows the convention you pick.
+            </p>
+            <button
+              type="button"
+              className="btn btn--sm"
+              onClick={() => setProvider(other)}
+            >
+              Show {PROVIDER_SHORT[other]}
+            </button>
+          </div>
+        ))}
+
         <div className="prose">
           <p className="small muted">
             The bar draws three shares of one total — the weight the filings place in a
@@ -200,6 +279,56 @@ export function MarketsLens({ model }: LensProps) {
               : ""}
           </p>
         </div>
+
+        {/* What the toggle would change, and nothing else. A table of every country with
+         * two identical columns would bury the dozen that move; when none move, one
+         * sentence says so rather than an empty table with a caption. */}
+        {moves.length === 0 ? (
+          <p className="small muted">
+            The two conventions agree for this portfolio: every country in it lands in the
+            same segment under {PROVIDER_NAMES.MSCI} and {PROVIDER_NAMES.FTSE}.
+          </p>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <caption>
+                Only the countries whose segment changes between the two conventions are
+                listed. Share of the bar is the weight that moves when you switch, as a
+                share of the weight the bar draws.
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Country</th>
+                  <th scope="col" className="num">
+                    Share of the bar
+                  </th>
+                  <th scope="col">Under {PROVIDER_NAMES.MSCI}</th>
+                  <th scope="col">Under {PROVIDER_NAMES.FTSE}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {moves.map((move) => {
+                  const underMsci = provider === "MSCI" ? move.from : move.to;
+                  const underFtse = provider === "MSCI" ? move.to : move.from;
+                  return (
+                    <tr key={move.code}>
+                      <th scope="row">
+                        <span className="country-tag">
+                          {flagEmoji(move.code)} {move.code}
+                        </span>
+                      </th>
+                      <td className="num">
+                        {formatShare(split.placed > 0 ? move.weight / split.placed : 0)}
+                      </td>
+                      <td>{BUCKET_WORD[underMsci]}</td>
+                      <td>{BUCKET_WORD[underFtse]}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <LensSection
@@ -228,7 +357,7 @@ export function MarketsLens({ model }: LensProps) {
             <tbody>
               {split.tiers.map((tier) => (
                 <tr key={tier.bucket} data-tier={tier.bucket}>
-                  <th scope="row">{BUCKET_WORD[tier.bucket]}</th>
+                  <th scope="row">{bucketWord(tier.bucket, provider)}</th>
                   <td className="num">{formatShare(tier.weight)}</td>
                   <td className="num">{formatCount(tier.companies)}</td>
                 </tr>
@@ -258,7 +387,7 @@ export function MarketsLens({ model }: LensProps) {
               bar draws the same weight on one scale for the whole table, set by the
               largest country.{" "}
               {split.countries.length > 0
-                ? `Developed and emerging follow the ${TIER_CONVENTION}, as of ${TIER_AS_OF}; offshore holding domiciles such as Bermuda and the Cayman Islands are the United States, because most of the weight in them is an American business listed in New York.`
+                ? `Developed and emerging follow the ${tierConvention(provider)}, as of ${TIER_AS_OF}; offshore holding domiciles such as Bermuda and the Cayman Islands are the United States, because most of the weight in them is an American business listed in New York.`
                 : ""}
             </caption>
             <thead>

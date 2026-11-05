@@ -16,9 +16,11 @@ import { useMemo, useState } from "react";
 
 import { benchmarkDelta } from "@/lib/benchmark";
 import { flagEmoji } from "@/lib/country-flag";
-import { TIER_AS_OF, tierOf } from "@/lib/country-tier";
+import { TIER_AS_OF, tierConvention, tierOf } from "@/lib/country-tier";
 import { deltaInkClass, formatCount, formatShare, formatSignedShare } from "@/lib/format";
 import type { BenchmarkFacts, LedgerRow } from "@/lib/types";
+
+import { useProvider } from "@/components/lenses/provider-preference";
 
 type SortKey = "weight" | "benchmark" | "name" | "holder_count";
 type Direction = "ascending" | "descending";
@@ -78,6 +80,8 @@ export function LedgerTable({
     key: "weight",
     direction: "descending",
   });
+  // The edge is a tier, and a tier is a convention: the same one the Markets lens shows.
+  const { provider } = useProvider();
 
   const sorted = useMemo(() => {
     const factor = sort.direction === "ascending" ? 1 : -1;
@@ -160,7 +164,9 @@ export function LedgerTable({
                   benchmark.ticker +
                   " does and red when you hold less; an exact match is left plain."
                 : "") +
-              " Developed and emerging follow the FTSE country classification, as of " +
+              " Developed and emerging follow the " +
+              tierConvention(provider) +
+              ", as of " +
               TIER_AS_OF +
               "."
             : ""}
@@ -226,7 +232,7 @@ export function LedgerTable({
                 key={row.company_id}
                 data-direct={row.held_directly ? "true" : undefined}
                 data-country={row.country ?? undefined}
-                data-tier={row.country ? tierOf(row.country) : undefined}
+                data-tier={row.country ? tierOf(row.country, { provider }) : undefined}
                 data-country-missing={row.country ? undefined : "true"}
               >
                 <th scope="row">

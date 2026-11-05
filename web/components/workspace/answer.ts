@@ -31,7 +31,13 @@
  * number the ledger cannot support.
  */
 
-import { tierOf, type CountryTier } from "@/lib/country-tier";
+import {
+  DEFAULT_PROVIDER,
+  PROVIDER_NAMES,
+  tierOf,
+  type CountryTier,
+  type Provider,
+} from "@/lib/country-tier";
 import {
   coverageBand,
   coverageChip,
@@ -96,6 +102,12 @@ export type AnswerInput =
        * two surfaces disagree about the same portfolio.
        */
       contested?: Record<string, string>;
+      /**
+       * Which publisher's convention places each domicile. The Markets lens and this
+       * sentence must use the same one, or the answer strip and the bar under it
+       * disagree about the same portfolio.
+       */
+      provider?: Provider;
     };
 
 const text = (value: string): AnswerPart => ({ text: value });
@@ -199,6 +211,7 @@ function largestRow(rows: readonly LedgerRow[]): LedgerRow | null {
 function marketSplit(
   ledger: Ledger,
   contested: Record<string, string>,
+  provider: Provider,
 ): {
   us: number;
   dm: number;
@@ -214,10 +227,10 @@ function marketSplit(
     else if (tier === "EM") em += weight;
   };
   for (const row of ledger.rows) {
-    add(tierOf(row.country ?? contested[row.company_id]), row.weight);
+    add(tierOf(row.country ?? contested[row.company_id], { provider }), row.weight);
   }
   for (const [code, weight] of Object.entries(ledger.unmapped.securities_by_country)) {
-    add(tierOf(code), weight);
+    add(tierOf(code, { provider }), weight);
   }
   return { us, dm, em, placed: us + dm + em };
 }
@@ -227,6 +240,7 @@ function readySentences(
   ledger: Ledger,
   funds: readonly FundDocument[],
   contested: Record<string, string>,
+  provider: Provider,
 ): AnswerSentence[] {
   const sentences: AnswerSentence[] = [];
   const companyCount = ledger.rows.length;
@@ -331,11 +345,13 @@ function readySentences(
 
   // 3. The market split, only when the release placed at least one company — otherwise
   //    there is no split to describe, and a row of zeroes would read like a finding.
-  const split = marketSplit(ledger, contested);
+  const split = marketSplit(ledger, contested, provider);
   if (split.placed > 0) {
     const unplaced = Math.max(0, 1 - split.placed);
     const parts: AnswerPart[] = [
-      text("By market: "),
+      text("By market, under the "),
+      strong(PROVIDER_NAMES[provider]),
+      text(" convention: "),
       strong(formatPct1(split.us)),
       text(" in the United States, "),
       strong(formatPct1(split.dm)),
@@ -520,7 +536,12 @@ export function buildAnswer(input: AnswerInput): Answer {
 
     case "ready":
       return {
-        sentences: readySentences(input.ledger, input.funds, input.contested ?? {}),
+        sentences: readySentences(
+          input.ledger,
+          input.funds,
+          input.contested ?? {},
+          input.provider ?? DEFAULT_PROVIDER,
+        ),
         note: readyNote(input.ledger),
       };
   }

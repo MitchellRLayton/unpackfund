@@ -12,6 +12,7 @@ import {
   filedOvershoot,
   fundMixRows,
   marketSplit,
+  providerMoves,
   nextSort,
   pairwiseOverlap,
   pairVerdict,
@@ -290,6 +291,69 @@ describe("marketSplit", () => {
     const us = noMap.tiers.find((tier) => tier.bucket === "US");
     expect(us?.weight).toBeCloseTo(0.49, 10);
     expect(noMap.outside.unplacedCompanies).toBe(1);
+  });
+});
+
+describe("marketSplit — the convention", () => {
+  // One country that moves and one that does not: Korea is emerging under MSCI and
+  // developed under FTSE Russell, the United States is the United States under both.
+  const splitUnder = (provider?: "MSCI" | "FTSE") =>
+    marketSplit({
+      rows: [
+        { ...ROWS[0]!, company_id: "c_us", country: "US", weight: 0.6 },
+        { ...ROWS[0]!, company_id: "c_kr", country: "KR", weight: 0.4 },
+      ],
+      countryOf: countryOf({}),
+      contested: {},
+      unmapped: { ...UNMAPPED, securities_by_country: {} },
+      metrics: METRICS,
+      funds: [],
+      weights: {},
+      provider,
+    });
+
+  const weightOf = (split: ReturnType<typeof splitUnder>, bucket: string) =>
+    split.tiers.find((tier) => tier.bucket === bucket)?.weight ?? 0;
+
+  it("defaults to MSCI and records the convention it used", () => {
+    const split = splitUnder();
+    expect(split.provider).toBe("MSCI");
+    expect(weightOf(split, "EM")).toBeCloseTo(0.4, 10);
+    expect(weightOf(split, "DM")).toBeCloseTo(0, 10);
+  });
+
+  it("moves Korea into developed ex-US under FTSE, and nothing else", () => {
+    const split = splitUnder("FTSE");
+    expect(split.provider).toBe("FTSE");
+    expect(weightOf(split, "EM")).toBeCloseTo(0, 10);
+    expect(weightOf(split, "DM")).toBeCloseTo(0.4, 10);
+    expect(weightOf(split, "US")).toBeCloseTo(0.6, 10);
+    // The bar's denominator is the same weight under either convention.
+    expect(split.placed).toBeCloseTo(1, 10);
+  });
+
+  it("lists the movers, with the weight that moves and both segments", () => {
+    const split = splitUnder();
+    expect(providerMoves(split.countries, "MSCI")).toEqual([
+      { code: "KR", weight: 0.4, from: "EM", to: "DM" },
+    ]);
+    // Asked from the other side, the same country moves the other way.
+    expect(providerMoves(splitUnder("FTSE").countries, "FTSE")).toEqual([
+      { code: "KR", weight: 0.4, from: "DM", to: "EM" },
+    ]);
+  });
+
+  it("has no movers when every country is placed the same way", () => {
+    const split = marketSplit({
+      rows: [{ ...ROWS[0]!, company_id: "c_us", country: "US", weight: 1 }],
+      countryOf: countryOf({}),
+      contested: {},
+      unmapped: { ...UNMAPPED, securities_by_country: {} },
+      metrics: METRICS,
+      funds: [],
+      weights: {},
+    });
+    expect(providerMoves(split.countries, "MSCI")).toEqual([]);
   });
 });
 
@@ -624,11 +688,15 @@ describe("CSV", () => {
     expect(lines[0]).toBe(
       "section,bucket,country_code,market,tier,weight_pct,companies,release_as_of",
     );
-    expect(csv).toContain(`market,US,,United States,US,49.00,1,${releaseAsOf}`);
+    // The label names the convention that placed the weight: a bare "Emerging Markets"
+    // is a claim with no publisher, and the file outlives the page.
+    expect(csv).toContain(`market,US,,United States (MSCI),US,49.00,1,${releaseAsOf}`);
     expect(csv).toContain(
-      `market,DM,,International Developed ex-US,Developed,18.00,1,${releaseAsOf}`,
+      `market,DM,,International Developed ex-US (MSCI),Developed,18.00,1,${releaseAsOf}`,
     );
-    expect(csv).toContain(`market,EM,,Emerging Markets,Emerging,0.00,0,${releaseAsOf}`);
+    expect(csv).toContain(
+      `market,EM,,Emerging Markets (MSCI),Emerging,0.00,0,${releaseAsOf}`,
+    );
     // No fourth market row: what the bar does not draw is a property of the whole
     // portfolio, written as its own section.
     expect(csv).not.toContain("UNPLACED");
