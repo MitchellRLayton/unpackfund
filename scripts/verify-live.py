@@ -47,7 +47,13 @@ UA = "UnpackFund-verify-live/1.0 (+https://unpackfund.com)"
 HEADERS = {"User-Agent": UA, "Accept": "*/*"}
 TIMEOUT = 30
 HANDOFF_MAX_AGE = dt.timedelta(hours=30)
-COVERAGE_RE = re.compile(r"([0-9]+(?:\.[0-9]+)?)% of weight mapped")
+# The page says "99.3% of the fund's weight mapped"; the possessive was added to the
+# copy after this check was written, and a pattern that misses it reports a healthy
+# page as a failure — which is worse than no check, because it trains the reader to
+# ignore the one line that would catch a stale page.
+COVERAGE_RE = re.compile(
+    r"([0-9]+(?:\.[0-9]+)?)% of (?:the fund(?:&#x27;|&rsquo;|')s )?weight mapped"
+)
 
 
 class Problems(list):
