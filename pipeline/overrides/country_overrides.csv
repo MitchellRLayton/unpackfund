@@ -1,0 +1,77 @@
+company_id,iso2,reason,source_url,added_on,note
+c_0000314808,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000314808,2026-11-05,"Bermuda-registered; 10-K filer; headquarters in Houston, Texas"
+c_0000315293,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000315293,2026-11-05,Irish-registered; 10-K filer; S&P 500 constituent; headquarters in London
+c_0000769218,NL,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000769218,2026-11-05,"Bermuda-registered; operating business is Aegon in The Hague, Netherlands"
+c_0000776867,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000776867,2026-11-05,"Bermuda-registered; 10-K filer; headquarters in Hanover, New Hampshire"
+c_0000815097,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000815097,2026-11-05,"Bermuda-registered; 10-K filer; headquarters in Miami, Florida"
+c_0000832988,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000832988,2026-11-05,"Bermuda-registered; 10-K filer; headquarters in Akron, Ohio"
+c_0000833444,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000833444,2026-11-05,"Irish-registered; 10-K filer; principal executive offices in Cork, Ireland and Milwaukee, Wisconsin"
+c_0000896159,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000896159,2026-11-05,Swiss-registered; 10-K filer; S&P 500 constituent; headquarters in Zurich and Philadelphia
+c_0000913144,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000913144,2026-11-05,"Bermuda-registered; 10-K filer; headquarters in Pembroke, Bermuda"
+c_0000947484,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000947484,2026-11-05,Bermuda-registered; 10-K filer; S&P 500 constituent; headquarters in Pembroke and Zurich
+c_0001001290,PE,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001001290,2026-11-05,"Bermuda-registered; operating business is Credicorp in Lima, Peru"
+c_0001095073,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001095073,2026-11-05,"Bermuda-registered; 10-K filer; S&P 500 constituent; headquarters in Hamilton, Bermuda"
+c_0001110646,CN,VIE_CAYMAN,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001110646,2026-11-05,"Cayman-registered; operating business in Hangzhou, China"
+c_0001121788,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001121788,2026-11-05,"Swiss-registered; 10-K filer; headquarters in Olathe, Kansas"
+c_0001137789,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001137789,2026-11-05,"Irish-registered; 10-K filer; principal executive offices in Fremont, California"
+c_0001140536,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001140536,2026-11-05,Irish-registered; 10-K filer; headquarters in London
+c_0001163739,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001163739,2026-11-05,"Bermuda-registered; 10-K filer; headquarters in Houston, Texas"
+c_0001214816,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001214816,2026-11-05,"Bermuda-registered; 10-K filer; headquarters in Pembroke, Bermuda"
+c_0001232524,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001232524,2026-11-05,"Irish-registered; 10-K filer; principal executive offices in Dublin, Ireland and Palo Alto, California"
+c_0001269238,CN,VIE_CAYMAN,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001269238,2026-11-05,"Cayman-registered; operating business in Shanghai, China"
+c_0001273813,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001273813,2026-11-05,"Bermuda-registered; 10-K filer; headquarters in Hamilton, Bermuda and New York"
+c_0001280263,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001280263,2026-11-05,"Cayman-registered; 10-K filer; headquarters in Santa Clara, California"
+c_0001329099,CN,VIE_CAYMAN,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001329099,2026-11-05,"Cayman-registered; operating business in Beijing, China"
+c_0001329394,TW,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001329394,2026-11-05,"Cayman-registered; operating business in Hsinchu, Taiwan"
+c_0001342338,TW,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001342338,2026-11-05,"Cayman-registered; operating business in Tainan, Taiwan"
+c_0001345105,PA,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001345105,2026-11-05,Panama-registered and Panama-based; Copa Airlines
+c_0001372920,CN,VIE_CAYMAN,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001372920,2026-11-05,"Cayman-registered; operating business in Beijing, China"
+c_0001385157,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001385157,2026-11-05,Irish-registered; 10-K filer; S&P 500 constituent
+c_0001398659,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001398659,2026-11-05,Bermuda-registered; 10-K filer; headquarters in New York
+c_0001451505,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001451505,2026-11-05,"Swiss-registered; 10-K filer; headquarters in Houston, Texas"
+c_0001466258,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001466258,2026-11-05,"Irish-registered; 10-K filer; principal executive offices in Swords, Ireland and Davidson, North Carolina"
+c_0001467373,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001467373,2026-11-05,"Irish-registered; 10-K filer; headquarters in Dublin, Ireland and New York"
+c_0001483994,CN,VIE_CAYMAN,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001483994,2026-11-05,"Cayman-registered; operating business in Shanghai, China"
+c_0001513761,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001513761,2026-11-05,"Bermuda-registered; 10-K filer; headquarters in Miami, Florida"
+c_0001520262,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001520262,2026-11-05,"Irish-registered; 10-K filer; principal executive offices in Waltham, Massachusetts"
+c_0001526125,CN,VIE_CAYMAN,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001526125,2026-11-05,"Cayman-registered; operating business in Shanghai, China"
+c_0001529192,CN,VIE_CAYMAN,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001529192,2026-11-05,"Cayman-registered; operating business in Guangzhou, China"
+c_0001549802,CN,VIE_CAYMAN,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001549802,2026-11-05,"Cayman-registered; operating business in Beijing, China"
+c_0001551182,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001551182,2026-11-05,"Irish-registered; 10-K filer; principal executive offices in Dublin, Ireland and Beachwood, Ohio"
+c_0001576018,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001576018,2026-11-05,"Bermuda-registered; 10-K filer; headquarters in Pembroke, Bermuda"
+c_0001579241,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001579241,2026-11-05,"Irish-registered; 10-K filer; principal executive offices in Dublin, Ohio"
+c_0001590364,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001590364,2026-11-05,Cayman-registered; 10-K filer; headquarters in New York
+c_0001593275,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001593275,2026-11-05,"Bermuda-registered; 10-K filer; headquarters in Pembroke, Bermuda"
+c_0001603923,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001603923,2026-11-05,"Irish-registered; 10-K filer; principal executive offices in Houston, Texas"
+c_0001613103,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001613103,2026-11-05,"Irish-registered; 10-K filer; operational headquarters in Minneapolis, Minnesota"
+c_0001616862,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001616862,2026-11-05,"Bermuda-registered; 10-K filer; headquarters in Philadelphia, Pennsylvania"
+c_0001628369,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001628369,2026-11-05,"Bermuda-registered; 10-K filer; headquarters in Chicago, Illinois"
+c_0001635088,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001635088,2026-11-05,Bermuda-registered; 10-K filer; headquarters in New York
+c_0001639920,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001639920,2026-11-05,Luxembourg-registered; 20-F filer; operational headquarters in Stockholm and New York; MSCI classifies it United States
+c_0001648416,IT,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001648416,2026-11-05,"Dutch-registered holding company; the operating business is Ferrari S.p.A. in Maranello, Italy"
+c_0001652535,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001652535,2026-11-05,"Cayman-registered; 10-K filer; headquarters in Fremont, California"
+c_0001677250,CN,VIE_CAYMAN,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001677250,2026-11-05,"Cayman-registered; operating business in Shanghai, China"
+c_0001679049,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001679049,2026-11-05,Marshall Islands-registered; 10-K filer; headquarters in New York
+c_0001691493,BR,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001691493,2026-11-05,"Cayman-registered; operating business is Nubank in Sao Paulo, Brazil"
+c_0001703399,SG,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001703399,2026-11-05,Cayman-registered; operating business is Sea Group in Singapore
+c_0001707925,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001707925,2026-11-05,"Irish-registered; 10-K filer; principal executive offices in Woking, UK and Danbury, Connecticut"
+c_0001709048,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001709048,2026-11-05,"Cayman-registered; 10-K filer; headquarters in Malta, New York"
+c_0001718512,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001718512,2026-11-05,"Bermuda-registered; 10-K filer; headquarters in Denver, Colorado"
+c_0001720635,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001720635,2026-11-05,Irish-registered; 10-K filer; principal executive offices in London
+c_0001728918,GB,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001728918,2026-11-05,"United Kingdom bank; the Irish registration is the holding company, not the business"
+c_0001736541,CN,VIE_CAYMAN,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001736541,2026-11-05,"Cayman-registered; operating business in Shanghai, China"
+c_0001737806,CN,VIE_CAYMAN,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001737806,2026-11-05,"Cayman-registered; operating business in Shanghai, China"
+c_0001744676,CN,VIE_CAYMAN,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001744676,2026-11-05,"Cayman-registered; operating business in Shenzhen, China"
+c_0001745201,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001745201,2026-11-05,Bermuda-registered; 10-K filer; operational headquarters in Basel and Los Angeles
+c_0001748830,CN,VIE_CAYMAN,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001748830,2026-11-05,"Cayman-registered; operating business in Beijing, China"
+c_0001754088,CN,VIE_CAYMAN,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001754088,2026-11-05,"Cayman-registered; operating business in Beijing, China"
+c_0001757898,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001757898,2026-11-05,"Irish-registered; 10-K filer; principal executive offices in Mentor, Ohio"
+c_0001787425,BR,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1787425,2026-11-05,"Cayman-registered; operating business is XP Investimentos in Sao Paulo, Brazil"
+c_0001791706,CN,VIE_CAYMAN,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001791706,2026-11-05,"Cayman-registered; operating business in Beijing, China"
+c_0001807794,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001807794,2026-11-05,"Cayman-registered; 10-K filer; headquarters in San Jose, California"
+c_0001809587,CN,VIE_CAYMAN,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1809587,2026-11-05,"Cayman-registered; operating business in Beijing, China"
+c_0001810997,CN,VIE_CAYMAN,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001810997,2026-11-05,"Cayman-registered; operating business in Guangzhou, China"
+c_0001957132,US,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001957132,2026-11-05,"Cayman-registered; 10-K filer; headquarters in Needham, Massachusetts"
+c_0001996862,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001996862,2026-11-05,"Swiss-registered; 10-K filer; headquarters in St. Louis, Missouri"
+c_0001997464,GB,HOLDCO_RISK,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001997464,2026-11-05,Bermuda-registered; operating business is Marex in London
+c_0002005951,US,REDOMICILE,https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0002005951,2026-11-05,"Irish-registered; 10-K filer; headquarters in Dublin, Ireland and Atlanta, Georgia"

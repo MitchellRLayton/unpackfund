@@ -955,3 +955,164 @@ def test_the_cover_page_rate_is_published_beside_the_other_two():
     assert placed == decided
     assert stats["agreement"]["cover_page_compared"] == 250
     assert stats["agreement"]["cover_page_bp"] == 9_960
+
+
+# --- the override table -----------------------------------------------------------
+#
+# The table is the one step in the cascade that is not derived from a filing, so the
+# tests are about the two ways it can go wrong: it can fail to win, and it can win
+# silently. The first is a wrong answer; the second is a wrong answer nobody can see.
+
+
+def _override(iso2: str, reason: str = "HOLDCO_RISK") -> dict[str, str]:
+    return {
+        "iso2": iso2,
+        "reason": reason,
+        "source_url": "https://www.sec.gov/edgar/searchedgar/companysearch",
+        "added_on": "2026-11-05",
+        "note": "test row",
+    }
+
+
+def test_an_override_beats_the_vote():
+    decided = {"c_1": "US", "c_2": "US"}
+    placed, stats = company_countries.apply_overrides(
+        decided, {"c_1": _override("CN")}, companies=set(decided)
+    )
+    assert placed == {"c_1": "CN", "c_2": "US"}
+    assert stats["applied"] == 1
+    assert stats["changed"] == 1
+    assert stats["supplied"] == 0
+    assert stats["companies"] == ["c_1"]
+
+
+def test_an_override_places_a_company_the_vote_refused():
+    decided = {"c_2": "US"}
+    placed, stats = company_countries.apply_overrides(
+        decided, {"c_1": _override("CN")}, companies={"c_1", "c_2"}
+    )
+    assert placed == {"c_1": "CN", "c_2": "US"}
+    assert stats["applied"] == 1
+    assert stats["changed"] == 0
+    assert stats["supplied"] == 1
+
+
+def test_an_override_that_agrees_with_the_vote_is_redundant_not_applied():
+    decided = {"c_1": "US"}
+    placed, stats = company_countries.apply_overrides(
+        decided, {"c_1": _override("US")}, companies=set(decided)
+    )
+    assert placed == decided
+    assert stats["applied"] == 0
+    assert stats["redundant"] == 1
+    assert stats["companies"] == []
+
+
+def test_an_override_row_that_matches_nothing_is_counted_and_warned():
+    lines: list[str] = []
+    placed, stats = company_countries.apply_overrides(
+        {"c_1": "US"},
+        {"c_1": _override("CN"), "c_9": _override("CN")},
+        companies={"c_1"},
+        log=lines.append,
+    )
+    assert placed == {"c_1": "CN"}
+    assert stats["unmatched"] == 1
+    assert stats["applied"] == 1
+    assert any("c_9" in line for line in lines)
+
+
+def test_the_three_counts_account_for_every_row_in_the_table():
+    table = {
+        "c_1": _override("CN"),  # changed
+        "c_2": _override("CN"),  # supplied
+        "c_3": _override("US"),  # redundant
+        "c_9": _override("CN"),  # unmatched
+    }
+    _, stats = company_countries.apply_overrides(
+        {"c_1": "US", "c_3": "US"}, table, companies={"c_1", "c_2", "c_3"}
+    )
+    assert stats["applied"] == 2
+    assert stats["redundant"] == 1
+    assert stats["unmatched"] == 1
+    assert stats["applied"] + stats["redundant"] + stats["unmatched"] == len(table)
+
+
+def test_a_malformed_override_table_stops_the_build(tmp_path):
+    path = tmp_path / "country_overrides.csv"
+    path.write_text(
+        "company_id,iso2,reason,source_url,added_on,note\n"
+        "c_1,ZZZ,HOLDCO_RISK,,2026-11-05,bad code\n"
+    )
+    with pytest.raises(company_countries.OverrideError) as error:
+        company_countries.load_overrides(path)
+    assert "alpha-2" in str(error.value)
+
+
+def test_an_unknown_override_reason_stops_the_build(tmp_path):
+    path = tmp_path / "country_overrides.csv"
+    path.write_text(
+        "company_id,iso2,reason,source_url,added_on,note\n"
+        "c_1,CN,VIBES,,2026-11-05,not in the vocabulary\n"
+    )
+    with pytest.raises(company_countries.OverrideError) as error:
+        company_countries.load_overrides(path)
+    assert "unknown reason" in str(error.value)
+
+
+def test_a_duplicate_override_row_stops_the_build(tmp_path):
+    path = tmp_path / "country_overrides.csv"
+    path.write_text(
+        "company_id,iso2,reason,source_url,added_on,note\n"
+        "c_1,CN,HOLDCO_RISK,,2026-11-05,first\n"
+        "c_1,US,HOLDCO_RISK,,2026-11-05,second\n"
+    )
+    with pytest.raises(company_countries.OverrideError) as error:
+        company_countries.load_overrides(path)
+    assert "duplicate" in str(error.value)
+
+
+def test_the_shipped_override_table_loads_and_is_well_formed():
+    table = company_countries.load_overrides()
+    assert table, "the shipped table is empty"
+    for company_id, row in table.items():
+        assert company_id.startswith("c_"), company_id
+        assert company_countries.is_country_code(row["iso2"]), row
+        assert row["reason"] in company_countries.OVERRIDE_REASONS, row
+        assert row["source_url"].startswith("https://"), row
+        assert row["note"], row
+
+
+def test_the_object_publishes_the_override_block_and_the_classification():
+    document = company_countries.build_object(
+        "2026-11-05",
+        {"c_1": "CN", "c_2": "US"},
+        company_total=2,
+        fallback={"sources": {"nport": 2, "gleif": 0, "edgar": 0, "cover_page": 0}},
+        overrides={
+            "applied": 1,
+            "changed": 1,
+            "supplied": 0,
+            "redundant": 0,
+            "unmatched": 0,
+            "companies": ["c_1"],
+        },
+    )
+    assert document["override_rule"] == company_countries.OVERRIDE_RULE
+    assert document["overrides"]["applied"] == 1
+    assert document["overrides"]["companies"] == ["c_1"]
+    assert document["classification"]["provider"] == "MSCI"
+    assert document["classification"]["as_of"] == "2026-11-05"
+    # The vote's own count excludes the company the table placed, so the four sources
+    # plus the override still sum to the map.
+    assert document["sources"]["nport"] == 1
+    assert document["sources"]["override"] == 1
+    assert sum(document["sources"].values()) == len(document["companies"])
+
+
+def test_a_release_that_ran_no_override_publishes_no_override_block():
+    document = company_countries.build_object("2026-11-05", {"c_1": "US"}, company_total=1)
+    assert "overrides" not in document
+    assert "override_rule" not in document
+    # The classification block is not conditional: it describes the tiers, not the map.
+    assert document["classification"]["provider"] == "MSCI"

@@ -344,7 +344,7 @@ describe("Workspace — the companies table", () => {
     expect(method).not.toBeNull();
     expect(method?.hasAttribute("open")).toBe(false);
     expect(method?.textContent).toContain("percentage points");
-    expect(method?.textContent).toContain("FTSE Russell");
+    expect(method?.textContent).toContain("MSCI-aligned country classification");
     expect(method?.textContent).toContain("every row, not this page");
   });
 

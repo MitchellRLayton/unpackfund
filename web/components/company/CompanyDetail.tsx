@@ -30,10 +30,12 @@
 import { useEffect, useRef } from "react";
 
 import { flagEmoji } from "@/lib/country-flag";
-import { tierOf } from "@/lib/country-tier";
+import { PROVIDER_NAMES, tierOf } from "@/lib/country-tier";
 import { formatCount, formatShare, formatWeightBp } from "@/lib/format";
 import { isCompanyId, type Ledger, type ReleaseDescriptor } from "@/lib/types";
 import { useCatalogue, useCompany } from "@/lib/use-release";
+
+import { useProvider } from "@/components/lenses/provider-preference";
 
 import styles from "./company.module.css";
 import {
@@ -68,6 +70,8 @@ export function CompanyDetail({
   openCompany,
 }: CompanyDetailProps) {
   const companyId = rawId !== null && isCompanyId(rawId) ? rawId : null;
+  // The same convention the Markets lens shows: one choice, read from the URL.
+  const { provider } = useProvider();
 
   const shard = useCompany(release, companyId);
   // The catalogue is only read once a company is open, and only for the fund names
@@ -185,10 +189,11 @@ export function CompanyDetail({
                 ) : null}
               </div>
 
-              {country && tierLabel(tierOf(country)) ? (
+              {country && tierLabel(tierOf(country, { provider }), provider) ? (
                 <p className="small muted">
-                  The tier comes from the release&apos;s FTSE Russell country
-                  classification: {tierLabel(tierOf(country))}.
+                  The tier comes from the release&apos;s {PROVIDER_NAMES[provider]}{" "}
+                  country classification:{" "}
+                  {tierLabel(tierOf(country, { provider }), provider)}.
                 </p>
               ) : null}
 

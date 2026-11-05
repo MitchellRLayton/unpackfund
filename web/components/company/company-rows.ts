@@ -16,7 +16,8 @@
  *   company, largest first — the filing's own number, not a ranking of funds.
  */
 
-import type { CountryTier } from "@/lib/country-tier";
+import { DEFAULT_PROVIDER, type CountryTier, type Provider } from "@/lib/country-tier";
+import { PROVIDER_SHORT } from "@/components/lenses/lens-math";
 import { displayName } from "@/lib/provider-name";
 import type {
   Catalogue,
@@ -336,7 +337,16 @@ const TIER_LABELS: Record<CountryTier, string> = {
   EM: "Emerging Markets",
 };
 
-/** The words for a tier, or `null` when the release has no country to classify. */
-export function tierLabel(tier: CountryTier | null): string | null {
-  return tier === null ? null : TIER_LABELS[tier];
+/**
+ * The words for a tier, or `null` when the release has no country to classify.
+ *
+ * The convention is named beside the tier for the same reason the Markets bar names it:
+ * "Emerging Markets" is a publisher's judgement, and Korea is emerging under one
+ * convention and developed under the other.
+ */
+export function tierLabel(
+  tier: CountryTier | null,
+  provider: Provider = DEFAULT_PROVIDER,
+): string | null {
+  return tier === null ? null : `${TIER_LABELS[tier]} (${PROVIDER_SHORT[provider]})`;
 }

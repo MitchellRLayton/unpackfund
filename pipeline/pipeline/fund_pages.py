@@ -78,6 +78,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import classification_generated
 from .artifact import sha256_hex
 from .paths import REPO_ROOT
 from .style import Style
@@ -210,41 +211,14 @@ APP_ROUTES = (
 
 CSS_NAME = "fund-page.css"
 
-#: `web/lib/country-tier.ts`, restated. The app owns the classification and this is
-#: read-only copy of it: `test_the_tier_table_matches_the_apps_own_convention` parses
-#: that file and fails on any difference, so the two can disagree only by failing the
-#: suite.
-TIER_AS_OF = "2026-11-05"
-TIER_CONVENTION = "FTSE Russell equity country classification"
-
-DEVELOPED_EX_US = frozenset(
-    {
-        "AT", "AU", "BE", "CA", "CH", "DE", "DK", "ES", "FI", "FR", "GB", "GR",
-        "HK", "IE", "IL", "IT", "JP", "KR", "LU", "NL", "NO", "NZ", "PL", "PT",
-        "SE", "SG",
-    }
-)
-EMERGING = frozenset(
-    {
-        "AE", "BR", "CL", "CO", "CN", "CZ", "EG", "HU", "ID", "IN", "IS", "KW",
-        "MX", "MY", "PH", "QA", "RO", "SA", "TH", "TR", "TW", "VN", "ZA",
-    }
-)
-
-#: Offshore holding domiciles, assigned to the United States. These are places a
-#: company is registered, not places it operates or lists: the operating business is
-#: usually American and the shares trade in New York, which is where FTSE's
-#: country-of-risk method lands too.
-OFFSHORE_HOLDCO = frozenset(
-    {"BM", "BS", "GG", "GI", "IM", "JE", "KY", "MC", "MH", "PA", "VG"}
-)
-
-#: United States territories, which are the United States for a market split.
-US_TERRITORY = frozenset({"PR"})
-
-#: European Union and EEA members that FTSE classifies as frontier and the IMF calls
-#: advanced. In the single market and trading in Europe, so developed ex-US here.
-ADVANCED_FRONTIER = frozenset({"BG", "CY", "EE", "HR", "LT", "LV", "MT", "SI", "SK"})
+#: The classification is generated from `classification/classification.json` into both
+#: `web/lib/classification.generated.ts` and `pipeline/pipeline/classification_generated.py`,
+#: so the page and the app read the same table by construction rather than by a test
+#: that parses one language out of the other. `test_the_tier_table_matches_the_apps_own_convention`
+#: still holds the two generated modules equal, which is the check that catches a
+#: generator bug rather than a hand edit.
+TIER_AS_OF = classification_generated.TIER_AS_OF
+TIER_CONVENTION = classification_generated.PROVIDER_LABELS[classification_generated.DEFAULT_PROVIDER]
 
 #: Draw order, and the words the page prints for each. Never colour alone. Three, and
 #: no fourth: "no market tier" is a question the page could not answer rather than an
@@ -417,23 +391,16 @@ def load_countries(release_dir: Path) -> dict[str, str]:
 def tier_of(country: str | None) -> str | None:
     """One domicile's bucket, or `None` when there is no domicile to classify.
 
-    Total over every ISO alpha-2 code: a code FTSE does not classify is placed by one
-    of the three rules above, so the bar never has a fourth segment to draw. `None` is
-    reserved for "the release has no country for this company", which is a different
-    statement and is answered by the release's contested map, not by a default here.
+    Total over every ISO alpha-2 code: a code the provider does not classify is placed
+    by a stated rule, so the bar never has a fourth segment to draw. `None` is reserved
+    for "the release has no country for this company", which is a different statement
+    and is answered by the release's contested map, not by a default here.
+
+    The table is the generated one, so the page and the app cannot disagree about a
+    country. The provider is the default (MSCI); the page prints one convention and
+    says which, rather than offering a toggle a static document cannot honour.
     """
-    if not country:
-        return None
-    # The release's codes are ISO-3166 alpha-2 upper case and hash-checked, so this is
-    # a no-op on valid data. It is here because the residue rule is total: without it a
-    # lower-case "kr" would fall through to emerging and quietly put Korea in the wrong
-    # bucket, which is the one failure mode a three-bucket table cannot show.
-    code = country.strip().upper()
-    if code == "US" or code in US_TERRITORY or code in OFFSHORE_HOLDCO:
-        return "US"
-    if code in DEVELOPED_EX_US or code in ADVANCED_FRONTIER:
-        return "DM"
-    return "EM"
+    return classification_generated.tier_of(country)
 
 
 @dataclass(frozen=True)

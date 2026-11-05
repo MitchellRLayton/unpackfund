@@ -20,7 +20,7 @@ import type { EffectiveHoldings } from "@/lib/effective-holdings";
 import type { CoverageBand } from "@/lib/format";
 import { coverageBand } from "@/lib/format";
 
-import { BUCKET_WORD, TIER_WORD } from "./lens-math";
+import { bucketWord, TIER_WORD } from "./lens-math";
 import type { FundMixRow, MarketSplit, PairState, UntracedTotals } from "./lens-math";
 import type { Ledger, LedgerSource, UnmappedBreakdown } from "@/lib/types";
 
@@ -174,7 +174,7 @@ export function marketsCsv(split: MarketSplit, releaseAsOf: string): string {
         "market",
         tier.bucket,
         "",
-        BUCKET_WORD[tier.bucket],
+        bucketWord(tier.bucket, split.provider),
         TIER_WORD[tier.bucket],
         share(tier.weight),
         tier.companies,

@@ -247,9 +247,12 @@ describe("the four lenses render a worked portfolio", () => {
     expect(html).toContain("Outside the bar:");
     expect(html).toContain("US");
     expect(html).toContain("Developed");
-    expect(html).toContain("FTSE Russell");
+    expect(html).toContain("MSCI-aligned country classification");
     expect(html).toContain('data-tier="US"');
+    // The bar's numbers and the countries behind it. This portfolio holds no country
+    // the two conventions disagree about, so the disagreement table is a sentence.
     expect(html.match(/<table/g)).toHaveLength(2);
+    expect(html).toContain("The two conventions agree for this portfolio");
     expect(html).toContain("Export CSV");
     expect(html).not.toMatch(/NaN|undefined/);
   });

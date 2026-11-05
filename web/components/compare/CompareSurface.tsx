@@ -19,6 +19,8 @@ import {
 } from "@/lib/use-release";
 import { useComparison, type Side } from "@/lib/use-comparison";
 
+import { useProvider } from "@/components/lenses/provider-preference";
+
 import styles from "./compare.module.css";
 import { MarketSplitChart } from "./MarketSplitChart";
 import { MixColumn } from "./MixColumn";
@@ -61,6 +63,8 @@ export function CompareSurface() {
   const [namesWanted, setNamesWanted] = useState(false);
   const catalogueState = useCatalogue(namesWanted ? descriptor : null);
   const countries = useCountries(descriptor);
+  // The same convention the Markets lens shows: one choice, read from the URL.
+  const { provider } = useProvider();
 
   const allTickers = useMemo(() => {
     const seen = new Set<string>();
@@ -149,10 +153,10 @@ export function CompareSurface() {
   const splits = useMemo(() => {
     if (!overlap || countries.status !== "ready") return null;
     return {
-      a: marketSplit(overlap.ledgerA.rows, countries.data?.companies ?? null),
-      b: marketSplit(overlap.ledgerB.rows, countries.data?.companies ?? null),
+      a: marketSplit(overlap.ledgerA.rows, countries.data?.companies ?? null, provider),
+      b: marketSplit(overlap.ledgerB.rows, countries.data?.companies ?? null, provider),
     };
-  }, [overlap, countries]);
+  }, [overlap, countries, provider]);
 
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const copyLink = useCallback(async () => {
@@ -417,7 +421,7 @@ export function CompareSurface() {
 
       {overlap && gap.suppressed.length === 0 ? (
         countries.status === "ready" && splits ? (
-          <MarketSplitChart a={splits.a} b={splits.b} />
+          <MarketSplitChart a={splits.a} b={splits.b} provider={provider} />
         ) : countries.status === "error" ? (
           notice(
             "The market split is not shown.",

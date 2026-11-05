@@ -27,6 +27,7 @@ from .gleif import is_issuer_id, is_sec_company_id, LEI_RE
 
 from . import paths
 from . import benchmarks as benchmarks_mod
+from . import classification_generated
 from . import company_countries as company_countries_mod
 from .artifact import LARGE_FUND_BYTES, MAX_FUND_BYTES, SCHEMA_VERSION
 from .classify import CATEGORY_ORDER
@@ -1133,7 +1134,7 @@ def _check_company_countries(release_dir: Path, report: Report) -> None:
     # than an inference over holders.
     sources = document.get("sources")
     if sources is not None:
-        unknown = sorted(set(sources) - {"nport", "gleif", "edgar", "cover_page"})
+        unknown = sorted(set(sources) - {"nport", "gleif", "edgar", "cover_page", "override"})
         if unknown:
             report.fail("countries.sources", f"unknown source(s) {unknown[:3]}")
         elif any(not isinstance(value, int) or value < 0 for value in sources.values()):
@@ -1154,6 +1155,104 @@ def _check_company_countries(release_dir: Path, report: Report) -> None:
         for name in ("gleif_compared", "edgar_compared", "cover_page_compared"):
             if not isinstance(agreement.get(name), int) or agreement.get(name, -1) < 0:
                 report.fail("countries.agreement", f"agreement.{name} {agreement.get(name)!r} is not a count")
+
+    # The override table is the one step in the cascade that is not derived from a
+    # filing, so the release has to show that it was applied and that it was applied
+    # *exactly*: every row the table names must carry the table's country, and the
+    # published counts must recompute from the table and the map. A row naming a
+    # company this release does not publish is a warning, not a failure — a release
+    # built from a narrower universe is still a valid release, and the row is a guard
+    # for the next one.
+    overrides_document = document.get("overrides")
+    if overrides_document is not None:
+        table = company_countries_mod.load_overrides()
+        if not table:
+            report.fail(
+                "countries.overrides",
+                "overrides are published but the table on disk is empty",
+            )
+        else:
+            stale = sorted(set(table) - shard_ids)
+            if stale:
+                report.warn(
+                    "countries.overrides",
+                    f"{len(stale)} override row(s) name a company this release does not "
+                    f"publish: {stale[:3]}",
+                )
+            matched = [company_id for company_id in table if company_id in shard_ids]
+            wrong = [
+                company_id
+                for company_id in matched
+                if published_map.get(company_id) != table[company_id]["iso2"]
+            ]
+            if wrong:
+                report.fail(
+                    "countries.overrides",
+                    f"{len(wrong)} overridden company(ies) do not carry the table's "
+                    f"country: {[(c, published_map.get(c), table[c]['iso2']) for c in wrong[:3]]}",
+                )
+            # The release cannot say which rows the vote already agreed with — the
+            # published map equals the table for every matched row either way — so the
+            # object publishes the count and the check is that the three counts account
+            # for every row in the table. A row that is neither applied, redundant nor
+            # unmatched is a row the build dropped, which is the failure this catches.
+            applied = overrides_document.get("applied")
+            redundant = overrides_document.get("redundant")
+            if not isinstance(applied, int) or not isinstance(redundant, int):
+                report.fail("countries.overrides", "applied and redundant must be counts")
+            elif applied + redundant != len(matched):
+                report.fail(
+                    "countries.overrides",
+                    f"applied {applied:,} + redundant {redundant:,} != "
+                    f"{len(matched):,} matched row(s)",
+                )
+            elif applied + redundant + len(stale) != len(table):
+                report.fail(
+                    "countries.overrides",
+                    f"applied + redundant + unmatched != the {len(table):,} row(s) in the table",
+                )
+            if overrides_document.get("unmatched") != len(stale):
+                report.fail(
+                    "countries.overrides",
+                    f"overrides.unmatched {overrides_document.get('unmatched')!r} != "
+                    f"recomputed {len(stale):,}",
+                )
+            # Which rows were redundant is not recoverable from the release, so the
+            # company list is checked for the two things that are: it is as long as
+            # `applied`, and every id in it is a row the table matched.
+            published_companies = overrides_document.get("companies")
+            if not isinstance(published_companies, list):
+                report.fail("countries.overrides", "overrides.companies is not a list")
+            elif len(published_companies) != applied:
+                report.fail(
+                    "countries.overrides",
+                    f"overrides.companies has {len(published_companies):,} id(s) but "
+                    f"applied is {applied:,}",
+                )
+            elif not set(published_companies) <= set(matched):
+                report.fail(
+                    "countries.overrides",
+                    "overrides.companies names a company the table does not match",
+                )
+            if not isinstance(document.get("override_rule"), str) or not document.get("override_rule"):
+                report.fail("countries.overrides", "overrides are published without an override_rule")
+            report.ok(
+                "countries.overrides",
+                f"{applied:,} applied, {redundant:,} redundant, {len(stale):,} unmatched "
+                f"of {len(table):,} row(s); every matched company carries the table's country",
+            )
+
+    # The classification block names the convention the tiers are read under. It is
+    # published so a consumer cannot apply one publisher's table to another's codes.
+    classification = document.get("classification")
+    if classification is not None:
+        if classification.get("provider") not in classification_generated.PROVIDERS:
+            report.fail(
+                "countries.classification",
+                f"classification.provider {classification.get('provider')!r} is not a known provider",
+            )
+        if not isinstance(classification.get("as_of"), str) or not classification.get("as_of"):
+            report.fail("countries.classification", "classification.as_of is missing")
 
     # The contested map is a *second* answer to a different question, and the one thing
     # that must never happen is a consumer reading it as the company's country. So it

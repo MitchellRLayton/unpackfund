@@ -403,8 +403,8 @@ describe("the country channel", () => {
 
   it("turns each domicile into its market tier, and marks the one unplaced state", () => {
     // The third axis: the same country code the row tags becomes the edge's tier. Taiwan
-    // is emerging under FTSE (the IMF calls it advanced) and the United States is its own
-    // tier. There is no fourth tier: an offshore holding domicile (Cayman) is the United
+    // is emerging under MSCI (the IMF calls it advanced), Korea is emerging under MSCI and
+    // developed under FTSE Russell, and the United States is its own tier. There is no fourth tier: an offshore holding domicile (Cayman) is the United
     // States, because that is where its shares trade, so it keeps its code and takes the
     // blue edge. The one state with no tier is a company whose filings do not agree on a
     // country at all — it loses the code and takes the dashed edge, which is what the
@@ -421,7 +421,7 @@ describe("the country channel", () => {
         tr.textContent?.includes(name),
       );
     expect(byName("Cayman Holdco")?.dataset.tier).toBe("US");
-    expect(byName("Samsung Electronics")?.dataset.tier).toBe("DM");
+    expect(byName("Samsung Electronics")?.dataset.tier).toBe("EM");
     expect(byName("Nestle")?.dataset.tier).toBe("DM");
     // The offshore row keeps its mark; the unplaced row has none and says so in an
     // attribute the stylesheet turns into the dashed edge.
@@ -445,7 +445,7 @@ describe("the country channel", () => {
     // Named, not implied: a colour that encodes a publisher's judgement has to say whose
     // judgement and which vintage, or the reader cannot check it against the fund page.
     expect(caption).toContain(
-      "Developed and emerging follow the FTSE country classification, as of 2026-11-05",
+      "Developed and emerging follow the MSCI-aligned country classification, as of 2026-11-05",
     );
   });
 

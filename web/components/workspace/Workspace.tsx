@@ -32,6 +32,8 @@ import { useCallback, useMemo, useState } from "react";
 
 import { useWorkspace } from "@/lib/use-workspace";
 
+import { useProvider } from "@/components/lenses/provider-preference";
+
 import { ActionsRow } from "./ActionsRow";
 import { AnswerStrip } from "./AnswerStrip";
 import { buildAnswer, type Answer, type AnswerInput } from "./answer";
@@ -44,6 +46,9 @@ import styles from "./Workspace.module.css";
 
 export function Workspace() {
   const model = useWorkspace();
+  // The answer strip names the convention its market sentence uses, so it has to be the
+  // one the Markets lens is showing: one choice, read from the URL, in both places.
+  const { provider } = useProvider();
   const [paneOpen, setPaneOpen] = useState(false);
 
   // One definition, on the model: cash is an entry even though it is not a holding.
@@ -86,6 +91,7 @@ export function Workspace() {
       ledger: model.ledger,
       funds: model.funds,
       contested: model.contested,
+      provider,
     });
   }, [
     hasEntries,
@@ -98,6 +104,7 @@ export function Workspace() {
     model.pendingFunds,
     model.funds,
     model.contested,
+    provider,
   ]);
 
   const isExample =

@@ -261,6 +261,7 @@ def write_release_objects(
     invalid_country_rows: int = 0,
     countries_fallback: Mapping[str, Any] | None = None,
     countries_contested: Mapping[str, str] | None = None,
+    countries_overrides: Mapping[str, Any] | None = None,
 ) -> dict:
     """Write the objects a browser reads and describe them in ``release.json``.
 
@@ -329,6 +330,7 @@ def write_release_objects(
             invalid_rows=invalid_country_rows,
             fallback=countries_fallback,
             contested_map=countries_contested,
+            overrides=countries_overrides,
         )
         countries_body = company_countries_mod.canonical_bytes(countries_document)
         if len(countries_body) > company_countries_mod.MAX_COUNTRIES_BYTES:

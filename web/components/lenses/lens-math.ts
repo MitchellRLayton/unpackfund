@@ -19,7 +19,12 @@
  *   be a share of a company and never enters an overlap.
  */
 
-import { tierOf, type CountryTier } from "@/lib/country-tier";
+import {
+  DEFAULT_PROVIDER,
+  tierOf,
+  type CountryTier,
+  type Provider,
+} from "@/lib/country-tier";
 import { coverageBand, formatCoveragePct } from "@/lib/format";
 import type {
   FundDocument,
@@ -47,6 +52,33 @@ export const BUCKET_WORD: Record<MarketBucket, string> = {
   DM: "International Developed ex-US",
   EM: "Emerging Markets",
 };
+
+/** The provider's short name, for a label that has to fit beside a segment. */
+export const PROVIDER_SHORT: Record<Provider, string> = {
+  MSCI: "MSCI",
+  FTSE: "FTSE",
+};
+
+/**
+ * The segment's words with the convention that decided them: `Emerging Markets (MSCI)`.
+ *
+ * A bare "Emerging Markets" is a claim with no publisher. Two respected conventions
+ * disagree about a dozen domiciles — Korea, Poland and Greece among them — so every label
+ * that names a segment names the convention that placed the weight in it, and a reader
+ * who compares this bar against an issuer's factsheet can see whether they are comparing
+ * like with like.
+ */
+export function bucketWord(
+  bucket: MarketBucket,
+  provider: Provider = DEFAULT_PROVIDER,
+): string {
+  return `${BUCKET_WORD[bucket]} (${PROVIDER_SHORT[provider]})`;
+}
+
+/** The other convention: the one the reader is not looking at. */
+export function otherProvider(provider: Provider): Provider {
+  return provider === "MSCI" ? "FTSE" : "MSCI";
+}
 
 /** The two-letter tier as words, for the country table's column. */
 export const TIER_WORD: Record<CountryTier, string> = {
@@ -146,6 +178,8 @@ export interface MarketOutside {
 }
 
 export interface MarketSplit {
+  /** The convention that placed every weight below. */
+  provider: Provider;
   /** The three market tiers, always all three, in drawing order. */
   tiers: MarketTierTotal[];
   /** One row per country code, largest first. */
@@ -184,7 +218,13 @@ export function marketSplit(input: {
   metrics: LedgerMetrics;
   funds: FundDocument[];
   weights: Record<string, number>;
+  /**
+   * Which publisher's convention places each domicile. Defaults to MSCI, the convention
+   * the funds this site looks through mostly benchmark to.
+   */
+  provider?: Provider;
 }): MarketSplit {
+  const provider = input.provider ?? DEFAULT_PROVIDER;
   const tierTotals = new Map<MarketBucket, MarketTierTotal>();
   for (const bucket of MARKET_BUCKETS) {
     tierTotals.set(bucket, { bucket, weight: 0, companies: 0 });
@@ -200,7 +240,7 @@ export function marketSplit(input: {
   for (const row of input.rows) {
     const code =
       input.countryOf(row.company_id) ?? input.contested?.[row.company_id] ?? row.country;
-    const tier = tierOf(code);
+    const tier = tierOf(code, { provider });
 
     resolved += row.weight;
     companies += 1;
@@ -237,7 +277,7 @@ export function marketSplit(input: {
   // and the country table without moving a company count.
   let unplacedSecurities = 0;
   for (const [code, weight] of Object.entries(input.unmapped.securities_by_country)) {
-    const tier = tierOf(code);
+    const tier = tierOf(code, { provider });
     if (tier === null) {
       unplacedSecurities += weight;
       continue;
@@ -265,6 +305,7 @@ export function marketSplit(input: {
   const overshoot = filedOvershoot(input.funds, input.weights);
 
   return {
+    provider,
     tiers,
     countries,
     resolved,
@@ -286,6 +327,44 @@ export function marketSplit(input: {
         overshoot,
     },
   };
+}
+
+/** One country whose segment changes when the convention changes. */
+export interface ProviderMove {
+  /** ISO-3166-1 alpha-2. */
+  code: string;
+  /** Signed share of the whole portfolio, the same weight the country table prints. */
+  weight: number;
+  /** The segment under the convention on screen. */
+  from: MarketBucket;
+  /** The segment under the other one. */
+  to: MarketBucket;
+}
+
+/**
+ * The countries whose segment changes when the convention changes.
+ *
+ * Only movers: a table of every country with two identical columns would bury the dozen
+ * that actually move, and the reader's question is "what would change", not "what would
+ * stay the same". `countries` carries the tier under the provider that produced the
+ * split, so the other convention is asked for each code directly — the same `tierOf`
+ * that placed it, with the other publisher's table.
+ */
+export function providerMoves(
+  countries: readonly MarketCountryTotal[],
+  provider: Provider = DEFAULT_PROVIDER,
+): ProviderMove[] {
+  const other = otherProvider(provider);
+  const moves: ProviderMove[] = [];
+  for (const country of countries) {
+    // A country with no weight moves nothing, so it is not a row: the table is about
+    // what changes in the bar, and a 0.00% row would be a fact about the table.
+    if (country.weight === 0) continue;
+    const to = tierOf(country.code, { provider: other });
+    if (to === null || to === country.tier) continue;
+    moves.push({ code: country.code, weight: country.weight, from: country.tier, to });
+  }
+  return moves;
 }
 
 /** Σ W_k · (filed total − 100%), as a fraction of the portfolio. */

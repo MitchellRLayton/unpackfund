@@ -64,8 +64,16 @@ export const EFFECTIVE_DATE = "November 4, 2026";
  * pair of equal-sized-holdings counts, with their shares, their formulas, the invariant
  * between them, the coverage rule that withholds them, the overlap the merge removes, and
  * what the pair does not say about how companies move together.
+ *
+ * 1.4.0 (2026-11-05): the default country classification moved from FTSE Russell to MSCI,
+ * because that is what the funds this site looks through mostly benchmark to. The page now
+ * names the convention and its vintage, tabulates the markets where the two publishers
+ * disagree, states that only three of them move the three-segment bar (the rest change a
+ * label, because frontier and standalone fold into emerging), and says that the table is
+ * authored to the published criteria rather than copied from either publisher. FTSE remains
+ * selectable, and the page says so.
  */
-export const METHODOLOGY_VERSION = "1.3.0";
+export const METHODOLOGY_VERSION = "1.4.0";
 
 /**
  * Version of the copy above, for the change history in the footer of each page.

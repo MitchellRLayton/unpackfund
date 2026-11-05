@@ -356,7 +356,12 @@ def build_fund(
                 identified=row.identified,
                 # The filing's own invCountry, published only on a row that named no
                 # company (``artifact.holding_row`` decides that, not this call site).
-                filed_country=row.country,
+                # A placeholder is not a country: ``XX`` is ISO's user-assigned code and
+                # filers use it for "no country", so it is dropped here rather than
+                # published and then folded into a segment by the total rule.
+                filed_country=(
+                    row.country if company_countries.is_country_code(row.country) else None
+                ),
             )
             for row in vector.holdings
         ],
@@ -1013,6 +1018,26 @@ def build_release(
     # same set, so the two cannot drift.
     release_company_set = company_countries.release_companies(documents)
     countries = company_countries.project(countries, release_company_set)
+    # The override table runs in front of the vote, and in front of the fallback: a
+    # company whose registered office is a haven and whose business is elsewhere is
+    # placed by the table, and the fallback is then never asked about it. The table is
+    # hand-maintained, so it is loaded and validated here rather than at import time —
+    # a malformed row must stop the build, not the test suite.
+    override_stats: dict | None = None
+    overrides = company_countries.load_overrides()
+    if overrides:
+        countries, override_stats = company_countries.apply_overrides(
+            countries,
+            overrides,
+            companies=release_company_set,
+            log=_log,
+        )
+        _log(
+            f"country overrides: {override_stats['applied']:,} applied "
+            f"({override_stats['changed']:,} changed, {override_stats['supplied']:,} supplied), "
+            f"{override_stats['redundant']:,} redundant, "
+            f"{override_stats['unmatched']:,} unmatched"
+        )
     fallback_stats: dict | None = None
     country_fallback_manifest: dict | None = None
     # A release that decided nothing publishes no map, so it publishes no fallback
@@ -1126,6 +1151,7 @@ def build_release(
         invalid_country_rows=country_tally.invalid_rows,
         countries_fallback=fallback_stats,
         countries_contested=contested_countries,
+        countries_overrides=override_stats,
     )
     elapsed = time.monotonic() - started
     _log(

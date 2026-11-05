@@ -1,7 +1,9 @@
 "use client";
 
-import { TIER_AS_OF } from "@/lib/country-tier";
+import { TIER_AS_OF, tierConvention, type Provider } from "@/lib/country-tier";
 import { formatShare } from "@/lib/format";
+
+import { bucketWord } from "@/components/lenses/lens-math";
 
 import styles from "./compare.module.css";
 import type { MarketSplit } from "./result";
@@ -15,9 +17,9 @@ import type { MarketSplit } from "./result";
  * uses, so a reader who meets a mix on both pages does not learn two names for one tier.
  */
 const TIERS = [
-  { key: "us", label: "United States", segment: "bar__seg--us" },
-  { key: "dm", label: "International Developed ex-US", segment: "bar__seg--dm" },
-  { key: "em", label: "Emerging Markets", segment: "bar__seg--em" },
+  { key: "us", bucket: "US", segment: "bar__seg--us" },
+  { key: "dm", bucket: "DM", segment: "bar__seg--dm" },
+  { key: "em", bucket: "EM", segment: "bar__seg--em" },
 ] as const;
 
 /** The weight the bar draws: everything the classification could place. */
@@ -38,7 +40,16 @@ function placed(split: MarketSplit): number {
  * every segment has a printed weight in the table underneath, the legend names the
  * three tiers, and the bar's own `aria-label` reads the percentages out loud.
  */
-export function MarketSplitChart({ a, b }: { a: MarketSplit; b: MarketSplit }) {
+export function MarketSplitChart({
+  a,
+  b,
+  provider,
+}: {
+  a: MarketSplit;
+  b: MarketSplit;
+  /** The convention both bars were placed under, named in the legend and the caption. */
+  provider: Provider;
+}) {
   const unplacedA = Math.max(0, a.unplaced);
   const unplacedB = Math.max(0, b.unplaced);
 
@@ -59,8 +70,8 @@ export function MarketSplitChart({ a, b }: { a: MarketSplit; b: MarketSplit }) {
         </div>
         <div className="panel__body stack">
           <div className={styles.bars}>
-            <Bar label="Mix A" split={a} />
-            <Bar label="Mix B" split={b} />
+            <Bar label="Mix A" split={a} provider={provider} />
+            <Bar label="Mix B" split={b} provider={provider} />
             <div className={styles.scaleRow} aria-hidden="true">
               <span />
               <div className={styles.barScale}>
@@ -75,7 +86,7 @@ export function MarketSplitChart({ a, b }: { a: MarketSplit; b: MarketSplit }) {
             {TIERS.map((tier) => (
               <span key={tier.key} className="legend__item">
                 <span className={`legend__swatch ${tier.segment}`} aria-hidden="true" />
-                {tier.label}
+                {bucketWord(tier.bucket, provider)}
               </span>
             ))}
           </div>
@@ -83,10 +94,10 @@ export function MarketSplitChart({ a, b }: { a: MarketSplit; b: MarketSplit }) {
           <div className="table-wrap">
             <table className="table">
               <caption>
-                Each company is placed by the market its domicile belongs to, using the
-                FTSE Russell equity country classification as of {TIER_AS_OF}. An offshore
-                holding domicile such as Bermuda or the Cayman Islands is the United
-                States, because that is where its shares trade. Outside the bar:{" "}
+                Each company is placed by the market its domicile belongs to, using the{" "}
+                {tierConvention(provider)} as of {TIER_AS_OF}. An offshore holding
+                domicile such as Bermuda or the Cayman Islands is the United States,
+                because that is where its shares trade. Outside the bar:{" "}
                 {formatShare(unplacedA)} of Mix A and {formatShare(unplacedB)} of Mix B is
                 weight the classification could not place — a company whose holders&rsquo;
                 filings do not agree on a country, or weight that could not be traced to a
@@ -107,7 +118,7 @@ export function MarketSplitChart({ a, b }: { a: MarketSplit; b: MarketSplit }) {
               <tbody>
                 {TIERS.map((tier) => (
                   <tr key={tier.key}>
-                    <th scope="row">{tier.label}</th>
+                    <th scope="row">{bucketWord(tier.bucket, provider)}</th>
                     <td className="num">{formatShare(a[tier.key])}</td>
                     <td className="num">{formatShare(b[tier.key])}</td>
                   </tr>
@@ -128,7 +139,15 @@ export function MarketSplitChart({ a, b }: { a: MarketSplit; b: MarketSplit }) {
   );
 }
 
-function Bar({ label, split }: { label: string; split: MarketSplit }) {
+function Bar({
+  label,
+  split,
+  provider,
+}: {
+  label: string;
+  split: MarketSplit;
+  provider: Provider;
+}) {
   const total = placed(split);
   return (
     <div className={styles.barRow}>
@@ -137,7 +156,8 @@ function Bar({ label, split }: { label: string; split: MarketSplit }) {
         className="bar bar--tall"
         role="img"
         aria-label={`${label}: ${TIERS.map(
-          (tier) => `${formatShare(split[tier.key])} ${tier.label}`,
+          (tier) =>
+            `${formatShare(split[tier.key])} ${bucketWord(tier.bucket, provider)}`,
         ).join(", ")}`}
       >
         {TIERS.map((tier) => (
