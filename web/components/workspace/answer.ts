@@ -16,8 +16,8 @@
  *    largest part of the largest one comes from. Withheld entirely when a fund is below
  *    the 60% coverage floor, because a concentration figure computed over the part that
  *    resolved would describe a different portfolio (`lookthrough-math-and-qa` §5).
- * 3. **The market split** — US, other developed, emerging, and the remainder honestly
- *    named as unplaced rather than folded into a tier.
+ * 3. **The market split** — the United States, international developed ex-US, emerging,
+ *    and the remainder honestly named as outside the bar rather than folded into a tier.
  * 4. **The highest pairwise fund overlap**, only when it is high enough to be worth a
  *    sentence. It describes; it never judges, and there is no "too concentrated".
  *
@@ -90,6 +90,12 @@ export type AnswerInput =
       ledger: Ledger;
       /** The fund documents behind the ledger, for the pairwise overlap. */
       funds: readonly FundDocument[];
+      /**
+       * The release's second answer for a company the vote could not decide. The
+       * sentence below has to place the same weight the Markets lens places, or the
+       * two surfaces disagree about the same portfolio.
+       */
+      contested?: Record<string, string>;
     };
 
 const text = (value: string): AnswerPart => ({ text: value });
@@ -179,8 +185,15 @@ function largestRow(rows: readonly LedgerRow[]): LedgerRow | null {
   return best;
 }
 
-/** US / other developed / emerging weights over the companies the release placed. */
-function marketSplit(ledger: Ledger): {
+/**
+ * US / international developed ex-US / emerging weights over the companies the release
+ * placed, in the same order the Markets lens places them: the decided country, then the
+ * contested one.
+ */
+function marketSplit(
+  ledger: Ledger,
+  contested: Record<string, string>,
+): {
   us: number;
   dm: number;
   em: number;
@@ -190,7 +203,7 @@ function marketSplit(ledger: Ledger): {
   let dm = 0;
   let em = 0;
   for (const row of ledger.rows) {
-    switch (tierOf(row.country)) {
+    switch (tierOf(row.country ?? contested[row.company_id])) {
       case "US":
         us += row.weight;
         break;
@@ -211,6 +224,7 @@ function marketSplit(ledger: Ledger): {
 function readySentences(
   ledger: Ledger,
   funds: readonly FundDocument[],
+  contested: Record<string, string>,
 ): AnswerSentence[] {
   const sentences: AnswerSentence[] = [];
   const companyCount = ledger.rows.length;
@@ -315,15 +329,15 @@ function readySentences(
 
   // 3. The market split, only when the release placed at least one company — otherwise
   //    there is no split to describe, and a row of zeroes would read like a finding.
-  const split = marketSplit(ledger);
+  const split = marketSplit(ledger, contested);
   if (split.placed > 0) {
     const unplaced = Math.max(0, 1 - split.placed);
     const parts: AnswerPart[] = [
       text("By market: "),
       strong(formatPct1(split.us)),
-      text(" in US companies, "),
+      text(" in the United States, "),
       strong(formatPct1(split.dm)),
-      text(" in other developed markets, "),
+      text(" in international developed markets outside it, "),
       strong(formatPct1(split.em)),
       text(" in emerging markets"),
     ];
@@ -332,7 +346,7 @@ function readySentences(
         text(", and "),
         strong(formatPct1(unplaced)),
         text(
-          " that is not placed in a market tier — untraced weight, cash, or a company with no country answer.",
+          " that is not placed in a market — untraced weight, cash, or a company with no country answer.",
         ),
       );
     } else {
@@ -504,7 +518,7 @@ export function buildAnswer(input: AnswerInput): Answer {
 
     case "ready":
       return {
-        sentences: readySentences(input.ledger, input.funds),
+        sentences: readySentences(input.ledger, input.funds, input.contested ?? {}),
         note: readyNote(input.ledger),
       };
   }

@@ -117,6 +117,70 @@ def test_the_decision_is_deterministic():
     assert company_countries.decide(_tally(shuffled))[0] == first
 
 
+def test_a_contested_company_is_placed_by_its_largest_share():
+    # 60/40 is not a domicile — the vote refuses it — but it is a plurality, and the
+    # Markets bar needs somewhere to put the weight. Two answers, two maps.
+    tally = _tally([("c_1", "US", 600, 3), ("c_1", "IE", 400, 2)])
+    decided, _ = company_countries.decide(tally)
+    assert decided == {}
+    assert company_countries.contested(tally, ["c_1"]) == {"c_1": "US"}
+
+
+def test_a_contested_company_below_the_plurality_floor_stays_out():
+    # A three-way split has no plurality; picking the biggest third would be a coin
+    # flip wearing a number.
+    tally = _tally([("c_1", "US", 350, 2), ("c_1", "IE", 330, 2), ("c_1", "JP", 320, 2)])
+    assert company_countries.contested(tally, ["c_1"]) == {}
+
+
+def test_a_contested_company_still_needs_two_filings():
+    tally = _tally([("c_1", "US", 900, 1), ("c_1", "IE", 100, 1)])
+    assert company_countries.contested(tally, ["c_1"]) == {}
+
+
+def test_the_contested_map_never_names_a_company_the_vote_decided():
+    # The two maps answer different questions and must stay disjoint: a 45% share must
+    # not wear the authority of an 80% one.
+    tally = _tally(
+        [
+            ("c_decided", "US", 900, 3),
+            ("c_decided", "IE", 100, 1),
+            ("c_split", "US", 600, 3),
+            ("c_split", "IE", 400, 2),
+        ]
+    )
+    decided, _ = company_countries.decide(tally)
+    contested = company_countries.contested(tally, sorted(set(tally.dollars) - set(decided)))
+    assert decided == {"c_decided": "US"}
+    assert contested == {"c_split": "US"}
+    assert not set(decided) & set(contested)
+
+
+def test_the_contested_map_is_deterministic():
+    entries = [("c_1", "US", 600, 2), ("c_1", "IE", 400, 2), ("c_2", "TW", 700, 2)]
+    first = company_countries.contested(_tally(entries), ["c_1", "c_2"])
+    assert company_countries.contested(_tally(list(reversed(entries))), ["c_1", "c_2"]) == first
+
+
+def test_the_object_publishes_the_contested_map_beside_its_own_rule():
+    document = company_countries.build_object(
+        "2026-11-04",
+        {APPLE: "US"},
+        company_total=2,
+        contested_map={"c_0000000001": "KY"},
+    )
+    assert document["contested"] == {"c_0000000001": "KY"}
+    assert document["contested_rule"] == company_countries.CONTESTED_RULE
+    # The decided map is untouched: the second answer never leaks into the first.
+    assert document["companies"] == {APPLE: "US"}
+
+
+def test_a_release_that_ran_no_vote_publishes_no_contested_map():
+    document = company_countries.build_object("2026-11-04", {}, company_total=0)
+    assert "contested" not in document
+    assert "contested_rule" not in document
+
+
 def test_only_alpha_2_codes_count_as_votes():
     for junk in ("", None, "USA", "united states", "u1", "us", 12, True):
         assert not company_countries.is_country_code(junk)
@@ -304,6 +368,89 @@ def test_validator_rejects_a_code_that_is_not_alpha_2(tmp_path):
     payload = company_countries.canonical_bytes(document)
     path.write_bytes(payload)
     _repair_descriptor(release_dir, payload)
+    assert validate.validate(release_dir) == 1
+
+
+def test_validator_rejects_a_contested_map_that_names_a_decided_company(tmp_path):
+    # The one failure that would make the second answer indistinguishable from the
+    # first: a company in both maps.
+    release_dir = _release(tmp_path)
+    path = release_dir / "companies/countries.json"
+    document = json.loads(path.read_text())
+    document["contested_rule"] = company_countries.CONTESTED_RULE
+    document["contested"] = {APPLE: "IE"}
+    payload = company_countries.canonical_bytes(document)
+    path.write_bytes(payload)
+    _repair_descriptor(release_dir, payload)
+    assert validate.validate(release_dir) == 1
+
+
+def test_validator_rejects_a_contested_map_with_no_rule(tmp_path):
+    release_dir = _release(tmp_path)
+    path = release_dir / "companies/countries.json"
+    document = json.loads(path.read_text())
+    document["contested"] = {}
+    payload = company_countries.canonical_bytes(document)
+    path.write_bytes(payload)
+    _repair_descriptor(release_dir, payload)
+    assert validate.validate(release_dir) == 1
+
+
+def test_validator_accepts_a_contested_map_beside_the_decided_one(tmp_path):
+    release_dir = _release(tmp_path)
+    path = release_dir / "companies/countries.json"
+    document = json.loads(path.read_text())
+    document["contested_rule"] = company_countries.CONTESTED_RULE
+    document["contested"] = {}
+    payload = company_countries.canonical_bytes(document)
+    path.write_bytes(payload)
+    _repair_descriptor(release_dir, payload)
+    assert validate.validate(release_dir) == 0
+
+
+def _undecide(release_dir, contested: dict[str, str]) -> None:
+    """Move every decided company into the contested map, and re-hash the object.
+
+    The shape a release has when the vote refused a company: the shard is published,
+    the shard carries no `country`, and the contested map is the only answer.
+    """
+    # The shard is the company's own record, so it has to lose the country too: the
+    # projection gate compares the map against the shards, not against itself.
+    for shard_path in (release_dir / "companies").glob("c_*.json"):
+        shard = json.loads(shard_path.read_text())
+        if "country" in shard:
+            del shard["country"]
+            shard_path.write_bytes(company_countries.canonical_bytes(shard))
+    path = release_dir / "companies/countries.json"
+    document = json.loads(path.read_text())
+    document["contested_rule"] = company_countries.CONTESTED_RULE
+    document["contested"] = contested
+    document["companies"] = {}
+    document["counts"]["with_country"] = 0
+    document["counts"]["us"] = 0
+    document["counts"]["non_us"] = 0
+    document["counts"]["undecided"] = document["counts"]["companies"]
+    payload = company_countries.canonical_bytes(document)
+    path.write_bytes(payload)
+    _repair_descriptor(release_dir, payload)
+
+
+def test_validator_accepts_a_contested_company_that_has_a_shard_and_no_country(tmp_path):
+    """The normal shape: a contested company is one the vote did not decide.
+
+    It has a company shard — the release publishes it — and no `country` on that
+    shard, because the vote declined. Checking the contested map against the
+    *decided* companies instead of the *published* ones refuses every release that
+    used it, which is what happened to 2026-11-05.1 on three companies.
+    """
+    release_dir = _release(tmp_path)
+    _undecide(release_dir, {APPLE: "IE"})
+    assert validate.validate(release_dir) == 0
+
+
+def test_validator_rejects_a_contested_company_the_release_does_not_publish(tmp_path):
+    release_dir = _release(tmp_path)
+    _undecide(release_dir, {"c_9999999999": "IE"})
     assert validate.validate(release_dir) == 1
 
 

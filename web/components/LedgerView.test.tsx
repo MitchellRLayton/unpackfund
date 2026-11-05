@@ -32,7 +32,11 @@ vi.mock("@/lib/use-release", () => ({
   useBenchmark: (...args: unknown[]) => useBenchmark(...args),
   // No country object in these fixtures: the release answers no domicile, which is a
   // valid release and leaves the ledger's shape untouched.
-  useCountries: () => ({ status: "ready", data: {}, error: null }),
+  useCountries: () => ({
+    status: "ready",
+    data: { companies: {}, contested: {} },
+    error: null,
+  }),
   // The drawer is closed in these tests; it still calls its hook.
   useCompany: () => ({ status: "loading", data: null, error: null }),
 }));
@@ -209,6 +213,7 @@ const ledgerBase: Omit<Ledger, "effective"> = {
     securities_weight: 0.0282,
     cash_and_derivatives_with_weight: 8,
     cash_and_derivatives_weight: 0.0148,
+    securities_by_country: {},
   },
 };
 const ledger = withEffective(ledgerBase);

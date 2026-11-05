@@ -42,7 +42,7 @@ export function CompaniesSurface() {
   // Rows exist as soon as the index does; the country is filled in when the map
   // arrives, so the list is never held back by a column that can be blank.
   const rows = useMemo(
-    () => toCompanyRows(index.data, countries.data),
+    () => toCompanyRows(index.data, countries.data?.companies ?? null),
     [index, countries],
   );
 

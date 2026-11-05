@@ -6,36 +6,50 @@ import { formatShare } from "@/lib/format";
 import styles from "./compare.module.css";
 import type { MarketSplit } from "./result";
 
+/**
+ * The three markets, in the order the bar draws them.
+ *
+ * Three, not four: "not placed" is a question the page could not answer rather than an
+ * answer, so it is stated in the caption with its own number instead of drawn as a
+ * segment (operator's instruction, 2026-11-05). The same three words the Markets lens
+ * uses, so a reader who meets a mix on both pages does not learn two names for one tier.
+ */
 const TIERS = [
   { key: "us", label: "United States", segment: "bar__seg--us" },
-  { key: "dm", label: "Developed ex-US", segment: "bar__seg--dm" },
-  { key: "em", label: "Emerging", segment: "bar__seg--em" },
-  { key: "unplaced", label: "Not placed", segment: "bar__seg--unplaced" },
+  { key: "dm", label: "International Developed ex-US", segment: "bar__seg--dm" },
+  { key: "em", label: "Emerging Markets", segment: "bar__seg--em" },
 ] as const;
+
+/** The weight the bar draws: everything the classification could place. */
+function placed(split: MarketSplit): number {
+  return Math.max(0, 1 - split.unplaced);
+}
 
 /**
  * The two mixes' market splits on one scale.
  *
  * One scale is the whole feature: two bars on their own axes would each fill their
- * width and invite a comparison that is not there. Both bars are 0–100% of their own
- * mix and share the same pixel width, so 40% of Mix A and 40% of Mix B are the same
- * length, and a reader can see which mix leans where without reading a number.
+ * width and invite a comparison that is not there. Both bars are 0–100% of the weight
+ * their mix can place and share the same pixel width, so 40% of Mix A and 40% of Mix B
+ * are the same length, and a reader can see which mix leans where without reading a
+ * number.
  *
  * Colour is a market tier and nothing else, and it never carries the answer alone:
  * every segment has a printed weight in the table underneath, the legend names the
- * four tiers, and the bar's own `aria-label` reads the percentages out loud.
- * `unplaced` is hatched rather than solid because it is the one segment that is not
- * a market — the classification could not place that weight.
+ * three tiers, and the bar's own `aria-label` reads the percentages out loud.
  */
 export function MarketSplitChart({ a, b }: { a: MarketSplit; b: MarketSplit }) {
+  const unplacedA = Math.max(0, a.unplaced);
+  const unplacedB = Math.max(0, b.unplaced);
+
   return (
     <section className="stack stack--tight" aria-labelledby="markets-heading">
       <h2 id="markets-heading" className="eyebrow">
         Where the two mixes sit
       </h2>
       <p className="small muted">
-        Both bars are on one scale — 0 to 100% of each mix — so their lengths can be read
-        against each other.
+        Both bars are on one scale — 0 to 100% of the weight each mix can place — so their
+        lengths can be read against each other.
       </p>
 
       <div className="panel">
@@ -70,10 +84,14 @@ export function MarketSplitChart({ a, b }: { a: MarketSplit; b: MarketSplit }) {
             <table className="table">
               <caption>
                 Each company is placed by the market its domicile belongs to, using the
-                FTSE Russell equity country classification as of {TIER_AS_OF}. Not placed
-                is the rest of the mix: companies whose domicile the classification does
-                not list, and weight that could not be traced to a company at all. Shares
-                are rounded to two places and may not visibly add up.
+                FTSE Russell equity country classification as of {TIER_AS_OF}. An offshore
+                holding domicile such as Bermuda or the Cayman Islands is the United
+                States, because that is where its shares trade. Outside the bar:{" "}
+                {formatShare(unplacedA)} of Mix A and {formatShare(unplacedB)} of Mix B is
+                weight the classification could not place — a company whose holders&rsquo;
+                filings do not agree on a country, or weight that could not be traced to a
+                company at all. Shares are rounded to two places and may not visibly add
+                up.
               </caption>
               <thead>
                 <tr>
@@ -94,12 +112,14 @@ export function MarketSplitChart({ a, b }: { a: MarketSplit; b: MarketSplit }) {
                     <td className="num">{formatShare(b[tier.key])}</td>
                   </tr>
                 ))}
-                <tr>
-                  <th scope="row">Total</th>
-                  <td className="num">{formatShare(1)}</td>
-                  <td className="num">{formatShare(1)}</td>
-                </tr>
               </tbody>
+              <tfoot>
+                <tr>
+                  <th scope="row">Everything the bar draws</th>
+                  <td className="num">{formatShare(placed(a))}</td>
+                  <td className="num">{formatShare(placed(b))}</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -109,6 +129,7 @@ export function MarketSplitChart({ a, b }: { a: MarketSplit; b: MarketSplit }) {
 }
 
 function Bar({ label, split }: { label: string; split: MarketSplit }) {
+  const total = placed(split);
   return (
     <div className={styles.barRow}>
       <span className={styles.barLabel}>{label}</span>
@@ -123,7 +144,9 @@ function Bar({ label, split }: { label: string; split: MarketSplit }) {
           <span
             key={tier.key}
             className={`bar__seg ${tier.segment}`}
-            style={{ width: `${(split[tier.key] * 100).toFixed(3)}%` }}
+            style={{
+              width: `${total > 0 ? (Math.max(0, split[tier.key]) / total) * 100 : 0}%`,
+            }}
           />
         ))}
       </div>

@@ -145,10 +145,12 @@ export function LedgerTable({
           {anyCountry
             ? " The flag and two-letter code beside a company are the domicile its" +
               " holders' filings agree on by value. The row's left edge repeats it in colour — blue for" +
-              " the United States, ochre for developed markets elsewhere, a deeper" +
-              " ochre for emerging ones. A grey edge marks a company with no market" +
-              " tier: solid where the domicile is known but is neither developed nor" +
-              " emerging, dashed where the filings do not agree on a country at all." +
+              " the United States, ochre for international developed markets outside" +
+              " it, a deeper ochre for emerging markets. Every domicile has one of the" +
+              " three: an offshore holding domicile such as Bermuda or the Cayman" +
+              " Islands is the United States, because that is where its shares trade." +
+              " A dashed edge marks a company whose holders' filings do not agree on a" +
+              " country at all." +
               // Only when there is a bracket to colour: the column is absent without a
               // benchmark, and a sentence about an ink with nothing wearing it is noise.
               (benchmark

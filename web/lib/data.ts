@@ -31,6 +31,7 @@ import {
   type BenchmarkRollup,
   type CompanyIndex,
   type CompanyCountries,
+  type CompanyCountryMaps,
   type CompanyShard,
   type FundDocument,
   type FundIndexShard,
@@ -496,9 +497,9 @@ export async function loadCompany(
 export async function loadCompanyCountries(
   release: ReleaseDescriptor,
   fetchImpl: FetchImpl = fetch,
-): Promise<Record<string, string>> {
+): Promise<CompanyCountryMaps> {
   const descriptor = release.objects.companies?.countries;
-  if (!descriptor) return {};
+  if (!descriptor) return { companies: {}, contested: {} };
   const document = await loadDescribed<CompanyCountries>(
     release,
     descriptor,
@@ -518,7 +519,17 @@ export async function loadCompanyCountries(
       `${descriptor.path}: kind ${document?.kind ?? "missing"}, release ${release.as_of}.`,
     );
   }
-  return document.companies;
+  // The contested map is optional by presence: a release published before 2026-11-05
+  // has no second answer, and `{}` is the honest reading of that — the Markets bar then
+  // places only what the decided map covers, exactly as it did before the field existed.
+  const contested = document.contested;
+  return {
+    companies: document.companies,
+    contested:
+      contested && typeof contested === "object" && !Array.isArray(contested)
+        ? contested
+        : {},
+  };
 }
 
 /**

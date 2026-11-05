@@ -103,7 +103,7 @@ export async function run(): Promise<string> {
       direct,
       cash: split.cash,
       benchmark,
-      countries,
+      countries: countries?.companies ?? null,
     });
 
     lines.push("");
@@ -128,13 +128,14 @@ export async function run(): Promise<string> {
 
     // The market split, computed the way the Markets lens must compute it: by
     // summing the ledger's own row weights through the tier lookup.
-    const tiers: Record<string, number> = { US: 0, DM: 0, EM: 0, OTHER: 0 };
+    const tiers: Record<string, number> = { US: 0, DM: 0, EM: 0, NONE: 0 };
     for (const row of ledger.rows) {
       const tier = tierOf(row.country);
-      tiers[tier] = (tiers[tier] ?? 0) + row.weight;
+      const key = tier ?? "NONE";
+      tiers[key] = (tiers[key] ?? 0) + row.weight;
     }
     lines.push(
-      `tiers US=${n(tiers.US)} DM=${n(tiers.DM)} EM=${n(tiers.EM)} OTHER=${n(tiers.OTHER)}`,
+      `tiers US=${n(tiers.US)} DM=${n(tiers.DM)} EM=${n(tiers.EM)} NONE=${n(tiers.NONE)}`,
     );
 
     for (const row of ledger.rows.slice(0, 10)) {

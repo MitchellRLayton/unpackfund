@@ -275,12 +275,13 @@ export function CompaniesLens({ model }: LensProps) {
         ? ledger.rows
         : ledger.rows.filter((row) => {
             const code = (row.country ?? "").toLowerCase();
-            const tier = row.country ? TIER_WORD[tierOf(row.country)] : "no country";
+            const tier = row.country ? tierOf(row.country) : null;
+            const tierWord = tier ? TIER_WORD[tier] : "no country";
             return (
               row.name.toLowerCase().includes(needle) ||
               (row.ticker ?? "").toLowerCase().includes(needle) ||
               code === needle ||
-              tier.toLowerCase().includes(needle)
+              tierWord.toLowerCase().includes(needle)
             );
           });
     return sortBy(matching, sort, COMPARE);

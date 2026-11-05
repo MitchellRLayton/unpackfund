@@ -149,8 +149,8 @@ export function CompareSurface() {
   const splits = useMemo(() => {
     if (!overlap || countries.status !== "ready") return null;
     return {
-      a: marketSplit(overlap.ledgerA.rows, countries.data),
-      b: marketSplit(overlap.ledgerB.rows, countries.data),
+      a: marketSplit(overlap.ledgerA.rows, countries.data?.companies ?? null),
+      b: marketSplit(overlap.ledgerB.rows, countries.data?.companies ?? null),
     };
   }, [overlap, countries]);
 

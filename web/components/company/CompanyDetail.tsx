@@ -185,7 +185,7 @@ export function CompanyDetail({
                 ) : null}
               </div>
 
-              {country ? (
+              {country && tierLabel(tierOf(country)) ? (
                 <p className="small muted">
                   The tier comes from the release&apos;s FTSE Russell country
                   classification: {tierLabel(tierOf(country))}.

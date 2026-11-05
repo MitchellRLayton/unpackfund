@@ -299,6 +299,11 @@ class Composer:
                         "name": row.name,
                         "ticker": row.ticker,
                         "asset_cat": row.asset_cat,
+                        # Carried so a composed row keeps the filing's own country for
+                        # a position no company was named for. Without it a flattened
+                        # wrapper loses the only country evidence its unmatched rows
+                        # have, and the Markets bar draws them as weight with no market.
+                        "country": row.country,
                     },
                     float(row.weight_bp),
                 )
@@ -328,6 +333,11 @@ class Composer:
                         # ticker: unlike an as-filed symbol on an unmapped row, this
                         # one names a fund we publish, so it is a fact we can vouch for.
                         "resolved": target is not None,
+                        # The filing's country for this fund position is the *fund's*
+                        # domicile, not a market exposure. It is carried because the
+                        # row is otherwise unplaceable, and the Markets bar states that
+                        # a sleeve it could not open is placed by its own domicile.
+                        "country": row.country,
                     },
                     weight,
                 )
@@ -423,6 +433,16 @@ class Composer:
                 ),
                 "asset_cat": row["asset_cat"],
                 "weight_bp": weight,
+                # Same rule as ``artifact.holding_row``: the filing's country is
+                # published only where no company was named, so a composed document
+                # and a filed one carry the field in the same place and for the same
+                # reason. ``published_row`` inserts ``identified`` after ``weight_bp``,
+                # which keeps the key order identical to the filed vector's.
+                **(
+                    {"filed_country": row["country"]}
+                    if row.get("country") and not row["company_id"]
+                    else {}
+                ),
             }
             for row, weight in zip(ordered, bp)
             # A composition of 5,000 holdings across six sleeves produces a long tail
@@ -447,6 +467,7 @@ class Composer:
                 asset_cat=row["asset_cat"],
                 weight_bp=row["weight_bp"],
                 is_company_exposure=row["asset_cat"] in classify.COMPANY_CATEGORIES,
+                country=row.get("filed_country"),
             )
             for row in holdings
         ]

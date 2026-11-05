@@ -242,6 +242,18 @@ export interface CompanyCountries {
   rule: string;
   /** `company_id` → ISO-3166-1 alpha-2, uppercase. Absence means "no answer". */
   companies: Record<string, string>;
+  /**
+   * `company_id` → the country holding the largest share of the money in it, for a
+   * company the vote could not decide. A **second, weaker answer to a different
+   * question**, published beside the first and never merged into it: the company tag
+   * keeps "we decline to place it", and the Markets bar gets a bucket.
+   *
+   * Disjoint from `companies` by construction (the validator refuses an overlap).
+   * Absent on every release published before 2026-11-05.
+   */
+  contested?: Record<string, string>;
+  /** The rule behind `contested`, in words, so the weaker answer states its own bar. */
+  contested_rule?: string;
   /** How many companies got an answer, so coverage is statable rather than implied. */
   counts: {
     companies: number;
@@ -250,6 +262,19 @@ export interface CompanyCountries {
     non_us: number;
     undecided: number;
   };
+}
+
+/**
+ * The two country answers a release publishes, as the app reads them.
+ *
+ * `companies` is the decided map and is what a company tag renders. `contested` is the
+ * weaker second answer for a company the vote could not decide, and only the Markets
+ * bar reads it — keeping them in one object makes it obvious at every call site which
+ * question is being asked.
+ */
+export interface CompanyCountryMaps {
+  companies: Record<string, string>;
+  contested: Record<string, string>;
 }
 
 export type AssetCategory = "equity" | "debt" | "cash" | "derivative" | "fund" | "other";
@@ -288,6 +313,17 @@ export interface Holding {
    * the row is unknown, only that nothing identified it.
    */
   identified?: boolean;
+  /**
+   * The filing's own `invCountry` for this position, published **only** on a row that
+   * resolved to no company — the one case where the release has no better answer.
+   *
+   * It is not the company's domicile: that is decided once, by value, across every fund
+   * that holds the company, and a row with a `company_id` must be read from
+   * `companies/countries.json` instead. The field exists so the Markets bar can place a
+   * position the identity ladder could not name, rather than drawing it as weight with
+   * no market. Absent on every release published before 2026-11-05.
+   */
+  filed_country?: string;
 }
 
 export interface FundMetrics {
@@ -630,6 +666,16 @@ export interface UnmappedBreakdown {
   cash_and_derivatives_with_weight: number;
   /** Portfolio weight those lines represent (net), as a fraction. */
   cash_and_derivatives_weight: number;
+  /**
+   * The share positions above, split by the country their own filing states for the
+   * position (`filed_country`), as portfolio-weight fractions. The empty string is the
+   * key for a position whose filing states no country.
+   *
+   * This is what lets the Markets bar place weight that resolved to no company: a
+   * security with no company still has a market, and the filing says which. Absent on
+   * every release published before 2026-11-05, and read as `{}` when absent.
+   */
+  securities_by_country: Record<string, number>;
 }
 
 export interface Ledger {

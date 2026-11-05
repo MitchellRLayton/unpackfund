@@ -28,19 +28,24 @@ import type {
   UnmappedBreakdown,
 } from "@/lib/types";
 
-/** The five segments the Markets bar can draw, in the order it draws them. */
-export const MARKET_BUCKETS = ["US", "DM", "EM", "OTHER", "UNKNOWN"] as const;
+/**
+ * The three segments the Markets bar draws, in the order it draws them.
+ *
+ * Three, not five: a reader compares this bar against an issuer's own factsheet, and
+ * "no market tier" / "unplaced" are questions the page could not answer rather than
+ * answers. Every position the release can place lands in one of these three, and what
+ * it cannot place is stated in prose under the bar instead of drawn as a fourth
+ * segment (operator's instruction, 2026-11-05).
+ */
+export const MARKET_BUCKETS = ["US", "DM", "EM"] as const;
 
-/** `OTHER` is a known domicile with no market classification; `UNKNOWN` has no answer. */
-export type MarketBucket = CountryTier | "UNKNOWN";
+export type MarketBucket = CountryTier;
 
 /** The segment's words. The legend and the table use the same string. */
 export const BUCKET_WORD: Record<MarketBucket, string> = {
   US: "United States",
-  DM: "Other developed markets",
-  EM: "Emerging markets",
-  OTHER: "No market tier",
-  UNKNOWN: "No country answer",
+  DM: "International Developed ex-US",
+  EM: "Emerging Markets",
 };
 
 /** The two-letter tier as words, for the country table's column. */
@@ -48,7 +53,6 @@ export const TIER_WORD: Record<CountryTier, string> = {
   US: "US",
   DM: "Developed",
   EM: "Emerging",
-  OTHER: "No market tier",
 };
 
 /** The ten largest company lines, the same count the ledger's `top10` uses. */
@@ -103,22 +107,33 @@ export interface MarketTierTotal {
 }
 
 export interface MarketCountryTotal {
-  /** ISO-3166-1 alpha-2, or `null` when the release has no answer for any of them. */
-  code: string | null;
-  tier: CountryTier | null;
+  /** ISO-3166-1 alpha-2. Every row here has a code: a code-less row is not drawn. */
+  code: string;
+  tier: CountryTier;
   /** Signed share of the whole portfolio. */
   weight: number;
+  /** Company lines behind this code. Zero when only unmatched positions carry it. */
   companies: number;
 }
 
-export interface UnplacedParts {
-  /** Companies the release has no country for (`UNKNOWN`). */
-  unknownCountry: number;
-  /** Share positions inside funds that resolved to no company. */
-  unmatchedSecurities: number;
-  /** Cash and derivative lines inside funds: no company by definition. */
-  unmatchedCashDerivatives: number;
-  /** Cash the visitor entered: no company by definition. */
+/**
+ * What the bar does not draw, and why.
+ *
+ * The bar's denominator is the weight the release can *place* — company lines plus
+ * share positions whose own filing states a country. Everything here is outside that
+ * denominator, and every term is printed under the bar: a bar that silently renormalised
+ * over a subset would be a share of the wrong whole (`lookthrough-math-and-qa` §5).
+ */
+export interface MarketOutside {
+  /** Company lines the release has no country for, even after the contested map. */
+  unplacedCompanies: number;
+  /** Their weight. */
+  unplacedCompanyWeight: number;
+  /** Share positions inside funds whose filing states no country. */
+  unplacedSecurities: number;
+  /** Cash and derivative lines inside funds: no company and no market by definition. */
+  cashAndDerivatives: number;
+  /** Cash the visitor entered: no company and no market by definition. */
   cash: number;
   /**
    * Signed: Σ W_k · (filed total − 100%). A fund normally files slightly more than
@@ -126,36 +141,45 @@ export interface UnplacedParts {
    * is usually negative and it is what makes the parts close to 100%.
    */
   filedOvershoot: number;
-  /** The dashed segment: every part above, added. */
+  /** Every term above, added. */
   total: number;
-  /** Companies inside `unknownCountry`. */
-  unknownCompanies: number;
 }
 
 export interface MarketSplit {
-  /** Four market tiers plus `UNKNOWN`, always all five, in drawing order. */
+  /** The three market tiers, always all three, in drawing order. */
   tiers: MarketTierTotal[];
-  /** One row per country code, largest first, with the no-answer row last. */
+  /** One row per country code, largest first. */
   countries: MarketCountryTotal[];
   /** Σ of every company line — the ledger's `metrics.resolved_weight`. */
   resolved: number;
   companies: number;
   /** True when a company line carries a negative weight (a short inside a fund). */
   hasNegative: boolean;
-  /** What the bar cannot place, and its parts. */
-  unplaced: UnplacedParts;
+  /** The bar's denominator: the weight the release can place in a market. */
+  placed: number;
+  /** What the bar does not draw, and its parts. */
+  outside: MarketOutside;
 }
 
 /**
- * The market split, from the ledger's company lines and the release's country map.
+ * The market split, from the ledger's company lines and the release's country maps.
  *
- * `countryOf` is the model's lookup (`model.countryOf`), never a rule invented here:
- * the pipeline decides a domicile once, and a row's `country` is the same answer the
- * worker already had.
+ * Two lookups, both the release's, never a rule invented here: `countryOf` is the
+ * decided map (`model.countryOf`) and `contested` is the second, weaker answer the
+ * pipeline publishes for a company the vote could not decide. The browser does not
+ * vote — it reads the answer the pipeline already made, in the order the pipeline
+ * states it.
+ *
+ * A company line is placed by the decided country, then by the contested one. A share
+ * position that resolved to no company is placed by the country its own filing states
+ * for the position (`unmapped.securities_by_country`), which is the only country
+ * evidence such a row has. Cash and derivatives are never placed: they have no market.
  */
 export function marketSplit(input: {
   rows: LedgerRow[];
   countryOf: (companyId: string) => string | null;
+  /** The release's second answer; absent on a release published before 2026-11-05. */
+  contested?: Record<string, string>;
   unmapped: UnmappedBreakdown;
   metrics: LedgerMetrics;
   funds: FundDocument[];
@@ -170,45 +194,75 @@ export function marketSplit(input: {
   let resolved = 0;
   let companies = 0;
   let hasNegative = false;
+  let unplacedCompanies = 0;
+  let unplacedCompanyWeight = 0;
 
   for (const row of input.rows) {
-    const code = input.countryOf(row.company_id) ?? row.country;
-    const bucket: MarketBucket = code ? tierOf(code) : "UNKNOWN";
-
-    const tier = tierTotals.get(bucket);
-    if (tier) {
-      tier.weight += row.weight;
-      tier.companies += 1;
-    }
-
-    const key = code ?? "";
-    const country = countryTotals.get(key);
-    if (country) {
-      country.weight += row.weight;
-      country.companies += 1;
-    } else {
-      countryTotals.set(key, {
-        code,
-        tier: code ? tierOf(code) : null,
-        weight: row.weight,
-        companies: 1,
-      });
-    }
+    const code =
+      input.countryOf(row.company_id) ?? input.contested?.[row.company_id] ?? row.country;
+    const tier = tierOf(code);
 
     resolved += row.weight;
     companies += 1;
     if (row.weight < 0) hasNegative = true;
+
+    if (tier === null || !code) {
+      unplacedCompanies += 1;
+      unplacedCompanyWeight += row.weight;
+      continue;
+    }
+
+    const bucket = tierTotals.get(tier);
+    if (bucket) {
+      bucket.weight += row.weight;
+      bucket.companies += 1;
+    }
+
+    const country = countryTotals.get(code);
+    if (country) {
+      country.weight += row.weight;
+      country.companies += 1;
+    } else {
+      countryTotals.set(code, {
+        code,
+        tier,
+        weight: row.weight,
+        companies: 1,
+      });
+    }
+  }
+
+  // Share positions that resolved to no company, placed by the country the filing
+  // states for the position. They carry weight but no company, so they move the bar
+  // and the country table without moving a company count.
+  let unplacedSecurities = 0;
+  for (const [code, weight] of Object.entries(input.unmapped.securities_by_country)) {
+    const tier = tierOf(code);
+    if (tier === null) {
+      unplacedSecurities += weight;
+      continue;
+    }
+    const bucket = tierTotals.get(tier);
+    if (bucket) bucket.weight += weight;
+    const country = countryTotals.get(code);
+    if (country) country.weight += weight;
+    else countryTotals.set(code, { code, tier, weight, companies: 0 });
   }
 
   const countries = [...countryTotals.values()].sort(
-    (left, right) =>
-      right.weight - left.weight ||
-      (left.code ?? "\uffff").localeCompare(right.code ?? "\uffff"),
+    (left, right) => right.weight - left.weight || left.code.localeCompare(right.code),
   );
 
   const tiers = MARKET_BUCKETS.map(
     (bucket) => tierTotals.get(bucket) ?? { bucket, weight: 0, companies: 0 },
   );
+  const placed = tiers.reduce((sum, tier) => sum + tier.weight, 0);
+
+  const cashAndDerivatives = input.unmapped.cash_and_derivatives_weight;
+  const cash = input.metrics.cash_weight;
+  // Signed: a fund that files 100.04% of its NAV by mistake is corrected here rather
+  // than absorbed into the company lines, so the parts still close to 100%.
+  const overshoot = filedOvershoot(input.funds, input.weights);
 
   return {
     tiers,
@@ -216,60 +270,21 @@ export function marketSplit(input: {
     resolved,
     companies,
     hasNegative,
-    unplaced: unplacedParts({
-      rows: input.rows,
-      countryOf: input.countryOf,
-      unmapped: input.unmapped,
-      metrics: input.metrics,
-      funds: input.funds,
-      weights: input.weights,
-    }),
-  };
-}
-
-/**
- * The part of the portfolio the bar draws as one dashed segment.
- *
- * The brief's definition is the first two terms — companies with no country answer,
- * plus weight that resolved to no company. Cash and the filed-weight correction are
- * added because the bar is of *your money*: leaving them out would make the segments
- * add to less than 100% and the missing part would be unexplained. Every term is
- * printed beside the bar, so nothing here is absorbed silently.
- */
-export function unplacedParts(input: {
-  rows: LedgerRow[];
-  countryOf: (companyId: string) => string | null;
-  unmapped: UnmappedBreakdown;
-  metrics: LedgerMetrics;
-  funds: FundDocument[];
-  weights: Record<string, number>;
-}): UnplacedParts {
-  let unknownCountry = 0;
-  let unknownCompanies = 0;
-  for (const row of input.rows) {
-    const code = input.countryOf(row.company_id) ?? row.country;
-    if (!code) {
-      unknownCountry += row.weight;
-      unknownCompanies += 1;
-    }
-  }
-
-  const unmatchedSecurities = input.unmapped.securities_weight;
-  const unmatchedCashDerivatives = input.unmapped.cash_and_derivatives_weight;
-  const cash = input.metrics.cash_weight;
-  // Signed: a fund that files 100.04% of its NAV by mistake is corrected here rather
-  // than absorbed into the company lines, so the parts still close to 100%.
-  const overshoot = filedOvershoot(input.funds, input.weights);
-
-  return {
-    unknownCountry,
-    unknownCompanies,
-    unmatchedSecurities,
-    unmatchedCashDerivatives,
-    cash,
-    filedOvershoot: overshoot,
-    total:
-      unknownCountry + unmatchedSecurities + unmatchedCashDerivatives + cash - overshoot,
+    placed,
+    outside: {
+      unplacedCompanies,
+      unplacedCompanyWeight,
+      unplacedSecurities,
+      cashAndDerivatives,
+      cash,
+      filedOvershoot: overshoot,
+      total:
+        unplacedCompanyWeight +
+        unplacedSecurities +
+        cashAndDerivatives +
+        cash -
+        overshoot,
+    },
   };
 }
 

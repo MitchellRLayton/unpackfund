@@ -75,7 +75,16 @@ export interface WorkspaceModel {
   fundByTicker: Map<string, FundDocument>;
   /** A company's country code, or `null` when the release does not answer. */
   countryOf: (companyId: string) => string | null;
+  /**
+   * The release's *second* answer for a company the vote could not decide: the country
+   * holding the largest share of the money in it. Only the Markets bar reads it — the
+   * company tag keeps `countryOf`, which is still "we decline to place it".
+   */
+  contested: Record<string, string>;
 }
+
+/** One shared empty map: a fresh `{}` per render would re-run every memo that reads it. */
+const EMPTY_CONTESTED: Record<string, string> = {};
 
 export function useWorkspace(): WorkspaceModel {
   const portfolio = usePortfolio();
@@ -157,7 +166,7 @@ export function useWorkspace(): WorkspaceModel {
     direct,
     split.cash,
     benchmark,
-    countriesLoad.data,
+    countriesLoad.data?.companies ?? null,
   );
 
   const fundByTicker = useMemo(() => {
@@ -167,7 +176,7 @@ export function useWorkspace(): WorkspaceModel {
   }, [funds]);
 
   const countryOf = useCallback(
-    (companyId: string) => countriesLoad.data?.[companyId] ?? null,
+    (companyId: string) => countriesLoad.data?.companies[companyId] ?? null,
     [countriesLoad.data],
   );
 
@@ -194,7 +203,7 @@ export function useWorkspace(): WorkspaceModel {
     pendingFunds: pending,
     fundsError,
     securities,
-    countries: countriesLoad.data,
+    countries: countriesLoad.data?.companies ?? null,
     benchmark,
     ledger,
     ledgerError,
@@ -209,5 +218,6 @@ export function useWorkspace(): WorkspaceModel {
     openCompany,
     fundByTicker,
     countryOf,
+    contested: countriesLoad.data?.contested ?? EMPTY_CONTESTED,
   };
 }

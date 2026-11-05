@@ -332,11 +332,11 @@ export function companyCountry(
  */
 const TIER_LABELS: Record<CountryTier, string> = {
   US: "United States",
-  DM: "Developed ex-US",
-  EM: "Emerging markets",
-  OTHER: "Other domicile",
+  DM: "International Developed ex-US",
+  EM: "Emerging Markets",
 };
 
-export function tierLabel(tier: CountryTier): string {
-  return TIER_LABELS[tier];
+/** The words for a tier, or `null` when the release has no country to classify. */
+export function tierLabel(tier: CountryTier | null): string | null {
+  return tier === null ? null : TIER_LABELS[tier];
 }

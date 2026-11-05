@@ -64,7 +64,11 @@ vi.mock("@/lib/use-release", () => ({
   useCatalogue: () => ({ status: "idle", data: null, error: null }),
   useFunds: () => ({ funds: [VTI, VXUS, BND], pending: [], error: null }),
   useBenchmark: () => ({ status: "idle", data: null, error: null }),
-  useCountries: () => COUNTRIES,
+  useCountries: () => ({
+    status: "ready",
+    data: { companies: COUNTRIES, contested: {} },
+    error: null,
+  }),
 }));
 
 const RELEASE = { as_of: "2026-10-30.8" } as unknown as ReleaseDescriptor;

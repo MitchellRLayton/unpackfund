@@ -133,7 +133,7 @@ describe("mixTotals", () => {
 });
 
 describe("marketSplit", () => {
-  it("places US, developed, emerging, and leaves the rest unplaced", () => {
+  it("places US, developed, emerging, and leaves only the unknown unplaced", () => {
     const split = marketSplit(
       [
         { company_id: "c_0000000001", weight: 0.5 },
@@ -148,11 +148,13 @@ describe("marketSplit", () => {
         c_0000000004: "KY",
       },
     );
-    expect(split.us).toBeCloseTo(0.5, 10);
+    // The Cayman holding is the United States: an offshore registration is not a
+    // market, and its shares trade in New York.
+    expect(split.us).toBeCloseTo(0.55, 10);
     expect(split.dm).toBeCloseTo(0.3, 10);
     expect(split.em).toBeCloseTo(0.1, 10);
-    // The Cayman holding and the 5% no company resolved for are one segment.
-    expect(split.unplaced).toBeCloseTo(0.1, 10);
+    // Only the 5% no company resolved for is left over.
+    expect(split.unplaced).toBeCloseTo(0.05, 10);
   });
 
   it("puts everything unplaced when no domiciles are known", () => {
