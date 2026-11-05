@@ -158,6 +158,32 @@ describe("buildAnswer — the honest refusals", () => {
     );
   });
 
+  it("places a position with no company by the country its own filing states", () => {
+    // Half of this fund is a position the release could not tie to a company, and its
+    // filing says Switzerland. The Markets lens places that weight in developed ex-US
+    // from `unmapped.securities_by_country`; the sentence has to place it too, or the
+    // two surfaces disagree about the same portfolio. It did, by 2.3 points, before
+    // this test existed.
+    const document = fund("SWIS", 50, [["c_apple", 5_000]]);
+    document.holdings.push({
+      company_id: null,
+      name: "Unidentified position",
+      ticker: null,
+      asset_cat: "equity",
+      weight_bp: 5_000,
+      filed_country: "CH",
+    });
+    const ledger = buildLedger({
+      funds: [document],
+      weights: { SWIS: 1 },
+      countries: COUNTRIES,
+    });
+    const answer = buildAnswer({ kind: "ready", ledger, funds: [document] });
+    expect(flat(answer.sentences[2])).toBe(
+      "By market: 50.0% in the United States, 50.0% in international developed markets outside it, 0.0% in emerging markets.",
+    );
+  });
+
   it("omits the market split entirely when the release places no company", () => {
     const ledger = buildLedger({ funds: [vti, vxus, bnd], weights: WEIGHTS });
     const answer = buildAnswer({ kind: "ready", ledger, funds: [vti, vxus, bnd] });
