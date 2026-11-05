@@ -373,6 +373,22 @@ def test_the_bar_and_its_table_are_the_same_numbers_with_the_codes_in_text():
     assert codes["Emerging Markets"] == "TW"
 
 
+def test_the_short_answer_names_the_three_buckets_the_way_the_bar_does():
+    """The sentence a reader meets first, in the same three words as the bar.
+
+    It said "in US companies" and "in other developed markets" — a fourth and a
+    fifth name for two of the three buckets, on the same page as the bar. The
+    operator asked for one set of names; this is the test that holds it.
+    """
+    page = render(tiered(), countries=COUNTRIES)
+    sentence = re.search(r'<p class="answer__sentence">Of the .*?</p>', page, re.S).group(0)
+    assert "in the United States" in sentence
+    assert "in international developed markets outside it" in sentence
+    assert "in emerging markets" in sentence
+    assert "other developed markets" not in page
+    assert "US companies" not in page
+
+
 def test_a_company_the_vote_could_not_decide_is_placed_by_the_contested_map():
     """The decided map wins; the contested map is the second answer, never merged."""
     page = render(tiered(), countries=COUNTRIES, contested={"c_0000009999": "JP"})

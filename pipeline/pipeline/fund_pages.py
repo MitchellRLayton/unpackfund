@@ -662,16 +662,17 @@ def render_page(
         )
 
     if segments:
-        # `61.2% is in US companies, 27.4% in other developed markets, 9.1% in
-        # emerging markets, and 2.3% is in companies whose domicile this release
-        # does not publish` — the design system's split sentence.
+        # `61.2% is in the United States, 27.4% in international developed markets
+        # outside it, 9.1% in emerging markets, and 2.3% is in companies whose
+        # domicile this release does not publish` — the design system's split
+        # sentence, in the same three words the bar and the table use.
         parts = []
         for index, segment in enumerate(segments):
             value = f"<strong>{segment.share:.2f}%</strong>"
             if segment.key == "US":
-                phrase = "in US companies"
+                phrase = "in the United States"
             elif segment.key == "DM":
-                phrase = "in other developed markets"
+                phrase = "in international developed markets outside it"
             elif segment.key == "EM":
                 phrase = "in emerging markets"
             elif segment.key == "OTHER":
