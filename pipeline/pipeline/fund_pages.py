@@ -211,9 +211,10 @@ APP_ROUTES = (
 CSS_NAME = "fund-page.css"
 
 #: `web/lib/country-tier.ts`, restated. The app owns the classification and this is
-#: read-only copy of it: `test_country_tiers_match_the_app` parses that file and
-#: fails on any difference, so the two can disagree only by failing the suite.
-TIER_AS_OF = "2026-11-02"
+#: read-only copy of it: `test_the_tier_table_matches_the_apps_own_convention` parses
+#: that file and fails on any difference, so the two can disagree only by failing the
+#: suite.
+TIER_AS_OF = "2026-11-05"
 TIER_CONVENTION = "FTSE Russell equity country classification"
 
 DEVELOPED_EX_US = frozenset(
@@ -230,25 +231,32 @@ EMERGING = frozenset(
     }
 )
 
-#: The fifth bucket. The app's `tierOf(null)` folds "no country" into `OTHER`; the
-#: bar draws it apart, because "this domicile is in neither FTSE list" and "the
-#: release has no domicile for this company" are different facts and only one of
-#: them is about the company. The table row prints it as a fact about the release.
-UNPLACED = "unplaced"
-
-#: Draw order, and the words the page prints for each. Never colour alone.
-TIERS: tuple[tuple[str, str], ...] = (
-    ("US", "US"),
-    ("DM", "Other developed"),
-    ("EM", "Emerging"),
-    ("OTHER", "Untiered"),
-    (UNPLACED, "Unknown"),
+#: Offshore holding domiciles, assigned to the United States. These are places a
+#: company is registered, not places it operates or lists: the operating business is
+#: usually American and the shares trade in New York, which is where FTSE's
+#: country-of-risk method lands too.
+OFFSHORE_HOLDCO = frozenset(
+    {"BM", "BS", "GG", "GI", "IM", "JE", "KY", "MC", "MH", "PA", "VG"}
 )
 
-#: `data-tier` / `bar__seg--*` / `rowbar__fill--*` suffix per bucket. The four
-#: `CountryTier` values are the app's classes; the fifth is `unplaced`, the design
-#: system's hatched segment for "no decision" (never a guess, never `none`).
-TIER_CLASS = {"US": "us", "DM": "dm", "EM": "em", "OTHER": "none", UNPLACED: "unplaced"}
+#: United States territories, which are the United States for a market split.
+US_TERRITORY = frozenset({"PR"})
+
+#: European Union and EEA members that FTSE classifies as frontier and the IMF calls
+#: advanced. In the single market and trading in Europe, so developed ex-US here.
+ADVANCED_FRONTIER = frozenset({"BG", "CY", "EE", "HR", "LT", "LV", "MT", "SI", "SK"})
+
+#: Draw order, and the words the page prints for each. Never colour alone. Three, and
+#: no fourth: "no market tier" is a question the page could not answer rather than an
+#: answer, so what it cannot place is stated in prose instead of drawn.
+TIERS: tuple[tuple[str, str], ...] = (
+    ("US", "United States"),
+    ("DM", "International Developed ex-US"),
+    ("EM", "Emerging Markets"),
+)
+
+#: `data-tier` / `bar__seg--*` / `rowbar__fill--*` suffix per bucket.
+TIER_CLASS = {"US": "us", "DM": "dm", "EM": "em"}
 
 
 @dataclass(frozen=True)
@@ -347,6 +355,36 @@ def _holdings(fund: dict) -> list[dict]:
     return rows
 
 
+def load_contested(release_dir: Path) -> dict[str, str]:
+    """`company_id → ISO country` for the companies the vote could not decide.
+
+    A second, weaker answer published beside the decided one and never merged into it:
+    the company tag keeps "we decline to place it", and the page places the company by
+    the plurality so the holdings table and the market bar cannot disagree. Absent on a
+    release published before 2026-11-05, which is not an error — the page then places
+    only what the decided map covers, exactly as it did before.
+    """
+    path = release_dir / COUNTRIES_FILE
+    if not path.exists():
+        return {}
+    try:
+        document = json.loads(path.read_text())
+    except (OSError, ValueError) as error:
+        raise SystemExit(f"{path}: cannot read the country map ({error})") from error
+    contested = document.get("contested") if isinstance(document, dict) else None
+    if not isinstance(contested, dict):
+        return {}
+    return {
+        company_id: code
+        for company_id, code in contested.items()
+        if isinstance(company_id, str)
+        and isinstance(code, str)
+        and len(code) == 2
+        and code.isascii()
+        and code.isupper()
+    }
+
+
 def load_countries(release_dir: Path) -> dict[str, str]:
     """`company_id → ISO country` from the release, or `{}` when it publishes none.
 
@@ -376,17 +414,26 @@ def load_countries(release_dir: Path) -> dict[str, str]:
     }
 
 
-def tier_of(country: str | None) -> str:
-    """One domicile's bucket. An unlisted code is `OTHER` (untiered), never a guess."""
+def tier_of(country: str | None) -> str | None:
+    """One domicile's bucket, or `None` when there is no domicile to classify.
+
+    Total over every ISO alpha-2 code: a code FTSE does not classify is placed by one
+    of the three rules above, so the bar never has a fourth segment to draw. `None` is
+    reserved for "the release has no country for this company", which is a different
+    statement and is answered by the release's contested map, not by a default here.
+    """
     if not country:
-        return UNPLACED
-    if country == "US":
+        return None
+    # The release's codes are ISO-3166 alpha-2 upper case and hash-checked, so this is
+    # a no-op on valid data. It is here because the residue rule is total: without it a
+    # lower-case "kr" would fall through to emerging and quietly put Korea in the wrong
+    # bucket, which is the one failure mode a three-bucket table cannot show.
+    code = country.strip().upper()
+    if code == "US" or code in US_TERRITORY or code in OFFSHORE_HOLDCO:
         return "US"
-    if country in DEVELOPED_EX_US:
+    if code in DEVELOPED_EX_US or code in ADVANCED_FRONTIER:
         return "DM"
-    if country in EMERGING:
-        return "EM"
-    return "OTHER"
+    return "EM"
 
 
 @dataclass(frozen=True)
@@ -400,36 +447,81 @@ class Segment:
     codes: tuple[str, ...]
 
 
-def market_split(rows: list[dict], countries: dict[str, str]) -> tuple[Segment, ...]:
-    """The bar: mapped weight by market tier, in draw order, biggest included.
+@dataclass(frozen=True)
+class MarketSplit:
+    """The bar, its denominator, and what the bar does not draw."""
 
-    The denominator is the weight that maps to a company, not the whole fund: the
-    coverage meter prints that share, and these segments are its composition, so
-    the two sections cannot disagree about what "mapped" means. A tier with no
-    weight is absent rather than drawn at zero — a zero-width segment is not a
-    fact, and printing 0.00% four times makes a one-country fund look diversified.
+    segments: tuple[Segment, ...]
+    #: The bar's denominator: the weight the release can place in a market.
+    placed_bp: int
+    #: Weight the release cannot place, stated in prose rather than drawn.
+    unplaced_bp: int
+    #: Companies inside `unplaced_bp`.
+    unplaced_companies: int
+
+
+def market_split(
+    rows: list[dict],
+    countries: dict[str, str],
+    contested: dict[str, str] | None = None,
+) -> MarketSplit:
+    """The bar: placed weight by market tier, in draw order, biggest included.
+
+    Three segments and no fourth. A company is placed by the country the release
+    decided, then by the release's *contested* answer for a company the vote could not
+    decide. A position that resolved to no company is placed by the country its own
+    filing states for it (`filed_country`), which is the only country evidence such a
+    row has. Cash and derivative lines are never placed: they have no market.
+
+    The denominator is the weight the release can place, not the whole fund. The
+    coverage meter beside the bar prints the share that maps to a *company*, which is a
+    different and narrower number, and the sentence under the bar says which total the
+    bar is a share of. A tier with no weight is absent rather than drawn at zero — a
+    zero-width segment is not a fact, and printing 0.00% three times makes a
+    one-country fund look diversified.
     """
+    contested = contested or {}
     totals = {key: 0 for key, _ in TIERS}
     codes: dict[str, set[str]] = {key: set() for key, _ in TIERS}
+    unplaced_bp = 0
+    unplaced_companies = 0
     for row in rows:
-        company_id = row.get("company_id")
-        if not company_id:
-            continue
         weight_bp = int(row.get("weight_bp") or 0)
         if weight_bp <= 0:
             continue
-        country = countries.get(company_id)
+        company_id = row.get("company_id")
+        if company_id:
+            country = countries.get(company_id) or contested.get(company_id)
+        elif row.get("asset_cat") in ("cash", "derivative"):
+            continue
+        else:
+            country = row.get("filed_country")
         key = tier_of(country)
+        if key is None:
+            unplaced_bp += weight_bp
+            if company_id:
+                unplaced_companies += 1
+            continue
         totals[key] += weight_bp
-        if country:
-            codes[key].add(country)
-    traced = sum(totals.values())
-    if traced <= 0:
-        return ()
-    return tuple(
-        Segment(key, label, totals[key], totals[key] * 100.0 / traced, tuple(sorted(codes[key])))
-        for key, label in TIERS
-        if totals[key] > 0
+        codes[key].add(country.strip().upper())
+    placed = sum(totals.values())
+    if placed <= 0:
+        return MarketSplit((), 0, unplaced_bp, unplaced_companies)
+    return MarketSplit(
+        tuple(
+            Segment(
+                key,
+                label,
+                totals[key],
+                totals[key] * 100.0 / placed,
+                tuple(sorted(codes[key])),
+            )
+            for key, label in TIERS
+            if totals[key] > 0
+        ),
+        placed,
+        unplaced_bp,
+        unplaced_companies,
     )
 
 
@@ -507,6 +599,7 @@ def render_page(
     style: Style | None = None,
     similar: list[tuple[str, str]] | None = None,
     countries: dict[str, str] | None = None,
+    contested: dict[str, str] | None = None,
 ) -> str:
     """One fund document → one standalone HTML page."""
     ticker = _esc(fund["ticker"])
@@ -526,7 +619,8 @@ def render_page(
     total_rows = len(rows)
     mapped = sum(1 for row in rows if row.get("company_id"))
     shown = rows[:TOP_HOLDINGS]
-    segments = market_split(rows, countries or {})
+    split = market_split(rows, countries or {}, contested)
+    segments = split.segments
     # Only the positive classification is printed. The release's `etf` flag is a name
     # test, and a fund whose name does not say "ETF" can still be one (VTI is filed as
     # "Vanguard Total Stock Market Index Fund"), so "not an ETF" is not a fact this
@@ -608,13 +702,18 @@ def render_page(
     for rank, row in enumerate(shown, start=1):
         company = _esc(row.get("name") or "unknown")
         company_id = row.get("company_id")
-        country = (countries or {}).get(company_id or "") or ""
+        if company_id:
+            country = (countries or {}).get(company_id) or (contested or {}).get(company_id) or ""
+        elif row.get("asset_cat") in ("cash", "derivative"):
+            country = ""
+        else:
+            country = row.get("filed_country") or ""
         # The row contract is the ledger's (`web/components/LedgerTable.tsx`): the tier
         # is an attribute the stylesheet turns into the row's left edge, the two-letter
         # code prints the same fact in text, and a company whose country this release
         # does not publish carries `data-country-missing` rather than a guessed tier.
         attributes = ""
-        if company_id and country:
+        if country:
             attributes = f' data-country="{_esc(country)}" data-tier="{_esc(tier_of(country))}"'
         elif company_id:
             attributes = ' data-country-missing="true"'
@@ -631,7 +730,7 @@ def render_page(
             # securities-lending money-market position is often third), so the type
             # is printed beside the name rather than in a column a phone hides.
             chips += f' <span class="chip">{category}</span>'
-        if company_id and country:
+        if country:
             country_cell = (
                 f'<span class="country-tag"><span aria-hidden="true">{_flag(country)}</span> '
                 f"{_esc(country)}</span>"
@@ -663,9 +762,12 @@ def render_page(
     if countries:
         tier_caption = (
             " The row's left edge is the company's market tier, and the two-letter code beside it "
-            "prints the same fact: blue United States, ochre other developed, deeper ochre "
-            "emerging, solid grey untiered, hatched grey no country decision. Domiciles follow "
-            f"the {TIER_CONVENTION}, as of {TIER_AS_OF}."
+            "prints the same fact: blue United States, ochre international developed ex-US, deeper "
+            "ochre emerging. Every domicile has one of the three — an offshore holding domicile "
+            "such as Bermuda or the Cayman Islands is the United States, because that is where its "
+            "shares trade. A company the vote could not decide is placed by the release's "
+            "plurality answer, and a position that resolved to no company by the country its own "
+            f"filing states. Domiciles follow the {TIER_CONVENTION}, as of {TIER_AS_OF}."
         )
     else:
         tier_caption = ""
@@ -726,14 +828,15 @@ def render_page(
     elif not segments:
         market_intro = ""
         market_html = """<div class="notice notice--quiet">
-          <p>None of this fund's weight maps to a company, so there is no market split to draw.</p>
+          <p>None of this fund's weight can be placed in a market, so there is no market split to
+          draw.</p>
         </div>"""
     else:
         market_intro = (
-            f"Share of the {coverage:.1f}% of the fund's weight that maps to a company, by market "
-            f"tier. Developed and emerging follow the {TIER_CONVENTION}, as of {TIER_AS_OF}; a "
-            "domicile in neither list is untiered, and a company whose domicile the release does "
-            "not publish is unknown."
+            "Share of the weight this fund's filing places in a market, by tier. Developed and "
+            f"emerging follow the {TIER_CONVENTION}, as of {TIER_AS_OF}; an offshore holding "
+            "domicile such as Bermuda or the Cayman Islands is the United States, because that is "
+            "where its shares trade. Cash and derivatives are outside the bar."
         )
         bars = "\n              ".join(
             f'<span class="bar__seg bar__seg--{TIER_CLASS[segment.key]}" '
@@ -755,7 +858,15 @@ def render_page(
             for segment in segments
         )
         spoken = ", ".join(f"{segment.label} {segment.share:.2f}%" for segment in segments)
-        market_html = f"""<div class="bar bar--tall" role="img" aria-label="Share of the mapped weight: {spoken}">
+        remainder = ""
+        if split.unplaced_bp > 0:
+            remainder = (
+                f" A further {pct(split.unplaced_bp)} of the fund is weight the release cannot "
+                f"place in a market — {_plural(split.unplaced_companies, 'company', 'companies')} "
+                "with no country answer, and positions whose filing states none — and it is not "
+                "drawn."
+            )
+        market_html = f"""<div class="bar bar--tall" role="img" aria-label="Share of the placed weight: {spoken}">
               {bars}
             </div>
             <div class="legend">
@@ -764,8 +875,8 @@ def render_page(
             <div class="table-wrap">
               <table class="table">
                 <caption class="small muted">The bar above, as numbers: each tier's share of the
-                mapped weight, and the two-letter domicile codes behind it. Each share is rounded
-                once, from the fund's exact weights, so the column can sit 0.01 from 100%.</caption>
+                placed weight, and the two-letter domicile codes behind it. Each share is rounded
+                once, from the fund's exact weights, so the column can sit 0.01 from 100%.{remainder}</caption>
                 <thead>
                   <tr><th scope="col">Market tier</th><th scope="col">Codes</th>
                   <th scope="col" class="num">Share</th></tr>
@@ -1195,6 +1306,7 @@ def build(
     by_issuer = _issuer_index(catalogue)
     by_style = _style_index(catalogue)
     countries = load_countries(release_dir)
+    contested = load_contested(release_dir)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / CSS_NAME).write_text(stylesheet(), encoding="utf-8")
@@ -1238,6 +1350,7 @@ def build(
                 else []
             ),
             countries=countries,
+            contested=contested,
         )
         target = out_dir / "f" / ticker / "index.html"
         target.parent.mkdir(parents=True, exist_ok=True)

@@ -294,7 +294,8 @@ def test_a_company_with_no_published_domicile_carries_the_missing_country_flag()
 
 def test_every_tier_gets_its_own_row_edge_and_country_code():
     page = render(tiered(), countries=COUNTRIES)
-    for country, tier in (("US", "US"), ("CH", "DM"), ("TW", "EM"), ("BM", "OTHER")):
+    # Bermuda is an offshore holding domicile: the United States, not a fourth tier.
+    for country, tier in (("US", "US"), ("CH", "DM"), ("TW", "EM"), ("BM", "US")):
         assert f'<tr data-country="{country}" data-tier="{tier}">' in page
     for flag, code in (("🇨🇭", "CH"), ("🇹🇼", "TW"), ("🇧🇲", "BM")):
         assert f'<span aria-hidden="true">{flag}</span> {code}' in page
@@ -333,7 +334,8 @@ def test_no_identifier_we_may_not_publish_appears():
 def test_the_table_caption_prints_the_colour_key_the_bar_uses():
     page = render(fund(), countries=COUNTRIES)
     assert "The row's left edge is the company's market tier" in page
-    assert "hatched grey no country decision" in page
+    assert "ochre international developed ex-US" in page
+    assert "an offshore holding domicile" in page
     assert fund_pages.TIER_CONVENTION in page
     assert fund_pages.TIER_AS_OF in page
 
@@ -343,10 +345,11 @@ def test_the_table_caption_prints_the_colour_key_the_bar_uses():
 
 def test_the_bar_and_its_table_are_the_same_numbers_with_the_codes_in_text():
     page = render(tiered(), countries=COUNTRIES)
-    # 970 bp mapped: 400 US, 250 CH, 150 TW, 100 BM, 60 unknown.
-    # The cash row maps to a US company too, so US is 410 bp of the 970 bp mapped.
-    expected = {"US": 42.27, "Other developed": 25.77, "Emerging": 15.46,
-                "Untiered": 10.31, "Unknown": 6.19}
+    # 910 bp placed: 400 US + 100 BM (offshore → US) + 10 cash that maps to a US
+    # company = 510 US; 250 CH; 150 TW. The 60 bp company with no country and the
+    # 30 bp position with no company and no filed country are outside the bar.
+    expected = {"United States": 56.04, "International Developed ex-US": 27.47,
+                "Emerging Markets": 16.48}
     rows = re.findall(
         r'<tr><td>([^<]+)</td><td class="mono">([^<]*)</td><td class="num">([\d.]+)%</td></tr>',
         page,
@@ -361,10 +364,86 @@ def test_the_bar_and_its_table_are_the_same_numbers_with_the_codes_in_text():
     for label, share in expected.items():
         assert f"{label} {share:.2f}%" in page
         assert any(round(width, 2) == share for width in widths), (label, widths)
-    # The codes are text, not only colours.
+    # The codes are text, not only colours. Bermuda is printed under the United
+    # States, which is the whole point of the offshore rule: the code is not hidden,
+    # it is filed under the market its shares trade in.
     codes = {label: codes for label, codes, _share in rows}
-    assert codes["US"] == "US"
-    assert codes["Untiered"] == "BM"
+    assert codes["United States"] == "BM, US"
+    assert codes["International Developed ex-US"] == "CH"
+    assert codes["Emerging Markets"] == "TW"
+
+
+def test_a_company_the_vote_could_not_decide_is_placed_by_the_contested_map():
+    """The decided map wins; the contested map is the second answer, never merged."""
+    page = render(tiered(), countries=COUNTRIES, contested={"c_0000009999": "JP"})
+    rows = re.findall(
+        r'<tr><td>([^<]+)</td><td class="mono">([^<]*)</td><td class="num">([\d.]+)%</td></tr>',
+        page,
+    )
+    shares = {label: float(share) for label, _codes, share in rows}
+    # 970 bp placed now: the 60 bp company joins developed ex-US.
+    assert shares == {"United States": 52.58, "International Developed ex-US": 31.96,
+                      "Emerging Markets": 15.46}
+    # The row is placed by the plurality too, so the table and the bar agree.
+    assert '<tr data-country="JP" data-tier="DM">' in page
+
+
+def test_a_position_with_no_company_is_placed_by_the_country_its_own_filing_states():
+    """The architectural change: a row with no company still has a country."""
+    document = fund(coverage_pct=50.0, holdings=[
+        {"company_id": "c_0001045810", "name": "NVIDIA Corp", "ticker": "NVDA",
+         "asset_cat": "equity", "weight_bp": 500},
+        {"company_id": None, "name": "Toyota Motor Corp", "ticker": None,
+         "asset_cat": "equity", "weight_bp": 300, "filed_country": "JP"},
+        {"company_id": None, "name": "Samsung Electronics Co Ltd", "ticker": None,
+         "asset_cat": "equity", "weight_bp": 200, "filed_country": "KR"},
+    ])
+    page = render(document, countries=COUNTRIES)
+    rows = re.findall(
+        r'<tr><td>([^<]+)</td><td class="mono">([^<]*)</td><td class="num">([\d.]+)%</td></tr>',
+        page,
+    )
+    assert {label: float(share) for label, _codes, share in rows} == {
+        "United States": 50.0, "International Developed ex-US": 50.0,
+    }
+    # The row prints the country it was placed by, and carries the tier edge.
+    assert '<tr data-country="JP" data-tier="DM">' in page
+    assert '<tr data-country="KR" data-tier="DM">' in page
+
+
+def test_cash_and_derivatives_are_outside_the_bar_even_with_a_filed_country():
+    """They have no market. A country on a cash line is a filing artifact, not a place."""
+    document = fund(coverage_pct=50.0, holdings=[
+        {"company_id": "c_0001045810", "name": "NVIDIA Corp", "ticker": "NVDA",
+         "asset_cat": "equity", "weight_bp": 500},
+        {"company_id": None, "name": "Cash sweep", "ticker": None,
+         "asset_cat": "cash", "weight_bp": 300, "filed_country": "US"},
+        {"company_id": None, "name": "S&P 500 future", "ticker": None,
+         "asset_cat": "derivative", "weight_bp": 200, "filed_country": "US"},
+    ])
+    page = render(document, countries=COUNTRIES)
+    rows = re.findall(
+        r'<tr><td>([^<]+)</td><td class="mono">([^<]*)</td><td class="num">([\d.]+)%</td></tr>',
+        page,
+    )
+    assert {label: float(share) for label, _codes, share in rows} == {"United States": 100.0}
+    # Neither line is placed, so neither row carries a country tag.
+    for name in ("Cash sweep", "S&amp;P 500 future"):
+        row = re.search(rf"<tr[^>]*>(?:(?!</tr>).)*?{name}.*?</tr>", page, re.S).group(0)
+        assert "data-country" not in row
+        assert '<span class="muted">—</span>' in row
+
+
+def test_the_bar_states_what_it_could_not_place_rather_than_drawing_a_fourth_segment():
+    page = render(tiered(), countries=COUNTRIES)
+    # 90 bp of 1,000: the 60 bp company with no country and the 30 bp position with
+    # neither a company nor a filed country.
+    assert "A further 0.90% of the fund is weight the release cannot place" in page
+    assert "1 company with no country answer" in page
+    assert "and it is not drawn" in page
+    # Three segments, never four.
+    bar = re.search(r'<div class="bar bar--tall".*?</div>', page, re.S).group(0)
+    assert len(re.findall(r'class="bar__seg bar__seg--', bar)) == 3
 
 
 def test_the_bar_says_not_traced_when_the_release_publishes_no_countries():
@@ -381,7 +460,7 @@ def test_a_fund_with_no_mapped_weight_has_no_split_to_draw():
         {"company_id": None, "name": "Some Trust", "ticker": None,
          "asset_cat": "equity", "weight_bp": 100},
     ]), countries=COUNTRIES)
-    assert "None of this fund's weight maps to a company" in page
+    assert "None of this fund's weight can be placed in a market" in page
     assert 'class="bar bar--tall"' not in page
 
 
@@ -404,13 +483,28 @@ def test_the_tier_table_matches_the_apps_own_convention():
     assert "US" not in fund_pages.EMERGING
 
 
-def test_an_unlisted_domicile_is_untiered_not_guessed():
-    assert fund_pages.tier_of("BM") == "OTHER"
+def test_an_unlisted_domicile_is_placed_by_one_of_the_three_rules():
+    """Three buckets and no fourth: every code lands in one, and only "no code" is None."""
     assert fund_pages.tier_of("US") == "US"
     assert fund_pages.tier_of("CH") == "DM"
     assert fund_pages.tier_of("TW") == "EM"
-    assert fund_pages.tier_of(None) == fund_pages.UNPLACED
-    assert fund_pages.tier_of("") == fund_pages.UNPLACED
+    # Offshore holding domiciles are the United States, because that is where they trade.
+    for code in ("BM", "KY", "VG", "GG", "JE", "IM", "PA", "MH", "BS", "GI", "MC"):
+        assert fund_pages.tier_of(code) == "US"
+    # A United States territory is the United States.
+    assert fund_pages.tier_of("PR") == "US"
+    # The European frontier is developed ex-US, not emerging.
+    for code in ("BG", "CY", "EE", "HR", "LT", "LV", "MT", "SI", "SK"):
+        assert fund_pages.tier_of(code) == "DM"
+    # Everything else with no FTSE tier is emerging.
+    for code in ("KZ", "AR", "PE", "MA", "NG", "MU", "KE", "RU", "FO", "LI"):
+        assert fund_pages.tier_of(code) == "EM"
+    # `None` is "the release has no country", which is a different statement.
+    assert fund_pages.tier_of(None) is None
+    assert fund_pages.tier_of("") is None
+    # The residue rule is total, so a lower-case code must not fall through to emerging.
+    assert fund_pages.tier_of("kr") == "DM"
+    assert fund_pages.tier_of(" ky ") == "US"
 
 
 # --- The links: the app's fragment grammar, or nothing --------------------------

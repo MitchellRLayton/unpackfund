@@ -55,7 +55,7 @@ const ROWS = [
   ["Nestlé S.A.", "NESN", "CH", "DM", 2.31, 41, 3],
   ["Taiwan Semiconductor", "TSM", "TW", "EM", 2.04, 44, 3],
   ["Samsung Electronics", "005930", "KR", "EM", 1.72, 39, 2],
-  ["Unclassified holding", "—", null, "OTHER", 0.86, 0, 1],
+  ["Cayman holdco", "—", "KY", "US", 0.86, 0, 1],
 ] as const;
 
 export default function DesignPage() {

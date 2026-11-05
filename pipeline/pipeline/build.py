@@ -354,6 +354,9 @@ def build_fund(
                 asset_cat=row.asset_cat,
                 weight_bp=row.weight_bp,
                 identified=row.identified,
+                # The filing's own invCountry, published only on a row that named no
+                # company (``artifact.holding_row`` decides that, not this call site).
+                filed_country=row.country,
             )
             for row in vector.holdings
         ],
@@ -1068,6 +1071,24 @@ def build_release(
             f"{fallback_stats['agreement']['cover_page_compared']:,})"
         )
 
+    # The Markets bar has to place every position, and a company the vote and the
+    # fallback both refused is still weight. A second, weaker answer — the country
+    # holding the largest share of the money in it — is published *beside* the map and
+    # never merged into it: the company tag keeps "we decline to place it", and the bar
+    # gets a bucket. Computed after the fallback so it only covers what is still
+    # undecided, and projected to the release's companies for the same reason the map
+    # is (a country on a company with no shard is an extra key the gate refuses).
+    contested_countries: dict[str, str] | None = None
+    if countries:
+        contested_countries = company_countries.contested(
+            country_tally, release_company_set - set(countries)
+        )
+        _log(
+            f"contested countries: {len(contested_countries):,} of "
+            f"{len(release_company_set) - len(countries):,} undecided company(ies) "
+            f"placed by their largest share"
+        )
+
     document = manifest_mod.build_manifest(
         release_id=release,
         funds=documents,
@@ -1104,6 +1125,7 @@ def build_release(
         countries=countries,
         invalid_country_rows=country_tally.invalid_rows,
         countries_fallback=fallback_stats,
+        countries_contested=contested_countries,
     )
     elapsed = time.monotonic() - started
     _log(

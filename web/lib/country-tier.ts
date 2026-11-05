@@ -7,7 +7,7 @@
  * Greece, Peru, Iceland, Romania, Vietnam, Luxembourg), so a table with no stated
  * convention is a guess wearing a claim's clothes.
  *
- * **The convention is FTSE Russell's equity country classification, as of 2026-11-02.**
+ * **The convention is FTSE Russell's equity country classification, as of 2026-11-05.**
  * Chosen because the funds this site looks through are FTSE-indexed: VTI, VT and VXUS
  * track FTSE indexes, so "developed ex-US" here means what it means on the fund's own
  * page. Under MSCI the same portfolio would put Korea (0.8% of VT) in emerging while
@@ -36,25 +36,51 @@
  *   Slovenia are frontier**, though the IMF calls all nine advanced. "Advanced economy"
  *   and "developed market" are different questions; this table answers the market one.
  *
- * `OTHER` is the honest fourth bucket: a domicile that neither provider calls developed
- * or emerging, or one with no market classification at all. It covers 4.2% of the
- * companies in the 2026-11-02.7 release, most of them offshore holding domiciles —
- * Cayman (KY, 230 companies), Bermuda (BM, 48), the British Virgin Islands (VG),
- * Guernsey (GG), Jersey (JE), the Isle of Man (IM), Panama (PA) — plus Argentina,
- * Russia, Puerto Rico and Liechtenstein. Rendering those as emerging would be a
- * fabrication, and rendering them with no edge at all would make them indistinguishable
- * from a company whose filings disagree, so the row keeps its country code and loses
- * only the colour.
+ * ## Three buckets, and where the rest of the world goes
+ *
+ * The Markets page shows exactly three segments — United States, International
+ * Developed ex-US, Emerging Markets — because that is the split a reader compares
+ * against an issuer's own factsheet, and a fourth "no market tier" segment is a
+ * question the page cannot answer rather than an answer. So a domicile FTSE does not
+ * classify is assigned to the market its securities actually trade in, by one of three
+ * stated rules (operator's instruction, 2026-11-05):
+ *
+ * - **Offshore holding domiciles are the United States.** Bermuda, the Cayman Islands,
+ *   the British Virgin Islands, Jersey, Guernsey, the Isle of Man, the Marshall
+ *   Islands, Panama, the Bahamas, Gibraltar and Monaco are where a company is
+ *   *registered*, not where it trades: the operating business is usually American and
+ *   the shares are listed in New York. FTSE reaches the same place from the other
+ *   direction — it classifies these companies by country of risk, which for the ones
+ *   the funds hold is the United States. This is the single largest correction the
+ *   convention makes: on the 2026-11-04.4 release these domiciles were 1.44% of gross
+ *   weight, and 96% of everything the old fourth bucket held.
+ * - **Puerto Rico is the United States**, because it is a United States territory.
+ * - **The European Union and EEA frontier markets are developed ex-US.** Bulgaria,
+ *   Croatia, Cyprus, Estonia, Latvia, Lithuania, Malta, Slovakia and Slovenia are
+ *   frontier to FTSE and advanced to the IMF; they are in the single market, they trade
+ *   in Europe, and calling them emerging would put Estonia in the same bucket as
+ *   Vietnam.
+ * - **Everything else with no FTSE tier is emerging.** That is the frontier markets —
+ *   Kazakhstan, Argentina, Peru, Morocco, Nigeria, Mauritius, Kenya, Sri Lanka,
+ *   Bangladesh, Pakistan, Bahrain, Oman, Jordan, Tunisia, Botswana, Ghana, Papua New
+ *   Guinea, the Faroe Islands, Russia (suspended) and Liechtenstein. A three-bucket
+ *   view has no fourth place for them, and frontier is closer to emerging than to
+ *   either of the other two. The whole residue is 0.06% of gross weight.
+ *
+ * `null` in, `null` out: a company the release declines to place has no tier, and
+ * `null` is how that is said. It is never defaulted to a bucket — the Markets bar
+ * places such a company from the release's *contested* map instead, which is a
+ * different question with its own stated rule.
  *
  * Changing this table is a dated change: update `TIER_AS_OF`, record it in the build
  * log, and let `country-tier.test.ts` (counts, disjointness, spot checks) and
  * `theme.test.ts` (three distinguishable inks) run before it ships.
  */
 
-export type CountryTier = "US" | "DM" | "EM" | "OTHER";
+export type CountryTier = "US" | "DM" | "EM";
 
 /** The vintage of the classification below. A code with a newer provider release is not covered. */
-export const TIER_AS_OF = "2026-11-02";
+export const TIER_AS_OF = "2026-11-05";
 
 /** The convention the two lists follow, named where a reader can check it. */
 export const TIER_CONVENTION = "FTSE Russell equity country classification";
@@ -119,21 +145,76 @@ const EMERGING: ReadonlySet<string> = new Set([
   "ZA", // South Africa
 ]);
 
-/** The two lists, exposed for the test that checks them against the published counts. */
+/**
+ * Offshore holding domiciles, assigned to the United States.
+ *
+ * These are places a company is registered, not places it operates or lists. The
+ * operating business behind a Cayman or Bermuda registration is usually American and
+ * the shares trade in New York, which is why FTSE's country-of-risk method lands on the
+ * United States for the ones these funds hold. Assigning them anywhere else would put
+ * a New York-listed company in a bucket its own index does not use.
+ */
+const OFFSHORE_HOLDCO: ReadonlySet<string> = new Set([
+  "BM", // Bermuda
+  "BS", // Bahamas
+  "GG", // Guernsey
+  "GI", // Gibraltar
+  "IM", // Isle of Man
+  "JE", // Jersey
+  "KY", // Cayman Islands
+  "MC", // Monaco
+  "MH", // Marshall Islands
+  "PA", // Panama
+  "VG", // British Virgin Islands
+]);
+
+/** United States territories, which are the United States for a market split. */
+const US_TERRITORY: ReadonlySet<string> = new Set([
+  "PR", // Puerto Rico
+]);
+
+/**
+ * European Union and EEA members that FTSE classifies as frontier and the IMF calls
+ * advanced. They are in the single market and trade in Europe, so they are developed
+ * ex-US here rather than emerging.
+ */
+const ADVANCED_FRONTIER: ReadonlySet<string> = new Set([
+  "BG", // Bulgaria
+  "CY", // Cyprus
+  "EE", // Estonia
+  "HR", // Croatia
+  "LT", // Lithuania
+  "LV", // Latvia
+  "MT", // Malta
+  "SI", // Slovenia
+  "SK", // Slovakia
+]);
+
+/** The lists, exposed for the test that checks them against the published counts. */
 export const TIER_SETS = {
   developedExUs: DEVELOPED_EX_US,
   emerging: EMERGING,
+  offshoreHoldco: OFFSHORE_HOLDCO,
+  usTerritory: US_TERRITORY,
+  advancedFrontier: ADVANCED_FRONTIER,
 } as const;
 
 /**
- * The tier for a domicile. Anything the release does not classify as American, developed
- * or emerging is `OTHER` — never `EM`, and never a guess: an unlisted code is a code this
- * table has no opinion about, which is what `OTHER` says.
+ * The tier for a domicile, or `null` when there is no domicile to classify.
+ *
+ * Total over every ISO alpha-2 code: a code FTSE does not classify is placed by the
+ * three rules in the header, so the Markets bar never has a fourth segment to draw.
+ * `null` is reserved for "the release has no country for this company", which is a
+ * different statement and is answered by the contested map, not by a default here.
  */
-export function tierOf(country: string | null | undefined): CountryTier {
-  if (!country) return "OTHER";
-  if (country === "US") return "US";
-  if (DEVELOPED_EX_US.has(country)) return "DM";
-  if (EMERGING.has(country)) return "EM";
-  return "OTHER";
+export function tierOf(country: string | null | undefined): CountryTier | null {
+  if (!country) return null;
+  // The release's codes are ISO-3166 alpha-2 upper case and hash-checked, so this is a
+  // no-op on valid data. It is here because the residue rule below is total: without it
+  // a lower-case "kr" would fall through to emerging and quietly put Korea in the wrong
+  // bucket, which is the one failure mode a three-bucket table cannot show.
+  const code = country.trim().toUpperCase();
+  if (code === "US" || US_TERRITORY.has(code) || OFFSHORE_HOLDCO.has(code)) return "US";
+  if (DEVELOPED_EX_US.has(code) || ADVANCED_FRONTIER.has(code)) return "DM";
+  return "EM";
 }

@@ -175,7 +175,7 @@ export function marketsCsv(split: MarketSplit, releaseAsOf: string): string {
         tier.bucket,
         "",
         BUCKET_WORD[tier.bucket],
-        tier.bucket === "UNKNOWN" ? "" : TIER_WORD[tier.bucket],
+        TIER_WORD[tier.bucket],
         share(tier.weight),
         tier.companies,
         releaseAsOf,
@@ -183,15 +183,18 @@ export function marketsCsv(split: MarketSplit, releaseAsOf: string): string {
     );
   }
 
+  // The bar draws three segments, so the export has three market rows and no
+  // "unplaced" row: what the bar does not draw is a property of the whole portfolio,
+  // not a fourth market, and it is written as its own section below.
   lines.push(
     csvLine([
-      "market",
-      "UNPLACED",
+      "outside",
+      "TOTAL",
       "",
-      "Unplaced",
+      "Outside the bar",
       "",
-      share(split.unplaced.total),
-      split.unplaced.unknownCompanies,
+      share(split.outside.total),
+      split.outside.unplacedCompanies,
       releaseAsOf,
     ]),
   );
@@ -200,10 +203,10 @@ export function marketsCsv(split: MarketSplit, releaseAsOf: string): string {
     lines.push(
       csvLine([
         "country",
-        country.tier ?? "UNKNOWN",
-        country.code ?? "",
+        country.tier,
+        country.code,
         "",
-        country.tier ? TIER_WORD[country.tier] : "No country answer",
+        TIER_WORD[country.tier],
         share(country.weight),
         country.companies,
         releaseAsOf,

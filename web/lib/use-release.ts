@@ -25,6 +25,7 @@ import {
 import type {
   BenchmarkRollup,
   Catalogue,
+  CompanyCountryMaps,
   CompanyIndex,
   CompanyShard,
   FundDocument,
@@ -317,8 +318,8 @@ export function useBenchmark(
  */
 export function useCountries(
   release: ReleaseDescriptor | null,
-): LoadState<Record<string, string>> {
-  const [state, setState] = useState<LoadState<Record<string, string>>>({
+): LoadState<CompanyCountryMaps> {
+  const [state, setState] = useState<LoadState<CompanyCountryMaps>>({
     status: "loading",
     data: null,
     error: null,

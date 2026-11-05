@@ -43,7 +43,7 @@ const COUNTRIES: Record<string, string> = {
   c_0000000002: "CH",
   c_0000000003: "TW",
   c_0000000004: "US",
-  // A domicile the classification does not list: it belongs to "not placed".
+  // An offshore holding domicile: the United States, because that is where it trades.
   c_0000000005: "KY",
 };
 
@@ -98,7 +98,11 @@ vi.mock("@/lib/use-release", () => ({
     },
     error: null,
   }),
-  useCountries: () => ({ status: "ready", data: COUNTRIES, error: null }),
+  useCountries: () => ({
+    status: "ready",
+    data: { companies: COUNTRIES, contested: {} },
+    error: null,
+  }),
 }));
 
 afterEach(cleanup);
@@ -254,22 +258,24 @@ describe("a whole comparison", () => {
     const bars = within(markets).getAllByRole("img");
     expect(bars).toHaveLength(2);
 
-    // Same 0–100% axis: four segments each, and the text alternative carries the
+    // Same 0–100% axis: three segments each, and the text alternative carries the
     // percentages so the colour is never the only meaning.
     for (const bar of bars) {
-      expect(bar.querySelectorAll(".bar__seg")).toHaveLength(4);
+      expect(bar.querySelectorAll(".bar__seg")).toHaveLength(3);
     }
     expect(bars[0]?.getAttribute("aria-label")).toContain("70.00% United States");
-    expect(bars[0]?.getAttribute("aria-label")).toContain("10.00% Developed ex-US");
-    expect(bars[0]?.getAttribute("aria-label")).toContain("0.00% Not placed");
+    expect(bars[0]?.getAttribute("aria-label")).toContain(
+      "10.00% International Developed ex-US",
+    );
+    expect(bars[0]?.getAttribute("aria-label")).toContain("20.00% Emerging Markets");
 
     const us = within(markets).getByRole("row", { name: /United States/ });
     expect(us.textContent).toContain("70.00%");
-    expect(us.textContent).toContain("20.00%");
-    // Visa's Cayman domicile lands in "not placed" rather than being forced into a market.
-    const unplaced = within(markets).getByRole("row", { name: /Not placed/ });
-    expect(unplaced.textContent).toContain("0.00%");
-    expect(unplaced.textContent).toContain("20.00%");
+    // Visa's Cayman domicile is the United States, not a fourth bucket: Mix B is
+    // 20% Xylem + 20% Visa.
+    expect(us.textContent).toContain("40.00%");
+    // There is no "not placed" row: what the bar cannot place is stated in the caption.
+    expect(within(markets).queryByRole("row", { name: /Not placed/ })).toBeNull();
   });
 });
 

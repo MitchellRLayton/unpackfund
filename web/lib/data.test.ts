@@ -401,7 +401,7 @@ describe("loadCompanyCountries", () => {
       calls += 1;
       return jsonResponse({});
     });
-    expect(map).toEqual({});
+    expect(map).toEqual({ companies: {}, contested: {} });
     expect(calls).toBe(0);
   });
 
@@ -411,7 +411,27 @@ describe("loadCompanyCountries", () => {
       release,
       releaseHost({ "companies/countries.json": countries }),
     );
-    expect(map).toEqual({ c_0000320193: "US", c_0000875320: "TW" });
+    expect(map).toEqual({
+      companies: { c_0000320193: "US", c_0000875320: "TW" },
+      // A release published before the contested map existed has no second answer,
+      // and `{}` is the honest reading of that rather than a missing field.
+      contested: {},
+    });
+  });
+
+  it("returns the contested map beside the decided one, never merged into it", async () => {
+    const withContested = {
+      ...countries,
+      contested_rule: "largest share of the money, at >= 40% of the vote",
+      contested: { c_0001090727: "KY" },
+    };
+    const release = await withCountries(withContested);
+    const map = await loadCompanyCountries(
+      release,
+      releaseHost({ "companies/countries.json": withContested }),
+    );
+    expect(map.companies).toEqual({ c_0000320193: "US", c_0000875320: "TW" });
+    expect(map.contested).toEqual({ c_0001090727: "KY" });
   });
 
   it("refuses bytes that do not match the described hash", async () => {

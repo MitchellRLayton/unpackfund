@@ -89,6 +89,22 @@ MIN_AGREEMENT_BP = 8_000
 #: How many independent filings must name the company before its country is decided.
 MIN_FILINGS = 2
 
+#: The floor for the *contested* map, in basis points of the company's traced value.
+#: Deliberately lower than ``MIN_AGREEMENT_BP``, because it answers a different
+#: question: not "what is this company's domicile" but "which market holds the largest
+#: share of the money in it". A company the vote refuses to place is still weight the
+#: Markets bar has to draw somewhere, and the largest share is the best answer the
+#: filings contain — but a three-way split has no plurality, so the floor stays.
+MIN_PLURALITY_BP = 4_000
+
+#: The contested rule, published beside the vote's rule so a reader can see that the
+#: bar's answer and the company tag's answer are two questions, not one number twice.
+CONTESTED_RULE = (
+    "for a company the vote does not decide, the country holding the largest share of "
+    "its traced value, at or above 40%; used only to place the position in a market "
+    "bucket, never as the company's country tag"
+)
+
 #: The fallback rule, published in the object beside the vote's rule: a reader is
 #: entitled to know that two questions were asked, in which order, and that neither
 #: answer overrides the vote.
@@ -308,6 +324,42 @@ def decide(tally: Tally) -> tuple[dict[str, str], dict[str, int]]:
             continue
         decided[company_id] = winner
     return decided, {"with_votes": tally.companies(), "below_floor": below_floor}
+
+
+def contested(tally: Tally, undecided: Iterable[str]) -> dict[str, str]:
+    """``company_id -> country`` for the companies the vote could not decide.
+
+    A second, weaker answer to a *different* question, published beside the first and
+    never merged into it. The vote asks what a company's domicile is and refuses to
+    answer when the filings split; this asks which market holds the largest share of
+    the money in it, and answers with that share at ``MIN_PLURALITY_BP``.
+
+    The Markets bar needs the second question answered — a position with no market is
+    weight the bar cannot draw — while the company tag keeps the first answer, which
+    is still "we decline to place it". Keeping them in one map would let a 45% share
+    wear the authority of an 80% one.
+
+    A company whose largest share is below the floor is absent here too: a three-way
+    split has no plurality, and picking the biggest third would be a coin flip wearing
+    a number.
+    """
+    out: dict[str, str] = {}
+    for company_id in sorted(undecided):
+        per_country = tally.dollars.get(company_id)
+        if not per_country:
+            continue
+        total = sum(per_country.values())
+        if not total:
+            continue
+        # Sorted, so a tie cannot be decided by dict order.
+        ranked = sorted(per_country.items(), key=lambda pair: (-pair[1], pair[0]))
+        winner, value = ranked[0]
+        if value * 10_000 < total * MIN_PLURALITY_BP:
+            continue
+        if tally.filings.get(company_id, {}).get(winner, 0) < MIN_FILINGS:
+            continue
+        out[company_id] = winner
+    return out
 
 
 # --- the fallback ----------------------------------------------------------
@@ -645,6 +697,7 @@ def build_object(
     company_total: int,
     invalid_rows: int = 0,
     fallback: Mapping[str, Any] | None = None,
+    contested_map: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """The published object: the map, its provenance, and its own coverage.
 
@@ -693,6 +746,14 @@ def build_object(
             "cover_page_compared": int(agreement.get("cover_page_compared", 0)),
         }
     document["companies"] = codes
+    # Additive by presence, and a *separate* map on purpose: it answers a different
+    # question from ``companies`` and must never be read as the company's country.
+    # A release that ran no vote publishes neither key.
+    if contested_map is not None:
+        document["contested_rule"] = CONTESTED_RULE
+        document["contested"] = {
+            company_id: contested_map[company_id] for company_id in sorted(contested_map)
+        }
     return document
 
 

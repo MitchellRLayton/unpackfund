@@ -38,6 +38,7 @@ const SECTIONS: readonly ReadingSection[] = [
   { id: "overlap", title: "Overlap" },
   { id: "markets", title: "Market tiers" },
   { id: "country-decision", title: "How a country is decided", depth: 3 },
+  { id: "country-contested", title: "When the vote cannot decide", depth: 3 },
   { id: "limits", title: "What is not known" },
   { id: "benchmark", title: "The benchmark: VT" },
   { id: "corrections", title: "Corrections" },
@@ -397,9 +398,9 @@ export default function MethodologyPage() {
       <h2 id="markets">Market tiers</h2>
       <p>
         The left edge of a ledger row answers a narrower question than it looks like it
-        does: is this company American, developed ex-US, emerging, or in neither list? The
-        country comes from the filings; the market does not. The site follows the{" "}
-        <Term name="market-tier">FTSE Russell equity country classification</Term> as of 2
+        does: is this company American, developed outside the United States, or emerging?
+        The country comes from the filings; the market does not. The site follows the{" "}
+        <Term name="market-tier">FTSE Russell equity country classification</Term> as of 5
         November 2026, because the funds it looks through are FTSE-indexed.
       </p>
       <p>
@@ -410,14 +411,52 @@ export default function MethodologyPage() {
         the company is.
       </p>
       <p>
-        The two lists are this site&rsquo;s own transcription of that classification, with
-        the version date kept beside them. No FTSE document, table or data file is
-        reproduced here, and FTSE Russell has not reviewed or endorsed this site. A
-        country in neither list — Cayman, Bermuda, Argentina, Russia and the frontier
-        markets among them — keeps its country code and takes a neutral grey edge, because
-        calling it emerging would be an invention. The country is a domicile and not a
-        measure of where a company earns its money: a company domiciled in the Cayman
-        Islands can earn almost everything it makes in China.
+        The lists are this site&rsquo;s own transcription of that classification, with the
+        version date kept beside them. No FTSE document, table or data file is reproduced
+        here, and FTSE Russell has not reviewed or endorsed this site.
+      </p>
+      <p>
+        <strong>Three buckets, and no fourth.</strong> A reader compares this split
+        against an issuer&rsquo;s own factsheet, and &ldquo;no market tier&rdquo; is a
+        question the page could not answer rather than an answer. So a domicile FTSE does
+        not classify is placed by one of three stated rules, and the Markets bar draws
+        exactly three segments:
+      </p>
+      <ul>
+        <li>
+          <strong>An offshore holding domicile is the United States.</strong> Bermuda, the
+          Cayman Islands, the British Virgin Islands, Jersey, Guernsey, the Isle of Man,
+          the Marshall Islands, Panama, the Bahamas, Gibraltar and Monaco are where a
+          company is <em>registered</em>, not where it trades: the operating business is
+          usually American and the shares are listed in New York. FTSE reaches the same
+          place from the other direction, classifying these companies by country of risk.
+          This is the largest single correction the convention makes — on the 4 November
+          2026 release these domiciles were 1.44% of gross weight.
+        </li>
+        <li>
+          <strong>Puerto Rico is the United States</strong>, because it is a United States
+          territory.
+        </li>
+        <li>
+          <strong>The European frontier is developed ex-US.</strong> Bulgaria, Croatia,
+          Cyprus, Estonia, Latvia, Lithuania, Malta, Slovakia and Slovenia are frontier to
+          FTSE and advanced to the IMF; they are in the single market and trade in Europe,
+          and calling them emerging would put Estonia in the same bucket as Vietnam.
+        </li>
+        <li>
+          <strong>Everything else with no FTSE tier is emerging.</strong> That is the
+          frontier markets — Kazakhstan, Argentina, Peru, Morocco, Nigeria, Mauritius,
+          Kenya, Sri Lanka, Bangladesh, Pakistan, Bahrain, Oman, Jordan, Tunisia,
+          Botswana, Ghana, Papua New Guinea, the Faroe Islands, Russia (suspended) and
+          Liechtenstein. A three-bucket view has no fourth place for them, and frontier is
+          closer to emerging than to either of the other two.
+        </li>
+      </ul>
+      <p>
+        The country is a domicile and not a measure of where a company earns its money: a
+        company domiciled in the Cayman Islands can earn almost everything it makes in
+        China. The tier says which market its shares belong to, which is the question a
+        fund factsheet answers.
       </p>
 
       <h3 id="country-decision">How a country is decided</h3>
@@ -451,13 +490,29 @@ export default function MethodologyPage() {
         holdco whose filing gives the listing venue, a dual-domiciled name — and none for
         a wrong code table.
       </p>
+      <h3 id="country-contested">When the vote cannot decide</h3>
       <p>
-        A row with no market tier is therefore marked, not blank: a{" "}
-        <strong>solid grey edge</strong> where the domicile is known but is neither
-        developed nor emerging, and a <strong>dashed grey edge</strong> where no country
-        could be established at all. The two-letter code beside the company name is the
-        same information in text, so the colour is reinforcement and a monochrome print
-        loses nothing.
+        A company the vote refuses is not left out of the Markets bar. The release
+        publishes a <strong>second, weaker answer</strong> beside the first: the country
+        holding the largest share of the money in the company, published when one country
+        holds at least 40% of the traced value across at least two filings. It is a
+        different question with its own stated bar, and it is never merged into the
+        decided map — the company tag still says the vote declined to place it, and only
+        the Markets bar reads the second answer. On the 4 November 2026 release that
+        placed 144 companies worth 0.70% of the attributed weight.
+      </p>
+      <p>
+        A position that resolved to no company at all — a security the identity ladder
+        could not name — is placed by the country its own filing states for the position.
+        That is the only country evidence such a row has, and it is published on the row
+        itself rather than inferred from a name, a ticker or an identifier prefix. Cash
+        and derivative lines are never placed: they have no market.
+      </p>
+      <p>
+        So a row is marked, not blank, in exactly one case: a{" "}
+        <strong>dashed grey edge</strong> where no country could be established at all.
+        The two-letter code beside the company name is the same information in text, so
+        the colour is reinforcement and a monochrome print loses nothing.
       </p>
 
       <h2 id="limits">What is not known</h2>

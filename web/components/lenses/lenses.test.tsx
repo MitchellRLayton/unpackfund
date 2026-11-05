@@ -148,6 +148,7 @@ const UNMAPPED: UnmappedBreakdown = {
   securities_weight: 0.1,
   cash_and_derivatives_with_weight: 2,
   cash_and_derivatives_weight: 0.1,
+  securities_by_country: {},
 };
 
 const LEDGERBase: Omit<Ledger, "effective"> = {
@@ -234,15 +235,20 @@ const MODEL = model({ ledger: LEDGER, funds: FUNDS });
 describe("the four lenses render a worked portfolio", () => {
   it("markets: one bar, two tables, the code in text and the tiers in words", () => {
     const html = renderToStaticMarkup(<MarketsLens model={MODEL} />);
+    // Three segments, named the way the operator asked for them, and no fourth.
     expect(html).toContain("United States");
-    expect(html).toContain("Other developed markets");
+    expect(html).toContain("International Developed ex-US");
+    expect(html).toContain("Emerging Markets");
+    expect(html).not.toContain("Other developed markets");
+    expect(html).not.toContain("No market tier");
+    expect(html).not.toContain("Unplaced");
     expect(html).toContain("49.00%");
-    expect(html).toContain("Unplaced is 39.00%");
+    // What the bar does not draw is stated with its own number instead of drawn.
+    expect(html).toContain("Outside the bar:");
     expect(html).toContain("US");
     expect(html).toContain("Developed");
     expect(html).toContain("FTSE Russell");
     expect(html).toContain('data-tier="US"');
-    expect(html).toContain('data-country-missing="true"');
     expect(html.match(/<table/g)).toHaveLength(2);
     expect(html).toContain("Export CSV");
     expect(html).not.toMatch(/NaN|undefined/);

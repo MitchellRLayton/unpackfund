@@ -81,7 +81,12 @@ export function Workspace() {
         fundCount: model.funds.length,
       });
     }
-    return buildAnswer({ kind: "ready", ledger: model.ledger, funds: model.funds });
+    return buildAnswer({
+      kind: "ready",
+      ledger: model.ledger,
+      funds: model.funds,
+      contested: model.contested,
+    });
   }, [
     hasEntries,
     model.complete,
@@ -92,6 +97,7 @@ export function Workspace() {
     model.ledger,
     model.pendingFunds,
     model.funds,
+    model.contested,
   ]);
 
   const isExample =

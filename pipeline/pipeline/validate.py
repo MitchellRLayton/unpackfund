@@ -1149,6 +1149,39 @@ def _check_company_countries(release_dir: Path, report: Report) -> None:
         for name in ("gleif_compared", "edgar_compared", "cover_page_compared"):
             if not isinstance(agreement.get(name), int) or agreement.get(name, -1) < 0:
                 report.fail("countries.agreement", f"agreement.{name} {agreement.get(name)!r} is not a count")
+
+    # The contested map is a *second* answer to a different question, and the one thing
+    # that must never happen is a consumer reading it as the company's country. So it
+    # is checked for the two ways that could become true: a code that is not ISO, and a
+    # company that already has a decided country (which would make the two maps
+    # disagree about the same company).
+    contested_map = document.get("contested")
+    if contested_map is not None:
+        if not isinstance(contested_map, dict):
+            report.fail("countries.contested", "contested is not an object")
+        else:
+            for company_id, country in contested_map.items():
+                if not company_countries_mod.is_country_code(country):
+                    report.fail(
+                        "countries.contested",
+                        f"{company_id} carries {country!r}, which is not ISO alpha-2",
+                    )
+                    break
+            overlap = sorted(set(contested_map) & set(published_map))[:3]
+            if overlap:
+                report.fail(
+                    "countries.contested",
+                    f"contested names {overlap}, which the map already decided — the two "
+                    "answers must be disjoint or a reader cannot tell which is which",
+                )
+            unknown = sorted(set(contested_map) - set(decided) - set(published_map))[:3]
+            if unknown:
+                report.fail(
+                    "countries.contested",
+                    f"contested names {unknown}, which the release publishes no company shard for",
+                )
+            if not isinstance(document.get("contested_rule"), str) or not document.get("contested_rule"):
+                report.fail("countries.contested", "contested is published without a contested_rule")
     if not report.failures:
         report.ok(
             "companies.countries",

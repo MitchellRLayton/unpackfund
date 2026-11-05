@@ -56,6 +56,7 @@ function ledgerOf(rows: LedgerRow[]): Ledger {
       securities_weight: 0,
       cash_and_derivatives_with_weight: 0,
       cash_and_derivatives_weight: 0,
+      securities_by_country: {},
     },
   });
 }

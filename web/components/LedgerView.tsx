@@ -214,7 +214,7 @@ export function LedgerView() {
     direct,
     split.cash,
     benchmark,
-    countriesLoad.data,
+    countriesLoad.data?.companies ?? null,
   );
   // Named, so the loading state is a statement about which filings are still
   // arriving rather than a spinner. The comparison column is part of the table's

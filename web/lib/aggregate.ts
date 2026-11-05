@@ -96,6 +96,10 @@ export function buildLedger({
   let securitiesWeight = 0;
   let cashAndDerivativesWithWeight = 0;
   let cashAndDerivativesWeight = 0;
+  // The same share positions, split by the country their own filing states for the
+  // position. A security with no company still has a market, and this is the only
+  // country evidence such a row carries — the Markets bar places it from here.
+  const securitiesByCountry: Record<string, number> = {};
   /** `Σ W_k` over funds — the fund part of the invested denominator. */
   let fundWeightFraction = 0;
   /** `Σ W_k · (1 − c_k)`: the weight inside funds we could not name. */
@@ -161,6 +165,10 @@ export function buildLedger({
           } else {
             securitiesWithWeight += 1;
             securitiesWeight += contribution;
+            // The filing's own country for this position, or `""` when it states
+            // none. Never inferred from the name, the ticker or the ISIN prefix.
+            const code = holding.filed_country ?? "";
+            securitiesByCountry[code] = (securitiesByCountry[code] ?? 0) + contribution;
           }
         }
         continue;
@@ -296,6 +304,7 @@ export function buildLedger({
       securities_weight: securitiesWeight,
       cash_and_derivatives_with_weight: cashAndDerivativesWithWeight,
       cash_and_derivatives_weight: cashAndDerivativesWeight,
+      securities_by_country: securitiesByCountry,
     },
   });
 
@@ -314,6 +323,7 @@ export function buildLedger({
       securities_weight: securitiesWeight,
       cash_and_derivatives_with_weight: cashAndDerivativesWithWeight,
       cash_and_derivatives_weight: cashAndDerivativesWeight,
+      securities_by_country: securitiesByCountry,
     },
   };
 }

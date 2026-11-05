@@ -206,9 +206,9 @@ export const GLOSSARY_TERMS = [
     id: "market-tier",
     label: "Market tier",
     short:
-      "Which market a company's domicile belongs to: the United States, developed ex-US, emerging, or a neutral fourth bucket. It is a convention, and the country code is always printed beside it.",
+      "Which market a company's domicile belongs to: the United States, international developed ex-US, or emerging markets. Three buckets, and the country code is always printed beside it.",
     definition:
-      "The left edge of a ledger row is coloured by the market its country belongs to: blue for the United States, one shade of ochre for developed markets outside it, a deeper ochre for emerging ones, and a neutral grey for a domicile that is in neither list. The site follows the FTSE Russell equity country classification as of 2 November 2026, written as its own table rather than copied, because the funds it looks through are FTSE-indexed. The classification is a convention and publishers disagree about a handful of countries, so the country code is printed beside the colour and the methodology page says what the lists are and how they were transcribed.",
+      "The left edge of a ledger row is coloured by the market its country belongs to: blue for the United States, one shade of ochre for international developed markets outside it, a deeper ochre for emerging markets. There is no fourth bucket. The site follows the FTSE Russell equity country classification as of 5 November 2026, written as its own table rather than copied, because the funds it looks through are FTSE-indexed. A domicile FTSE does not classify is placed by one of three stated rules: an offshore holding domicile such as Bermuda or the Cayman Islands is the United States, because that is where its shares trade; Puerto Rico is the United States, because it is a United States territory; and the European frontier is developed ex-US, because it is in the single market and trades in Europe. Everything else with no FTSE tier is emerging. The classification is a convention and publishers disagree about a handful of countries, so the country code is printed beside the colour and the methodology page says what the lists are and how they were transcribed.",
     appears: "The left edge of every ledger row, the Markets lens and each fund page.",
   },
   {

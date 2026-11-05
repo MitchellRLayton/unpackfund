@@ -178,6 +178,9 @@ const UNMAPPED: UnmappedBreakdown = {
   securities_weight: 0.1,
   cash_and_derivatives_with_weight: 2,
   cash_and_derivatives_weight: 0.1,
+  // The two unmatched share positions, by the country their own filing states for
+  // them: 0.06 in Japan (developed) and 0.04 with no country stated.
+  securities_by_country: { JP: 0.06, "": 0.04 },
 };
 
 const METRICS: LedgerMetrics = {
@@ -201,6 +204,7 @@ describe("marketSplit", () => {
   const split = marketSplit({
     rows: ROWS,
     countryOf: countryOf(COUNTRIES),
+    contested: {},
     unmapped: UNMAPPED,
     metrics: METRICS,
     funds: FUNDS,
@@ -213,47 +217,71 @@ describe("marketSplit", () => {
     return found;
   };
 
+  it("draws exactly three segments, in the order the bar draws them", () => {
+    expect(split.tiers.map((tier) => tier.bucket)).toEqual(["US", "DM", "EM"]);
+  });
+
   it("places each company line in its market tier", () => {
     expect(bucket("US").weight).toBeCloseTo(0.49, 10);
     expect(bucket("US").companies).toBe(1);
-    expect(bucket("DM").weight).toBeCloseTo(0.12, 10);
+    // 0.12 of Irish companies, plus the 0.06 of unmatched positions filed as Japanese.
+    expect(bucket("DM").weight).toBeCloseTo(0.18, 10);
     expect(bucket("EM").weight).toBeCloseTo(0, 10);
-    expect(bucket("OTHER").weight).toBeCloseTo(0, 10);
-    expect(bucket("UNKNOWN").weight).toBeCloseTo(0.09, 10);
     expect(split.resolved).toBeCloseTo(0.7, 10);
     expect(split.companies).toBe(3);
     expect(split.hasNegative).toBe(false);
   });
 
-  it("keeps one row per country, largest first, with the no-answer row last", () => {
-    expect(split.countries.map((country) => country.code)).toEqual(["US", "IE", null]);
-    expect(split.countries[0]?.weight).toBeCloseTo(0.49, 10);
-    expect(split.countries[1]?.tier).toBe("DM");
-    expect(split.countries[2]?.weight).toBeCloseTo(0.09, 10);
-    expect(split.countries[2]?.tier).toBeNull();
+  it("places an unmatched share position by the country its filing states", () => {
+    // 0.12 of Irish companies + 0.06 of Japanese positions = 0.18 in developed.
+    expect(bucket("DM").weight).toBeCloseTo(0.18, 10);
+    // The bar's denominator is the weight the release can place, not the portfolio.
+    expect(split.placed).toBeCloseTo(0.49 + 0.18, 10);
   });
 
-  it("splits the unplaced part by cause and closes the bar", () => {
-    expect(split.unplaced.unknownCountry).toBeCloseTo(0.09, 10);
-    expect(split.unplaced.unknownCompanies).toBe(1);
-    expect(split.unplaced.unmatchedSecurities).toBeCloseTo(0.1, 10);
-    expect(split.unplaced.unmatchedCashDerivatives).toBeCloseTo(0.1, 10);
-    expect(split.unplaced.cash).toBeCloseTo(0.1, 10);
-    expect(split.unplaced.filedOvershoot).toBeCloseTo(0, 10);
-    // 0.09 + 0.10 + 0.10 + 0.10 − 0 = 0.39
-    expect(split.unplaced.total).toBeCloseTo(0.39, 10);
+  it("keeps one row per country, largest first", () => {
+    expect(split.countries.map((country) => country.code)).toEqual(["US", "IE", "JP"]);
+    expect(split.countries[0]?.weight).toBeCloseTo(0.49, 10);
+    expect(split.countries[1]?.tier).toBe("DM");
+    // A country carried only by unmatched positions has weight but no company line.
+    expect(split.countries[2]?.companies).toBe(0);
+  });
 
-    const drawn = split.tiers.reduce(
-      (sum, tier) => sum + (tier.bucket === "UNKNOWN" ? 0 : tier.weight),
-      0,
-    );
-    expect(drawn + split.unplaced.total).toBeCloseTo(1, 10);
+  it("states what the bar does not draw, and closes the portfolio", () => {
+    expect(split.outside.unplacedCompanies).toBe(1);
+    expect(split.outside.unplacedCompanyWeight).toBeCloseTo(0.09, 10);
+    // The 0.04 of unmatched positions whose filing states no country.
+    expect(split.outside.unplacedSecurities).toBeCloseTo(0.04, 10);
+    expect(split.outside.cashAndDerivatives).toBeCloseTo(0.1, 10);
+    expect(split.outside.cash).toBeCloseTo(0.1, 10);
+    expect(split.outside.filedOvershoot).toBeCloseTo(0, 10);
+    // 0.09 + 0.04 + 0.10 + 0.10 − 0 = 0.33
+    expect(split.outside.total).toBeCloseTo(0.33, 10);
+    expect(split.placed + split.outside.total).toBeCloseTo(1, 10);
+  });
+
+  it("places a company the vote could not decide from the contested map", () => {
+    const withContested = marketSplit({
+      rows: ROWS,
+      countryOf: countryOf(COUNTRIES),
+      contested: { c4: "KY" },
+      unmapped: UNMAPPED,
+      metrics: METRICS,
+      funds: FUNDS,
+      weights: WEIGHTS,
+    });
+    // KY is an offshore holding domicile: the United States, not a fourth bucket.
+    const us = withContested.tiers.find((tier) => tier.bucket === "US");
+    expect(us?.weight).toBeCloseTo(0.49 + 0.09, 10);
+    expect(withContested.outside.unplacedCompanies).toBe(0);
+    expect(withContested.outside.unplacedCompanyWeight).toBeCloseTo(0, 10);
   });
 
   it("falls back to the row's own country when the release has no map", () => {
     const noMap = marketSplit({
       rows: ROWS,
       countryOf: countryOf({}),
+      contested: {},
       unmapped: UNMAPPED,
       metrics: METRICS,
       funds: FUNDS,
@@ -261,10 +289,7 @@ describe("marketSplit", () => {
     });
     const us = noMap.tiers.find((tier) => tier.bucket === "US");
     expect(us?.weight).toBeCloseTo(0.49, 10);
-    expect(noMap.tiers.find((tier) => tier.bucket === "UNKNOWN")?.weight).toBeCloseTo(
-      0.09,
-      10,
-    );
+    expect(noMap.outside.unplacedCompanies).toBe(1);
   });
 });
 
@@ -569,6 +594,7 @@ describe("CSV", () => {
   const split = marketSplit({
     rows: ROWS,
     countryOf: countryOf(COUNTRIES),
+    contested: {},
     unmapped: UNMAPPED,
     metrics: METRICS,
     funds: FUNDS,
@@ -592,16 +618,23 @@ describe("CSV", () => {
     );
   });
 
-  it("writes the market segments, the unplaced total and every country", () => {
+  it("writes the three market segments, what is outside the bar, and every country", () => {
     const csv = marketsCsv(split, releaseAsOf);
     const lines = csv.trimEnd().split("\n");
     expect(lines[0]).toBe(
       "section,bucket,country_code,market,tier,weight_pct,companies,release_as_of",
     );
     expect(csv).toContain(`market,US,,United States,US,49.00,1,${releaseAsOf}`);
-    expect(csv).toContain(`market,UNPLACED,,Unplaced,,39.00,1,${releaseAsOf}`);
+    expect(csv).toContain(
+      `market,DM,,International Developed ex-US,Developed,18.00,1,${releaseAsOf}`,
+    );
+    expect(csv).toContain(`market,EM,,Emerging Markets,Emerging,0.00,0,${releaseAsOf}`);
+    // No fourth market row: what the bar does not draw is a property of the whole
+    // portfolio, written as its own section.
+    expect(csv).not.toContain("UNPLACED");
+    expect(csv).toContain(`outside,TOTAL,,Outside the bar,,33.00,1,${releaseAsOf}`);
     expect(csv).toContain(`country,US,US,,US,49.00,1,${releaseAsOf}`);
-    expect(csv).toContain(`country,UNKNOWN,,,No country answer,9.00,1,${releaseAsOf}`);
+    expect(csv).toContain(`country,DM,JP,,Developed,6.00,0,${releaseAsOf}`);
     expect(csv.endsWith("\n")).toBe(true);
   });
 

@@ -68,9 +68,11 @@ const COUNTRY_SENTENCE =
   " The flag and two-letter code beside a company are the domicile its" +
   " holders' filings agree on by value." +
   " The row's left edge repeats it in colour — blue for the United States, ochre for" +
-  " developed markets elsewhere, a deeper ochre for emerging ones. A grey edge marks a" +
-  " company with no market tier: solid where the domicile is known but is neither" +
-  " developed nor emerging, dashed where the filings do not agree on a country at all.";
+  " international developed markets outside it, a deeper ochre for emerging markets." +
+  " Every domicile has one of the three: an offshore holding domicile such as Bermuda" +
+  " or the Cayman Islands is the United States, because that is where its shares" +
+  " trade. A dashed edge marks a company whose holders' filings do not agree on a" +
+  " country at all.";
 
 const vt: BenchmarkFacts = {
   ticker: "VT",
@@ -116,6 +118,7 @@ const ledgerBase: Omit<Ledger, "effective"> = {
     securities_weight: 0.0282,
     cash_and_derivatives_with_weight: 8,
     cash_and_derivatives_weight: 0.0148,
+    securities_by_country: {},
   },
 };
 const ledger = withEffective(ledgerBase);
@@ -398,14 +401,14 @@ describe("the country channel", () => {
     expect(container.querySelectorAll(".country-tag")).toHaveLength(2);
   });
 
-  it("turns each domicile into its market tier, and marks the two unplaced states", () => {
+  it("turns each domicile into its market tier, and marks the one unplaced state", () => {
     // The third axis: the same country code the row tags becomes the edge's tier. Taiwan
     // is emerging under FTSE (the IMF calls it advanced) and the United States is its own
-    // tier. The two states with no tier are distinguished by *pattern*, not by a fourth
-    // colour: a domicile in neither list (Cayman) keeps its code and takes the solid
-    // neutral edge, and a company whose filings do not agree (no country at all) loses the
-    // code and takes the dashed one. That distinction is what the operator asked for on
-    // 2026-11-02 — before it, both rendered as nothing, which read as a bug.
+    // tier. There is no fourth tier: an offshore holding domicile (Cayman) is the United
+    // States, because that is where its shares trade, so it keeps its code and takes the
+    // blue edge. The one state with no tier is a company whose filings do not agree on a
+    // country at all — it loses the code and takes the dashed edge, which is what the
+    // operator asked for on 2026-11-02 (before it, both rendered as nothing).
     const tiers = [
       row("c_5", "Cayman Holdco", 0.02, 0, null, "KY"),
       row("c_6", "Samsung Electronics", 0.03, 0, null, "KR"),
@@ -417,10 +420,10 @@ describe("the country channel", () => {
       [...container.querySelectorAll<HTMLTableRowElement>("tbody tr")].find((tr) =>
         tr.textContent?.includes(name),
       );
-    expect(byName("Cayman Holdco")?.dataset.tier).toBe("OTHER");
+    expect(byName("Cayman Holdco")?.dataset.tier).toBe("US");
     expect(byName("Samsung Electronics")?.dataset.tier).toBe("DM");
     expect(byName("Nestle")?.dataset.tier).toBe("DM");
-    // The unclassified row keeps its mark; the unplaced row has none and says so in an
+    // The offshore row keeps its mark; the unplaced row has none and says so in an
     // attribute the stylesheet turns into the dashed edge.
     expect(byName("Cayman Holdco")?.querySelector(".country-tag")?.textContent).toBe(
       "\u{1F1F0}\u{1F1FE} KY",
@@ -442,7 +445,7 @@ describe("the country channel", () => {
     // Named, not implied: a colour that encodes a publisher's judgement has to say whose
     // judgement and which vintage, or the reader cannot check it against the fund page.
     expect(caption).toContain(
-      "Developed and emerging follow the FTSE country classification, as of 2026-11-02",
+      "Developed and emerging follow the FTSE country classification, as of 2026-11-05",
     );
   });
 

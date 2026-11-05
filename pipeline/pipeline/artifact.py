@@ -227,6 +227,7 @@ def holding_row(
     asset_cat: str,
     weight_bp: int,
     identified: bool | None = None,
+    filed_country: str | None = None,
 ) -> dict[str, Any]:
     """One published holding row.
 
@@ -247,8 +248,16 @@ def holding_row(
     bond and fund-of-funds holdings, and 27 of them failed the release's own CUSIP
     check. If we cannot name the company, we cannot vouch for the identifier, so
     the row keeps its as-filed name and nothing else.
+
+    ``filed_country`` is the filing's own ``invCountry`` for this position, and it is
+    published **only on a row that resolved to no company** — the one case where the
+    release has no better answer. It is not the company's domicile: that is decided
+    once, by value, across every fund that holds the company
+    (``company_countries``), and a consumer that has a ``company_id`` must read the
+    company map instead. The field exists so the Markets bar can place a position the
+    identity ladder could not name, rather than drawing it as weight with no market.
     """
-    return {
+    row: dict[str, Any] = {
         "company_id": company_id,
         "name": public_name(name),
         "ticker": ticker if company_id and not is_licensed(ticker) else None,
@@ -261,6 +270,11 @@ def holding_row(
         # identifier on a row with no company) passes ``identified=True`` explicitly.
         "identified": bool(company_id) if identified is None else bool(identified),
     }
+    # Additive by presence, and only where it is the best answer available: a row with
+    # a company id must not carry a second, weaker country beside the decided one.
+    if filed_country and not company_id:
+        row["filed_country"] = filed_country
+    return row
 
 #: Fields a flattened fund adds to the document, in contract order, between ``metrics``
 #: and ``warnings``. ``components`` is the sleeve view a reader wants ("this fund holds
