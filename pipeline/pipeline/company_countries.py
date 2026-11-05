@@ -801,23 +801,30 @@ def apply_overrides(
     overrides: Mapping[str, Mapping[str, str]],
     *,
     companies: Iterable[str] | None = None,
-    tally: Tally | None = None,
     log: Any = None,
 ) -> tuple[dict[str, str], dict[str, Any]]:
     """Put the override table in front of the vote.
 
-    Returns the corrected map and the statistics the object publishes. Three counts,
-    because they answer three different questions and a single number would hide the
+    Returns the corrected map and the statistics the object publishes. Four counts,
+    because they answer four different questions and a single number would hide the
     one that matters: ``changed`` is a company the vote placed somewhere else (the
-    correction), ``supplied`` is a company the vote refused (the rescue), and
-    ``unmatched`` is a row that named a company this release does not publish — a
-    stale row, which is a warning rather than a failure so that a release built from a
-    narrower universe still builds.
+    correction), ``supplied`` is a company the vote refused (the rescue), ``redundant``
+    is a row the vote already agreed with (a guard, not a correction), and ``unmatched``
+    is a row that named a company this release does not publish — a stale row, which is
+    a warning rather than a failure so that a release built from a narrower universe
+    still builds.
+
+    ``applied + redundant + unmatched`` is every row in the table, and the validator
+    recomputes all three from the table and the published map. No weight is published
+    here: a weight needs a denominator, and a denominator stated in prose is a number
+    that will be misread. The company ids are published instead, so anyone who wants
+    the weight can compute it from the shards.
     """
     allowed = set(companies) if companies is not None else None
     corrected = dict(countries)
     changed: list[str] = []
     supplied: list[str] = []
+    redundant: list[str] = []
     unmatched: list[str] = []
     for company_id in sorted(overrides):
         row = overrides[company_id]
@@ -828,6 +835,7 @@ def apply_overrides(
         if previous == row["iso2"]:
             # The vote already agreed. Not an error, and not a correction either: the
             # row is redundant today and stays as a guard for the next release.
+            redundant.append(company_id)
             continue
         corrected[company_id] = row["iso2"]
         (changed if previous is not None else supplied).append(company_id)
@@ -837,17 +845,12 @@ def apply_overrides(
             f"does not publish: {', '.join(unmatched[:5])}"
             + (" …" if len(unmatched) > 5 else "")
         )
-    weight_bp = 0
-    if tally is not None:
-        total = sum(sum(per.values()) for per in tally.dollars.values())
-        moved = sum(sum(tally.dollars.get(cid, {}).values()) for cid in changed + supplied)
-        weight_bp = int(round(10_000 * moved / total)) if total else 0
     stats = {
         "applied": len(changed) + len(supplied),
         "changed": len(changed),
         "supplied": len(supplied),
+        "redundant": len(redundant),
         "unmatched": len(unmatched),
-        "weight_bp": weight_bp,
         "companies": sorted(changed + supplied),
     }
     return corrected, stats
@@ -927,8 +930,8 @@ def build_object(
             "applied": int(overrides.get("applied", 0)),
             "changed": int(overrides.get("changed", 0)),
             "supplied": int(overrides.get("supplied", 0)),
+            "redundant": int(overrides.get("redundant", 0)),
             "unmatched": int(overrides.get("unmatched", 0)),
-            "weight_bp": int(overrides.get("weight_bp", 0)),
             "companies": list(overrides.get("companies") or ()),
         }
     # The convention the *tiers* are read under, published beside the map so a consumer

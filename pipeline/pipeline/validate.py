@@ -1191,17 +1191,25 @@ def _check_company_countries(release_dir: Path, report: Report) -> None:
                     f"{len(wrong)} overridden company(ies) do not carry the table's "
                     f"country: {[(c, published_map.get(c), table[c]['iso2']) for c in wrong[:3]]}",
                 )
-            redundant = [
-                company_id
-                for company_id in matched
-                if published_map.get(company_id) == table[company_id]["iso2"]
-            ]
-            expected_applied = len(matched) - len(redundant)
-            if overrides_document.get("applied") != expected_applied:
+            # The release cannot say which rows the vote already agreed with — the
+            # published map equals the table for every matched row either way — so the
+            # object publishes the count and the check is that the three counts account
+            # for every row in the table. A row that is neither applied, redundant nor
+            # unmatched is a row the build dropped, which is the failure this catches.
+            applied = overrides_document.get("applied")
+            redundant = overrides_document.get("redundant")
+            if not isinstance(applied, int) or not isinstance(redundant, int):
+                report.fail("countries.overrides", "applied and redundant must be counts")
+            elif applied + redundant != len(matched):
                 report.fail(
                     "countries.overrides",
-                    f"overrides.applied {overrides_document.get('applied')!r} != "
-                    f"recomputed {expected_applied:,}",
+                    f"applied {applied:,} + redundant {redundant:,} != "
+                    f"{len(matched):,} matched row(s)",
+                )
+            elif applied + redundant + len(stale) != len(table):
+                report.fail(
+                    "countries.overrides",
+                    f"applied + redundant + unmatched != the {len(table):,} row(s) in the table",
                 )
             if overrides_document.get("unmatched") != len(stale):
                 report.fail(
@@ -1209,15 +1217,30 @@ def _check_company_countries(release_dir: Path, report: Report) -> None:
                     f"overrides.unmatched {overrides_document.get('unmatched')!r} != "
                     f"recomputed {len(stale):,}",
                 )
-            if sorted(overrides_document.get("companies") or ()) != sorted(
-                company_id for company_id in matched if company_id not in redundant
-            ):
+            # Which rows were redundant is not recoverable from the release, so the
+            # company list is checked for the two things that are: it is as long as
+            # `applied`, and every id in it is a row the table matched.
+            published_companies = overrides_document.get("companies")
+            if not isinstance(published_companies, list):
+                report.fail("countries.overrides", "overrides.companies is not a list")
+            elif len(published_companies) != applied:
                 report.fail(
                     "countries.overrides",
-                    "overrides.companies is not the set of companies the table moved",
+                    f"overrides.companies has {len(published_companies):,} id(s) but "
+                    f"applied is {applied:,}",
+                )
+            elif not set(published_companies) <= set(matched):
+                report.fail(
+                    "countries.overrides",
+                    "overrides.companies names a company the table does not match",
                 )
             if not isinstance(document.get("override_rule"), str) or not document.get("override_rule"):
                 report.fail("countries.overrides", "overrides are published without an override_rule")
+            report.ok(
+                "countries.overrides",
+                f"{applied:,} applied, {redundant:,} redundant, {len(stale):,} unmatched "
+                f"of {len(table):,} row(s); every matched company carries the table's country",
+            )
 
     # The classification block names the convention the tiers are read under. It is
     # published so a consumer cannot apply one publisher's table to another's codes.

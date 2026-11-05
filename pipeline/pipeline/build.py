@@ -1030,14 +1030,13 @@ def build_release(
             countries,
             overrides,
             companies=release_company_set,
-            tally=country_tally,
             log=_log,
         )
         _log(
             f"country overrides: {override_stats['applied']:,} applied "
             f"({override_stats['changed']:,} changed, {override_stats['supplied']:,} supplied), "
-            f"{override_stats['unmatched']:,} unmatched, "
-            f"{override_stats['weight_bp']:,} bp of traced value"
+            f"{override_stats['redundant']:,} redundant, "
+            f"{override_stats['unmatched']:,} unmatched"
         )
     fallback_stats: dict | None = None
     country_fallback_manifest: dict | None = None

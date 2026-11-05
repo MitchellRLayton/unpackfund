@@ -997,13 +997,14 @@ def test_an_override_places_a_company_the_vote_refused():
     assert stats["supplied"] == 1
 
 
-def test_an_override_that_agrees_with_the_vote_is_not_a_correction():
+def test_an_override_that_agrees_with_the_vote_is_redundant_not_applied():
     decided = {"c_1": "US"}
     placed, stats = company_countries.apply_overrides(
         decided, {"c_1": _override("US")}, companies=set(decided)
     )
     assert placed == decided
     assert stats["applied"] == 0
+    assert stats["redundant"] == 1
     assert stats["companies"] == []
 
 
@@ -1021,18 +1022,20 @@ def test_an_override_row_that_matches_nothing_is_counted_and_warned():
     assert any("c_9" in line for line in lines)
 
 
-def test_the_override_weight_is_a_share_of_the_tally():
-    tally = company_countries.Tally()
-    tally.add_fund({"c_1": ("US", 500), "c_2": ("US", 500)}, net_assets=1_000_000.0)
-    placed, stats = company_countries.apply_overrides(
-        {"c_1": "US", "c_2": "US"},
-        {"c_1": _override("CN")},
-        companies={"c_1", "c_2"},
-        tally=tally,
+def test_the_three_counts_account_for_every_row_in_the_table():
+    table = {
+        "c_1": _override("CN"),  # changed
+        "c_2": _override("CN"),  # supplied
+        "c_3": _override("US"),  # redundant
+        "c_9": _override("CN"),  # unmatched
+    }
+    _, stats = company_countries.apply_overrides(
+        {"c_1": "US", "c_3": "US"}, table, companies={"c_1", "c_2", "c_3"}
     )
-    assert placed["c_1"] == "CN"
-    # Half the traced value moved, so half of 10,000 bp.
-    assert stats["weight_bp"] == 5_000
+    assert stats["applied"] == 2
+    assert stats["redundant"] == 1
+    assert stats["unmatched"] == 1
+    assert stats["applied"] + stats["redundant"] + stats["unmatched"] == len(table)
 
 
 def test_a_malformed_override_table_stops_the_build(tmp_path):
@@ -1090,8 +1093,8 @@ def test_the_object_publishes_the_override_block_and_the_classification():
             "applied": 1,
             "changed": 1,
             "supplied": 0,
+            "redundant": 0,
             "unmatched": 0,
-            "weight_bp": 4_200,
             "companies": ["c_1"],
         },
     )
