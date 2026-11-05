@@ -385,6 +385,11 @@ function readyNote(ledger: Ledger): AnswerPart[] | null {
 
   const parts: AnswerPart[] = [
     text("Coverage "),
+    // `coverageChip` carries the band, not just the percentage: below the threshold it
+    // reads "partial X%" or "X% not covered", which is the signal that a concentration
+    // figure computed over the traced part would describe a different portfolio. The
+    // strip's own "not traced to a company" is what ties "covered" to the company test,
+    // so this sentence keeps its wording rather than borrowing the fund row's label.
     strong(coverageChip(covered)),
     text(" of invested money · "),
     strong(formatPct1(notTraced)),
