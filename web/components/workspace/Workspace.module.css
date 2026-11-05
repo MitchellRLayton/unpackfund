@@ -219,6 +219,18 @@
   white-space: nowrap;
 }
 
+/*
+ * The per-class sleeve wraps instead of truncating. `.rowName` clips to one line, which
+ * is right for a fund's name — the ticker above it already says which fund this is — and
+ * wrong for a list of classes: a clipped sleeve hides the class whose number the reader
+ * came for, and the ellipsis makes it look like the list ended there.
+ */
+.rowSleeve {
+  font-size: var(--text-14);
+  line-height: 1.45;
+  white-space: normal;
+}
+
 .rowSub {
   display: flex;
   align-items: center;

@@ -228,7 +228,7 @@ function FundSleeveNote({ fund }: { fund: FundDocument | undefined }) {
   const sleeve = coverageSleeve(fund).filter((row) => row.attributed !== null);
   if (!sleeveShowsIdentified(sleeve)) return null;
   return (
-    <span className={`small muted ${styles.rowName}`}>
+    <span className={`small muted ${styles.rowSleeve}`}>
       {sleeve.map(sleeveLine).join("; ")}
     </span>
   );
