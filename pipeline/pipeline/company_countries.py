@@ -64,6 +64,7 @@ projection, so a drifting tally would fail the release rather than ship).
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Iterable, Mapping
 
 from pipeline import classify, gleif
@@ -94,8 +95,9 @@ MIN_FILINGS = 2
 FALLBACK_RULE = (
     "for a company the vote does not decide, its own registry record: GLEIF "
     "jurisdiction for an LEI entity, then EDGAR stateOfIncorporation for a CIK "
-    "company; neither answer overrides a decided company, and a company neither "
-    "record places stays undecided"
+    "company, then the state or country of incorporation on that company's own "
+    "annual report cover page; no answer overrides a decided company, and a company "
+    "no record places stays undecided"
 )
 
 #: Agreement floors for the fallback, in basis points of the companies both answers
@@ -108,6 +110,27 @@ FALLBACK_RULE = (
 #: sample of 342 to move, narrow enough that a wrong code table cannot pass.
 MIN_GLEIF_AGREEMENT_BP = 9_700
 MIN_EDGAR_AGREEMENT_BP = 9_500
+
+#: The agreement floor for the cover-page rung, in basis points of the companies both
+#: answers cover. Measured 9,871 bp on the 2026-11-04 release — 154 of the 156
+#: companies the vote decided and the cover page also answered — so the floor sits
+#: 371 bp under the measured rate, the same headroom the other two sources carry. The
+#: two disagreements were both ``IL`` → ``US``: Israeli companies incorporated in
+#: Delaware, which is the dual-domicile class this floor exists to tolerate.
+MIN_COVER_AGREEMENT_BP = 9_500
+
+#: The annual reports whose cover page states a jurisdiction. A company that files
+#: none of these has no cover page to read, which is an answer rather than an error.
+COVER_PAGE_FORMS = ("10-K", "20-F", "40-F")
+
+#: The cover page's own field, as EDGAR's ``R1.htm`` rendering prints it. Two
+#: spellings because the label is rendered from the filing's own text and both appear
+#: in the wild; the value is required to be uppercase alphanumeric, which is what stops
+#: an empty cell from capturing the first two letters of the next label.
+_COVER_PAGE_CODE = re.compile(
+    r"(?:Entity Incorporation, State or Country Code|State or Country of Incorporation)"
+    r"[:\s]*([A-Z0-9]{2})\b"
+)
 
 #: The smallest comparison set a floor is enforced on. A rate over 40 companies is
 #: noise; the build publishes the rate and the counts either way, and only refuses
@@ -404,12 +427,102 @@ def edgar_incorporations(
     return codes
 
 
+def cover_page_incorporations(
+    company_ids: Iterable[str],
+    *,
+    fetch: Any = None,
+    log: Any = None,
+) -> dict[str, str]:
+    """``company_id -> the code on its own annual report's cover page``.
+
+    EDGAR's ``submissions`` summary carries ``stateOfIncorporation``, and for the
+    companies this rung exists for it is an **empty string**: a foreign private issuer
+    that files a 10-K or a 20-F has no state to report, and EDGAR's profile field is
+    left blank. The company's own annual report states the same fact on its XBRL cover
+    page, and it is populated where the summary is not — Seagate's 10-K cover reads
+    ``L2`` while its submissions record is empty, and ``L2`` has been in
+    :data:`EDGAR_COUNTRY_CODES` since 2026-11-02.
+
+    The code is EDGAR's own vocabulary, not ISO, so it is resolved by
+    :func:`edgar_country` exactly as the summary field is; a code the table does not
+    map is no answer, never a guess.
+
+    Two fetches per company, both through the pipeline's content-addressed cache: the
+    submissions document (to find the latest annual report) and that report's
+    ``R1.htm`` (the cover page as EDGAR renders it). A company with no annual report,
+    no cover page, or a failed fetch is simply absent — absence is an allowed answer,
+    so no fetch may raise out of here.
+    """
+    from . import sec
+
+    if fetch is None:
+
+        def fetch(url: str) -> bytes:
+            return sec.fetch(url, max_age=EDGAR_MAX_AGE_S)
+
+    codes: dict[str, str] = {}
+    for company_id in sorted(company_ids):
+        cik = cik_of(company_id)
+        if cik is None:
+            continue
+        try:
+            submissions = json.loads(fetch(sec.submissions_url(cik)))
+            accession = _latest_annual_accession(submissions)
+            if accession is None:
+                continue
+            body = fetch(
+                f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession}/R1.htm"
+            )
+        except Exception as error:  # noqa: BLE001 - absence is an allowed answer
+            if log is not None:
+                log(f"cover page: {company_id} unanswered ({type(error).__name__})")
+            continue
+        code = _cover_page_code(body)
+        if code is not None:
+            codes[company_id] = code
+    return codes
+
+
+def _latest_annual_accession(submissions: Mapping[str, Any]) -> str | None:
+    """The accession of the newest 10-K/20-F/40-F, digits only, or ``None``.
+
+    ``filings.recent`` is newest-first, so the first match is the latest annual
+    report. A company that files none of the three has no cover page to read, which is
+    the answer for the 98 ADR-only registrants on the 2026-11-04 release.
+    """
+    if not isinstance(submissions, Mapping):
+        return None
+    recent = (submissions.get("filings") or {}).get("recent") or {}
+    forms = recent.get("form") or []
+    accessions = recent.get("accessionNumber") or []
+    for form, accession in zip(forms, accessions):
+        if form in COVER_PAGE_FORMS and isinstance(accession, str) and accession:
+            return accession.replace("-", "")
+    return None
+
+
+def _cover_page_code(body: bytes | str) -> str | None:
+    """The two-character code on a rendered cover page, or ``None``.
+
+    The page is HTML and the label and its value sit in separate cells, so the tags are
+    flattened to spaces first. The value must be uppercase alphanumeric, which is what
+    stops an empty cell from capturing the first two letters of the next label —
+    ``Entity Tax Identification Number`` would otherwise read as ``En``.
+    """
+    text = body.decode("utf-8", "replace") if isinstance(body, (bytes, bytearray)) else str(body)
+    plain = re.sub(r"<[^>]+>", " ", text)
+    plain = re.sub(r"\s+", " ", plain)
+    match = _COVER_PAGE_CODE.search(plain)
+    return match.group(1) if match else None
+
+
 def apply_fallback(
     decided: Mapping[str, str],
     *,
     companies: Iterable[str],
     gleif_jurisdictions: Mapping[str, str] | None = None,
     edgar_codes: Mapping[str, str] | None = None,
+    cover_page_codes: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, str], dict[str, Any]]:
     """Place what the vote could not, and publish how well the fallback agrees.
 
@@ -417,6 +530,12 @@ def apply_fallback(
     only add a company the vote left out. ``companies`` is the release's company
     set, so a company with no vote still gets a question (the vote's tally only
     knows companies that filed a usable row).
+
+    The three sources are asked in one fixed order, and each is asked only about the
+    companies the ones before it could not place: GLEIF for an LEI entity, then
+    EDGAR's summary field for a CIK company, then that company's own annual report
+    cover page. The last rung exists because the summary field is blank for exactly
+    the companies that need it — a foreign private issuer has no state to report.
 
     The agreement rates compare each source against the **vote's** answer on the
     companies it did decide — the only population where both answers exist. They are
@@ -426,7 +545,8 @@ def apply_fallback(
     placed = dict(decided)
     jurisdictions = gleif_jurisdictions or {}
     codes = edgar_codes or {}
-    sources = {"nport": len(decided), "gleif": 0, "edgar": 0}
+    cover_codes = cover_page_codes or {}
+    sources = {"nport": len(decided), "gleif": 0, "edgar": 0, "cover_page": 0}
 
     for company_id in sorted(companies):
         if company_id in placed:
@@ -440,19 +560,34 @@ def apply_fallback(
             country = edgar_country(codes.get(company_id))
             if country is not None:
                 sources["edgar"] += 1
+            else:
+                # Asked second, so a company EDGAR's summary already placed is never
+                # re-read: the cover page is the same vocabulary, one document deeper.
+                country = edgar_country(cover_codes.get(company_id))
+                if country is not None:
+                    sources["cover_page"] += 1
         if country is not None:
             placed[company_id] = country
 
     gleif_matched, gleif_compared = _agreement(decided, jurisdictions, gleif_country)
     edgar_matched, edgar_compared = _agreement(decided, codes, edgar_country)
+    cover_matched, cover_compared = _agreement(decided, cover_codes, edgar_country)
     agreement = {
         "gleif_bp": _basis_points(gleif_matched, gleif_compared),
         "gleif_compared": gleif_compared,
         "edgar_bp": _basis_points(edgar_matched, edgar_compared),
         "edgar_compared": edgar_compared,
+        "cover_page_bp": _basis_points(cover_matched, cover_compared),
+        "cover_page_compared": cover_compared,
     }
     _enforce("gleif", agreement["gleif_bp"], agreement["gleif_compared"], MIN_GLEIF_AGREEMENT_BP)
     _enforce("edgar", agreement["edgar_bp"], agreement["edgar_compared"], MIN_EDGAR_AGREEMENT_BP)
+    _enforce(
+        "cover_page",
+        agreement["cover_page_bp"],
+        agreement["cover_page_compared"],
+        MIN_COVER_AGREEMENT_BP,
+    )
     return placed, {"sources": sources, "agreement": agreement}
 
 
@@ -546,6 +681,7 @@ def build_object(
             "nport": int((fallback.get("sources") or {}).get("nport", 0)),
             "gleif": int((fallback.get("sources") or {}).get("gleif", 0)),
             "edgar": int((fallback.get("sources") or {}).get("edgar", 0)),
+            "cover_page": int((fallback.get("sources") or {}).get("cover_page", 0)),
         }
         agreement = fallback.get("agreement") or {}
         document["agreement"] = {
@@ -553,6 +689,8 @@ def build_object(
             "gleif_compared": int(agreement.get("gleif_compared", 0)),
             "edgar_bp": int(agreement.get("edgar_bp", 0)),
             "edgar_compared": int(agreement.get("edgar_compared", 0)),
+            "cover_page_bp": int(agreement.get("cover_page_bp", 0)),
+            "cover_page_compared": int(agreement.get("cover_page_compared", 0)),
         }
     document["companies"] = codes
     return document
@@ -607,6 +745,7 @@ def fund_votes(holdings: Iterable[Any]) -> tuple[dict[str, tuple[str, int]], int
 
 
 __all__ = [
+    "COVER_PAGE_FORMS",
     "EDGAR_AGREEMENT_SAMPLE",
     "EDGAR_COUNTRY_CODES",
     "FALLBACK_RULE",
@@ -614,6 +753,7 @@ __all__ = [
     "MAX_COUNTRIES_BYTES",
     "MIN_AGREEMENT_BP",
     "MIN_AGREEMENT_SAMPLE",
+    "MIN_COVER_AGREEMENT_BP",
     "MIN_EDGAR_AGREEMENT_BP",
     "MIN_FILINGS",
     "MIN_GLEIF_AGREEMENT_BP",
@@ -626,6 +766,7 @@ __all__ = [
     "build_object",
     "canonical_bytes",
     "cik_of",
+    "cover_page_incorporations",
     "decide",
     "digest",
     "edgar_country",

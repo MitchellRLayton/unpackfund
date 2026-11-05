@@ -1128,7 +1128,7 @@ def _check_company_countries(release_dir: Path, report: Report) -> None:
     # than an inference over holders.
     sources = document.get("sources")
     if sources is not None:
-        unknown = sorted(set(sources) - {"nport", "gleif", "edgar"})
+        unknown = sorted(set(sources) - {"nport", "gleif", "edgar", "cover_page"})
         if unknown:
             report.fail("countries.sources", f"unknown source(s) {unknown[:3]}")
         elif any(not isinstance(value, int) or value < 0 for value in sources.values()):
@@ -1142,11 +1142,11 @@ def _check_company_countries(release_dir: Path, report: Report) -> None:
         if not isinstance(document.get("fallback_rule"), str) or not document.get("fallback_rule"):
             report.fail("countries.sources", "sources are published without a fallback_rule")
         agreement = document.get("agreement") or {}
-        for name in ("gleif_bp", "edgar_bp"):
+        for name in ("gleif_bp", "edgar_bp", "cover_page_bp"):
             rate = agreement.get(name)
             if not isinstance(rate, int) or not 0 <= rate <= 10_000:
                 report.fail("countries.agreement", f"agreement.{name} {rate!r} is not basis points")
-        for name in ("gleif_compared", "edgar_compared"):
+        for name in ("gleif_compared", "edgar_compared", "cover_page_compared"):
             if not isinstance(agreement.get(name), int) or agreement.get(name, -1) < 0:
                 report.fail("countries.agreement", f"agreement.{name} {agreement.get(name)!r} is not a count")
     if not report.failures:

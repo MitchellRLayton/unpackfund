@@ -430,23 +430,26 @@ export default function MethodologyPage() {
         company whose holders genuinely disagree.
       </p>
       <p>
-        Second, for a company the filings cannot place, its own registry record: the
-        jurisdiction on its legal-entity identifier from GLEIF, or, for a company that
-        files with the SEC, the state or country of incorporation on its EDGAR record.
-        Neither answer ever overrides a country the filings agreed on, and a company
-        neither record places is left unplaced rather than guessed. On the 2 November 2026
-        release that second step placed 2,472 of the 2,702 companies the filings alone
-        could not decide, which left 230 of 12,895 companies unplaced.
+        Second, for a company the filings cannot place, its own record, asked in three
+        steps: the jurisdiction on its legal-entity identifier from GLEIF; failing that,
+        the state or country of incorporation on its EDGAR record; and failing that — the
+        summary field is blank for a foreign private issuer — the same field on the
+        company&rsquo;s own annual report cover page, which is where the company states
+        it. No answer ever overrides a country the filings agreed on, and a company no
+        record places is left unplaced rather than guessed. On the 4 November 2026 release
+        that second step placed 2,561 of the 2,705 companies the filings alone could not
+        decide, which left 144 of 12,900 companies unplaced.
       </p>
       <p>
-        Both sources are also asked about companies the vote did decide, and that
+        All three sources are also asked about companies the vote did decide, and that
         agreement is published beside the counts. On the same release, GLEIF agreed with
-        the published country on 5,958 of the 6,003 companies both answers covered
-        (99.25%) and EDGAR on 335 of the 342 (97.95%). A build is refused if GLEIF falls
-        below 97% or EDGAR below 95%: the floors sit two to three points under the
-        measured rates, which leaves room for the exceptions already understood — a Cayman
-        or Bermuda holdco whose filing gives the listing venue, a dual-domiciled name —
-        and none for a wrong code table.
+        the published country on 5,962 of the 6,007 companies both answers covered
+        (99.25%), EDGAR on 335 of the 342 (97.95%), and the cover page on 333 of the 341
+        (97.65%). A build is refused if GLEIF falls below 97%, EDGAR below 95%, or the
+        cover page below 95%: the floors sit two to three points under the measured rates,
+        which leaves room for the exceptions already understood — a Cayman or Bermuda
+        holdco whose filing gives the listing venue, a dual-domiciled name — and none for
+        a wrong code table.
       </p>
       <p>
         A row with no market tier is therefore marked, not blank: a{" "}
