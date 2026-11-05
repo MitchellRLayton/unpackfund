@@ -40,6 +40,9 @@ import {
   IDENTIFIED_LABEL,
   coveragePair,
   coverageSentence,
+  coverageSleeve,
+  sleeveLine,
+  sleeveShowsIdentified,
 } from "@/lib/coverage";
 import {
   coverageBand,
@@ -54,7 +57,7 @@ import {
 import { useReorderList, type ReorderList } from "@/lib/use-reorder";
 import { rankFunds } from "@/lib/search";
 import { useCatalogue, useTickers } from "@/lib/use-release";
-import type { EntryMode, EntryKind, PortfolioEntry } from "@/lib/types";
+import type { EntryMode, EntryKind, FundDocument, PortfolioEntry } from "@/lib/types";
 import type { WorkspaceModel } from "@/lib/use-workspace";
 
 import { parsePaste, previewCounts, previewPaste, type PasteLine } from "./paste";
@@ -212,6 +215,26 @@ function RowChips({ entry, model }: { entry: PortfolioEntry; model: WorkspaceMod
 }
 
 /**
+ * The classes of one fund, under its row: the same two shares, per asset class.
+ *
+ * The portfolio strip answers "how much of my money is attributed"; this line answers
+ * "and in which kind of holding is the rest". It is the only place the per-class figures
+ * appear, and it prints nothing at all unless the release measures identification and at
+ * least one class shows a different number on each side — a sleeve whose two columns
+ * agree would be a second printing of the row's own chip.
+ */
+function FundSleeveNote({ fund }: { fund: FundDocument | undefined }) {
+  if (!fund) return null;
+  const sleeve = coverageSleeve(fund).filter((row) => row.attributed !== null);
+  if (!sleeveShowsIdentified(sleeve)) return null;
+  return (
+    <span className={`small muted ${styles.rowName}`}>
+      {sleeve.map(sleeveLine).join("; ")}
+    </span>
+  );
+}
+
+/**
  * The rows, in their own function.
  *
  * Not a style choice: `react-hooks/refs` in this Next config reports a false "Cannot
@@ -283,6 +306,9 @@ function HoldingRows({
                   Remove
                 </button>
               </div>
+              {entry.kind === "fund" ? (
+                <FundSleeveNote fund={model.fundByTicker.get(entry.key)} />
+              ) : null}
             </div>
             <AmountField
               label={`Amount for ${entryLabel(entry.kind, entry.key)}`}
