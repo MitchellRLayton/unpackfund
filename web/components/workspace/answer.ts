@@ -31,7 +31,7 @@
  * number the ledger cannot support.
  */
 
-import { tierOf } from "@/lib/country-tier";
+import { tierOf, type CountryTier } from "@/lib/country-tier";
 import {
   coverageBand,
   coverageChip,
@@ -186,9 +186,15 @@ function largestRow(rows: readonly LedgerRow[]): LedgerRow | null {
 }
 
 /**
- * US / international developed ex-US / emerging weights over the companies the release
- * placed, in the same order the Markets lens places them: the decided country, then the
- * contested one.
+ * US / international developed ex-US / emerging weights over the weight the release
+ * placed, in the same order the Markets lens places it: the decided country, then the
+ * contested one, then — for a position that resolved to no company — the country its
+ * own filing states.
+ *
+ * The third source is why this cannot be a loop over `ledger.rows` alone. Those
+ * positions carry weight and no company, so they are not rows; they live in
+ * `unmapped.securities_by_country`. Leaving them out made this sentence disagree with
+ * the Markets lens on the same page by 2.3 points of developed ex-US.
  */
 function marketSplit(
   ledger: Ledger,
@@ -202,20 +208,16 @@ function marketSplit(
   let us = 0;
   let dm = 0;
   let em = 0;
+  const add = (tier: CountryTier | null, weight: number): void => {
+    if (tier === "US") us += weight;
+    else if (tier === "DM") dm += weight;
+    else if (tier === "EM") em += weight;
+  };
   for (const row of ledger.rows) {
-    switch (tierOf(row.country ?? contested[row.company_id])) {
-      case "US":
-        us += row.weight;
-        break;
-      case "DM":
-        dm += row.weight;
-        break;
-      case "EM":
-        em += row.weight;
-        break;
-      default:
-        break;
-    }
+    add(tierOf(row.country ?? contested[row.company_id]), row.weight);
+  }
+  for (const [code, weight] of Object.entries(ledger.unmapped.securities_by_country)) {
+    add(tierOf(code), weight);
   }
   return { us, dm, em, placed: us + dm + em };
 }
