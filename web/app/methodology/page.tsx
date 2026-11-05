@@ -489,16 +489,16 @@ export default function MethodologyPage() {
         summary field is blank for a foreign private issuer — the same field on the
         company&rsquo;s own annual report cover page, which is where the company states
         it. No answer ever overrides a country the filings agreed on, and a company no
-        record places is left unplaced rather than guessed. On the 4 November 2026 release
-        that second step placed 2,561 of the 2,705 companies the filings alone could not
-        decide, which left 144 of 12,900 companies unplaced.
+        record places gets no country rather than a guess. On the 5 November 2026 release
+        the filings alone placed 10,193 of 12,900 companies, GLEIF placed a further 1,611,
+        EDGAR 865 and the cover page 87, and 144 were left with no country at all.
       </p>
       <p>
         All three sources are also asked about companies the vote did decide, and that
         agreement is published beside the counts. On the same release, GLEIF agreed with
-        the published country on 5,962 of the 6,007 companies both answers covered
-        (99.25%), EDGAR on 335 of the 342 (97.95%), and the cover page on 333 of the 341
-        (97.65%). A build is refused if GLEIF falls below 97%, EDGAR below 95%, or the
+        the published country on 5,962 of the 6,009 companies both answers covered
+        (99.22%), EDGAR on 336 of the 342 (98.25%), and the cover page on 333 of the 340
+        (97.94%). A build is refused if GLEIF falls below 97%, EDGAR below 95%, or the
         cover page below 95%: the floors sit two to three points under the measured rates,
         which leaves room for the exceptions already understood — a Cayman or Bermuda
         holdco whose filing gives the listing venue, a dual-domiciled name — and none for
@@ -512,8 +512,9 @@ export default function MethodologyPage() {
         holds at least 40% of the traced value across at least two filings. It is a
         different question with its own stated bar, and it is never merged into the
         decided map — the company tag still says the vote declined to place it, and only
-        the Markets bar reads the second answer. On the 4 November 2026 release that
-        placed 144 companies worth 0.70% of the attributed weight.
+        the Markets bar reads the second answer. On the 5 November 2026 release it placed
+        55 of the 144 companies the vote refused, carrying 0.47% of the weight the bar
+        draws; the rest have no plurality to place them by.
       </p>
       <p>
         A position that resolved to no company at all — a security the identity ladder
