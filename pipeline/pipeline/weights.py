@@ -69,18 +69,68 @@ class FundHolding:
     #: it (``company_countries``). It is never published on a holding row: a fund's
     #: row-level country is the fund's view, and the ledger needs the company's.
     country: str | None = None
+    #: ``True`` when the security behind this row is **identified** even though no
+    #: company was named for it: ``company_id`` says *which entity* the row is, and
+    #: this says the row's own identifier resolves to a known security (a FIGI). The
+    #: two together are the release's two coverage levels — attributed
+    #: (``company_id``) and identified (this flag or ``company_id``) — and the flag is
+    #: set from a filing row's own identifiers only, never inferred from a name.
+    identified: bool = False
 
 
-#: One row reduced to what the category split and the per-class coverage need:
-#: the class, the signed weight, and whether a company was named for it. Both the
-#: filed vector and the *composed* one reduce to this shape, so the arithmetic
-#: exists once — a second implementation of it is a number that can disagree with
-#: itself (``lookthrough-math-and-qa`` §7).
+def identified_row(
+    company_id: str | None,
+    holding: Holding,
+    security_map: "identifiers.SecurityMap | None",
+) -> bool:
+    """The identification rule, in one place: a company **or** a FIGI identifies a row.
+
+    ``company_id`` is the attribution answer — an entity the ladder proved. A row the
+    ladder could not name is still identified when the security itself is known, which
+    is what the OpenFIGI layer adds: one identifier (ISIN, CUSIP, or a FIGI already in
+    the filing's ``other`` block) resolved to a FIGI means the *security* is named even
+    though its issuer is not. Identification is therefore a superset of attribution,
+    and the release publishes both so the gap between them is visible.
+
+    With no ``security_map`` there is nothing to consult, so the rule collapses to
+    attribution — that is the determinism control, and why a release built without the
+    layer reproduces the numbers it published before this existed.
+    """
+    if company_id is not None:
+        return True
+    if security_map is None:
+        return False
+    return security_map.figi_of(holding.isin, holding.cusip, *holding.other_ids) is not None
+
+
+def row_identified(row: FundHolding) -> bool:
+    """The same rule applied to a **published** row, which carries its answer.
+
+    The builder sets ``FundHolding.identified`` from ``identified_row``; anything that
+    recomputes a coverage figure from a vector, an artifact, or a document must ask
+    this function rather than re-reading the two fields, so the definition cannot
+    drift from the number the release prints.
+    """
+    return row.company_id is not None or row.identified
+
+
+#: One row reduced to what the category splits need: the class, the signed weight,
+#: and whether the row counts as covered **for the metric the reduction is for**.
+#: ``_rows`` reduces to attribution, ``_identified_rows`` to identification; the third
+#: element means the same thing either way. Both the filed vector and the *composed*
+#: one reduce to this shape, so the arithmetic exists once — a second implementation of
+#: it is a number that can disagree with itself (``lookthrough-math-and-qa`` §7).
 CategoryRow = tuple[str, int, bool]
 
 
 def _rows(holdings: "list[FundHolding]") -> "list[CategoryRow]":
+    """Reduce to the attribution predicate: a company was named for the row."""
     return [(row.asset_cat, row.weight_bp, bool(row.company_id)) for row in holdings]
+
+
+def _identified_rows(holdings: "list[FundHolding]") -> "list[CategoryRow]":
+    """Reduce to the identification predicate: a company *or* a security FIGI."""
+    return [(row.asset_cat, row.weight_bp, row_identified(row)) for row in holdings]
 
 
 def category_totals(rows: "Iterable[CategoryRow]") -> dict[str, int]:
@@ -107,18 +157,78 @@ def category_coverage(rows: "Iterable[CategoryRow]") -> dict[str, float | None]:
     fund's: same class, same denominator. ``None`` when the class has no weight, because
     a percentage of nothing is not zero, it is undefined.
     """
+    return _category_share(rows)
+
+
+def category_identified(rows: "Iterable[CategoryRow]") -> dict[str, float | None]:
+    """Identification inside each class: identified weight over its gross weight.
+
+    The same arithmetic as ``category_coverage`` over the wider predicate — every class
+    it can only raise, never lower, and only where a FIGI resolves a security the
+    company ladder missed. Reported beside coverage rather than instead of it: a class
+    at 100% coverage has nothing left to identify, so a row whose two numbers differ is
+    a row the layer is worth something on.
+    """
+    return _category_share(rows)
+
+
+def _category_share(rows: "Iterable[CategoryRow]") -> dict[str, float | None]:
+    """Counted weight over gross weight, per class, all six keys in order.
+
+    Gross on both sides (``abs(weight_bp)``, data-contract §2) so the ratio cannot
+    exceed 100% and two funds of the same mix are comparable. ``None`` when the class
+    has no weight, because a percentage of nothing is not zero, it is undefined.
+    """
     gross: dict[str, int] = {}
-    mapped: dict[str, int] = {}
-    for name, weight_bp, has_company in rows:
+    counted: dict[str, int] = {}
+    for name, weight_bp, counts in rows:
         size = abs(weight_bp)
         gross[name] = gross.get(name, 0) + size
-        if has_company:
-            mapped[name] = mapped.get(name, 0) + size
+        if counts:
+            counted[name] = counted.get(name, 0) + size
     answer: dict[str, float | None] = {}
     for name in CATEGORY_ORDER:
         total = gross.get(name, 0)
-        answer[name] = round(100 * mapped.get(name, 0) / total, 1) if total else None
+        answer[name] = round(100 * counted.get(name, 0) / total, 1) if total else None
     return answer
+
+
+@dataclass(frozen=True)
+class IdentifiedSplit:
+    """Both halves of identification for one fund, measured on its published rows.
+
+    ``bp``/``pct`` are the headline pair; ``cat_bp``/``by_cat`` are the per-class
+    counterparts. ``bp`` is defined as the sum of ``cat_bp`` so the parts add up to the
+    whole by construction — the validator re-derives the percentage from the artifact,
+    and a whole that is measured separately from its parts is exactly where a
+    rounding difference starts.
+    """
+
+    bp: int
+    pct: float
+    cat_bp: dict[str, int]
+    by_cat: dict[str, float | None]
+
+
+def identified_split(holdings: "list[FundHolding]") -> IdentifiedSplit:
+    """Identified weight for a fund, absolute basis points and per class.
+
+    Same denominator as ``WeightVector.coverage_pct`` — gross weight, ``abs``, so a
+    fund with shorts cannot read above 100% — and the same one-decimal rounding, so the
+    two levels are directly comparable on the page.
+    """
+    cat_bp = {name: 0 for name in CATEGORY_ORDER}
+    for name, weight_bp, counts in _identified_rows(holdings):
+        if counts:
+            cat_bp[name] = cat_bp.get(name, 0) + abs(weight_bp)
+    bp = sum(cat_bp.values())
+    gross = sum(abs(row.weight_bp) for row in holdings)
+    return IdentifiedSplit(
+        bp=bp,
+        pct=round(100 * bp / gross, 1) if gross > 0 else 0.0,
+        cat_bp=cat_bp,
+        by_cat=category_identified(_identified_rows(holdings)),
+    )
 
 
 @dataclass
@@ -128,6 +238,18 @@ class WeightVector:
     rung_counts: Counter[str] = field(default_factory=Counter)
     asset_cat_counts: Counter[str] = field(default_factory=Counter)
     total_bp: int = 0
+    #: The *identified* level: gross ``abs`` weight whose security is named, whether by
+    #: a company or by a FIGI (``identified_row``). Filled by ``build_vector`` alongside
+    #: the rest of the vector; ``coverage_pct`` stays a property because it is a pure
+    #: function of the holdings, while this pair is the answer the build computed and
+    #: the release publishes verbatim.
+    identified_bp: int = 0
+    identified_pct: float = 0.0
+    #: Identified gross weight per asset class, and the same as a share of that class's
+    #: gross weight. All six keys of ``CATEGORY_ORDER``, in order; ``None`` where the
+    #: class has no weight — the same contract as ``coverage_by_cat``.
+    identified_cat_bp: dict[str, int] = field(default_factory=dict)
+    identified_by_cat: dict[str, float | None] = field(default_factory=dict)
 
     @property
     def coverage_pct(self) -> float:
@@ -285,6 +407,7 @@ def build_vector(
     evidence: IdentityEvidence | None = None,
     issuers: "gleif.IssuerIndex | None" = None,
     fund_leis: "Mapping[str, str] | None" = None,
+    security_map: "identifiers.SecurityMap | None" = None,
 ) -> WeightVector:
     if not holdings:
         raise WeightError("filing reports no holdings")
@@ -401,6 +524,11 @@ def build_vector(
                 )
             )
         )
+        # Asked per filing row, before the merge: the identifiers that answer it live on
+        # the row, and a merged group keeps the answer of the row that speaks for it.
+        # For a company group the flag is redundant (``company_id`` already identifies
+        # it); it is the unmapped rows, merged by name, where it carries information.
+        identified = identified_row(company_id, holding, security_map)
         group = groups.get(key)
         if group is None:
             group = {
@@ -424,6 +552,7 @@ def build_vector(
                 "lei": (holding.lei or "").strip().upper() or None,
                 "isin": (holding.isin or "").strip().upper() or None,
                 "country": None,
+                "identified": identified,
             }
             groups[key] = group
         group["fraction"] += fraction
@@ -441,6 +570,7 @@ def build_vector(
             # Same rule as the label and the identifier: the largest row speaks for
             # the merged company, so two runs on the same filing cannot disagree.
             group["country"] = (holding.inv_country or "").strip().upper() or group["country"]
+            group["identified"] = identified
 
     # Allocate in fraction order (largest remainder depends on it), then sort the
     # published rows by weight so two runs cannot differ in layout.
@@ -463,6 +593,7 @@ def build_vector(
                 lei=row.get("lei") if row["category"] == classify.FUND else None,
                 isin=row.get("isin") if row["category"] == classify.FUND else None,
                 country=row.get("country"),
+                identified=row["identified"],
             )
         )
     # Sorted by the *published* name: redaction can give two rows the same name,
@@ -471,6 +602,17 @@ def build_vector(
         key=lambda row: (-row.weight_bp, identifiers.public_name(row.name).upper())
     )
     vector.total_bp = sum(row.weight_bp for row in vector.holdings)
+
+    # 1b. The identified level, from the rows the release will publish — not from the
+    # filing rows, because the merge, the largest-remainder allocation and the
+    # published name are what the validator later re-derives the number from. Without
+    # a security map every row's answer is attribution, so the two levels coincide and
+    # the release reproduces the numbers it published before identification existed.
+    split = identified_split(vector.holdings)
+    vector.identified_bp = split.bp
+    vector.identified_pct = split.pct
+    vector.identified_cat_bp = split.cat_bp
+    vector.identified_by_cat = split.by_cat
 
     # 2. Warnings: each one describes data the UI must label.
     warnings = set()

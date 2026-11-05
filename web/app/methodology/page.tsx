@@ -216,6 +216,26 @@ export default function MethodologyPage() {
         does — so the release measures coverage inside each class as well, which is the
         only version two funds can be compared on.
       </p>
+      <h3 id="identified">Identified, and attributed</h3>
+      <p>
+        A position can be known at two depths, and the site prints both numbers rather
+        than letting one stand for the other. It is <em>identified</em> when we know which
+        security it is: the filing carries a public identifier for the row, or it matches
+        a security we already hold. It is <em>attributed</em> when we know which company
+        or entity the position belongs to — the stricter test, and the one the coverage
+        figure above, the bands, and every metric computed from them measure.
+      </p>
+      <p>
+        The identified share is therefore always the larger of the two: a Treasury bill, a
+        repo, or a registered fund is a security with an identifier and no operating
+        company behind it, so it can be identified and never attributed. That is why the
+        two are labelled in words wherever they appear — a fund can honestly read
+        &ldquo;99.5% of weight identified&rdquo; beside &ldquo;88.6% attributed to
+        companies&rdquo;, and the second figure is the one the concentration numbers
+        depend on. Neither share is a claim about data quality, and neither promises a
+        level: they are the two shares the release measures, printed side by side so that
+        the identified one cannot be read as company coverage.
+      </p>
 
       <h2 id="dates">The three dates</h2>
       <p>

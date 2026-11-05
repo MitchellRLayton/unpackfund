@@ -36,10 +36,17 @@ import {
 } from "@/lib/holdings";
 import { write } from "@/lib/fragment-store";
 import {
+  ATTRIBUTED_LABEL,
+  IDENTIFIED_LABEL,
+  coveragePair,
+  coverageSentence,
+} from "@/lib/coverage";
+import {
   coverageBand,
   coverageChip,
   formatCents,
   formatCount,
+  formatCoveragePct,
   formatDateLong,
   formatFreshness,
   formatWeightBp,
@@ -145,7 +152,17 @@ function AmountField({
   );
 }
 
-/** One chip per qualifier: coverage, reporting period, or what kind of row this is. */
+/**
+ * One chip per qualifier: coverage, reporting period, or what kind of row this is.
+ *
+ * Coverage is two shares for a fund, not one, and the row carries both when the release
+ * measures both (`lib/coverage.ts` is the only place that decides). Attribution — the
+ * share tied to a named company — keeps the chip and the band, because it is the number
+ * every figure downstream depends on. Identification, the share whose *security* is
+ * known, is a weaker test and therefore the larger number; it gets a quiet chip and a
+ * label that names the quantity, so it cannot be read as company coverage. A release
+ * without `identified_pct` renders exactly the one chip it rendered before.
+ */
 function RowChips({ entry, model }: { entry: PortfolioEntry; model: WorkspaceModel }) {
   if (entry.kind === "security") {
     return <span className="chip chip--mono">held directly</span>;
@@ -157,14 +174,29 @@ function RowChips({ entry, model }: { entry: PortfolioEntry; model: WorkspaceMod
   if (!fund) {
     return <span className="chip">reading the filing…</span>;
   }
+  const pair = coveragePair(fund);
   return (
     <>
       <span
         className={`chip chip--${coverageBand(fund.coverage_pct)}`}
-        title="Weight-based coverage: the share of this fund's own holdings the app could name."
+        title={
+          pair.identified === null
+            ? "Weight-based coverage: the share of this fund's own holdings the app could name."
+            : "Attribution: the share of this fund's weight tied to a named company. The dashed figure beside it is the share we can identify as a security, which is a weaker test and is not company coverage."
+        }
       >
-        {coverageChip(fund.coverage_pct)}
+        {pair.identified === null
+          ? coverageChip(fund.coverage_pct)
+          : `${formatCoveragePct(pair.attributed)} ${ATTRIBUTED_LABEL}`}
       </span>
+      {pair.identified === null ? null : (
+        <span
+          className="chip chip--identified"
+          title={coverageSentence(pair.attributed, pair.identified)}
+        >
+          {formatCoveragePct(pair.identified)} {IDENTIFIED_LABEL}
+        </span>
+      )}
       <span
         className="chip chip--date"
         title={`Reporting period ${formatFreshness(

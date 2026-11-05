@@ -1,6 +1,6 @@
 """Identifiers: the licensed ones we must not publish, and the open ones we may.
 
-Two jobs live here, and they are the same subject seen from both ends.
+Three jobs live here, and they are the same subject seen from both ends.
 
 **Part 1 — the licence rule.** A CUSIP is licensed data: it may be used to compute
 a result, and it may not be redistributed. The pipeline reads one from a filing's
@@ -58,6 +58,14 @@ published — so the licence question is deferred, not answered, and the docstri
 with the free key, 250/minute and 100 jobs/request. The key is read from
 ``OPENFIGI_API_KEY`` and is never printed, logged, cached or written — the only thing
 this module ever says about it is the word "keyed" or "unauthenticated".
+
+**Part 3 — the security map.** What Part 2 measures, Part 3 hands to the build:
+``load_security_map`` reads the layer's maps into one immutable object, and
+``SecurityMap.figi_of`` answers "which security is this?" from an ISIN, a CUSIP or
+the FIGI itself. The rule it exists to serve is the audit's Level A rule: a published
+row is **identified** when it has a company **or** its security has a FIGI. Nothing
+here makes a company claim — see Part 2's honest denominator, which applies to this
+part unchanged.
 """
 
 from __future__ import annotations
@@ -75,7 +83,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Mapping
 
 from . import classify, nport, paths
 
@@ -1567,6 +1575,262 @@ def render_measurement(measurement: dict[str, Any]) -> str:
         " public-domain grant)"
     )
     return "\n".join(lines)
+
+
+# --- the security map: which securities a release can name -----------------
+#
+# Part 2 resolves an ISIN to a FIGI over the network and measures the weight that
+# recovers. This part is the same knowledge shaped for the build: one map on disk,
+# no network, no company involved. The rule it serves is the audit's Level A rule —
+# a row is *identified* when it has a company **or** its security has a FIGI — so
+# a row that only ever resolved to "some security" becomes publishable as that.
+#
+# What it is not: company identity. A FIGI names an instrument, and Part 2's honest
+# denominator (Treasury paper, other funds' shares, share classes) applies verbatim.
+
+
+#: The eleven characters every FIGI shares: the ``BBG`` prefix and eight
+#: alphanumerics. A full FIGI is this body plus one check digit — twelve characters
+#: in all, which ``valid_figi`` checks and ``figi_check_digit`` completes.
+FIGI_RE = re.compile(r"\ABBG[0-9A-Z]{8}\Z")
+
+#: A full FIGI: the body :data:`FIGI_RE` matches, then a decimal check digit.
+FIGI_LENGTH = 12
+
+
+def _digit_sum(value: int) -> int:
+    """The sum of a number's decimal digits: 7 → 7, 35 → 8, 70 → 7."""
+    return sum(int(digit) for digit in str(value))
+
+
+def figi_check_digit(body: str) -> str:
+    """The check digit that completes an eleven-character FIGI body.
+
+    The OpenFIGI standard's mod-10 "double-add-double", stated here once:
+
+    1. take the eleven-character body;
+    2. give each character its numeric value — a digit is itself, ``A`` = 10 …
+       ``Z`` = 35;
+    3. double the characters in positions 2, 4, 6, 8 and 10 (1-based);
+    4. add the decimal **digits** of every value, doubled or not: ``Z`` contributes
+       3 + 5 = 8, ``2 × 35 = 70`` contributes 7;
+    5. the check digit is ``(10 − sum mod 10) mod 10``.
+
+    Verified 2026-11-04 against every FIGI value in the local layer — 283,974
+    ``figi``, 22,476 ``composite_figi`` and 22,403 ``share_class_figi`` — with no
+    single-digit mutation of a check digit accepted. That verification is the point:
+    a wrong digit here is silent, because it marks rows *identified* that are not,
+    and a gate that recomputes from the same flag cannot catch it.
+    """
+    if FIGI_RE.match(body) is None:
+        raise IdentifierError("a FIGI body is BBG followed by eight alphanumerics")
+    total = 0
+    for position, character in enumerate(body, start=1):
+        value = int(character) if character.isdigit() else ord(character) - 55
+        total += _digit_sum(value * 2) if position % 2 == 0 else _digit_sum(value)
+    return str((10 - total % 10) % 10)
+
+
+def valid_figi(value: str | None) -> bool:
+    """True when ``value`` is a well-formed FIGI: shape **and** check digit.
+
+    Deliberately strict, and deliberately not forgiving: ``bbg…``, a value with
+    surrounding or embedded whitespace, ``"N/A"``, ``"0"``, an eleven-character
+    body and a twelve-character string whose last character is a letter are all
+    not FIGIs. A caller holding an identifier from a filing normalises it before
+    asking (:meth:`SecurityMap.figi_of` upper-cases); this function never guesses.
+    """
+    if not isinstance(value, str) or len(value) != FIGI_LENGTH:
+        return False
+    body, check = value[:FIGI_LENGTH - 1], value[-1]
+    if FIGI_RE.match(body) is None or not check.isdigit():
+        return False
+    return figi_check_digit(body) == check
+
+
+@dataclass(frozen=True)
+class SecurityMap:
+    """A release's identifier → FIGI lookup, as one immutable object.
+
+    ``figi_by_key`` is upper-cased identifiers (ISIN, CUSIP, whatever the layer
+    keys on) mapped to a FIGI; ``figis`` is every FIGI value the layer knows, which
+    is what lets a caller ask "is this a security we already know?" about a value
+    the map does not key on; ``sources`` is the per-file count the loader logged,
+    including ``<file>:rejected`` for records whose value was not a valid FIGI.
+    """
+
+    release: str
+    figi_by_key: Mapping[str, str]
+    figis: frozenset[str]
+    sources: Mapping[str, int]
+
+    def figi_of(self, *values: str | None) -> str | None:
+        """The first known FIGI among ``values``, or ``None``.
+
+        Each value is normalised (stripped, upper-cased) and looked up in
+        ``figi_by_key`` first; a value that is itself a valid FIGI is accepted as
+        its own answer, because a filing can carry the FIGI directly and a map that
+        answered only for its own keys would throw that away. An unresolved
+        identifier in the layer is not a key, so it answers ``None`` — which is the
+        whole distinction this object exists to make: *an identifier we have seen*
+        is not *a security we can name*.
+        """
+        for value in values:
+            if not value:
+                continue
+            key = str(value).strip().upper()
+            if not key:
+                continue
+            known = self.figi_by_key.get(key)
+            if known:
+                return known
+            if valid_figi(key):
+                return key
+        return None
+
+    def has(self, *values: str | None) -> bool:
+        """True when :meth:`figi_of` names a security for any of ``values``."""
+        return self.figi_of(*values) is not None
+
+
+#: The layer files :func:`load_security_map` reads, in merge order. A later file
+#: wins a collision, so a CUSIP map derived from the same filings can refine what
+#: the ISIN map resolved. ``figi_map.json``, when a sibling task produces it, is a
+#: map of an identifier to itself.
+SECURITY_MAP_FILES = ("isin_map.json", "cusip_map.json", "figi_map.json")
+
+#: Where a layer record may carry a FIGI, in precedence order. ``composite_figi``
+#: is the security across venues, but most fixed income has none — 261,498 of the
+#: 283,974 records in layer ``2026-10-30.5`` carry only the venue-level ``figi`` —
+#: so a loader that read that one field would discard 92% of what the layer knows.
+FIGI_RECORD_FIELDS = ("composite_figi", "figi", "share_class_figi")
+
+
+#: A layer directory is named for the release it holds: ``YYYY-MM-DD`` with an
+#: optional ``.N`` suffix for a second harvest of the same day.
+LAYER_DIRECTORY_RE = re.compile(r"\A(\d{4})-(\d{2})-(\d{2})(?:\.(\d+))?\Z")
+
+
+def _layer_order(path: Path) -> tuple[int, int, int, int] | None:
+    """Sort key for a layer directory name, or ``None`` when it is not one."""
+    match = LAYER_DIRECTORY_RE.match(path.name)
+    if match is None:
+        return None
+    year, month, day, suffix = match.groups()
+    return (int(year), int(month), int(day), int(suffix or 0))
+
+
+def newest_layer_with_maps(root: Path | None = None) -> Path | None:
+    """The newest ``data/identifier-layer/<release>/`` holding any map file.
+
+    A layer directory is named for the release it holds — ``2026-10-30.5``,
+    ``2026-11-04``, ``2026-11-04.1`` — and those names are ordered by their *date
+    fields*, not as strings, so the newest layer is the newest date rather than the
+    alphabetically last path. Only names of that shape are candidates: a working
+    directory beside them (``live/``, ``scratch/``) is where a running harvest
+    writes whatever it has so far, and choosing it because ``l`` sorts after
+    ``2`` would silently swap a 283,974-key layer for a partial one — a build that
+    reads as a corpus with almost no securities in it, which is the failure this
+    function exists to make impossible.
+
+    Directories without a map are skipped rather than returned: a harvest that
+    created a release directory and wrote only its index must not hide the
+    previous layer's maps from the build.
+    """
+    directory = root or (paths.REPO_ROOT / "data" / "identifier-layer")
+    candidates = [
+        (order, path)
+        for path in directory.glob("*")
+        if path.is_dir()
+        and _layer_order(path) is not None
+        and any((path / name).is_file() for name in SECURITY_MAP_FILES)
+        for order in (_layer_order(path),)
+        if order is not None
+    ]
+    if not candidates:
+        return None
+    return max(candidates)[1]
+
+
+def _record_figis(record: Any) -> list[str]:
+    """The valid FIGI values one layer record carries, in precedence order.
+
+    A record is the documented object — ``{"composite_figi": "BBG…", "exch_code":
+    "UH", …}`` — but a bare string is accepted too, so a flat ``figi_map.json``
+    loads instead of counting every entry as a reject.
+    """
+    if isinstance(record, dict):
+        candidates = [record.get(name) for name in FIGI_RECORD_FIELDS]
+    elif isinstance(record, str):
+        candidates = [record]
+    else:
+        candidates = []
+    values: list[str] = []
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        value = str(candidate).strip()
+        if valid_figi(value) and value not in values:
+            values.append(value)
+    return values
+
+
+def load_security_map(layer_dir: Path | None = None) -> SecurityMap | None:
+    """Read the newest identifier layer into one :class:`SecurityMap`.
+
+    ``None`` when there is no layer on disk — a build that has never run a harvest
+    still works, and publishes no security identity rather than failing. With
+    ``layer_dir`` the named directory is read even when it is not the newest.
+
+    Keys are upper-cased, because they are join keys and filings spell an ISIN
+    either way. A record is kept only when one of its FIGI fields yields a valid
+    FIGI; the rest are counted and logged as ``<file>:rejected``, so a map that
+    loads nothing is visible in a build's output instead of reading as a corpus
+    with no securities in it. The log is one line per file, containing counts only
+    — never an identifier value (invariant I1).
+    """
+    directory = layer_dir if layer_dir is not None else newest_layer_with_maps()
+    if directory is None or not directory.is_dir():
+        return None
+
+    by_key: dict[str, str] = {}
+    figis: set[str] = set()
+    sources: dict[str, int] = {}
+    for name in SECURITY_MAP_FILES:
+        path = directory / name
+        if not path.is_file():
+            continue
+        try:
+            document = json.loads(path.read_text())
+        except (OSError, ValueError) as error:
+            raise IdentifierError(
+                f"unreadable security map {name} under {directory.name}"
+            ) from error
+        if not isinstance(document, dict):
+            raise IdentifierError(f"security map {name} is not a JSON object")
+        kept = 0
+        rejected = 0
+        for raw_key, record in document.items():
+            key = str(raw_key).strip().upper()
+            known = _record_figis(record)
+            if not key or not known:
+                rejected += 1
+                continue
+            by_key[key] = known[0]
+            figis.update(known)
+            kept += 1
+        sources[name] = kept
+        sources[f"{name}:rejected"] = rejected
+        _progress(
+            f"security map: {name} — {kept:,} identifiers to a FIGI, "
+            f"{rejected:,} rejected"
+        )
+    return SecurityMap(
+        release=directory.name,
+        figi_by_key=by_key,
+        figis=frozenset(figis),
+        sources=sources,
+    )
 
 
 # --- CLI -------------------------------------------------------------------

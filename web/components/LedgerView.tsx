@@ -29,13 +29,21 @@
  */
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 
 import { BENCHMARK_TICKER, benchmarkFor, benchmarkFromRollup } from "@/lib/benchmark";
 import { CompanyDrawer } from "@/components/CompanyDrawer";
 import { FreshnessStrip, MetricsList } from "@/components/FreshnessStrip";
 import { LedgerTable } from "@/components/LedgerTable";
 import { Notice } from "@/components/Notice";
+import {
+  ATTRIBUTED_LABEL,
+  IDENTIFIED_LABEL,
+  coveragePair,
+  coverageSleeve,
+  sleeveLine,
+  sleeveShowsIdentified,
+} from "@/lib/coverage";
 import {
   coverageBand,
   coverageChip,
@@ -53,7 +61,7 @@ import { useLedger } from "@/lib/use-ledger";
 import { usePortfolio } from "@/lib/use-portfolio";
 import { useBenchmark, useCountries, useFunds, useRelease } from "@/lib/use-release";
 import { useSecurities } from "@/lib/use-securities";
-import type { DirectHolding, LedgerRow } from "@/lib/types";
+import type { DirectHolding, Ledger, LedgerRow } from "@/lib/types";
 /**
  * How many companies the ledger renders before the visitor asks for the rest.
  *
@@ -63,6 +71,52 @@ import type { DirectHolding, LedgerRow } from "@/lib/types";
  * the answer to "what do I own?"; the tail is one click away rather than hidden.
  */
 const LEDGER_PAGE = 100;
+
+/**
+ * One fund's coverage cell: the two shares, and then the sleeve behind them.
+ *
+ * The per-fund table is the one place a reader can compare a fund's coverage with its
+ * own asset classes in the same block of text, so it is where the sleeve belongs. Every
+ * number here follows `lib/coverage.ts`'s dual-read rule: a release that carries no
+ * identified figures renders the single chip and nothing else, exactly as before.
+ * The identified share never borrows the band wording or the band colour — those
+ * describe attribution (`lookthrough-math-and-qa` §5) — and the equity line keeps its
+ * attributed figure visible rather than folded into a sum.
+ */
+function FundCoverage({ fund }: { fund: Ledger["funds"][number] }) {
+  const pair = coveragePair(fund);
+  return (
+    <>
+      <span
+        className={
+          coverageBand(fund.coverage_pct) === "full" ? "chip" : "chip chip--warn"
+        }
+      >
+        {pair.identified === null
+          ? coverageChip(fund.coverage_pct)
+          : `${formatCoveragePct(pair.attributed)} ${ATTRIBUTED_LABEL}`}
+      </span>
+      {pair.identified === null ? null : (
+        <span className="chip chip--identified">
+          {formatCoveragePct(pair.identified)} {IDENTIFIED_LABEL}
+        </span>
+      )}
+    </>
+  );
+}
+
+/** The classes of one fund, as the sleeve line the row beneath its own prints. */
+function FundSleeve({ fund }: { fund: Ledger["funds"][number] }) {
+  const sleeve = coverageSleeve(fund).filter((row) => row.attributed !== null);
+  if (!sleeveShowsIdentified(sleeve)) return null;
+  return (
+    <tr>
+      <td colSpan={5} style={{ paddingTop: 0 }}>
+        <span className="row-note">{sleeve.map(sleeveLine).join("; ")}</span>
+      </td>
+    </tr>
+  );
+}
 
 export function LedgerView() {
   const portfolio = usePortfolio();
@@ -591,38 +645,52 @@ export function LedgerView() {
               </thead>
               <tbody>
                 {ledger.funds.map((fund) => (
-                  <tr key={fund.ticker}>
-                    <th scope="row">
-                      {fund.ticker}
-                      <span className="row-note">{fund.name}</span>
-                    </th>
-                    <td>
-                      {fund.as_of}
-                      <span className="row-note">filed {fund.filed_at}</span>
-                    </td>
-                    <td className="numeric">{formatDays(fund.lag_days)}</td>
-                    <td className="numeric">
-                      <span
-                        className={
-                          coverageBand(fund.coverage_pct) === "full"
-                            ? "chip"
-                            : "chip chip--warn"
-                        }
-                      >
-                        {coverageChip(fund.coverage_pct)}
-                      </span>
-                    </td>
-                    <td>
-                      <a href={fund.source_url} rel="noopener noreferrer" target="_blank">
-                        SEC N-PORT{" "}
-                        <span className="sr-only">filing for {fund.ticker}</span>
-                      </a>
-                    </td>
-                  </tr>
+                  <Fragment key={fund.ticker}>
+                    <tr>
+                      <th scope="row">
+                        {fund.ticker}
+                        <span className="row-note">{fund.name}</span>
+                      </th>
+                      <td>
+                        {fund.as_of}
+                        <span className="row-note">filed {fund.filed_at}</span>
+                      </td>
+                      <td className="numeric">{formatDays(fund.lag_days)}</td>
+                      <td className="numeric">
+                        <FundCoverage fund={fund} />
+                      </td>
+                      <td>
+                        <a
+                          href={fund.source_url}
+                          rel="noopener noreferrer"
+                          target="_blank"
+                        >
+                          SEC N-PORT{" "}
+                          <span className="sr-only">filing for {fund.ticker}</span>
+                        </a>
+                      </td>
+                    </tr>
+                    <FundSleeve fund={fund} />
+                  </Fragment>
                 ))}
               </tbody>
             </table>
           </div>
+          {/*
+            The sentence that keeps the two shares apart. It ships only when the release
+            measures identification at all — a release without `identified_pct` renders
+            the table it rendered before, with no new prose to explain a number that is
+            not on the page.
+          */}
+          {ledger.funds.some((fund) => coveragePair(fund).identified !== null) ? (
+            <p className="muted" style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
+              Two shares, two questions: a position is <em>identified</em> when we know
+              which security it is, and <em>attributed</em> when we know which company or
+              entity it belongs to. Attribution is the stricter test and the one the
+              coverage bands measure, so the identified share is always the larger number
+              and is not a measure of company coverage.
+            </p>
+          ) : null}
         </details>
 
         <p className="muted" style={{ marginTop: "1.5rem", fontSize: "0.85rem" }}>

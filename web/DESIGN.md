@@ -84,7 +84,7 @@ What shipped is both halves of that sentence:
   already uses (above), so the two pages teach the same gesture.
 
 The operator accepted the cost in as many words — "It doesn't need to support screen readers either" — so the caption
-no longer *is* the table's description: a screen reader hears the short caption and reads the disclosure only if it
+no longer _is_ the table's description: a screen reader hears the short caption and reads the disclosure only if it
 opens it. The disclosure is real, reachable content, keyboard included, and it is the only copy: do not "restore" the
 long caption for accessibility. The count line above the table (`1,269 of 1,269 companies…`) and the pager below it
 (`Showing rows 1–50 of 1,269 · page 1 of 26`) still say the two facts a reader might otherwise have got from the

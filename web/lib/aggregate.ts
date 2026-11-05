@@ -118,7 +118,7 @@ export function buildLedger({
     fundUncoveredWeight += fundWeight * (1 - fund.coverage_pct / 100);
     if (coverageBand(fund.coverage_pct) === "none") suppressedWeight += fundWeight;
 
-    contributingFunds.push({
+    const contributing: Ledger["funds"][number] = {
       ticker: fund.ticker,
       name: fund.name,
       as_of: fund.as_of,
@@ -126,7 +126,20 @@ export function buildLedger({
       lag_days: fund.lag_days,
       coverage_pct: fund.coverage_pct,
       source_url: fund.source_url,
-    });
+    };
+    // The two coverage shares travel with the fund only when the release measures
+    // them, so a document from an earlier release produces exactly the object it
+    // produced before this field existed — no key, no `undefined` in the JSON.
+    if (fund.identified_pct !== undefined) {
+      contributing.identified_pct = fund.identified_pct;
+    }
+    if (fund.coverage_by_cat !== undefined) {
+      contributing.coverage_by_cat = fund.coverage_by_cat;
+    }
+    if (fund.identified_by_cat !== undefined) {
+      contributing.identified_by_cat = fund.identified_by_cat;
+    }
+    contributingFunds.push(contributing);
     if (oldestAsOf === null || fund.as_of < oldestAsOf) oldestAsOf = fund.as_of;
     maxLagDays =
       maxLagDays === null ? fund.lag_days : Math.max(maxLagDays, fund.lag_days);
