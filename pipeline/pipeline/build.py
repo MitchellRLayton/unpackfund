@@ -1022,12 +1022,19 @@ def build_release(
         # cannot compare against an answer nobody fetched.
         wanted = [company_id for company_id in undecided if company_countries.cik_of(company_id)]
         sample = _edgar_sample(countries, company_countries.EDGAR_AGREEMENT_SAMPLE)
-        codes = company_countries.edgar_incorporations([*wanted, *sample], log=_log)
+        asked = [*wanted, *sample]
+        codes = company_countries.edgar_incorporations(asked, log=_log)
+        # The cover page is asked about the same set, and only about the companies the
+        # summary field left blank: for a foreign private issuer that field is an empty
+        # string, while its own annual report states the jurisdiction. Asking the same
+        # set keeps the agreement rate comparable to the other two sources.
+        cover_codes = company_countries.cover_page_incorporations(asked, log=_log)
         countries, fallback_stats = company_countries.apply_fallback(
             countries,
             companies=release_company_set,
             gleif_jurisdictions=jurisdictions,
             edgar_codes=codes,
+            cover_page_codes=cover_codes,
         )
         country_fallback_manifest = {
             **fallback_stats,
@@ -1038,19 +1045,27 @@ def build_release(
                 # absolute build path is nobody's business in a public artifact.
                 "dir": str(sec.CACHE_DIR if not sec.CACHE_DIR.is_absolute() else sec.CACHE_DIR.name),
                 "max_age_days": company_countries.EDGAR_MAX_AGE_S // 86_400,
-                "asked": len(wanted) + len(sample),
+                "asked": len(asked),
                 "answered": len(codes),
+            },
+            "cover_page": {
+                "asked": len(asked),
+                "answered": len(cover_codes),
+                "forms": list(company_countries.COVER_PAGE_FORMS),
             },
         }
         _log(
             f"country fallback: {fallback_stats['sources']['gleif']:,} by GLEIF "
             f"jurisdiction, {fallback_stats['sources']['edgar']:,} by EDGAR "
-            f"incorporation, {fallback_stats['sources']['nport']:,} by the vote "
-            f"(EDGAR asked {len(wanted) + len(sample):,}, answered {len(codes):,}; "
-            f"agreement gleif={fallback_stats['agreement']['gleif_bp']:,}bp/"
+            f"incorporation, {fallback_stats['sources']['cover_page']:,} by annual-report "
+            f"cover page, {fallback_stats['sources']['nport']:,} by the vote "
+            f"(EDGAR asked {len(asked):,}, answered {len(codes):,}; cover page answered "
+            f"{len(cover_codes):,}; agreement gleif={fallback_stats['agreement']['gleif_bp']:,}bp/"
             f"{fallback_stats['agreement']['gleif_compared']:,}, "
             f"edgar={fallback_stats['agreement']['edgar_bp']:,}bp/"
-            f"{fallback_stats['agreement']['edgar_compared']:,})"
+            f"{fallback_stats['agreement']['edgar_compared']:,}, "
+            f"cover_page={fallback_stats['agreement']['cover_page_bp']:,}bp/"
+            f"{fallback_stats['agreement']['cover_page_compared']:,})"
         )
 
     document = manifest_mod.build_manifest(

@@ -378,7 +378,7 @@ def test_a_decided_company_is_never_overridden():
         edgar_codes={"c_0000000001": "E9"},
     )
     assert placed == decided
-    assert stats["sources"] == {"nport": 1, "gleif": 0, "edgar": 0}
+    assert stats["sources"] == {"nport": 1, "gleif": 0, "edgar": 0, "cover_page": 0}
 
 
 def test_a_gleif_jurisdiction_becomes_a_country():
@@ -414,7 +414,7 @@ def test_an_unknown_or_ambiguous_edgar_code_leaves_the_company_undecided():
         edgar_codes={"c_0000000001": "D8", "c_0000000002": "E9"},
     )
     assert placed == {"c_0000000002": "KY"}
-    assert stats["sources"] == {"nport": 0, "gleif": 0, "edgar": 1}
+    assert stats["sources"] == {"nport": 0, "gleif": 0, "edgar": 1, "cover_page": 0}
 
 
 def test_the_fallback_universe_is_what_the_catalogue_publishes():
@@ -494,7 +494,7 @@ def test_the_object_counts_its_sources_and_they_add_up():
     document = company_countries.build_object(
         "2026-11-02.7", placed, company_total=10, fallback=stats
     )
-    assert document["sources"] == {"nport": 3, "gleif": 1, "edgar": 1}
+    assert document["sources"] == {"nport": 3, "gleif": 1, "edgar": 1, "cover_page": 0}
     assert sum(document["sources"].values()) == document["counts"]["with_country"] == 5
     assert document["counts"]["undecided"] == 5
     assert "GLEIF" in document["fallback_rule"] and "EDGAR" in document["fallback_rule"]
@@ -577,7 +577,7 @@ def test_a_release_with_a_fallback_block_validates(tmp_path):
     )
     assert validate.validate(release_dir) == 0
     document = json.loads((release_dir / "companies/countries.json").read_text())
-    assert document["sources"] == {"nport": 1, "gleif": 0, "edgar": 0}
+    assert document["sources"] == {"nport": 1, "gleif": 0, "edgar": 0, "cover_page": 0}
     assert "GLEIF" in document["fallback_rule"]
 
 
@@ -681,3 +681,130 @@ def test_the_gleif_lookup_keeps_only_the_companies_this_release_asks_about():
     assert ignored_id not in found, "an entity this release does not publish is not looked up"
     assert build_mod._gleif_jurisdictions(None, {}, ["l_x"]) is None
     assert build_mod._gleif_jurisdictions(index, {}, []) == {}
+
+
+# --- the cover-page rung ---------------------------------------------------
+
+
+def _cover_fetch(submissions, cover_body):
+    """A fake ``fetch(url)``: submissions JSON for one URL, the cover page for the other."""
+
+    def fetch(url):
+        if "submissions" in url:
+            return json.dumps(submissions).encode()
+        if url.endswith("R1.htm"):
+            return cover_body
+        raise AssertionError(f"unexpected url {url}")
+
+    return fetch
+
+
+def _submissions(*forms):
+    return {
+        "filings": {
+            "recent": {
+                "form": [form for form, _ in forms],
+                "accessionNumber": [accession for _, accession in forms],
+            }
+        }
+    }
+
+
+def test_the_cover_page_is_read_from_the_latest_annual_report():
+    # EDGAR's summary field is blank for a foreign private issuer; its own annual
+    # report is not. The 10-Q is newer and is skipped: only an annual report carries
+    # the jurisdiction, and reading a quarterly cover would be reading a different
+    # document's first page.
+    submissions = _submissions(
+        ("10-Q", "0001137789-26-000200"),
+        ("10-K", "0001137789-26-000159"),
+        ("10-K", "0001137789-25-000100"),
+    )
+    body = b"<tr><td>Entity Incorporation, State or Country Code</td><td>L2</td></tr>"
+    codes = company_countries.cover_page_incorporations(
+        ["c_0001137789"], fetch=_cover_fetch(submissions, body)
+    )
+    assert codes == {"c_0001137789": "L2"}
+    assert company_countries.edgar_country(codes["c_0001137789"]) == "IE"
+
+
+def test_a_company_with_no_annual_report_has_no_cover_page():
+    # The 98 ADR-only registrants on the 2026-11-04 release file 6-K and F-6 and
+    # nothing else. No annual report is an answer, not an error.
+    submissions = _submissions(("6-K", "0000000001-26-000001"), ("F-6EF", "0000000001-26-000002"))
+    codes = company_countries.cover_page_incorporations(
+        ["c_0000000001"], fetch=_cover_fetch(submissions, b"<p>nothing here</p>")
+    )
+    assert codes == {}
+
+
+def test_the_cover_page_parser_does_not_read_the_next_label():
+    # An empty value cell must not capture the first two letters of the label that
+    # follows it: "Entity Tax Identification Number" would otherwise read as "En".
+    empty = (
+        b"<tr><td>Entity Incorporation, State or Country Code</td><td></td></tr>"
+        b"<tr><td>Entity Tax Identification Number</td><td>98-1597419</td></tr>"
+    )
+    assert company_countries._cover_page_code(empty) is None
+    # The label and its value are in separate cells, so the tags are flattened first.
+    spaced = b"<td>Entity Incorporation, State or Country Code</td>\n<td>E9</td>"
+    assert company_countries._cover_page_code(spaced) == "E9"
+
+
+def test_a_failed_cover_page_fetch_leaves_the_company_undecided():
+    def fetch(url):
+        raise RuntimeError("HTTP 404")
+
+    assert company_countries.cover_page_incorporations(["c_0000000001"], fetch=fetch) == {}
+    # An LEI id is never asked about: the cover page is a CIK company's document.
+    assert company_countries.cover_page_incorporations(["l_ffffffffffffffff"], fetch=fetch) == {}
+
+
+def test_the_cover_page_places_a_company_the_summary_field_could_not():
+    # Seagate's shape: the vote failed, EDGAR's summary is an empty string, and the
+    # 10-K cover says L2. The rung is asked only after the summary field declines.
+    placed, stats = company_countries.apply_fallback(
+        {},
+        companies={"c_0001137789"},
+        edgar_codes={},
+        cover_page_codes={"c_0001137789": "L2"},
+    )
+    assert placed == {"c_0001137789": "IE"}
+    assert stats["sources"] == {"nport": 0, "gleif": 0, "edgar": 0, "cover_page": 1}
+
+
+def test_the_summary_field_wins_over_the_cover_page():
+    # Both documents carry the same vocabulary, so a company EDGAR already placed is
+    # never re-read: the cover page is one document deeper, not a second opinion.
+    placed, stats = company_countries.apply_fallback(
+        {},
+        companies={"c_0000000001"},
+        edgar_codes={"c_0000000001": "E9"},
+        cover_page_codes={"c_0000000001": "L2"},
+    )
+    assert placed == {"c_0000000001": "KY"}
+    assert stats["sources"]["edgar"] == 1
+    assert stats["sources"]["cover_page"] == 0
+
+
+def test_the_cover_page_gate_refuses_a_table_that_stops_reproducing_the_vote():
+    decided = {f"c_{index:010d}": "US" for index in range(250)}
+    shifted = {company_id: "E9" for company_id in decided}
+    with pytest.raises(company_countries.CountryFallbackError) as error:
+        company_countries.apply_fallback(
+            decided, companies=set(decided), cover_page_codes=shifted
+        )
+    assert "cover_page agrees" in str(error.value)
+    assert "9,500 bp floor" in str(error.value)
+
+
+def test_the_cover_page_rate_is_published_beside_the_other_two():
+    decided = {f"c_{index:010d}": "US" for index in range(250)}
+    agreeing = {company_id: "DE" for company_id in list(decided)[:249]}
+    disagreeing = {company_id: "E9" for company_id in list(decided)[249:]}
+    placed, stats = company_countries.apply_fallback(
+        decided, companies=set(decided), cover_page_codes={**agreeing, **disagreeing}
+    )
+    assert placed == decided
+    assert stats["agreement"]["cover_page_compared"] == 250
+    assert stats["agreement"]["cover_page_bp"] == 9_960
