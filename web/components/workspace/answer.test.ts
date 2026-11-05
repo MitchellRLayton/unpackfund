@@ -101,7 +101,7 @@ describe("buildAnswer — a portfolio the ledger has produced", () => {
     // FTSE Russell counts South Korea as developed, so KR sits with CH and only Taiwan
     // is emerging here. The split is computed by `tierOf`, not by the test.
     expect(flat(answer.sentences[2])).toBe(
-      "By market: 70.0% in US companies, 21.0% in international developed markets outside the US, 9.0% in emerging markets.",
+      "By market: 70.0% in the United States, 21.0% in international developed markets outside it, 9.0% in emerging markets.",
     );
   });
 
@@ -151,7 +151,7 @@ describe("buildAnswer — the honest refusals", () => {
     });
     const answer = buildAnswer({ kind: "ready", ledger, funds: [partial] });
     const markets = flat(answer.sentences[2]);
-    expect(markets).toContain("By market: 90.0% in US companies");
+    expect(markets).toContain("By market: 90.0% in the United States");
     expect(markets).toContain("not placed in a market");
     expect(markets).toContain(
       "untraced weight, cash, or a company with no country answer",

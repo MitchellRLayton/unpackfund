@@ -16,8 +16,8 @@
  *    largest part of the largest one comes from. Withheld entirely when a fund is below
  *    the 60% coverage floor, because a concentration figure computed over the part that
  *    resolved would describe a different portfolio (`lookthrough-math-and-qa` §5).
- * 3. **The market split** — US, other developed, emerging, and the remainder honestly
- *    named as unplaced rather than folded into a tier.
+ * 3. **The market split** — the United States, international developed ex-US, emerging,
+ *    and the remainder honestly named as outside the bar rather than folded into a tier.
  * 4. **The highest pairwise fund overlap**, only when it is high enough to be worth a
  *    sentence. It describes; it never judges, and there is no "too concentrated".
  *
@@ -335,9 +335,9 @@ function readySentences(
     const parts: AnswerPart[] = [
       text("By market: "),
       strong(formatPct1(split.us)),
-      text(" in US companies, "),
+      text(" in the United States, "),
       strong(formatPct1(split.dm)),
-      text(" in international developed markets outside the US, "),
+      text(" in international developed markets outside it, "),
       strong(formatPct1(split.em)),
       text(" in emerging markets"),
     ];

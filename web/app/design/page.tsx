@@ -31,7 +31,7 @@ const SURFACES = [
 
 const SEMANTIC = [
   ["--tier-us", "US"],
-  ["--tier-dm", "other developed"],
+  ["--tier-dm", "international developed ex-US"],
   ["--tier-em", "emerging"],
   ["--tier-none", "untiered"],
   ["--alert", "error only"],
@@ -270,8 +270,8 @@ export default function DesignPage() {
                 are <strong>18.4%</strong> of the mix, and the largest is Apple at 6.12%.
               </p>
               <p className="answer__sentence">
-                <strong>61.2%</strong> is in US companies, 27.4% in other developed
-                markets, 9.1% in emerging markets, and 2.3% is not traced to a company.
+                <strong>63.0%</strong> is in the United States, 28.0% in international
+                developed markets outside it, and 9.0% in emerging markets.
               </p>
               <p className="answer__note">
                 Coverage 71.2% · reporting period Jun 30, 2026 · filed Aug 28, 2026 · 59
@@ -294,12 +294,11 @@ export default function DesignPage() {
               <div
                 className="bar bar--tall"
                 role="img"
-                aria-label="This mix: 61.2% US, 27.4% developed, 9.1% emerging, 2.3% unplaced"
+                aria-label="This mix: 63.0% United States, 28.0% international developed ex-US, 9.0% emerging markets"
               >
-                <span className="bar__seg bar__seg--us" style={{ width: "61.2%" }} />
-                <span className="bar__seg bar__seg--dm" style={{ width: "27.4%" }} />
-                <span className="bar__seg bar__seg--em" style={{ width: "9.1%" }} />
-                <span className="bar__seg bar__seg--unplaced" style={{ width: "2.3%" }} />
+                <span className="bar__seg bar__seg--us" style={{ width: "63%" }} />
+                <span className="bar__seg bar__seg--dm" style={{ width: "28%" }} />
+                <span className="bar__seg bar__seg--em" style={{ width: "9%" }} />
               </div>
             </div>
             <div>
@@ -307,30 +306,25 @@ export default function DesignPage() {
               <div
                 className="bar bar--tall"
                 role="img"
-                aria-label="Benchmark: 62.0% US, 26.1% developed, 9.4% emerging, 2.5% unplaced"
+                aria-label="Benchmark: 64.0% United States, 27.0% international developed ex-US, 9.0% emerging markets"
               >
-                <span className="bar__seg bar__seg--us" style={{ width: "62%" }} />
-                <span className="bar__seg bar__seg--dm" style={{ width: "26.1%" }} />
-                <span className="bar__seg bar__seg--em" style={{ width: "9.4%" }} />
-                <span className="bar__seg bar__seg--unplaced" style={{ width: "2.5%" }} />
+                <span className="bar__seg bar__seg--us" style={{ width: "64%" }} />
+                <span className="bar__seg bar__seg--dm" style={{ width: "27%" }} />
+                <span className="bar__seg bar__seg--em" style={{ width: "9%" }} />
               </div>
             </div>
             <div className="legend">
               <span className="legend__item">
-                <span className="legend__swatch bar__seg--us" aria-hidden="true" /> US
-                61.2%
+                <span className="legend__swatch bar__seg--us" aria-hidden="true" /> United
+                States 63.0%
               </span>
               <span className="legend__item">
-                <span className="legend__swatch bar__seg--dm" aria-hidden="true" /> Other
-                developed 27.4%
+                <span className="legend__swatch bar__seg--dm" aria-hidden="true" />{" "}
+                International Developed ex-US 28.0%
               </span>
               <span className="legend__item">
                 <span className="legend__swatch bar__seg--em" aria-hidden="true" />{" "}
-                Emerging 9.1%
-              </span>
-              <span className="legend__item">
-                <span className="legend__swatch bar__seg--unplaced" aria-hidden="true" />{" "}
-                Not traced 2.3%
+                Emerging Markets 9.0%
               </span>
             </div>
 
