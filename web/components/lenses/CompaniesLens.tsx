@@ -78,6 +78,7 @@ import { companiesCsv, lensCsvName } from "./lens-csv";
 import { lensGateState } from "./lens-gate";
 import { nextSort, sortBy, TIER_WORD, type SortState } from "./lens-math";
 import { useProvider } from "./provider-preference";
+import { flagEmoji } from "@/lib/country-flag";
 
 type CompanySortKey = "name" | "country" | "weight" | "funds";
 
@@ -487,7 +488,15 @@ export function CompaniesLens({ model }: LensProps) {
                         </>
                       ) : (
                         <>
-                          <span className="country-tag">{row.country}</span>
+                          {/* The flag is derived from the code and is decoration: the
+                            glyph is `aria-hidden` and a screen reader hears the code,
+                            exactly as it does everywhere else on the site. Windows'
+                            Segoe UI Emoji has no flag glyphs and draws the two boxed
+                            letters, so the code is printed beside it and is the fact. */}
+                          <span className="country-tag">
+                            <span aria-hidden="true">{flagEmoji(row.country)}</span>{" "}
+                            {row.country}
+                          </span>
                           <CellNote>
                             {tier ? TIER_WORD[tier] : "no country answer"}
                           </CellNote>

@@ -407,7 +407,13 @@ export function MarketsLens({ model }: LensProps) {
               {split.countries.map((country) => (
                 <tr key={country.code} data-tier={country.tier}>
                   <th scope="row">
-                    <span className="country-tag">{country.code}</span>
+                    {/* The flag is derived from the code and is decoration: the glyph
+                      is `aria-hidden` and a screen reader hears the code, exactly as it
+                      does in the delta table above and on every other surface. */}
+                    <span className="country-tag">
+                      <span aria-hidden="true">{flagEmoji(country.code)}</span>{" "}
+                      {country.code}
+                    </span>
                   </th>
                   <td>{TIER_WORD[country.tier]}</td>
                   <td className="num">{formatShare(country.weight)}</td>

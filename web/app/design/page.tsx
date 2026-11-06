@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { flagEmoji } from "@/lib/country-flag";
+
 /**
  * The component page: every token and every primitive, on one screen.
  *
@@ -246,9 +248,18 @@ export default function DesignPage() {
             <span className="chip chip--mono">VTI</span>
             <span className="chip chip--date">Jun 30, 2026</span>
             <span className="chip chip--old">Filed 212 days ago</span>
-            <span className="country-tag">US</span>
-            <span className="country-tag">CH</span>
-            <span className="country-tag">TW</span>
+            {/* A country code is never printed alone: the flag is derived from the
+              code, is `aria-hidden`, and the code beside it is the fact. A workbench
+              that shows the code without the flag teaches the wrong pattern. */}
+            <span className="country-tag">
+              <span aria-hidden="true">{flagEmoji("US")}</span> US
+            </span>
+            <span className="country-tag">
+              <span aria-hidden="true">{flagEmoji("CH")}</span> CH
+            </span>
+            <span className="country-tag">
+              <span aria-hidden="true">{flagEmoji("TW")}</span> TW
+            </span>
             <span className="delta delta--up">(+2.54%)</span>
             <span className="delta delta--down">(-2.54%)</span>
           </div>
@@ -438,7 +449,9 @@ export default function DesignPage() {
                   </td>
                   <td>
                     {country ? (
-                      <span className="country-tag">{country}</span>
+                      <span className="country-tag">
+                        <span aria-hidden="true">{flagEmoji(country)}</span> {country}
+                      </span>
                     ) : (
                       <span className="muted">Unknown</span>
                     )}
