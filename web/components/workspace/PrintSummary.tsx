@@ -20,6 +20,7 @@
 
 import { AnswerStrip } from "./AnswerStrip";
 import type { Answer } from "./answer";
+import { flagEmoji } from "@/lib/country-flag";
 import { coverageChip, formatCount, formatDateLong, formatShare } from "@/lib/format";
 import type { WorkspaceModel } from "@/lib/use-workspace";
 
@@ -115,7 +116,19 @@ export function PrintSummary({
                       <span className="mono small"> {row.ticker}</span>
                     ) : null}
                   </th>
-                  <td>{row.country ?? "no code"}</td>
+                  <td>
+                    {row.country === null ? (
+                      "no code"
+                    ) : (
+                      // The flag is derived from the code and is decoration, exactly as
+                      // it is on screen: `aria-hidden`, with the code printed beside it.
+                      // A printer that drops the glyph leaves the code, which is the fact.
+                      <span className="country-tag">
+                        <span aria-hidden="true">{flagEmoji(row.country)}</span>{" "}
+                        {row.country}
+                      </span>
+                    )}
+                  </td>
                   <td className="num">{formatShare(row.weight)}</td>
                   <td className="num">
                     {row.holder_count > 0 ? formatCount(row.holder_count) : "—"}
