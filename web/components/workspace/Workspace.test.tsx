@@ -359,6 +359,22 @@ describe("Workspace — the companies table", () => {
     expect(unknown?.getAttribute("data-tier")).toBeNull();
   });
 
+  it("prints the country code once, and the market only when it adds something", () => {
+    renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+
+    // The country cell is the second `td` on the row: rank, then country.
+    const cell = (tier: string) =>
+      document.querySelector(`tr[data-tier="${tier}"] td:nth-of-type(2)`)?.textContent;
+
+    // A US company's market word is its own country code, so the cell says "US" once.
+    // It shipped as "US US" — the code, then the tier named after the same country.
+    expect(cell("US")).toBe(`${flagEmoji("US")} US`);
+
+    // Every other country keeps the market, because "CH" does not answer it.
+    expect(cell("DM")).toContain("Developed");
+    expect(cell("EM")).toContain("Emerging");
+  });
+
   it("prints the flag beside the country in the printable summary too", () => {
     renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
 
