@@ -35,7 +35,7 @@ import { useWorkspace } from "@/lib/use-workspace";
 import { useProvider } from "@/components/lenses/provider-preference";
 
 import { ActionsRow } from "./ActionsRow";
-import { AnswerStrip } from "./AnswerStrip";
+import { Summary } from "./Summary";
 import { buildAnswer, type Answer, type AnswerInput } from "./answer";
 import { EmptyState } from "./EmptyState";
 import { EXAMPLE_LABEL, isExamplePortfolio } from "./example";
@@ -184,9 +184,9 @@ export function Workspace() {
         </div>
 
         <div className="stack stack--loose">
-          <AnswerStrip answer={answer} effective={model.ledger?.effective}>
+          <Summary answer={answer} effective={model.ledger?.effective}>
             {isExample ? <p className={styles.exampleLabel}>{EXAMPLE_LABEL}</p> : null}
-          </AnswerStrip>
+          </Summary>
 
           {model.fundsError ? (
             <div className="notice notice--alert" role="alert">

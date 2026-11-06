@@ -14,8 +14,10 @@
  * prints gets one page that stands alone, and a screen reader is not offered a second copy
  * of the table it just read.
  *
- * The sentences come from `AnswerStrip`, the same component the screen uses, so a printed
- * summary cannot drift from the page it printed.
+ * The sentences come from `AnswerStrip` and the numbers from the same `Answer` the screen
+ * reads, so a printed summary cannot drift from the page it printed. The screen renders
+ * that answer as a box of rows (`Summary`) and this renders it as prose: paper has no fold
+ * to get under, so the shorter form buys nothing here and the sentences read better.
  */
 
 import { AnswerStrip } from "./AnswerStrip";

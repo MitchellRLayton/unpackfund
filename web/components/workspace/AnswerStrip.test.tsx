@@ -18,7 +18,7 @@ import { AnswerStrip } from "./AnswerStrip";
 afterEach(cleanup);
 
 /** A strip with no sentences of its own, so only the new pair can appear in the text. */
-const NOTHING: Answer = { sentences: [], note: null };
+const NOTHING: Answer = { sentences: [], note: null, highlights: [] };
 
 function company(weight: number, ...sources: number[]) {
   return { weight, sources: sources.map((source) => ({ weight: source })) };
@@ -107,6 +107,7 @@ describe("the effective-holdings sentence", () => {
         { parts: [{ text: "Your " }, { strong: "8" }, { text: " companies." }] },
       ],
       note: null,
+      highlights: [],
     };
     const { container } = render(<AnswerStrip answer={answer} effective={MERGED} />);
     const sentences = Array.from(container.querySelectorAll(".answer__sentence"));

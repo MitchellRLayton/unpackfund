@@ -265,13 +265,46 @@ afterEach(() => {
 });
 
 describe("Workspace — the answer comes first", () => {
-  it("counts companies and funds before any table is shown", () => {
+  it("prints the answer as a box of rows rather than a paragraph", () => {
     const { container } = renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
 
-    const answer = container.querySelector(".answer");
-    expect(answer?.textContent).toContain("You own 8 companies through 3 funds.");
-    // The coverage note is part of the answer, not a footnote elsewhere.
-    expect(container.querySelector(".answer__note")?.textContent).toContain("covered");
+    const box = container.querySelector(".summary-box");
+    expect(box).not.toBeNull();
+    // The headline is still the one sentence the page exists to say.
+    expect(box?.querySelector(".summary-box__headline")?.textContent).toContain(
+      "You own 8 companies through 3 funds.",
+    );
+    // Eight companies is fewer than ten, so the row is not called "10 largest".
+    const labels = Array.from(box?.querySelectorAll(".summary-box__label") ?? []).map(
+      (label) => label.textContent,
+    );
+    expect(labels).toEqual(["Largest", "Markets (MSCI)", "Effective", "Coverage"]);
+    // The coverage note is a row in the box, not a footnote elsewhere.
+    expect(box?.textContent).toContain("covered");
+  });
+
+  it("keeps the box short, and puts the tabs straight after it", () => {
+    const { container } = renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+
+    const box = container.querySelector(".summary-box");
+    expect(box).not.toBeNull();
+    // Four facts, plus overlap when it is notable: the box may not grow back into prose.
+    const rows = box?.querySelectorAll(".summary-box__row") ?? [];
+    expect(rows.length).toBeLessThanOrEqual(5);
+
+    const tabs = screen.getByRole("tablist");
+    const position = box?.compareDocumentPosition(tabs) ?? 0;
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("still prints the prose on paper, where there is no fold to get under", () => {
+    const { container } = renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+
+    const print = container.querySelector(".print-only");
+    expect(print?.querySelector(".answer")?.textContent).toContain(
+      "You own 8 companies through 3 funds.",
+    );
+    expect(print?.querySelector(".answer__note")?.textContent).toContain("covered");
   });
 
   it("says what is missing instead of printing numbers for an incomplete portfolio", () => {
@@ -279,6 +312,8 @@ describe("Workspace — the answer comes first", () => {
       entries: ENTRIES.slice(0, 2),
     });
 
+    // Nothing to tabulate, so the box falls back to the prose it replaced.
+    expect(container.querySelector(".summary-box")).toBeNull();
     const answer = container.querySelector(".answer");
     expect(answer?.textContent).toContain("Your percentages add up to 90.00%");
     expect(answer?.textContent).toContain("accounting for nothing");

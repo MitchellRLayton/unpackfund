@@ -808,6 +808,89 @@ table {
 }
 
 /* ------------------------------------------------------------------------- */
+/* Summary box                                                               */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * The answer as rows rather than paragraphs, so the five tables start above the fold.
+ *
+ * The headline keeps the answer strip's serif — the one sentence a page exists to say
+ * still looks like a headline — and the rows are UI type, because a table of numbers is
+ * read rather than admired.
+ *
+ * The label column is a fixed width so the values line up down the box, and that
+ * alignment is the whole reason this reads faster than the prose it replaces. Below
+ * 30rem the label goes above its value instead: a 8rem label column on a 320px screen
+ * leaves the numbers nowhere to go.
+ */
+.summary-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.summary-box__headline {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(var(--text-16), 1.4vw, var(--text-20));
+  line-height: 1.45;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+  max-width: 58ch;
+}
+
+.summary-box__headline strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-box__rows {
+  margin: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.summary-box__row {
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: baseline;
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--rule);
+}
+
+.summary-box__row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.summary-box__label {
+  font-size: var(--text-12);
+  line-height: var(--leading-snug);
+  color: var(--graphite);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.summary-box__value {
+  margin: 0;
+  font-size: var(--text-14);
+  line-height: var(--leading-snug);
+  color: var(--ink);
+}
+
+.summary-box__value strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 30rem) {
+  .summary-box__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+}
+
+/* ------------------------------------------------------------------------- */
 /* Tabs (lenses)                                                             */
 /* ------------------------------------------------------------------------- */
 

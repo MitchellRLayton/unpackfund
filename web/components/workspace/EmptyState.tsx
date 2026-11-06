@@ -24,7 +24,7 @@ import { formatWeightBp } from "@/lib/format";
 import { useFunds } from "@/lib/use-release";
 import type { WorkspaceModel } from "@/lib/use-workspace";
 
-import { AnswerStrip } from "./AnswerStrip";
+import { Summary } from "./Summary";
 import { buildAnswer } from "./answer";
 import { EXAMPLE_ENTRIES, EXAMPLE_LABEL } from "./example";
 import { focusAddInput, openPasteBox } from "./HoldingsPane";
@@ -97,7 +97,7 @@ function WorkedExample({ model }: { model: WorkspaceModel }) {
           </li>
         ))}
       </ul>
-      <AnswerStrip answer={answer} effective={ledger?.effective} />
+      <Summary answer={answer} effective={ledger?.effective} />
     </section>
   );
 }

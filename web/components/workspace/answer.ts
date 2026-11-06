@@ -44,10 +44,12 @@ import {
   formatCount,
   formatDateLong,
   formatDays,
+  formatEffective,
   formatPct1,
   formatShare,
   formatWeightBp,
 } from "@/lib/format";
+import type { GlossaryTermId } from "@/lib/glossary";
 import {
   FULL_ALLOCATION_BP,
   type EntryMode,
@@ -56,6 +58,8 @@ import {
   type LedgerRow,
 } from "@/lib/types";
 
+import { PROVIDER_SHORT } from "@/components/lenses/lens-math";
+
 /** How much two funds must share before the strip mentions it, as a fraction of NAV. */
 export const OVERLAP_NOTABLE = 0.5;
 
@@ -63,9 +67,29 @@ export const OVERLAP_NOTABLE = 0.5;
 export interface AnswerPart {
   text?: string;
   strong?: string;
+  /**
+   * A glossary entry behind this run of words. Only ever set on a word the site defines
+   * and a reader would otherwise have to guess at — "core", "breadth" — so the box on
+   * screen keeps the definitions the prose carried.
+   */
+  term?: GlossaryTermId;
 }
 
 export interface AnswerSentence {
+  parts: AnswerPart[];
+}
+
+/**
+ * One row of the summary box: a short label, the glossary entry behind it, and the
+ * numbers.
+ *
+ * The label is short because the label column is narrow — "10 largest", not "Your ten
+ * largest companies" — and the value carries the numbers and the emphasis.
+ */
+export interface AnswerHighlight {
+  label: string;
+  /** The glossary entry the label names, when there is one. */
+  term?: GlossaryTermId;
   parts: AnswerPart[];
 }
 
@@ -73,6 +97,12 @@ export interface Answer {
   sentences: AnswerSentence[];
   /** Coverage and the filing dates, or `null` when there is nothing to qualify. */
   note: AnswerPart[] | null;
+  /**
+   * The same facts as `sentences`, as rows a reader can scan. Empty when there is nothing
+   * to tabulate — an empty, loading or incomplete portfolio — which is what tells the
+   * summary box to fall back to the prose.
+   */
+  highlights: AnswerHighlight[];
 }
 
 export type AnswerInput =
@@ -395,6 +425,142 @@ function readySentences(
 }
 
 /**
+ * The same facts as the sentences, as rows a reader can scan.
+ *
+ * The box on screen and the prose on the printed page are two renderings of one
+ * computation: every number here is read from the same ledger fields the sentences read,
+ * so the two surfaces cannot disagree about the same portfolio. The rule the rows follow
+ * is that a row may say a fact more briefly than its sentence but may never drop one that
+ * has no other home on the page — which is why the overlap row appears exactly when the
+ * overlap sentence does, and why the concentration row is withheld exactly when the
+ * concentration sentence is.
+ *
+ * The coverage row is the one place a fact is trimmed: the note also names the share not
+ * traced to a company, and that is the complement of the share that is, so the row prints
+ * the chip and the oldest reporting period and leaves the subtraction to the reader.
+ */
+function readyHighlights(
+  ledger: Ledger,
+  funds: readonly FundDocument[],
+  contested: Record<string, string>,
+  provider: Provider,
+): AnswerHighlight[] {
+  const rows: AnswerHighlight[] = [];
+  if (ledger.rows.length === 0) return rows;
+
+  // 1. Concentration, withheld on the same rule the sentence uses.
+  const suppressed = ledger.funds.filter(
+    (fund) => coverageBand(fund.coverage_pct) === "none",
+  );
+  const largest = largestRow(ledger.rows);
+  if (suppressed.length > 0) {
+    rows.push({
+      label: "10 largest",
+      term: "top-10",
+      parts: [
+        text("Withheld — "),
+        strong(suppressed.map((fund) => fund.ticker).join(", ")),
+        text(
+          suppressed.length === 1
+            ? " covers under 60% of its own weight"
+            : " cover under 60% of their own weight",
+        ),
+      ],
+    });
+  } else if (largest !== null && ledger.metrics.top10 !== null) {
+    rows.push({
+      label: ledger.rows.length >= 10 ? "10 largest" : "Largest",
+      term: "top-10",
+      parts: [
+        strong(formatPct1(ledger.metrics.top10)),
+        text(" of the mix · largest "),
+        strong(largest.name),
+        text(" "),
+        strong(formatShare(largest.weight)),
+      ],
+    });
+  }
+
+  // 2. The market split, on the same three-source cascade the sentence uses.
+  const split = marketSplit(ledger, contested, provider);
+  if (split.placed > 0) {
+    const unplaced = Math.max(0, 1 - split.placed);
+    const parts: AnswerPart[] = [
+      strong(formatPct1(split.us)),
+      text(" US · "),
+      strong(formatPct1(split.dm)),
+      text(" developed ex-US · "),
+      strong(formatPct1(split.em)),
+      text(" emerging"),
+    ];
+    if (unplaced > 0.0005) {
+      parts.push(text(" · "), strong(formatPct1(unplaced)), text(" not placed"));
+    }
+    rows.push({
+      label: `Markets (${PROVIDER_SHORT[provider]})`,
+      term: "market-tier",
+      parts,
+    });
+  }
+
+  // 3. Effective holdings, with the two counts the glossary defines.
+  const effective = ledger.effective;
+  if (effective.core !== null && effective.broad !== null) {
+    rows.push({
+      label: "Effective",
+      term: "effective-holdings",
+      parts: [
+        strong(formatEffective(effective.core)),
+        text(" at the "),
+        { text: "core", term: "core" },
+        text(" · "),
+        strong(formatEffective(effective.broad)),
+        text(" counting "),
+        { text: "breadth", term: "broad" },
+      ],
+    });
+  } else {
+    rows.push({
+      label: "Effective",
+      term: "effective-holdings",
+      parts: [text("Withheld — a fund covers under 60% of its own weight")],
+    });
+  }
+
+  // 4. The highest pairwise overlap, on the same threshold the sentence uses.
+  const contributing = funds.filter((fund) =>
+    ledger.funds.some((entry) => entry.ticker === fund.ticker),
+  );
+  const overlap = highestOverlap(contributing);
+  if (overlap !== null && overlap.shared >= OVERLAP_NOTABLE) {
+    rows.push({
+      label: "Overlap",
+      term: "overlap",
+      parts: [
+        strong(overlap.a),
+        text(" and "),
+        strong(overlap.b),
+        text(" share "),
+        strong(formatPct1(overlap.shared)),
+      ],
+    });
+  }
+
+  // 5. Coverage and the oldest reporting period — the note's two facts, without the
+  //    subtraction the reader can do.
+  if (ledger.funds.length > 0) {
+    const covered = Math.max(0, Math.min(100, ledger.metrics.covered_weight_pct));
+    const parts: AnswerPart[] = [strong(coverageChip(covered))];
+    if (ledger.oldest_as_of !== null) {
+      parts.push(text(" · oldest period "), strong(formatDateLong(ledger.oldest_as_of)));
+    }
+    rows.push({ label: "Coverage", term: "coverage", parts });
+  }
+
+  return rows;
+}
+
+/**
  * The note under the sentences: what the numbers are a share of, and how old they are.
  *
  * Coverage and the three dates are not decoration — a weight with no filing date is a
@@ -454,7 +620,7 @@ function readyNote(ledger: Ledger): AnswerPart[] | null {
 export function buildAnswer(input: AnswerInput): Answer {
   switch (input.kind) {
     case "empty":
-      return { sentences: [], note: null };
+      return { sentences: [], note: null, highlights: [] };
 
     case "loading": {
       const pending = input.pending;
@@ -472,9 +638,12 @@ export function buildAnswer(input: AnswerInput): Answer {
             },
           ],
           note: null,
+          highlights: [],
         };
       }
-      if (input.fundCount === 0) return { sentences: [], note: null };
+      if (input.fundCount === 0) {
+        return { sentences: [], note: null, highlights: [] };
+      }
       return {
         sentences: [
           {
@@ -488,6 +657,7 @@ export function buildAnswer(input: AnswerInput): Answer {
           },
         ],
         note: null,
+        highlights: [],
       };
     }
 
@@ -500,6 +670,7 @@ export function buildAnswer(input: AnswerInput): Answer {
             },
           ],
           note: null,
+          highlights: [],
         };
       }
       const over = input.overBp > 0;
@@ -531,18 +702,20 @@ export function buildAnswer(input: AnswerInput): Answer {
           },
         ],
         note: null,
+        highlights: [],
       };
     }
 
-    case "ready":
+    case "ready": {
+      // One set of inputs for both renderings: the box and the prose must place the same
+      // weight under the same convention, or the page contradicts itself.
+      const contested = input.contested ?? {};
+      const provider = input.provider ?? DEFAULT_PROVIDER;
       return {
-        sentences: readySentences(
-          input.ledger,
-          input.funds,
-          input.contested ?? {},
-          input.provider ?? DEFAULT_PROVIDER,
-        ),
+        sentences: readySentences(input.ledger, input.funds, contested, provider),
         note: readyNote(input.ledger),
+        highlights: readyHighlights(input.ledger, input.funds, contested, provider),
       };
+    }
   }
 }
