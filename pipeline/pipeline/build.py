@@ -229,8 +229,8 @@ class CashExcess:
 
     A filer can report its cash sweep *on top of* a book that is already fully invested.
     Alpha Architect International Quantitative Value (IVAL, 2026-06-30) files 50 positions
-    at 2.00% each — 99.34% of net assets — plus ``$20,297,444``, 9.77%, in a government
-    money-market fund. The schedule then reads 109.08% of net assets and 7.77% over the
+    of roughly 2% each — ``206,346,608.27``, or 99.31% of net assets — plus ``$20,297,444``,
+    9.77%, in a government money-market fund. The schedule then reads 109.08% of net assets and 7.77% over the
     filing's own total assets: on the filing's own numbers that cash row cannot be owned,
     because the book already is the fund. Removing it reconciles the book to 0.69%.
 
