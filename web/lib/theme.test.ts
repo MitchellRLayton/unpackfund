@@ -433,4 +433,14 @@ describe("automatic light/dark", () => {
     expect(CSS).toMatch(/\.delta--down\s*\{[^}]*color:\s*var\(--delta-down\)/);
     expect(CSS).not.toMatch(/data-tier[^{]*\.delta--?(up|down)?\s*\{/);
   });
+
+  it("lets a table's sort button take the cell's alignment instead of centring", () => {
+    // A `<button>` is centred by the user-agent stylesheet, and `display: inline-flex`
+    // does not change that: the text becomes an anonymous flex item and `text-align`
+    // still applies to it. A company name that wraps to two lines therefore came out
+    // centred inside a left-aligned cell — "ExxonMobil" indented over "Holdings Corp" —
+    // which reads as a formatting fault rather than as a centred label. `inherit` is
+    // the fix, and it is the only value that keeps a `.num` header right-aligned.
+    expect(CSS).toMatch(/\.table__sort\s*\{[^}]*text-align:\s*inherit/);
+  });
 });
