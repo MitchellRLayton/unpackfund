@@ -12,11 +12,13 @@ import type {
   UnmappedBreakdown,
 } from "@/lib/types";
 
+import { CompaniesLens } from "./CompaniesLens";
 import { FundsLens } from "./FundsLens";
 import { MarketsLens } from "./MarketsLens";
 import { OverlapLens } from "./OverlapLens";
 import { QualityLens } from "./QualityLens";
 import { withEffective } from "../../lib/testing/ledger";
+import { flagEmoji } from "@/lib/country-flag";
 
 /**
  * A render of each lens against a hand-worked portfolio — the same fixture the
@@ -255,6 +257,30 @@ describe("the four lenses render a worked portfolio", () => {
     expect(html).toContain("The two conventions agree for this portfolio");
     expect(html).toContain("Export CSV");
     expect(html).not.toMatch(/NaN|undefined/);
+  });
+
+  it("markets: every country code in the by-country table carries its flag", () => {
+    const html = renderToStaticMarkup(<MarketsLens model={MODEL} />);
+    // The flag is derived from the code and is decoration — `aria-hidden`, with the
+    // code printed beside it — so the assertion is on the pair, not on the glyph
+    // alone. A cell that prints the code without the flag is the regression this
+    // catches: it shipped once, and the code alone reads as a bare abbreviation.
+    expect(html).toContain(
+      `<span class="country-tag"><span aria-hidden="true">${flagEmoji("US")}</span> US</span>`,
+    );
+    expect(html).toContain(
+      `<span class="country-tag"><span aria-hidden="true">${flagEmoji("IE")}</span> IE</span>`,
+    );
+  });
+
+  it("companies: the country cell carries the flag and the market word", () => {
+    const html = renderToStaticMarkup(<CompaniesLens model={MODEL} />);
+    expect(html).toContain(
+      `<span class="country-tag"><span aria-hidden="true">${flagEmoji("US")}</span> US</span>`,
+    );
+    // The market word is the second line of the same cell, and it is what makes the
+    // column header "Country, market" true rather than aspirational.
+    expect(html).toContain("Developed");
   });
 
   it("funds: sortable headers with aria-sort on the header, and the three dates", () => {

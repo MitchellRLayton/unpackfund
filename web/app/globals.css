@@ -1066,6 +1066,14 @@ table {
   display: inline-flex;
   align-items: center;
   gap: 0.25em;
+  /* A `<button>` is centred by the user-agent stylesheet, and `display: inline-flex`
+     does not change that: the text becomes an anonymous flex item and `text-align`
+     still applies to it. A name that wraps to two lines therefore came out centred
+     inside a left-aligned cell — "ExxonMobil" indented over "Holdings Corp" — which
+     reads as a formatting fault rather than as a centred label. `inherit` takes the
+     cell's own alignment, so a left-aligned header stays left and a `.num` header
+     stays right. */
+  text-align: inherit;
 }
 
 .table__sort:hover {
