@@ -14,8 +14,10 @@
  * 1. **The market edge is never colour alone.** Each row carries `data-tier`, which the
  *    design system turns into a 4px inset, *and* the two-letter country code and the tier
  *    in words. A reader on a monochrome print, or with any colour-vision deficiency, gets
- *    the same answer. A company whose country the release does not answer keeps its row
- *    and its weight and loses only the colour: its edge is dashed, its code reads "no
+ *    the same answer. The tier in words sits under the code, except where the word *is*
+ *    the code: a US company reads "US" once, not "US US", because the code has already
+ *    answered the market. A company whose country the release does not answer keeps its
+ *    row and its weight and loses only the colour: its edge is dashed, its code reads "no
  *    code", and the tier cell says so.
  * 2. **Every fund is named, never counted down to "+N".** The row lists each contributing
  *    fund with its share and wraps to fit them, so a twelve-fund position grows the row
@@ -458,6 +460,13 @@ export function CompaniesLens({ model }: LensProps) {
                 // The rank is the row's place in the whole sorted table, not on its page.
                 const rank = current.start + offset;
                 const delta = benchmarkDelta(row.weight, row.benchmark_weight);
+                // The market in words, which is what a reader without the colour needs.
+                // For a US company that word is the country code itself, so printing it
+                // would read "US US": the code already answers the market, and the note is
+                // dropped rather than repeated. Every other country keeps it, because "CH"
+                // does not tell you the market and "Developed" does.
+                const marketWord = tier ? TIER_WORD[tier] : "no country answer";
+                const showMarket = marketWord !== row.country;
                 return (
                   <tr
                     key={row.company_id}
@@ -497,9 +506,7 @@ export function CompaniesLens({ model }: LensProps) {
                             <span aria-hidden="true">{flagEmoji(row.country)}</span>{" "}
                             {row.country}
                           </span>
-                          <CellNote>
-                            {tier ? TIER_WORD[tier] : "no country answer"}
-                          </CellNote>
+                          {showMarket ? <CellNote>{marketWord}</CellNote> : null}
                         </>
                       )}
                     </td>

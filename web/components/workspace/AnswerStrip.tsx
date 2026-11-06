@@ -33,16 +33,31 @@ import type { Answer, AnswerPart } from "./answer";
 /** Overlap must move the core count by this factor before the strip spends a sentence on it. */
 const OVERLAP_NOTABLE = 1.1;
 
-function Parts({ parts }: { parts: readonly AnswerPart[] }) {
+/**
+ * The runs of a sentence: numbers emphasised, and any word the site defines a keystroke
+ * from its definition.
+ *
+ * Exported because the summary box renders the same runs. One renderer is what stops a
+ * part that carries a glossary term from being a popover in the prose and plain text in
+ * the box.
+ */
+export function Parts({ parts }: { parts: readonly AnswerPart[] }) {
   return (
     <>
-      {parts.map((part, index) =>
-        part.strong !== undefined ? (
+      {parts.map((part, index) => {
+        if (part.term !== undefined) {
+          return (
+            <Term key={index} name={part.term}>
+              {part.text ?? part.strong}
+            </Term>
+          );
+        }
+        return part.strong !== undefined ? (
           <strong key={index}>{part.strong}</strong>
         ) : (
           <span key={index}>{part.text}</span>
-        ),
-      )}
+        );
+      })}
     </>
   );
 }

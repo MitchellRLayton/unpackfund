@@ -280,7 +280,11 @@ describe("highestOverlap", () => {
 
 describe("buildAnswer — states that are not a whole portfolio", () => {
   it("has nothing to say about an empty portfolio", () => {
-    expect(buildAnswer({ kind: "empty" })).toEqual({ sentences: [], note: null });
+    expect(buildAnswer({ kind: "empty" })).toEqual({
+      sentences: [],
+      note: null,
+      highlights: [],
+    });
   });
 
   it("names the filings it is waiting for", () => {
@@ -335,5 +339,85 @@ describe("buildAnswer — states that are not a whole portfolio", () => {
     expect(flat(empty.sentences[0])).toBe(
       "Set an amount on at least one row to see the look-through.",
     );
+  });
+});
+
+/**
+ * The box on screen and the prose on paper are two renderings of one computation, so the
+ * rows are pinned against the same fixture the sentences are. What is checked here is not
+ * the wording — that is the component's business — but that a row exists for every fact a
+ * sentence carries, that the numbers are the sentence's numbers, and that a state with
+ * nothing to tabulate produces no rows at all (which is what makes the box fall back to
+ * the prose).
+ */
+describe("buildAnswer — the same facts as rows", () => {
+  const ledger = buildLedger({
+    funds: [vti, vxus, bnd],
+    weights: WEIGHTS,
+    countries: COUNTRIES,
+  });
+  const answer = buildAnswer({ kind: "ready", ledger, funds: [vti, vxus, bnd] });
+
+  function row(label: string) {
+    return answer.highlights.find((entry) => entry.label === label);
+  }
+
+  function flatRow(label: string): string {
+    return (row(label)?.parts ?? [])
+      .map((part) => part.strong ?? part.text ?? "")
+      .join("");
+  }
+
+  it("labels every row with the glossary entry behind it", () => {
+    expect(answer.highlights.map((entry) => entry.label)).toEqual([
+      "Largest",
+      "Markets (MSCI)",
+      "Effective",
+      "Coverage",
+    ]);
+    for (const entry of answer.highlights) {
+      expect(entry.term).toBeTruthy();
+    }
+  });
+
+  it("says the concentration the sentence says, without the fund attribution", () => {
+    // Seven companies is fewer than ten, so the row is not called "10 largest".
+    expect(flatRow("Largest")).toBe("100.0% of the mix · largest Company c_apple 24.00%");
+  });
+
+  it("says the market split the sentence says, under the same convention", () => {
+    expect(flatRow("Markets (MSCI)")).toBe(
+      "70.0% US · 15.0% developed ex-US · 15.0% emerging",
+    );
+  });
+
+  it("names the two effective counts and links the words that need defining", () => {
+    const parts = row("Effective")?.parts ?? [];
+    expect(parts.filter((part) => part.term).map((part) => part.term)).toEqual([
+      "core",
+      "broad",
+    ]);
+    expect(flatRow("Effective")).toContain("at the core");
+    expect(flatRow("Effective")).toContain("counting breadth");
+  });
+
+  it("carries the coverage chip and the oldest reporting period", () => {
+    expect(flatRow("Coverage")).toBe("100.0% covered · oldest period Jun 30, 2026");
+  });
+
+  it("has no rows to tabulate for an empty, loading or incomplete portfolio", () => {
+    expect(buildAnswer({ kind: "empty" }).highlights).toEqual([]);
+    expect(
+      buildAnswer({ kind: "loading", pending: [], fundCount: 2 }).highlights,
+    ).toEqual([]);
+    expect(
+      buildAnswer({
+        kind: "incomplete",
+        mode: "bp",
+        totalBp: 9_000,
+        unallocatedBp: 1_000,
+        overBp: 0,
+      }).highlights,
+    ).toEqual([]);
   });
 });
