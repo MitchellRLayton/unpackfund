@@ -9,6 +9,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildLedger } from "@/lib/aggregate";
+import { flagEmoji } from "@/lib/country-flag";
 import { benchmarkFor } from "@/lib/benchmark";
 import { CASH_KEY } from "@/lib/holdings";
 import { splitPortfolio } from "@/lib/portfolio-weights";
@@ -308,12 +309,39 @@ describe("Workspace — the companies table", () => {
     const us = document.querySelector('tr[data-tier="US"]');
     expect(us).not.toBeNull();
     expect(us?.textContent).toContain("US");
+    // The flag is derived from the code and is decoration: the glyph is `aria-hidden`
+    // and the code beside it is the fact. A cell that prints the code alone is the
+    // regression this holds — it shipped once, and a bare "US" reads as an abbreviation
+    // rather than as a country.
+    expect(us?.querySelector(".country-tag [aria-hidden='true']")?.textContent).toBe(
+      flagEmoji("US"),
+    );
 
     // A company the release cannot place keeps its row, loses only the colour.
     const unknown = document.querySelector('tr[data-country-missing="true"]');
     expect(unknown).not.toBeNull();
     expect(unknown?.textContent).toContain("no code");
     expect(unknown?.getAttribute("data-tier")).toBeNull();
+  });
+
+  it("prints the flag beside the country in the printable summary too", () => {
+    renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+
+    // The printable summary is a second table in the DOM, hidden on screen by CSS that
+    // jsdom does not apply. It is the one surface a reader sees on paper, so it carries
+    // the same flag-and-code pair as the screen rather than a bare code.
+    const summary = screen.getByRole("region", { name: "Printable summary" });
+    const tags = [...summary.querySelectorAll(".country-tag")];
+    expect(tags.length).toBeGreaterThan(0);
+    for (const tag of tags) {
+      // The cell reads "<flag> <code>", so the code is the last whitespace-separated
+      // token and the flag is the `aria-hidden` child in front of it.
+      const code = tag.textContent?.trim().split(/\s+/).pop() ?? "";
+      expect(code).toMatch(/^[A-Z]{2}$/);
+      expect(tag.querySelector("[aria-hidden='true']")?.textContent).toBe(
+        flagEmoji(code),
+      );
+    }
   });
 
   it("opens a company from the row's own control", () => {
