@@ -9,7 +9,11 @@ cannot produce a published artifact:
 
 1. the filing's holdings reconcile to NAV (``|Σ valUSD / netAssets − 1| ≤ 5%``,
    which is the skill's N-PORT reconciliation band and the reason a fund with
-   derivatives is not rejected for summing to 100.09%);
+   derivatives is not rejected for summing to 100.09%). Two cash rows are read as
+   cash rather than as positions, because a schedule that is right *about them* is
+   wrong as a fund: borrowed collateral (``lending_collateral``, offset by a
+   liability) and unfunded cash (``unfunded_cash``, the row a filer reports on top
+   of a book that already is the fund — IVAL's $20.3M money-market sweep);
 2. the emitted weight vector is a plausible whole (``9,000 ≤ Σ bp ≤ 10,500``) —
    the check that catches "parsed half the holdings" and "double-counted a fund";
 3. the per-fund file is under the size budget.
@@ -187,20 +191,25 @@ def _collateral_shapes(cash: list[Holding]) -> list[list[Holding]]:
     ]
 
 
-def lending_collateral(filing: NportFiling) -> Collateral:
-    net = filing.net_assets or 0.0
-    liabilities = filing.total_liabilities or 0.0
-    if net <= 0 or liabilities <= 0:
-        return Collateral(frozenset(), 0.0)
-    cash = [
+def _cash_rows(holdings: list[Holding]) -> list[Holding]:
+    """The schedule's cash-like rows. One definition, because two rules read it."""
+    return [
         holding
-        for holding in filing.holdings
+        for holding in holdings
         if classify.classify(
             holding.asset_cat, holding.issuer_cat, holding.is_derivative
         ).category
         == classify.CASH
         and (holding.val_usd or 0.0) > 0
     ]
+
+
+def lending_collateral(filing: NportFiling) -> Collateral:
+    net = filing.net_assets or 0.0
+    liabilities = filing.total_liabilities or 0.0
+    if net <= 0 or liabilities <= 0:
+        return Collateral(frozenset(), 0.0)
+    cash = _cash_rows(filing.holdings)
     if not cash:
         return Collateral(frozenset(), 0.0)
     filed_total = sum(holding.val_usd or 0.0 for holding in filing.holdings)
@@ -212,6 +221,56 @@ def lending_collateral(filing: NportFiling) -> Collateral:
             continue
         return Collateral(frozenset(id(holding) for holding in shape), cash_usd)
     return Collateral(frozenset(), 0.0)
+
+
+@dataclass(frozen=True)
+class CashExcess:
+    """Cash rows the filing's own totals do not fund.
+
+    A filer can report its cash sweep *on top of* a book that is already fully invested.
+    Alpha Architect International Quantitative Value (IVAL, 2026-06-30) files 50 positions
+    at 2.00% each — 99.34% of net assets — plus ``$20,297,444``, 9.77%, in a government
+    money-market fund. The schedule then reads 109.08% of net assets and 7.77% over the
+    filing's own total assets: on the filing's own numbers that cash row cannot be owned,
+    because the book already is the fund. Removing it reconciles the book to 0.69%.
+
+    Set aside only when removing the cash lands the schedule inside the band, so a
+    leveraged fund keeps its rows: its remainder is still far from net assets. Unlike
+    borrowed collateral the remainder is renormalised — ``build_vector`` weights these
+    funds against the investable book, so the vector totals 10,000 bp of holdings instead
+    of ~9,900 bp of NAV with an unfunded cash line the reader cannot see.
+    """
+
+    rows: frozenset[int]
+    usd: float
+
+
+def unfunded_cash(
+    filing: NportFiling, *, exclude: frozenset[int] = frozenset()
+) -> CashExcess:
+    """Cash that is not a position: the book alone already accounts for the NAV.
+
+    ``exclude`` is the lending collateral, so the two rules stay disjoint: a cash row
+    that already explains a liability is not re-read as an excess. A cash row worth more
+    than net assets is never taken — a fund holding more cash than its own NAV is a
+    leverage question, not a filing quirk.
+    """
+    net = filing.net_assets or 0.0
+    if net <= 0:
+        return CashExcess(frozenset(), 0.0)
+    remaining = [holding for holding in filing.holdings if id(holding) not in exclude]
+    filed_total = sum(holding.val_usd or 0.0 for holding in remaining)
+    if abs(filed_total / net - 1) <= NAV_RESIDUAL_LIMIT:
+        return CashExcess(frozenset(), 0.0)
+    cash = _cash_rows(remaining)
+    if not cash:
+        return CashExcess(frozenset(), 0.0)
+    cash_usd = sum(holding.val_usd or 0.0 for holding in cash)
+    if cash_usd > net:
+        return CashExcess(frozenset(), 0.0)
+    if abs((filed_total - cash_usd) / net - 1) > NAV_RESIDUAL_LIMIT:
+        return CashExcess(frozenset(), 0.0)
+    return CashExcess(frozenset(id(holding) for holding in cash), cash_usd)
 
 
 def _net_assets_usd(net_assets: float | None) -> int | None:
@@ -273,17 +332,29 @@ def build_fund(
     lag_days = artifact._days_between(found.filing_date, found.report_date)
 
     collateral = lending_collateral(filing)
+    excess = unfunded_cash(filing, exclude=collateral.rows)
+    set_aside = collateral.rows | excess.rows
     investable = [
         holding
         for holding in filing.holdings
-        if id(holding) not in collateral.rows
+        if id(holding) not in set_aside
     ]
+    # What the weights are a fraction of. The fund's own NAV, except for a filing whose
+    # book already is the fund: there the cash is excluded and the investable book is the
+    # denominator, so the published vector is a whole fund (10,000 bp) rather than 9,900.
+    basis = filing.net_assets
+    if excess.rows:
+        basis = sum(holding.val_usd or 0.0 for holding in investable)
+        _log(
+            f"{ref.ticker}: {excess.usd:,.0f} of cash is not funded by the filing's own "
+            f"totals — weighting against the investable book ({basis:,.0f})"
+        )
 
     evidence = IdentityEvidence() if collect_evidence else None
     vector = weights.build_vector(
         investable,
         index,
-        filing.net_assets,
+        basis,
         lag_days=lag_days,
         identity=identity,
         evidence=evidence,
@@ -384,6 +455,9 @@ def build_fund(
     _countries, _invalid_country_rows = company_countries.fund_votes(vector.holdings)
     stats = {
         "collateral_usd": collateral.usd,
+        # Cash a filing reported on top of a book that already is the fund. Excluded
+        # from ``asset_cats`` as well, so the two numbers always agree.
+        "cash_excess_usd": excess.usd,
         "rungs": dict(vector.rung_counts),
         "asset_cats": dict(vector.asset_cat_counts),
         "total_bp": vector.total_bp,
