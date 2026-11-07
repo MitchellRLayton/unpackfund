@@ -111,8 +111,17 @@ def test_a_well_covered_fund_gets_the_computed_bar():
     # The bar's denominator is the whole fund, so the gap is a drawn segment too.
     assert "Not placed" in text(markup)
     assert "Not equity" in text(markup)
-    # Every band is one fill: the band is printed, never carried by a colour.
-    assert markup.count('class="bar__seg bar__seg--size"') == 3
+    # Each band draws its own hue from the design system's band ramp, and the legend's
+    # swatch reuses the same class, so the colour a reader sees in the bar is the one
+    # beside the name and the number. The band is still printed, so the hue only has to
+    # make the segments tell apart — it never carries the band on its own.
+    for band in ("mega", "large", "small"):
+        assert f'class="bar__seg bar__seg--band-{band}"' in markup
+        assert f'class="legend__swatch bar__seg--band-{band}"' in markup
+    assert "bar__seg--band-mid" not in markup  # no mid-cap company in this fund
+    assert "bar__seg--size" not in markup  # the single grey fill is gone
+    assert markup.count('class="bar__seg bar__seg--unplaced"') == 1
+    assert markup.count('class="bar__seg bar__seg--none"') == 1
     assert "Inferred" not in text(markup)
 
 

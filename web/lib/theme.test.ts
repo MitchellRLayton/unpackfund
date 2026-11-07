@@ -283,6 +283,14 @@ const UI_PAIRS: Array<[fg: string, bg: string, why: string]> = [
   // neither list (solid) and a company the release could not place (dashed). Both draw
   // the same token, so one set of pairs covers both.
   ["tier-none", "paper", "the neutral edge on a plain row"],
+  // The Company size bar. Its segments are graphics a reader has to find, and the band
+  // ramp is the only palette with five entries, so each step is held to the same 3:1
+  // floor the geography edges answer to — measured against the page the bar is drawn on.
+  ["band-mega", "paper", "the largest band's segment"],
+  ["band-large", "paper", "the large band's segment"],
+  ["band-mid", "paper", "the mid band's segment"],
+  ["band-small", "paper", "the small band's segment"],
+  ["band-micro", "paper", "the smallest band's segment"],
   ["tier-none", "surface", "the neutral edge on a hovered row"],
   ["tier-none", "tint-direct", "the neutral edge on a direct-position row"],
   [
@@ -338,7 +346,7 @@ describe("automatic light/dark", () => {
       expect(failures).toEqual([]);
     });
 
-    it(`keeps the geography edges at 3:1 in ${name}`, () => {
+    it(`keeps the geography edges and the size bands at 3:1 in ${name}`, () => {
       const failures = pairs(theme, UI_PAIRS)
         .filter(([fg, bg]) => contrast(fg, bg) < 3)
         .map(
@@ -414,6 +422,48 @@ describe("automatic light/dark", () => {
                 `${why}: ${kind} turns ${ink} into ${simulated}, ${ratio.toFixed(2)}:1 on ${simulatedBackground}`,
               );
             }
+          }
+        }
+      }
+      expect(failures).toEqual([]);
+    });
+  }
+
+  for (const [theme, name] of [
+    [LIGHT, "light"],
+    [DARK, "dark"],
+  ] as const) {
+    it(`keeps the size-band steps apart for colour-blind readers in ${name}`, () => {
+      // The bands are an ordered ramp, so the pairs that must separate are the ones that
+      // touch: a reader compares a segment with its neighbour, not with every other step.
+      // Floors are the geography edges' floors — 28 uncorrected, 25 simulated — because
+      // the job is the same job: two fills a reader can tell apart, one of which is
+      // painted next to the other.
+      const ADJACENT: Array<[string, string, string]> = [
+        ["band-mega", "band-large", "mega against large"],
+        ["band-large", "band-mid", "large against mid"],
+        ["band-mid", "band-small", "mid against small"],
+        ["band-small", "band-micro", "small against micro"],
+      ];
+      const MIN_NORMAL_SEPARATION = 28;
+      const MIN_SIMULATED_SEPARATION = 25;
+      const failures: string[] = [];
+      for (const [leftName, rightName, why] of ADJACENT) {
+        const left = theme[leftName];
+        const right = theme[rightName];
+        if (!left || !right) throw new Error(`missing ${leftName} or ${rightName}`);
+        const normal = deltaE(left, right);
+        if (normal < MIN_NORMAL_SEPARATION) {
+          failures.push(
+            `${why}: uncorrected dE ${normal.toFixed(1)} (want >= ${MIN_NORMAL_SEPARATION})`,
+          );
+        }
+        for (const [kind, matrix] of Object.entries(CVD_MATRICES)) {
+          const separation = deltaE(simulate(left, matrix), simulate(right, matrix));
+          if (separation < MIN_SIMULATED_SEPARATION) {
+            failures.push(
+              `${why}: ${kind} dE ${separation.toFixed(1)} (want >= ${MIN_SIMULATED_SEPARATION})`,
+            );
           }
         }
       }

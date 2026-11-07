@@ -671,11 +671,11 @@ def _size_section(fund: dict, table: dict | None) -> str:
             share = 100.0 * band_bp[key] / gross
             if band_bp[key]:
                 bars.append(
-                    f'<span class="bar__seg bar__seg--size" style="width:{share:.4f}%" '
+                    f'<span class="bar__seg bar__seg--band-{key}" style="width:{share:.4f}%" '
                     f'title="{sizes.BAND_LABELS[key]}: {share:.2f}% of the fund"></span>'
                 )
                 legend.append(
-                    f'<span class="legend__item"><span class="legend__swatch bar__seg--size"'
+                    f'<span class="legend__item"><span class="legend__swatch bar__seg--band-{key}"'
                     f' aria-hidden="true"></span>{sizes.BAND_LABELS[key]} '
                     f'<span class="mono">{share:.2f}%</span></span>'
                 )
@@ -1688,13 +1688,12 @@ CSS_RULES = """
   color: var(--graphite);
 }
 
-/* One fill for every size band, separated by a hairline: the band is printed in the
- * legend and the table, never carried by a colour. A bar that coloured a fund by its
- * dominant band would be a ranking, and the page does not rank funds by size. */
-.bar__seg--size {
-  background: var(--tier-none);
-  box-shadow: inset -1px 0 0 var(--surface);
-}
+/* The size bands are painted by the design system's own ramp (`web/app/globals.css`,
+ * `--band-mega` … `--band-micro`), one hue per band, on the same hairline separator the
+ * country bar uses. Nothing is restated here, so a palette change in the app reaches a
+ * static page on its next build. The guardrail is unchanged: the band's name and its
+ * number are printed in the legend *and* the table, so the hue only has to make the
+ * segments tell apart at a glance, and no hue ranks a fund by size. */
 """
 
 
