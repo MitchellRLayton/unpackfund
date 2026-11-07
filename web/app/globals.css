@@ -1184,19 +1184,39 @@ table {
  *
  * The native horizontal scrollbar sits at the bottom of the scroll box, which on a
  * table taller than the viewport is below the fold — the reader has to scroll to the
- * end of the table to find the control that scrolls it sideways. The rail is a second
- * scrollbar that sticks to the bottom of the viewport for as long as the table is on
- * screen, so the control is where the reader is looking.
+ * end of the table to find the control that scrolls it sideways. The rail replaces it
+ * with a scrollbar that sticks to the bottom of the viewport for as long as the table
+ * is on screen, so the control is where the reader is looking.
  *
- * It is a duplicate control, not a second scroll box: it drives the same `scrollLeft`,
- * and the box itself is focusable so the arrow keys work without it. The rail is
- * `aria-hidden` for that reason.
+ * **The native scrollbar is hidden, not duplicated.** On Windows it takes real layout
+ * space and never fades, so leaving it visible put two horizontal bars one above the
+ * other at the end of the table — the redundancy this control exists to remove. The
+ * box still scrolls every way it did: a wheel, a trackpad gesture, and the arrow keys
+ * on the focused box all keep working on a scroll container whose scrollbar is hidden.
+ *
+ * The rail is a second *control* for one scroll box, not a second scroll box: it drives
+ * the same `scrollLeft`, and the box itself is focusable so the arrow keys work without
+ * it. The rail is `aria-hidden` for that reason.
  *
  * The thumb is `--graphite` on `--surface`, which `lib/theme.test.ts` holds at 3:1 in
  * both schemes: a scrollbar is a graphic that carries a distinction, so it answers to
  * the non-text floor rather than to taste. */
 .table-scroll {
   position: relative;
+}
+
+.table-scroll > .table-wrap {
+  /* Standard property for Firefox and Chromium; the WebKit pseudo-element is what
+   * Safari and older Chromium honour. Both are needed — neither alone is enough.
+   *
+   * This hides both axes, which is the horizontal one only for as long as the box is
+   * sized by its rows and never scrolls vertically. Give the box a `max-height` and
+   * this rule starts swallowing a vertical scrollbar too. */
+  scrollbar-width: none;
+}
+
+.table-scroll > .table-wrap::-webkit-scrollbar {
+  display: none;
 }
 
 .table-scroll__rail {
