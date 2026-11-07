@@ -9,11 +9,13 @@ cannot produce a published artifact:
 
 1. the filing's holdings reconcile to NAV (``|Σ valUSD / netAssets − 1| ≤ 5%``,
    which is the skill's N-PORT reconciliation band and the reason a fund with
-   derivatives is not rejected for summing to 100.09%). Two cash rows are read as
-   cash rather than as positions, because a schedule that is right *about them* is
-   wrong as a fund: borrowed collateral (``lending_collateral``, offset by a
-   liability) and unfunded cash (``unfunded_cash``, the row a filer reports on top
-   of a book that already is the fund — IVAL's $20.3M money-market sweep);
+   derivatives is not rejected for summing to 100.09%). Two kinds of row are read
+   as borrowed or unfunded rather than as positions, because a schedule that is
+   right *about them* is wrong as a fund: borrowed collateral
+   (``lending_collateral``, offset by a liability — cash, or the money-market fund
+   the collateral was reinvested in) and unfunded cash (``unfunded_cash``, the row
+   a filer reports on top of a book that already is the fund — IVAL's $20.3M
+   money-market sweep);
 2. the emitted weight vector is a plausible whole (``9,000 ≤ Σ bp ≤ 10,500``) —
    the check that catches "parsed half the holdings" and "double-counted a fund";
 3. the per-fund file is under the size budget.
@@ -143,7 +145,7 @@ class FundBuild:
 
 @dataclass(frozen=True)
 class Collateral:
-    """Cash in the schedule that is borrowed, not owned.
+    """Rows in the schedule that are borrowed, not owned.
 
     A securities-lending or repo program appears in N-PORT twice: a cash-like row
     inside ``invstOrSec`` (the collateral received) and a liability of the same
@@ -154,36 +156,56 @@ class Collateral:
     collateral against $245.0M of borrowings, so its schedule reads 9.93% over net
     assets while sitting 0.3% under total assets.
 
-    The rows are set aside only when the numbers fit one story: cash ≈ liabilities
-    *and* the remaining schedule ≈ net assets. A fund with a genuine cash position
-    and unrelated borrowings fails at least one test and keeps every row it filed.
+    The collateral is not always left in cash. A lending program reinvests it, and
+    the reinvestment is often a money-market fund, which N-PORT reports as a
+    registered-fund position (``assetCat`` EC, ``issuerCat`` RF) rather than as a
+    cash row. Dimensional's U.S. Micro Cap (DFSCX) is the measured case: $1.09B of
+    collateral payable, $551.4M of it in cash and $533.9M in the DFA short-term
+    fund. A cash-only search finds no shape that matches the liability and the gate
+    read the fund as leveraged.
+
+    The rows are set aside only when the numbers fit one story: the shape ≈
+    liabilities *and* the remaining schedule ≈ net assets. A fund with a genuine
+    cash or fund position and unrelated borrowings fails at least one test and
+    keeps every row it filed.
     """
 
     rows: frozenset[int]
     usd: float
+    #: The part of ``usd`` that arrived as a registered-fund position rather than as
+    #: cash. Carried into the build summary so the second pass is auditable in a run
+    #: log instead of being invisible in a single total.
+    fund_usd: float = 0.0
 
 
 #: How many cash rows a fund may have before the collateral search stops enumerating
 #: subsets of them. Funds hold one to five cash instruments; the cap exists so a pathological
 #: schedule cannot turn a gate into a combinatorial search.
 COLLATERAL_SUBSET_CAP = 10
+#: How many registered-fund rows join the search. The cap is small because the
+#: collateral is a concentrated position — the measured shapes hold one to four fund
+#: rows — while a fund-of-funds' dozens of fund rows are its book, not collateral.
+COLLATERAL_FUND_CAP = 4
 
 
-def _collateral_shapes(cash: list[Holding]) -> list[list[Holding]]:
-    """The cash subsets that could be the lending collateral, simplest first.
+def _collateral_shapes(
+    rows: list[Holding], *, cap: int = COLLATERAL_SUBSET_CAP
+) -> list[list[Holding]]:
+    """The row subsets that could be the lending collateral, simplest first.
 
-    A fund that lends securities receives cash collateral and invests it, and the filing
+    A fund that lends securities receives collateral and invests it, and the filing
     shows that investment beside the fund's own liquidity. "Every cash row" is therefore
     only one of the shapes a collateral position takes: a repo program's collateral is one
-    repo row next to a money-market sweep, and a fund that splits collateral across two
-    tranches has two. Every subset is tried, smallest first, and the caller still requires
+    repo row next to a money-market sweep, a fund that splits collateral across two
+    tranches has two, and a program that reinvests in a money-market fund has a fund row
+    beside its cash. Every subset is tried, smallest first, and the caller still requires
     both bands to pass — a wrong shape cannot be accepted by being tried, only by
-    reconciling. The measured case is Transamerica's IIBAX/IIBPX: $1.73B of borrowings, a
-    repo row that matches them, and a sweep of their own, which summed every cash row and
-    saw leverage where the filing shows a lending program.
+    reconciling. The measured cases are Transamerica's IIBAX/IIBPX ($1.73B of borrowings,
+    a repo row that matches them, and a sweep of their own) and Dimensional's DFSCX
+    (half the collateral in cash, half in a registered fund).
     """
-    ordered = sorted(cash, key=lambda row: (-(row.val_usd or 0.0), row.name))
-    if len(ordered) > COLLATERAL_SUBSET_CAP:
+    ordered = sorted(rows, key=lambda row: (-(row.val_usd or 0.0), row.name))
+    if len(ordered) > cap:
         return [ordered, ordered[:1], ordered[1:]]
     return [
         list(shape)
@@ -205,23 +227,81 @@ def _cash_rows(holdings: list[Holding]) -> list[Holding]:
     ]
 
 
+def _fund_rows(holdings: list[Holding]) -> list[Holding]:
+    """The schedule's registered-fund positions: the other vehicle collateral sits in.
+
+    A money-market fund is a fund position to N-PORT, not a cash row, so the cash-only
+    search cannot see it. Only the collateral rule reads this list; a fund-of-funds'
+    holdings are its book and stay in the vector.
+    """
+    return [
+        holding
+        for holding in holdings
+        if classify.classify(
+            holding.asset_cat, holding.issuer_cat, holding.is_derivative
+        ).category
+        == classify.FUND
+        and (holding.val_usd or 0.0) > 0
+    ]
+
+
+def _collateral_match(
+    rows: list[Holding],
+    filed_total: float,
+    net: float,
+    liabilities: float,
+    *,
+    cap: int = COLLATERAL_SUBSET_CAP,
+) -> Collateral | None:
+    """The first subset of ``rows`` that fits both bands, or ``None``."""
+    for shape in _collateral_shapes(rows, cap=cap):
+        usd = sum(holding.val_usd or 0.0 for holding in shape)
+        if abs(usd - liabilities) / liabilities > COLLATERAL_BAND:
+            continue
+        if abs((filed_total - usd) - net) / net > COLLATERAL_BAND:
+            continue
+        fund_usd = sum(
+            holding.val_usd or 0.0
+            for holding in shape
+            if classify.classify(
+                holding.asset_cat, holding.issuer_cat, holding.is_derivative
+            ).category
+            == classify.FUND
+        )
+        return Collateral(frozenset(id(holding) for holding in shape), usd, fund_usd)
+    return None
+
+
 def lending_collateral(filing: NportFiling) -> Collateral:
+    """The borrowed rows, if the filing's own numbers say they are borrowed.
+
+    Two passes, simplest story first. Cash alone is the common case and is tried
+    exactly as before, so no fund that already publishes can change its answer. Only
+    when no cash shape reconciles is the search widened to the fund positions the
+    collateral may have been reinvested in — and the same two bands still decide.
+    """
     net = filing.net_assets or 0.0
     liabilities = filing.total_liabilities or 0.0
     if net <= 0 or liabilities <= 0:
         return Collateral(frozenset(), 0.0)
-    cash = _cash_rows(filing.holdings)
-    if not cash:
-        return Collateral(frozenset(), 0.0)
     filed_total = sum(holding.val_usd or 0.0 for holding in filing.holdings)
-    for shape in _collateral_shapes(cash):
-        cash_usd = sum(holding.val_usd or 0.0 for holding in shape)
-        if abs(cash_usd - liabilities) / liabilities > COLLATERAL_BAND:
-            continue
-        if abs((filed_total - cash_usd) - net) / net > COLLATERAL_BAND:
-            continue
-        return Collateral(frozenset(id(holding) for holding in shape), cash_usd)
-    return Collateral(frozenset(), 0.0)
+    cash = _cash_rows(filing.holdings)
+    found = _collateral_match(cash, filed_total, net, liabilities)
+    if found is not None:
+        return found
+    funds = sorted(
+        _fund_rows(filing.holdings), key=lambda row: (-(row.val_usd or 0.0), row.name)
+    )
+    if not funds:
+        return Collateral(frozenset(), 0.0)
+    found = _collateral_match(
+        cash + funds[:COLLATERAL_FUND_CAP],
+        filed_total,
+        net,
+        liabilities,
+        cap=COLLATERAL_SUBSET_CAP + COLLATERAL_FUND_CAP,
+    )
+    return found if found is not None else Collateral(frozenset(), 0.0)
 
 
 @dataclass(frozen=True)
@@ -380,7 +460,7 @@ def build_fund(
                 f"{ref.ticker}: schedule reconciles to total assets "
                 f"({schedule_total:,.0f} of {assets:,.0f}) but not to net assets "
                 f"({filing.net_assets:,.0f}); liabilities are "
-                f"{filing.total_liabilities or 0:,.0f} and no single cash row matches "
+                f"{filing.total_liabilities or 0:,.0f} and no cash or fund row matches "
                 "them, so this is leverage, not a truncated filing"
             )
         raise GateError(
@@ -456,6 +536,9 @@ def build_fund(
     _countries, _invalid_country_rows = company_countries.fund_votes(vector.holdings)
     stats = {
         "collateral_usd": collateral.usd,
+        # The part of the collateral that arrived as a registered-fund position rather
+        # than as cash, so the second pass is visible in the run log.
+        "collateral_fund_usd": collateral.fund_usd,
         # Cash a filing reported on top of a book that already is the fund. Excluded
         # from ``asset_cats`` as well, so the two numbers always agree.
         "cash_excess_usd": excess.usd,

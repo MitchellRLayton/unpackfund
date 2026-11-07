@@ -10,6 +10,8 @@ a fund that is fine; every weight it published would also have been 10% too smal
 
 from __future__ import annotations
 
+import pytest
+
 from pipeline import build
 from pipeline.nport import Holding, NportFiling
 
@@ -124,3 +126,74 @@ def test_collateral_split_across_two_rows_is_found():
     )
     assert result.usd == 173.0
     assert result.rows == frozenset({id(first), id(second)})
+
+
+def test_collateral_reinvested_in_a_money_market_fund_is_found():
+    """Half the collateral is cash, half is a registered-fund position.
+
+    Dimensional's U.S. Micro Cap (DFSCX, 2026-07-31) files $1.09B of collateral
+    payable: $551.4M in cash and $533.9M in the DFA short-term fund, which N-PORT
+    reports as a fund position (assetCat EC, issuerCat RF), not as a cash row. The
+    cash-only search finds no shape that matches the liability, so the gate read the
+    fund as leveraged and refused it. The fund row is the other half of the same
+    story, and both bands still have to pass.
+    """
+    equities = [holding("Apple Inc", 7_775.9)]
+    fund = holding("The DFA Investment Trust Company", 533.9, asset_cat="EC", issuer_cat="RF")
+    cash = holding("Dimensional Holdings Inc.", 551.4, asset_cat="STIV", issuer_cat="RF")
+    sweep = holding("State Street Bank and Trust Company", 82.9, asset_cat="STIV", issuer_cat="RF")
+    result = build.lending_collateral(
+        filing(
+            [*equities, fund, cash, sweep],
+            assets=8_948.3,
+            liabilities=1_089.3,
+            net=7_859.0,
+        )
+    )
+    assert result.usd == pytest.approx(1_085.3)
+    assert result.rows == frozenset({id(fund), id(cash)})
+    assert result.fund_usd == pytest.approx(533.9)
+
+
+def test_a_genuine_fund_position_with_unrelated_borrowings_is_kept():
+    """A fund-of-funds holds funds as its book; a fund row is not collateral by itself."""
+    fund = holding("Vanguard Total World Stock ETF", 30.0, asset_cat="EC", issuer_cat="RF")
+    result = build.lending_collateral(
+        filing(
+            [holding("Apple Inc", 170.0), fund], assets=300.0, liabilities=100.0, net=200.0
+        )
+    )
+    assert result.rows == frozenset()
+    assert result.usd == 0.0
+
+
+def test_a_fund_row_that_matches_the_liability_but_not_the_gap_is_kept():
+    """Coincidence is not evidence, for a fund row as much as for cash."""
+    fund = holding("Money Market Fund", 30.0, asset_cat="EC", issuer_cat="RF")
+    result = build.lending_collateral(
+        filing(
+            [holding("Apple Inc", 150.0), fund], assets=180.0, liabilities=30.0, net=200.0
+        )
+    )
+    assert result.rows == frozenset()
+
+
+def test_cash_only_collateral_is_preferred_to_a_fund_shape():
+    """The simplest story wins, so a fund that already publishes cannot change its answer.
+
+    Both a cash row and a fund row match the liability here. The cash-only pass runs
+    first and returns, which is what keeps the widened search from re-deciding a fund
+    the old rule already explained.
+    """
+    cash = holding("Cash", 30.0, asset_cat="STIV", issuer_cat="RF")
+    fund = holding("Money Market Fund", 30.0, asset_cat="EC", issuer_cat="RF")
+    result = build.lending_collateral(
+        filing(
+            [holding("Apple Inc", 170.0), cash, fund],
+            assets=230.0,
+            liabilities=30.0,
+            net=200.0,
+        )
+    )
+    assert result.rows == frozenset({id(cash)})
+    assert result.fund_usd == 0.0
