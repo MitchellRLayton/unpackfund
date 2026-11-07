@@ -108,29 +108,32 @@ The operator's palette, recorded 2026-11-07 (light; the dark-scheme value in par
 (64% 0.11 60); tier-none 70% 0 0 (55% 0 0); alert 58% 0.19 30 (68% 0.17 30) — errors only, always with an icon and
 words.
 
-**Five values ship a step darker than that spec, because a token is a value with a job and the job is measured.** A token
-that carries words answers to WCAG AA 4.5:1; a token that is a 6 px edge or a bar fill answers to 3:1 as a graphical
-object. The spec's `graphite` 55% measures 4.45:1 on paper, a hair under the text floor, so it ships at 48%; `tier-us`
-55% measures 4.43 and `tier-em` 58% measures 4.07, so both ship darker as edges and darker again as ink; `tier-none`
-70% measures 2.46 and ships at 50%; `tier-dm`'s 76% sand is 1.98:1 on paper, under the 3:1 floor, and would be an
-invisible row edge, so it ships at 60%. `web/lib/theme.test.ts` computes those ratios from the stylesheet itself in both
-schemes; the measured pairs are the test, not this paragraph.
+**The stylesheet moves every value that has to move, and both schemes have moved, because a token is a value with a job
+and the job is measured.** Words answer to WCAG AA 4.5:1, a 6 px edge or a bar fill answers to 3:1 as a graphical
+object, and two hues a reader has to tell apart answer to a dE floor. On paper the contrast floor does the moving:
+`graphite` 55% measures 4.45:1, a hair under the text floor, so it ships at 48%; `tier-us` 55% (4.43:1) and `tier-em`
+58% (4.07:1) ship at 50% and 38%; `tier-none` 70% (2.46:1) and `tier-dm`'s 76% sand (1.98:1) ship at 50% and 60%. On the
+dark page that floor passes the spec's own values — graphite 68% measures 6.60:1, tier-us 6.66:1, tier-dm 7.66:1,
+tier-em 5.51:1, and only tier-none 55% fails at 3.91:1 — so the dark moves answer the separation floor instead: two pale
+ochres on a 17% page had to be pulled apart, which is why dark ships graphite 70%, tier-us 70%, tier-dm 84%, tier-em 60%
+at hue 50, tier-none 66%. `web/lib/theme.test.ts` recomputes those pairs from the stylesheet itself in both schemes; the
+measured pairs are the test, not this paragraph.
 
-| Token                                                   | Light (dark)                                                 | Job                                                     |
-| ------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------- |
-| `--paper`                                               | `oklch(97% 0.012 85)` (`17% 0.015 260`)                      | the page                                                |
-| `--surface`                                             | `oklch(99% 0.006 85)` (`21% 0.015 260`)                      | a flat block raised off it: table header, notices       |
-| `--ink`                                                 | `oklch(22% 0.02 260)` (`93% 0.012 85`)                       | body text                                               |
-| `--graphite`                                            | `oklch(48% 0.01 260)` (`68% 0.01 260`)                       | labels, notes, secondary values                         |
-| `--rule` / `--rule-strong`                              | `--graphite` at 24% / 45%                                    | hairlines and table rules                               |
-| `--wash` / `--wash-strong`                              | `--graphite` at 7% / 13%                                     | an empty track, a quiet fill                            |
-| `--tier-us` / `--tier-dm` / `--tier-em` / `--tier-none` | `50% 0.13 250` / `60% 0.12 85` / `38% 0.15 55` / `50% 0 0`   | the only hues with a geographic meaning                 |
-| `--tier-us-ink` … `--tier-none-ink`                     | the same hues, darker in light and brighter in dark          | a tier's words, where text answers to 4.5:1             |
-| `--alert` / `--alert-ink` / `--alert-wash`              | `58% 0.19 30` and relatives (`68% 0.17 30`)                  | errors only, and never without an icon and words        |
-| `--whole`                                               | `55% 0.18 264` (`74% 0.15 264`)                              | the holdings meter's bar at exactly 100%                |
-| `--delta-up` / `--delta-down`                           | green / red, each adjusted until it clears its floor         | the `In VT` bracket's sign — the sign is always printed |
-| `--tint-direct` / `--tint-direct-hover`                 | pale violet, deepened in the dark scheme                     | the ledger row of a stock the visitor holds directly    |
-| `--band-mega` … `--band-micro`                          | five-step ordered ramp — see _Charts and the size-band ramp_ | the Company size bar's five bands, largest to smallest  |
+| Token                                                   | Light (dark)                                                                                                                 | Job                                                     |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `--paper`                                               | `oklch(97% 0.012 85)` (`17% 0.015 260`)                                                                                      | the page                                                |
+| `--surface`                                             | `oklch(99% 0.006 85)` (`21% 0.015 260`)                                                                                      | a flat block raised off it: table header, notices       |
+| `--ink`                                                 | `oklch(22% 0.02 260)` (`93% 0.012 85`)                                                                                       | body text                                               |
+| `--graphite`                                            | `oklch(48% 0.01 260)` (`70% 0.01 260`)                                                                                       | labels, notes, secondary values                         |
+| `--rule` / `--rule-strong`                              | `--graphite` at 24% / 45%                                                                                                    | hairlines and table rules                               |
+| `--wash` / `--wash-strong`                              | `--graphite` at 7% / 13%                                                                                                     | an empty track, a quiet fill                            |
+| `--tier-us` / `--tier-dm` / `--tier-em` / `--tier-none` | `50% 0.13 250` / `60% 0.12 85` / `38% 0.15 55` / `50% 0 0` (dark: `70% 0.12 250` / `84% 0.1 85` / `60% 0.13 50` / `66% 0 0`) | the only hues with a geographic meaning                 |
+| `--tier-us-ink` … `--tier-none-ink`                     | the same hues, darker in light and brighter in dark                                                                          | a tier's words, where text answers to 4.5:1             |
+| `--alert` / `--alert-ink` / `--alert-wash`              | `58% 0.19 30` and relatives (`68% 0.17 30`)                                                                                  | errors only, and never without an icon and words        |
+| `--whole`                                               | `55% 0.18 264` (`74% 0.15 264`)                                                                                              | the holdings meter's bar at exactly 100%                |
+| `--delta-up` / `--delta-down`                           | green / red, each adjusted until it clears its floor                                                                         | the `In VT` bracket's sign — the sign is always printed |
+| `--tint-direct` / `--tint-direct-hover`                 | pale violet, deepened in the dark scheme                                                                                     | the ledger row of a stock the visitor holds directly    |
+| `--band-mega` … `--band-micro`                          | five-step ordered ramp — see _Charts and the size-band ramp_                                                                 | the Company size bar's five bands, largest to smallest  |
 
 The coverage chips, the sorted column and the direct-row tint are all reinforcement over text that already says the
 fact. Nothing in the palette carries a meaning on its own (rule 3).
