@@ -104,18 +104,25 @@ traditional mouse and no touchpad, had no way to move the table sideways except 
 "there is no easy way for me to trigger the scroll … the only user experience tool that exists today is a click-able
 scroller (left-to-right) at the bottom, but it's buried very bottom where people might not see."
 
-`components/TableScroll.tsx` adds a second scrollbar that sticks to the bottom of the viewport for as long as the table
-is on screen, so the control is where the reader is looking rather than where the table ends. Measured on the built
-export at 1280×800 with an eight-fund portfolio: the table is 956 px wide in a 785 px box, its bottom edge is 1,670 px
-down, and the rail sits at 774–792 px — 8 px off the viewport's own edge — from the first row to the last.
+`components/TableScroll.tsx` replaces that scrollbar with one that sticks to the bottom of the viewport for as long as
+the table is on screen, so the control is where the reader is looking rather than where the table ends. Measured on the
+built export at 1280×800 with an eight-fund portfolio: the table is 956 px wide in a 785 px box, its bottom edge is
+1,670 px down, and the rail sits at 774–792 px — 8 px off the viewport's own edge — from the first row to the last.
 
-Four rules, because a second scrollbar is easy to get wrong:
+Four rules, because a scrollbar in the wrong place is easy to get wrong:
 
-- **It is a duplicate control, not a second scroll box.** The rail drives the same `scrollLeft` as the table; there is
-  one scroll position. It is `aria-hidden`, so a screen reader gets one scrollable region rather than two.
+- **The native scrollbar is hidden, not duplicated.** The first version left it visible and added the rail beside it.
+  On Windows, where a classic scrollbar takes real layout space and never fades, that put two horizontal bars one above
+  the other at the end of the table — the operator saw it and asked whether both were needed. They were not: the scroll
+  box now carries `scrollbar-width: none` plus `::-webkit-scrollbar { display: none }`, the same pair `.site-nav`
+  already uses for its own horizontal overflow. The box stays a scroll container in every other respect, so a wheel, a
+  trackpad gesture and the arrow keys all still move it.
+- **It is a second control for one scroll box, not a second scroll box.** The rail drives the same `scrollLeft` as the
+  table; there is one scroll position. It is `aria-hidden`, so a screen reader gets one scrollable region rather than
+  two.
 - **The table's own box is focusable** (`tabindex="0"`, `role="region"`, named), which is what makes the arrow keys
   scroll it. A scroll box a keyboard cannot reach is a scroll box half the readers cannot use (WCAG 2.1.1), and the
-  rail is not a substitute for it.
+  rail is not a substitute for it — it matters more now that the browser draws no scrollbar to focus.
 - **The thumb is a graphic that carries a distinction** — how much of the table is off screen — so it answers to the
   3:1 non-text floor, not to taste. It is `--graphite` on `--surface`, and `lib/theme.test.ts` holds that pair in both
   schemes. No new token: the palette is the operator's.
