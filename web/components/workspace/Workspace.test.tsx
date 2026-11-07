@@ -460,14 +460,60 @@ describe("Workspace — the companies table", () => {
 
 describe("Workspace — the holdings pane and the lenses", () => {
   it("shows each fund's coverage and reporting period on its row", () => {
-    renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+    const { container } = renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
 
     expect(screen.getByRole("button", { name: "Remove VTI" })).toBeTruthy();
-    // The total, the two qualifiers, and the meter's own words.
-    expect(screen.getByText("100.00% of 100.00%")).toBeTruthy();
+    // The total is now one figure and its unit, so it is read as two nodes rather than
+    // one string: the big number the visitor steers, and the whole it is a share of.
+    expect(container.querySelector(".meter__value")?.textContent).toBe("100.00%");
+    expect(container.querySelector(".meter__of")?.textContent).toBe("of 100.00%");
     expect(screen.getAllByText(/100\.0% covered/).length).toBeGreaterThan(0);
     // `formatDateLong` abbreviates the month, and the chip prints the period end.
     expect(screen.getAllByText("Jun 30, 2026").length).toBeGreaterThan(0);
+  });
+
+  it("colours the total's bar and its validator by whether the portfolio is whole", () => {
+    const wholeRender = renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+
+    // Whole: the bar wears the completed state, and the sentence is the green one.
+    expect(wholeRender.container.querySelector(".meter__fill--whole")).not.toBeNull();
+    expect(wholeRender.container.querySelector(".tally__gate--open")?.textContent).toBe(
+      "fully allocated",
+    );
+    expect(wholeRender.container.querySelector(".tally__gate--locked")).toBeNull();
+    // The percentage is its own, larger figure beside the unit it is a share of.
+    expect(wholeRender.container.querySelector(".meter__value")?.textContent).toBe(
+      "100.00%",
+    );
+    expect(wholeRender.container.querySelector(".meter__of")?.textContent).toBe(
+      "of 100.00%",
+    );
+    wholeRender.unmount();
+
+    // Short: no completed bar, and the validator says how short in the red state.
+    const shortRender = renderWorkspace({ entries: ENTRIES.slice(0, 1), ledger: LEDGER });
+    expect(shortRender.container.querySelector(".meter__fill--whole")).toBeNull();
+    expect(shortRender.container.querySelector(".tally__gate--locked")?.textContent).toBe(
+      "40.00% unallocated",
+    );
+    expect(shortRender.container.querySelector(".meter__value")?.textContent).toBe(
+      "60.00%",
+    );
+    shortRender.unmount();
+
+    // Over: locked too — the red state carries both directions, not just short.
+    const overRender = renderWorkspace({
+      entries: [
+        { kind: "fund", key: "VTI", amount: 6_000 },
+        { kind: "fund", key: "VXUS", amount: 3_000 },
+        { kind: "fund", key: "BND", amount: 3_000 },
+      ],
+      ledger: LEDGER,
+    });
+    expect(overRender.container.querySelector(".meter__fill--whole")).toBeNull();
+    expect(overRender.container.querySelector(".tally__gate--locked")?.textContent).toBe(
+      "20.00% over 100%",
+    );
   });
 
   it("switches lens through the model, never through local state", () => {

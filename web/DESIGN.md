@@ -104,6 +104,7 @@ Defined once in `app/globals.css` as custom properties, light and dark through `
 | `--accent`                              | `#0f6d78`                   | `#5ec8d4`                    | primary action                                   |
 | `--warn` / `--warn-soft`                | `#7a4b00` / `#fdf3e2`       | `#f0b429` / `#2e2413`        | warnings, partial coverage                       |
 | `--ok`                                  | `#17693a`                   | `#6fce8f`                    | the ledger gate once the total is exactly 100%   |
+| `--whole`                               | `oklch(55% 0.18 264)`       | `oklch(74% 0.15 264)`        | the holdings meter's bar at exactly 100%         |
 | `--tint-direct` / `--tint-direct-hover` | `#f2ecff` / `#e9e0fd`       | `#1d1930` / `#262038`        | the ledger row of a stock you hold directly      |
 | `--country-us`                          | `#3b6ea5`                   | `#6c9bd2`                    | the row's left edge for a US-domiciled company   |
 | `--country-dm`                          | `#9c7025`                   | `#d9a54a`                    | the edge for a developed market outside the US   |
@@ -295,6 +296,25 @@ total is, never rebalance the fields relative to each other, and open the ledger
   shows "these percentages do not add up to 100%" and computes no table from them.
 - **Dollars are their own total**, so the ledger link is always live in dollar mode; an unfilled portfolio is not short
   of anything.
+
+### The total's number and its bar (operator's instruction, 2026-11-06)
+
+Three changes to the same block, on one instruction: "a bigger number for indicating percentage and a red / royal blue
+status indicator of the bar itself, blue completes it fully at 100% and red for either over or under shooting it", plus
+"the green/red validator … isn't there anymore, can you add it again".
+
+- **The percentage is the pane's big number.** `70.00%` is set at `--text-28` (28px) and the whole it is a share of —
+  `of 100.00%` — stays at label size beside it. The number is what the visitor is steering; at label size it read as a
+  caption about the word `Total` rather than the total itself.
+- **The bar is the state.** `meter__fill` is `--alert` (red) whenever the portfolio is not exactly 100% — short *or*
+  over — and `--whole` (a royal blue, `oklch(55% 0.18 264)`, `oklch(74% 0.15 264)` in the dark scheme) at exactly 100%.
+  Over-100 still fills the track rather than overflowing it: the width is clamped, and the red plus the words carry the
+  direction.
+- **The validator's ink is back.** The workspace redesign dropped the red/green tally the old builder had; the sentence
+  `fully allocated` / `10.00% unallocated` / `20.00% over 100%` now wears `--danger` while short or over and `--ok` at
+  exactly 100%, exactly as the 2026-11-02 instruction described. Colour is reinforcement again, never the only carrier:
+  the sentence says the state in words in both cases, and `Workspace.test.tsx` pins all three states (whole, short,
+  over) on the bar and on the ink.
 
 ## Open questions — the operator's, not the agent's
 
