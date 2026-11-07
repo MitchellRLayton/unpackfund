@@ -76,6 +76,14 @@ class FundHolding:
     #: (``company_id``) and identified (this flag or ``company_id``) — and the flag is
     #: set from a filing row's own identifiers only, never inferred from a name.
     identified: bool = False
+    #: The merged rows' ``valUSD`` and share ``balance`` for an **equity** row whose
+    #: units are shares (``NS``). Two internal-only fields: the price implied by
+    #: ``ΣvalUSD / Σbalance`` across the funds that hold a company is what turns a
+    #: ``dei`` share count into a market cap (``sizes.py``). Never published — a
+    #: holding row carries weight, not dollars, and the release's size table carries
+    #: the aggregated cap.
+    value_usd: float | None = None
+    balance: float | None = None
 
 
 def identified_row(
@@ -552,11 +560,30 @@ def build_vector(
                 "lei": (holding.lei or "").strip().upper() or None,
                 "isin": (holding.isin or "").strip().upper() or None,
                 "country": None,
+                "value": 0.0,
+                "balance": 0.0,
                 "identified": identified,
             }
             groups[key] = group
         group["fraction"] += fraction
         group["rows"] += 1
+        # The size lane's input: a share count is only comparable to a price when the
+        # row is equity and the balance is a number of shares. Principal amounts,
+        # contracts and fund positions are skipped here, not converted.
+        if classification.category == "equity" and (
+            (holding.units or "").strip().upper() == "NS"
+        ):
+            value = holding.val_usd
+            if value is None and net_assets:
+                value = fraction * net_assets
+            if (
+                value is not None
+                and value > 0
+                and holding.balance is not None
+                and holding.balance > 0
+            ):
+                group["value"] += value
+                group["balance"] += holding.balance
         if abs(fraction) > group["largest"]:
             group["largest"] = abs(fraction)
             group["category"] = classification.category
@@ -594,6 +621,8 @@ def build_vector(
                 isin=row.get("isin") if row["category"] == classify.FUND else None,
                 country=row.get("country"),
                 identified=row["identified"],
+                value_usd=row["value"] or None,
+                balance=row["balance"] or None,
             )
         )
     # Sorted by the *published* name: redaction can give two rows the same name,

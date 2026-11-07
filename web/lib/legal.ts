@@ -72,8 +72,15 @@ export const EFFECTIVE_DATE = "November 4, 2026";
  * label, because frontier and standalone fold into emerging), and says that the table is
  * authored to the published criteria rather than copied from either publisher. FTSE remains
  * selectable, and the page says so.
+ *
+ * 1.5.0 (2026-11-07): the page gained the company-size section — an implied quarter-end
+ * price times the issuer's own share count, the five published dollar lines, the two
+ * SEC-only lanes (frames and cover page), the 400-day share-count window and the
+ * multi-class sum with the Berkshire caveat, the 80% gate below which no bar is drawn,
+ * and the labelled fund-level inference from a stated size mandate. Nothing about the
+ * existing numbers changed; a new fact was added.
  */
-export const METHODOLOGY_VERSION = "1.4.0";
+export const METHODOLOGY_VERSION = "1.5.0";
 
 /**
  * Version of the copy above, for the change history in the footer of each page.
