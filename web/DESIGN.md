@@ -175,7 +175,7 @@ a glance. Three constraints, each with a check behind it:
   shading means. Colour is never the only carrier (rule 3), so a forced-colours, monochrome, or screen-reader reader loses
   nothing.
 - **A solid tint, not a low-alpha layer.** Declared per scheme in `app/globals.css`, so it composites the same over the page,
-  over the hover, and in dark mode, where a light pastel over `#0d1117` would glow instead of shade.
+  over the hover, and in dark mode, where a light pastel over `oklch(17% 0.015 260)` would glow instead of shade.
 - **Contrast is a gate.** `lib/theme.test.ts` checks `--fg` and `--muted` against both tints in both schemes; the tightest
   pair is 4.89:1 (light hover, secondary text), above the 4.5:1 AA floor.
 
@@ -187,6 +187,9 @@ thing that looks like a headline; **IBM Plex Mono** for tickers and codes. The s
 height for the day-4 windowing pass.
 
 ## Country edge (operator's instruction, 2026-11-02)
+
+The measurements quoted below are the ones taken when each step was tested, so they name the hex values that were current
+then; the tokens that ship are the OKLCH values in the table above, and `lib/theme.test.ts` measures those, not these.
 
 Geography is a second axis on the ledger, and it is a **separate channel** because one background cannot carry two
 meanings: the row _background_ keeps meaning position kind — a company the visitor holds directly as a stock, purple —
