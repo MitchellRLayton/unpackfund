@@ -4,6 +4,7 @@
 ticker,name,choice,reason,confidence,jev_model,run_id
 TNMAX,1290 Multi-Alternative Strategies Fund,,,0.720,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 EDGH,3EDGE Dynamic Hard Assets ETF,,,0.600,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+TRFM,AAM Transformers ETF,unknown,unknown name,0.540,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 ACMTX,AB All Market Real Return Portfolio,,,0.350,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 ABWAX,AB All Market Total Return Portfolio,,,0.620,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 FWD,AB Disruptors ETF,,,0.720,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -38,6 +39,7 @@ GK,AdvisorShares Gerber Kawasaki ETF,,,0.970,typesafe/jev-1.14,style-jev-2026-10
 SURE,AdvisorShares Insider Advantage ETF,,,0.890,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 PSIL,AdvisorShares Psychedelics ETF,,,0.490,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 YOLO,AdvisorShares Pure Cannabis ETF,,,0.440,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+VICE,AdvisorShares Vice ETF,unknown,unknown name,0.800,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 BRAGX,Aggressive Investors 1 Fund,,,0.790,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 RALAX,Aggressive Strategy Fund,,,0.690,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 AKRE,Akre Focus ETF,,,0.930,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -49,6 +51,7 @@ EKBAX,Allspring Diversified Capital Builder Fund,,,0.880,typesafe/jev-1.14,style
 WFILX,Allspring Index Fund,,,1.000,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 WFSTX,Allspring Innovation Fund,,,0.640,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 APSPX,Allspring Managed Account CoreBuilder Shares - Series SP,,,0.860,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+WFCPX,Allspring Managed Account CoreBuilder Shares Series CP,unknown,unknown name,0.890,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 AEPIX,Allspring Managed Account CoreBuilder Shares Series EPI,,,0.840,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 WFCMX,Allspring Managed Account CoreBuilder Shares Series M,,,0.810,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 SOPVX,Allspring Opportunity Fund,,,0.990,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -151,6 +154,7 @@ WUSAX,Columbia Variable Portfolio - Acorn Fund,,,0.960,typesafe/jev-1.14,style-j
 CONWX,Concorde Wealth Management Fund,,,1.000,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 LIMAX,Cromwell Tran Focus Fund,,,0.930,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 CVAR,Cultivar ETF,,,0.950,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+DHLTX,DIAMOND HILL SELECT FUND,unknown,unknown name,1.000,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 COMAX,DWS Digital Horizons Fund,,,0.580,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 RASFX,DWS RREEF Completion Fund I,,,0.970,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 SSLCX,DWS Small Cap Core Fund,,,0.570,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -168,6 +172,7 @@ PDARX,Diversified Real Asset Fund,,,0.450,typesafe/jev-1.14,style-jev-2026-10-30
 DDCPX,DoubleLine Shiller Enhanced CAPE,,,0.760,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 DAAVX,Dunham Dynamic Macro Fund,,,0.980,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 BBLU,EA Bridgeway Blue Chip ETF,,,0.490,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+ELDFX,ELFUN DIVERSIFIED FUND,unknown,unknown name,0.860,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 ELFNX,ELFUN TRUSTS,,,1.000,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 XOVR,ERShares Private-Public Crossover ETF,,,0.690,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 TDSB,ETC Cabana Target Beta ETF,,,0.890,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -248,6 +253,7 @@ LALT,First Trust Multi-Strategy Alternative ETF,,,0.920,typesafe/jev-1.14,style-
 DGLO,First Trust RBA Deglobalization ETF,,,0.740,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 ISHP,First Trust S-Network E-Commerce ETF,,,0.690,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 BNGE,First Trust S-Network Streaming & Gaming ETF,,,0.790,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+FXU,First Trust Utilities AlphaDEX Fund,u_s_equity,below threshold,0.740,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 FITZ,Fitz-Gerald Must Have Portfolio ETF,,,0.970,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 FORH,Formidable ETF,,,0.990,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 KONG,Formidable Fortress ETF,,,0.930,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -268,6 +274,7 @@ FGTHX,Franklin Templeton SMACS Series H,,,0.950,typesafe/jev-1.14,style-jev-2026
 FARX,Frontier Asset Absolute Return ETF,,,0.920,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 XNAV,FundX Aggressive ETF,,,0.820,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 XCOR,FundX ETF,unknown,unknown name,1.000,typesafe/jev-1.14-20261014,style-jev-2026-11-03.1-1793718825
+XFLX,FundX Flexible ETF,unknown,unknown name,0.990,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 FFOX,FundX Future Fund Opportunities ETF,unknown,unknown name,0.970,typesafe/jev-1.14-20261014,style-jev-2026-11-03.1-1793718825
 GGM,GGM Macro Alignment ETF,,,0.770,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 GBFFX,GMO Benchmark-Free Fund,,,0.990,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -281,14 +288,20 @@ GOLS,Gabelli Opportunities in Live and Sports ETF,,,0.860,typesafe/jev-1.14,styl
 PETZX,Gabelli Pet Parents(TM) Fund,,,0.720,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 GMMA,GammaRoad Market Navigation ETF,,,0.970,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 GATEX,Gateway Fund,,,1.000,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+AGMHX,Ginnie Mae Fund,u_s_securitized_bond,below threshold,0.830,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 KROP,Global X AgTech & Food Innovation ETF,,,0.500,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 AGNG,Global X Aging Population ETF,,,0.630,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+DRIV,Global X Autonomous & Electric Vehicles ETF,unknown,unknown name,0.480,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
+CTEC,Global X ClimateTech ETF,unknown,unknown name,0.490,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
+GXDW,Global X Dorsey Wright Thematic ETF,unknown,unknown name,0.830,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 EBIZ,Global X E-commerce ETF,,,0.400,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 GURU,Global X Guru Index ETF,,,0.790,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 HEAL,Global X HealthTech ETF,,,0.380,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+HYDR,Global X Hydrogen ETF,unknown,unknown name,0.370,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 SNSR,Global X Internet of Things ETF,,,0.660,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 NYSX,Global X NYSE 100 ETF,,,0.280,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 URA,Global X Uranium ETF,,,0.430,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+HERO,Global X Video Games & Esports ETF,u_s_technology,below threshold,0.690,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 GTND,Goaltender ETF,,,1.000,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 GVIP,Goldman Sachs Hedge Industry VIP ETF,,,0.510,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 GSLPX,Goldman Sachs Tactical Tilt Overlay Fund,,,0.980,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -352,6 +365,7 @@ JENHX,JOHNSON ENHANCED RETURN FUND,,,0.970,typesafe/jev-1.14,style-jev-2026-10-3
 JOPPX,JOHNSON OPPORTUNITY FUND,,,0.990,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 JDVAX,JPMorgan Diversified Fund,,,0.990,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 TXRAX,JPMorgan Tax Aware Real Return Fund,,,0.850,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+JMCGX,Jacob Discovery Fund,unknown,unknown name,0.970,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 JABS,Janus Henderson Asset - Backed Securities ETF,,,0.810,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 JACNX,Janus Henderson Contrarian Fund,,,0.940,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 JAENX,Janus Henderson Enterprise Fund,,,0.930,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -417,6 +431,7 @@ MYIFX,Monetta Young Investor Fund,,,0.940,typesafe/jev-1.14,style-jev-2026-10-30
 MPLY,Monopoly ETF,,,0.890,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 MNVT,Moonvest ETF,,,0.940,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 CPOAX,Morgan Stanley Insight Fund,,,0.990,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+MSTVX,Morningstar Alternatives Fund,unknown,unknown name,0.990,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 TMFC,Motley Fool 100 Index ETF,,,0.770,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 TMFE,Motley Fool Capital Efficiency 100 Index ETF,,,0.730,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 TMFX,Motley Fool Next Index ETF,,,0.750,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -430,6 +445,7 @@ ORIGX,NORTH SQUARE SPECTRUM ALPHA FUND,,,0.950,typesafe/jev-1.14,style-jev-2026-
 ETFRX,NORTH SQUARE TACTICAL DEFENSIVE FUND,,,0.810,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 NTHEX,NORTHEAST INVESTORS TRUST,,,0.930,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 NQCFX,NORTHQUEST CAPITAL FUND INC,,,1.000,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+QAI,NYLIM Hedge Multi-Strategy Tracker ETF,unknown,unknown name,0.940,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 MMMA,NYLIM MacKay Muni Allocation ETF,,,0.300,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 MNA,NYLIM Merger Arbitrage ETF,,,0.920,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 MCSDX,NYLIM WMC Enduring Capital Fund,,,0.960,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -474,6 +490,7 @@ NODE,Onchain Economy ETF,,,0.660,typesafe/jev-1.14,style-jev-2026-10-30.8-179341
 OPTZ,Optimize Strategy Index ETF,,,0.990,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 OSTGX,Osterweis Opportunity Fund,,,0.980,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 SAOOX,Overlay A Portfolio,,,0.960,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+SBOOX,Overlay B Portfolio,unknown,unknown name,0.960,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 PBFDX,PAYSON TOTAL RETURN FUND,,,0.980,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 PFADX,PFG BNY Mellon Diversifier Strategy Fund,,,0.810,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 PFSEX,PFG JP Morgan Tactical Aggressive Strategy Fund,,,0.590,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -490,9 +507,11 @@ MINT,PIMCO Enhanced Short Maturity Active Exchange-Traded Fund,,,0.650,typesafe/
 PSRDX,PIMCO Low Duration Credit Fund,,,0.720,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 PEAFX,PIMCO RAE Emerging Markets Fund,,,0.830,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 PAIAX,PIMCO Short Asset Investment Fund,,,0.820,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+PSKPX,PIMCO StocksPLUS Fund,unknown,unknown name,0.770,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 PQTAX,PIMCO TRENDS Managed Futures Strategy Fund,,,0.890,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 ARP,PMV Adaptive Risk Parity ETF,,,0.870,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 WAGN,Pabrai Wagons ETF,,,0.980,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+ODDS,Pacer BlueStar Digital Entertainment ETF,u_s_technology,below threshold,0.580,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 BULD,Pacer BlueStar Engineering the Future ETF,,,0.380,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 HERD,Pacer Cash Cows Fund of Funds ETF,,,0.600,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 TRFK,Pacer Data and Digital Revolution ETF,,,0.740,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -538,6 +557,7 @@ QVOY,Q3 ALL SEASON ACTIVE ROTATION ETF,,,0.790,typesafe/jev-1.14,style-jev-2026-
 QALAX,Quantified Alternative Investment Fund,,,0.990,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 QCGAX,Quantified Common Ground Fund,,,0.950,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 QMLAX,Quantified Market Leaders Fund,,,0.900,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+QSPAX,Quantified Pattern Recognition Fund,unknown,unknown name,0.960,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 QSTAX,Quantified STF Fund,,,0.930,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 QTSSX,Quantified Tactical Sectors Fund,,,0.830,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 DRNZ,REX Drone ETF,,,0.490,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -547,6 +567,8 @@ RTPIX,RISING RATES OPPORTUNITY 10 PROFUND,,,0.780,typesafe/jev-1.14,style-jev-20
 RRPIX,RISING RATES OPPORTUNITY PROFUND,,,0.820,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 RMBGX,RMB Fund,,,0.990,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 RPAR,RPAR Risk Parity ETF,,,0.410,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+NUKZ,Range Nuclear Renaissance Index ETF,unknown,unknown name,0.450,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
+HSUAX,Rational Dynamic Brands Fund,unknown,unknown name,0.870,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 ECOAX,Redwheel Next Generation Power Infrastructure Fund,,,0.450,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 RWSIX,Redwood Systematic Macro Trend Fund,,,0.780,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 RPMAX,Reinhart Genesis PMV Fund,,,0.880,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -558,6 +580,7 @@ RNMN,Rivernorth Enhanced Pre-Merger SPAC ETF,,,0.550,typesafe/jev-1.14,style-jev
 RKCAX,Rockefeller Climate Solutions Fund,,,0.660,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 METV,Roundhill Ball Metaverse ETF,,,0.620,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 WEED,Roundhill Cannabis ETF,,,0.450,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+OZEM,Roundhill GLP-1 & Weight Loss ETF,u_s_health_care,below threshold,0.820,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 MAGS,Roundhill Magnificent Seven ETF,,,0.370,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 BETZ,Roundhill Sports Betting & iGaming ETF,,,0.570,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 UX,Roundhill Uranium ETF,,,0.800,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -598,12 +621,15 @@ XXV,Simplify Ancorato Target 25 Distribution ETF,,,0.740,typesafe/jev-1.14,style
 SDMF,Simplify DBi CTA Managed Futures Index ETF,,,0.830,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 PFIX,Simplify Interest Rate Hedge ETF,,,0.880,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 CTA,Simplify Managed Futures Strategy ETF,,,0.780,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+QIS,Simplify Multi-QIS Alternative ETF,unknown,unknown name,0.940,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 SURI,Simplify Propel Opportunities ETF,,,0.940,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 TESL,Simplify Volt TSLA Revolution ETF,,,0.380,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 BLCN,Siren NexGen Economy ETF,,,0.430,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 SFYF,SoFi Social 50 ETF,,,0.550,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 SOVF,Sovereign's Capital Flourish Fund,,,0.990,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 SPRX,Spear Alpha ETF,,,0.980,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+SAPEX,Spectrum Active Advantage Fund,unknown,unknown name,1.000,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
+SUNBX,Spectrum Unconstrained Fund,unknown,unknown name,0.980,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
 SFITX,State Farm Interim Fund,,,1.000,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 SSTIX,State Street Total Return V.I.S. Fund,,,0.970,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 ALLW,State Street(R) Bridgewater(R) All Weather(R) ETF,,,0.530,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
