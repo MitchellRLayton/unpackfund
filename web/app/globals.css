@@ -1173,6 +1173,65 @@ table {
   background: var(--surface);
 }
 
+/* A scroll box a keyboard can reach. Only the boxes that opt in are focusable, so
+ * this rule is inert everywhere else. */
+.table-wrap:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* The reachable scrollbar (components/TableScroll.tsx).
+ *
+ * The native horizontal scrollbar sits at the bottom of the scroll box, which on a
+ * table taller than the viewport is below the fold — the reader has to scroll to the
+ * end of the table to find the control that scrolls it sideways. The rail is a second
+ * scrollbar that sticks to the bottom of the viewport for as long as the table is on
+ * screen, so the control is where the reader is looking.
+ *
+ * It is a duplicate control, not a second scroll box: it drives the same `scrollLeft`,
+ * and the box itself is focusable so the arrow keys work without it. The rail is
+ * `aria-hidden` for that reason.
+ *
+ * The thumb is `--graphite` on `--surface`, which `lib/theme.test.ts` holds at 3:1 in
+ * both schemes: a scrollbar is a graphic that carries a distinction, so it answers to
+ * the non-text floor rather than to taste. */
+.table-scroll {
+  position: relative;
+}
+
+.table-scroll__rail {
+  position: sticky;
+  /* Off the viewport's own edge, so it reads as a control floating over the table
+   * rather than as a border the page happens to end on. */
+  bottom: var(--space-2);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  height: 1.125rem;
+  margin-top: var(--space-1);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: 0 -2px 6px color-mix(in oklch, var(--ink) 8%, transparent);
+  touch-action: none;
+}
+
+.table-scroll__thumb {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--graphite);
+  cursor: grab;
+}
+
+.table-scroll__thumb:hover {
+  background: var(--ink);
+}
+
+.table-scroll__thumb:active {
+  background: var(--ink);
+  cursor: grabbing;
+}
+
 .table {
   font-size: var(--text-14);
   font-variant-numeric: tabular-nums;
@@ -1793,7 +1852,9 @@ tr[data-direct="true"]:hover {
   .no-print,
   .tabs,
   .search-trigger,
-  .skip-link {
+  .skip-link,
+  /* A scrollbar is a control for a screen; the printed table is the whole table. */
+  .table-scroll__rail {
     display: none !important;
   }
 
