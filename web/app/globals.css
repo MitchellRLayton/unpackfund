@@ -89,6 +89,24 @@
   --tier-em-ink: oklch(38% 0.13 55);
   --tier-none-ink: oklch(45% 0 0);
 
+  /* ---- Size bands ------------------------------------------------------ */
+  /* The Company size bar's five bands, ordered from the largest to the smallest. A band
+   * is a size class, a tier is a geography, so this is its own ramp rather than the tier
+   * hues: reusing one palette for the other would imply a company's country from its
+   * size. The steps alternate deep and light and change hue as they go, because a cream
+   * page caps how many fills can clear 3:1 on it: five steps of one hue inside that cap
+   * are not far enough apart to tell at a glance, which is the defect this ramp fixes
+   * (operator, 2026-11-07: "I don't want this all grey"). Every step clears 3:1 on paper,
+   * and every pair that touches clears 28 dE of separation — 25 after simulating
+   * deuteranopia, protanopia and tritanopia — in both schemes (`lib/theme.test.ts`).
+   * `sizes.json` prints each band's name and number in the legend and the table, so the
+   * hue only has to make the segments tell apart; it never carries the band alone. */
+  --band-mega: oklch(28% 0.09 265);
+  --band-large: oklch(56% 0.13 85);
+  --band-mid: oklch(28% 0.12 165);
+  --band-small: oklch(58% 0.09 250);
+  --band-micro: oklch(32% 0.12 40);
+
   /* ---- State ----------------------------------------------------------- */
   /* Errors only, always with an icon and words. */
   --alert: oklch(58% 0.19 30);
@@ -178,6 +196,15 @@
     --tier-dm-ink: oklch(84% 0.09 85);
     --tier-em-ink: oklch(74% 0.12 50);
     --tier-none-ink: oklch(74% 0 0);
+
+    /* The band ramp on the dark page: each step repainted bright enough to clear 3:1 on
+     * it, keeping the alternation of the light ramp so a reader who switches scheme sees
+     * the same five bands in the same five hues. */
+    --band-mega: oklch(76% 0.1 265);
+    --band-large: oklch(56% 0.13 85);
+    --band-mid: oklch(86% 0.12 165);
+    --band-small: oklch(56% 0.09 250);
+    --band-micro: oklch(72% 0.12 40);
 
     --alert: oklch(68% 0.17 30);
     --alert-ink: oklch(78% 0.14 30);
@@ -1043,6 +1070,29 @@ table {
 
 .bar__seg--none {
   background: var(--tier-none);
+}
+
+/* The Company size bands. One hue per band, from the ordered band ramp; the legend and
+ * the table print every number, so the colour only has to make the segments tell apart
+ * at a glance. */
+.bar__seg--band-mega {
+  background: var(--band-mega);
+}
+
+.bar__seg--band-large {
+  background: var(--band-large);
+}
+
+.bar__seg--band-mid {
+  background: var(--band-mid);
+}
+
+.bar__seg--band-small {
+  background: var(--band-small);
+}
+
+.bar__seg--band-micro {
+  background: var(--band-micro);
 }
 
 .bar__seg--unplaced {

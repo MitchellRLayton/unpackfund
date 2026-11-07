@@ -10,7 +10,7 @@ Show a number the visitor can check. Everything below follows from that: the led
 hero, no gradient, no illustration, no marketing voice. One column of content, a table that reads like a table, and the
 provenance of every number visible without a click.
 
-## The five rules the build follows
+## The six rules the build follows
 
 1. **Provenance is part of the number.** The freshness strip (release, filing period, longest lag, coverage, the share
    of money not traced, company count) sits above the metrics, not in a footnote. A fund's filing period is shown per fund because five funds can span
@@ -33,6 +33,11 @@ provenance of every number visible without a click.
    a bolder font.
 5. **Numbers are tabular.** `font-variant-numeric: tabular-nums` on every weight, count, and metric so columns align
    without a grid of spans.
+6. **A chart is never one flat fill.** Every category a chart draws carries its own hue from a ramp that is gated for
+   contrast and for colour-vision deficiency, and every category's number is printed beside it in the legend and in the
+   table under the chart. A single grey for the whole bar is a defect, not a style: it asks the reader to decode
+   position instead of colour and makes two adjacent categories one shape (operator, 2026-11-07: "I don't want this all
+   grey, users need to be able to differentiate"). The hue is reinforcement; the printed name and number are the fact.
 
 ## Metadata first, method below the table (operator's instruction, 2026-11-02)
 
@@ -92,28 +97,71 @@ caption.
 
 ## Tokens
 
-Defined once in `app/globals.css` as custom properties, light and dark through `prefers-color-scheme`.
+One palette, defined once in `app/globals.css` as OKLCH custom properties and re-declared for the dark scheme inside
+`@media (prefers-color-scheme: dark)`. The app and the generated fund pages read that one file — `pipeline.fund_pages`
+copies `globals.css` verbatim into every page's `fund-page.css` — so a token that moves in the app moves on the static
+page at its next build, and the two surfaces cannot drift into different palettes.
 
-| Token                                   | Light                       | Dark                         | Use                                              |
-| --------------------------------------- | --------------------------- | ---------------------------- | ------------------------------------------------ |
-| `--bg`                                  | `#ffffff`                   | `#0d1117`                    | page                                             |
-| `--surface`                             | `#f6f8f9`                   | `#151b22`                    | table header, notices                            |
-| `--fg`                                  | `#11181c`                   | `#e8edf0`                    | body text                                        |
-| `--muted`                               | `#55636b`                   | `#9aa7b0`                    | labels, notes, secondary values                  |
-| `--rule`                                | `#d7dde1`                   | `#232b33`                    | hairlines, table rules                           |
-| `--accent`                              | `#0f6d78`                   | `#5ec8d4`                    | primary action                                   |
-| `--warn` / `--warn-soft`                | `#7a4b00` / `#fdf3e2`       | `#f0b429` / `#2e2413`        | warnings, partial coverage                       |
-| `--ok`                                  | `#17693a`                   | `#6fce8f`                    | the ledger gate once the total is exactly 100%   |
-| `--whole`                               | `oklch(55% 0.18 264)`       | `oklch(74% 0.15 264)`        | the holdings meter's bar at exactly 100%         |
-| `--tint-direct` / `--tint-direct-hover` | `#f2ecff` / `#e9e0fd`       | `#1d1930` / `#262038`        | the ledger row of a stock you hold directly      |
-| `--country-us`                          | `#3b6ea5`                   | `#6c9bd2`                    | the row's left edge for a US-domiciled company   |
-| `--country-dm`                          | `#9c7025`                   | `#d9a54a`                    | the edge for a developed market outside the US   |
-| `--country-em`                          | `#4a3410`                   | `#8b6d40`                    | the edge for an emerging market                  |
-| `--country-other`                       | `#74746b`                   | `#b0b0a6`                    | the edge for the two states with no market tier  |
-| `--delta-up`                            | `#0a6f1c`                   | `#39ff14`                    | the `In VT` bracket above the benchmark (text)   |
-| `--delta-down`                          | `#c4002b`                   | `#ff4d5e`                    | the same bracket below the benchmark             |
-| `--pill-bg`                             | `#c5c6c7`                   | `#192028`                    | the current section's pill (20% off `--surface`) |
-| `--pill-shadow`                         | `0 1px 2px rgb(0 0 0 / 8%)` | `0 1px 2px rgb(0 0 0 / 45%)` | the current section's pill, under the bar        |
+The operator's palette, recorded 2026-11-07 (light; the dark-scheme value in parentheses): paper 97% 0.012 85
+(17% 0.015 260); surface 99% 0.006 85 (21% 0.015 260); ink 22% 0.02 260 (93% 0.012 85); graphite 55% 0.01 260
+(68% 0.01 260); tier-us 55% 0.13 250 (68% 0.12 250); tier-dm 76% 0.11 85 (72% 0.10 85); tier-em 58% 0.12 60
+(64% 0.11 60); tier-none 70% 0 0 (55% 0 0); alert 58% 0.19 30 (68% 0.17 30) — errors only, always with an icon and
+words.
+
+**Five values ship a step darker than that spec, because a token is a value with a job and the job is measured.** A token
+that carries words answers to WCAG AA 4.5:1; a token that is a 6 px edge or a bar fill answers to 3:1 as a graphical
+object. The spec's `graphite` 55% measures 4.45:1 on paper, a hair under the text floor, so it ships at 48%; `tier-us`
+55% measures 4.43 and `tier-em` 58% measures 4.07, so both ship darker as edges and darker again as ink; `tier-none`
+70% measures 2.46 and ships at 50%; `tier-dm`'s 76% sand is 1.98:1 on paper, under the 3:1 floor, and would be an
+invisible row edge, so it ships at 60%. `web/lib/theme.test.ts` computes those ratios from the stylesheet itself in both
+schemes; the measured pairs are the test, not this paragraph.
+
+| Token                                                   | Light (dark)                                                 | Job                                                     |
+| ------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------- |
+| `--paper`                                               | `oklch(97% 0.012 85)` (`17% 0.015 260`)                      | the page                                                |
+| `--surface`                                             | `oklch(99% 0.006 85)` (`21% 0.015 260`)                      | a flat block raised off it: table header, notices       |
+| `--ink`                                                 | `oklch(22% 0.02 260)` (`93% 0.012 85`)                       | body text                                               |
+| `--graphite`                                            | `oklch(48% 0.01 260)` (`68% 0.01 260`)                       | labels, notes, secondary values                         |
+| `--rule` / `--rule-strong`                              | `--graphite` at 24% / 45%                                    | hairlines and table rules                               |
+| `--wash` / `--wash-strong`                              | `--graphite` at 7% / 13%                                     | an empty track, a quiet fill                            |
+| `--tier-us` / `--tier-dm` / `--tier-em` / `--tier-none` | `50% 0.13 250` / `60% 0.12 85` / `38% 0.15 55` / `50% 0 0`   | the only hues with a geographic meaning                 |
+| `--tier-us-ink` … `--tier-none-ink`                     | the same hues, darker in light and brighter in dark          | a tier's words, where text answers to 4.5:1             |
+| `--alert` / `--alert-ink` / `--alert-wash`              | `58% 0.19 30` and relatives (`68% 0.17 30`)                  | errors only, and never without an icon and words        |
+| `--whole`                                               | `55% 0.18 264` (`74% 0.15 264`)                              | the holdings meter's bar at exactly 100%                |
+| `--delta-up` / `--delta-down`                           | green / red, each adjusted until it clears its floor         | the `In VT` bracket's sign — the sign is always printed |
+| `--tint-direct` / `--tint-direct-hover`                 | pale violet, deepened in the dark scheme                     | the ledger row of a stock the visitor holds directly    |
+| `--band-mega` … `--band-micro`                          | five-step ordered ramp — see _Charts and the size-band ramp_ | the Company size bar's five bands, largest to smallest  |
+
+The coverage chips, the sorted column and the direct-row tint are all reinforcement over text that already says the
+fact. Nothing in the palette carries a meaning on its own (rule 3).
+
+## Charts and the size-band ramp (operator's instruction, 2026-11-07)
+
+The operator's rules for charts, recorded with the tokens above: **stacked horizontal bars for parts of a whole — no
+pies; inline row bars on one scale; overlap as printed-number tables; every chart has its table, and the table is what
+prints.** A chart is the glance; the table under it is the record. A chart with no table is an unverifiable number.
+
+The rule that made this section necessary is rule 6: **a chart is never one flat fill.** The Company size bar shipped
+with every band painted `--tier-none` — one grey bar, separated only by position — and the operator could not tell the
+bands apart ("I don't want this all grey, users need to be able to differentiate"). It now draws five hues from the
+`--band-mega` … `--band-micro` ramp, one per band, and the legend under it repeats each band's name and share. The
+country bar keeps the tier hues because there the hue _is_ the geography.
+
+The ramp is an **ordered** categorical ramp — one step per band, largest to smallest — and it is deliberately **not** the
+tier hues: a band is a size class and a tier is a geography, and one palette for both would imply a company's country
+from its size. Two measured constraints shaped the values:
+
+- **Every fill clears 3:1 on the page.** A segment is a graphic a reader has to find; a pale fill on cream is not a
+  band. This caps how light a light-scheme fill can be, which is why the five steps alternate deep and light rather than
+  running one lightness ramp.
+- **Every pair that touches clears 28 dE of separation, and 25 after simulating deuteranopia, protanopia and
+  tritanopia.** Inside that 3:1 cap there is not enough lightness range for five steps of one hue to be far enough
+  apart, so the ramp changes hue as it goes; a pair that is close in lightness is never adjacent. `mega` and `mid` are
+  both deep and sit two steps apart, which is the arrangement the test permits.
+
+`web/lib/theme.test.ts` holds both floors in both schemes, and `pipeline/tests/test_fund_pages_size.py` holds the page's
+half: every band draws its own segment class, the legend swatch reuses it, and a computed bar still prints every name
+and number. Colour is reinforcement in both — remove it and the page still reads.
 
 **Row shading (operator's instruction, 2026-11-02).** A company the visitor holds as a stock, not only through a fund, gets
 a pastel light-purple row — quiet enough that the numbers still lead, distinct enough to find the single-stock positions at
@@ -128,9 +176,12 @@ a glance. Three constraints, each with a check behind it:
 - **Contrast is a gate.** `lib/theme.test.ts` checks `--fg` and `--muted` against both tints in both schemes; the tightest
   pair is 4.89:1 (light hover, secondary text), above the 4.5:1 AA floor.
 
-Type is `system-ui` with an Apple/Segoe/Roboto fallback chain at 16 px base, 0.9–1.05 rem in the ledger, 650 weight for
-values. No webfont: one fewer request, no layout shift, no licence question. `--row: 2rem` fixes the row height for the
-day-4 windowing pass.
+Type is three self-hosted faces, subset to Latin and loaded with `font-display: swap`, with their OFL licences beside
+them in `public/fonts/`: **Inter** for the interface and every table, with tabular figures wherever two numbers are
+compared; **Newsreader** for page titles and the answer strip only, so the sentence a page exists to say is the one
+thing that looks like a headline; **IBM Plex Mono** for tickers and codes. The scale is six steps —
+`--text-12/14/16/20/28/40` — with the ledger at 12–14 px, body at 16 and a page title at 28. `--row: 2rem` fixes the row
+height for the day-4 windowing pass.
 
 ## Country edge (operator's instruction, 2026-11-02)
 
@@ -318,9 +369,9 @@ status indicator of the bar itself, blue completes it fully at 100% and red for 
 
 ## Open questions — the operator's, not the agent's
 
-- [`open`] **Chart or table only.** The table is the product right now. A treemap or bar strip of the top 10 is a visual
-  answer to "what do I own"; it is not in the day-3 scope and would need its own budget line (no chart library on first
-  paint).
+- [`open`] **Charts in `/x`.** The ledger is a table, and the fund pages now carry two bars (market split, Company
+  size) under the rules above. A chart inside the portfolio workspace — a bar strip of the top 10, a treemap — is still
+  unbuilt and still a separate budget line; when it is built it inherits rule 6 rather than starting a new palette.
 - [`open`] **A manual theme override.** Automatic light/dark follows the OS on every surface — the app and the
   generated fund pages, which copy the same tokens — and `web/lib/theme.test.ts` now fails if either palette drops
   below WCAG AA text contrast, so the two schemes cannot drift apart silently. A visible toggle and a persisted
@@ -337,6 +388,6 @@ portfolio lives in the URL fragment and is never sent anywhere, so there is noth
 
 ## Replacing this
 
-Change the tokens in `app/globals.css`, keep rules 1–3, and re-run the ledger in a real browser at 1280 px and 375 px.
-Rules 1–3 are correctness: a redesign that hides the filing period, reframes weight as a share of a fund, or encodes
-coverage in colour alone would be a product bug, not a taste difference.
+Change the tokens in `app/globals.css`, keep rules 1–3 and 6, and re-run the ledger in a real browser at 1280 px and
+375 px. Rules 1–3 and 6 are correctness: a redesign that hides the filing period, reframes weight as a share of a fund,
+encodes coverage in colour alone, or paints a chart in one flat fill would be a product bug, not a taste difference.
