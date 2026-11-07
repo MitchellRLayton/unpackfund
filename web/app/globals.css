@@ -92,6 +92,9 @@
   /* ---- State ----------------------------------------------------------- */
   /* Errors only, always with an icon and words. */
   --alert: oklch(58% 0.19 30);
+  /* The portfolio accounting for exactly 100% of itself. A hue for one state, used only
+   * as a fill on the holdings meter, so it never competes with the market tiers. */
+  --whole: oklch(55% 0.18 264);
   --alert-ink: oklch(45% 0.17 30);
   --alert-wash: oklch(96% 0.02 30);
   /* The benchmark bracket's sign. Green above, red below, graphite at an exact
@@ -178,6 +181,7 @@
 
     --alert: oklch(68% 0.17 30);
     --alert-ink: oklch(78% 0.14 30);
+    --whole: oklch(74% 0.15 264);
     --alert-wash: oklch(26% 0.05 30);
     --delta-up: oklch(78% 0.16 150);
     --delta-down: oklch(72% 0.16 25);
@@ -956,21 +960,55 @@ table {
   position: absolute;
   inset-block: 0;
   left: 0;
-  background: var(--ink);
+  background: var(--alert);
   border-radius: 999px;
 }
 
-.meter__fill--over {
-  background: var(--alert);
+.meter__fill--whole {
+  background: var(--whole);
 }
 
 .meter__label {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
   gap: var(--space-2);
   font-size: var(--text-12);
   color: var(--graphite);
   font-variant-numeric: tabular-nums;
+}
+
+.meter__figure {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+/* The total is the one number the visitor is steering, so it is set larger than the
+ * label beside it (operator, 2026-11-06: "a bigger number for indicating percentage"). */
+.meter__value {
+  font-size: var(--text-28);
+  line-height: 1;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.meter__of {
+  font-size: var(--text-12);
+  color: var(--graphite);
+}
+
+/* The tally's state in ink: red while the portfolio is short of or over 100%, green at
+ * exactly 100%. Restored 2026-11-06 — the workspace redesign dropped the coloured
+ * validator the old builder had (operator: "the green/red validator … isn't there
+ * anymore"). Colour is reinforcement, never the only carrier: the sentence itself says
+ * "fully allocated" or "5.00% over 100%" in both states. */
+.tally__gate--locked {
+  color: var(--danger);
+}
+
+.tally__gate--open {
+  color: var(--ok);
 }
 
 .bar {

@@ -356,6 +356,8 @@ export function HoldingsPane({ model }: { model: WorkspaceModel }) {
     mode,
     entries.map((entry) => entry.amount),
   );
+  /** A percentage portfolio is whole when it accounts for exactly 100% of itself. */
+  const whole = mode === "bp" && tally.ok;
 
   const catalog = useMemo(
     () => (tickers.status === "ready" ? (tickers.data ?? []) : []),
@@ -805,16 +807,19 @@ export function HoldingsPane({ model }: { model: WorkspaceModel }) {
           {mode === "bp" ? (
             <div className="meter">
               <span className="meter__track">
+                {/* The bar is the state: royal blue once the portfolio accounts for
+                 * exactly 100% of itself, red while it is short of or over it. */}
                 <span
-                  className={`meter__fill${
-                    portfolio.overBp > 0 ? "meter__fill--over" : ""
-                  }`}
+                  className={whole ? "meter__fill meter__fill--whole" : "meter__fill"}
                   style={{ width: `${Math.min(100, portfolio.total / 100)}%` }}
                 />
               </span>
               <span className="meter__label">
                 <span>Total</span>
-                <span>{formatWeightBp(portfolio.total)} of 100.00%</span>
+                <span className="meter__figure">
+                  <span className="meter__value">{formatWeightBp(portfolio.total)}</span>
+                  <span className="meter__of">of 100.00%</span>
+                </span>
               </span>
             </div>
           ) : null}
@@ -822,7 +827,14 @@ export function HoldingsPane({ model }: { model: WorkspaceModel }) {
             {mode === "bp" ? (
               <>
                 Percentages are shares of one whole.{" "}
-                <span className="num">{tally.sentence}</span>.
+                <span
+                  className={`num tally__gate ${
+                    tally.ok ? "tally__gate--open" : "tally__gate--locked"
+                  }`}
+                >
+                  {tally.sentence}
+                </span>
+                .
               </>
             ) : (
               <>
