@@ -95,6 +95,36 @@ long caption for accessibility. The count line above the table (`1,269 of 1,269 
 (`Showing rows 1–50 of 1,269 · page 1 of 26`) still say the two facts a reader might otherwise have got from the
 caption.
 
+## The table's scrollbar follows the viewport (operator's instruction, 2026-11-07)
+
+The `Your funds` table is eight columns wide and does not fit the lens column, so it scrolls sideways. Its only
+horizontal scrollbar was the native one at the bottom of the scroll box — and on a portfolio of more than a few funds
+that box is taller than the screen, so the control sat below the fold. The operator, on a Windows machine with a
+traditional mouse and no touchpad, had no way to move the table sideways except to drag a text selection across it:
+"there is no easy way for me to trigger the scroll … the only user experience tool that exists today is a click-able
+scroller (left-to-right) at the bottom, but it's buried very bottom where people might not see."
+
+`components/TableScroll.tsx` adds a second scrollbar that sticks to the bottom of the viewport for as long as the table
+is on screen, so the control is where the reader is looking rather than where the table ends. Measured on the built
+export at 1280×800 with an eight-fund portfolio: the table is 956 px wide in a 785 px box, its bottom edge is 1,670 px
+down, and the rail sits at 774–792 px — 8 px off the viewport's own edge — from the first row to the last.
+
+Four rules, because a second scrollbar is easy to get wrong:
+
+- **It is a duplicate control, not a second scroll box.** The rail drives the same `scrollLeft` as the table; there is
+  one scroll position. It is `aria-hidden`, so a screen reader gets one scrollable region rather than two.
+- **The table's own box is focusable** (`tabindex="0"`, `role="region"`, named), which is what makes the arrow keys
+  scroll it. A scroll box a keyboard cannot reach is a scroll box half the readers cannot use (WCAG 2.1.1), and the
+  rail is not a substitute for it.
+- **The thumb is a graphic that carries a distinction** — how much of the table is off screen — so it answers to the
+  3:1 non-text floor, not to taste. It is `--graphite` on `--surface`, and `lib/theme.test.ts` holds that pair in both
+  schemes. No new token: the palette is the operator's.
+- **It appears only when there is something to scroll to.** A table that fits draws no rail, and the rail is hidden in
+  print, where the whole table is the artefact.
+
+The rail is applied to the `Your funds` table only. The other lenses' tables are unchanged; the component is generic so
+that a second table can adopt it without a second implementation.
+
 ## Tokens
 
 One palette, defined once in `app/globals.css` as OKLCH custom properties and re-declared for the dark scheme inside

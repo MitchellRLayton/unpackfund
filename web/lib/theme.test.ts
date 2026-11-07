@@ -291,6 +291,10 @@ const UI_PAIRS: Array<[fg: string, bg: string, why: string]> = [
   ["band-mid", "paper", "the mid band's segment"],
   ["band-small", "paper", "the small band's segment"],
   ["band-micro", "paper", "the smallest band's segment"],
+  // The reachable scrollbar's thumb. A scrollbar is a graphic that carries a
+  // distinction — how much of the table is off screen — so it answers to the same 3:1
+  // floor as an edge, not to taste.
+  ["graphite", "surface", "the scroll rail's thumb on its track"],
   ["tier-none", "surface", "the neutral edge on a hovered row"],
   ["tier-none", "tint-direct", "the neutral edge on a direct-position row"],
   [

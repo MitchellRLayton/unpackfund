@@ -33,6 +33,7 @@ import {
 import { saveCsv } from "@/lib/export";
 import { formatCount, formatEffective, formatFreshness, formatShare } from "@/lib/format";
 import { Term } from "@/components/prose/Term";
+import { TableScroll } from "@/components/TableScroll";
 import type { LensProps } from "@/components/workspace/types";
 
 import {
@@ -227,7 +228,11 @@ export function FundsLens({ model }: LensProps) {
         title="Your funds"
         action={<LensExport label="funds in your mix" onExport={exportFunds} />}
       >
-        <div className="table-wrap">
+        {/* Eight columns do not fit the lens column, so the table scrolls sideways.
+            `TableScroll` keeps a scrollbar at the bottom of the viewport for as long as
+            the table is on screen, because the native one is below the fold on any
+            portfolio with more than a few funds. */}
+        <TableScroll label="Your funds">
           <table className="table">
             <caption>
               Sorted by {sortLabel}, {directionWords(sort.key, sort.direction)}. Every
@@ -362,7 +367,7 @@ export function FundsLens({ model }: LensProps) {
           <p id="funds-portfolio-hint" className="visually-hidden">
             {PORTFOLIO_ROW_HINT}
           </p>
-        </div>
+        </TableScroll>
       </LensSection>
     </div>
   );
