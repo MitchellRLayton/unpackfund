@@ -186,3 +186,96 @@ def test_a_catalogue_size_of_null_against_a_filed_size_fails(
     rewrite_catalogue(release_dir, hide_it)
     assert validate.validate(release_dir) == 1
     assert "FAIL catalogue.net_assets" in capsys.readouterr().out
+
+
+# --- companies/sizes.json: the market-cap table -------------------------------
+
+
+def sizes_payload(**overrides) -> dict:
+    """A minimal valid ``companies/sizes.json``, the shape ``sizes.write`` makes.
+
+    One company, so a test can mutate exactly the field it is about and know that
+    every other gate in the object is satisfied.
+    """
+    payload = {
+        "as_of": "2026-11-07.1",
+        "band_counts": {"mega": 0, "large": 0, "mid": 1, "small": 0, "micro": 0},
+        "bands": ["mega", "large", "mid", "small", "micro"],
+        "caps": {
+            "c_0000320193": {
+                "band": "mid",
+                "basis": "frame",
+                "price": 142.93,
+                "report_date": "2026-06-30",
+                "share_date": "2026-06-30",
+                "shares": 39_892_472,
+                "usd": 5_701_831_023.0,
+            }
+        },
+        "counts": {"companies": 1, "cover": 0, "frame": 1, "placed": 1},
+        "kind": "sizes",
+        "price_basis": "nport_implied",
+        "schema_version": 1,
+        "thresholds": {
+            "largecap": 10_000_000_000.0,
+            "megacap": 200_000_000_000.0,
+            "microcap": 0.0,
+            "midcap": 2_000_000_000.0,
+            "smallcap": 300_000_000.0,
+        },
+    }
+    payload.update(overrides)
+    return payload
+
+
+def write_sizes(release_dir: Path, payload: dict) -> None:
+    directory = release_dir / "companies"
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "sizes.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_a_release_without_a_size_table_still_validates(tmp_path, document):
+    release_dir = write_release(tmp_path, [document])
+    assert validate.validate(release_dir) == 0
+
+
+def test_a_valid_size_table_validates(tmp_path, document):
+    release_dir = write_release(tmp_path, [document])
+    write_sizes(release_dir, sizes_payload())
+    assert validate.validate(release_dir) == 0
+
+
+def test_a_cap_without_its_share_date_is_refused(tmp_path, document, capsys):
+    release_dir = write_release(tmp_path, [document])
+    payload = sizes_payload()
+    del payload["caps"]["c_0000320193"]["share_date"]
+    write_sizes(release_dir, payload)
+    assert validate.validate(release_dir) == 1
+    assert "sizes.fields" in capsys.readouterr().out
+
+
+def test_an_unpublished_band_is_refused(tmp_path, document, capsys):
+    release_dir = write_release(tmp_path, [document])
+    payload = sizes_payload()
+    payload["caps"]["c_0000320193"]["band"] = "giant"
+    write_sizes(release_dir, payload)
+    assert validate.validate(release_dir) == 1
+    assert "sizes.band" in capsys.readouterr().out
+
+
+def test_thresholds_must_be_the_published_lines(tmp_path, document, capsys):
+    release_dir = write_release(tmp_path, [document])
+    payload = sizes_payload()
+    payload["thresholds"]["megacap"] = 100_000_000_000.0
+    write_sizes(release_dir, payload)
+    assert validate.validate(release_dir) == 1
+    assert "sizes.thresholds" in capsys.readouterr().out
+
+
+def test_the_lane_counts_must_add_up_to_the_caps(tmp_path, document, capsys):
+    release_dir = write_release(tmp_path, [document])
+    payload = sizes_payload()
+    payload["counts"]["placed"] = 2
+    write_sizes(release_dir, payload)
+    assert validate.validate(release_dir) == 1
+    assert "sizes.counts" in capsys.readouterr().out

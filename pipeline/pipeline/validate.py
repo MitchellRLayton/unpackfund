@@ -26,6 +26,7 @@ from .identifiers import LICENSED_ID_RE, is_licensed
 from .gleif import is_issuer_id, is_sec_company_id, LEI_RE
 
 from . import paths
+from . import sizes
 from . import benchmarks as benchmarks_mod
 from . import classification_generated
 from . import company_countries as company_countries_mod
@@ -41,6 +42,9 @@ TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,9}$")
 
 #: A published company id: ``c_`` + 10-digit CIK, or ``l_`` + 16 hex (companies.py).
 COMPANY_ID_RE = re.compile(r"^(?:c_\d{10}|l_[0-9a-f]{16})$")
+#: ``YYYY-MM-DD``, the shape every date in a release carries. The size table is the
+#: one object where a date is an argument rather than a filing artefact (ADR-0022).
+_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 #: The statuses a typed-symbol row may carry. Everything that is not ``ok`` is a
 #: refusal with the reason the UI names; the client owns the message.
@@ -1327,6 +1331,117 @@ def _strings(node: Any):
         yield node
 
 
+def _check_sizes(release_dir: Path, report: Report) -> None:
+    """``companies/sizes.json``: the market-cap table, when the release published one.
+
+    The object is additive — a release built with ``--no-size-buckets`` simply has no
+    file and is valid — so everything here fires only when it is present, and each
+    refusal is a promise the fund page makes to a reader (ADR-0022):
+
+    - **a cap is never published without its two dates.** ``usd`` is a price at the
+      report date multiplied by a share count at ``share_date``; a bare number reads
+      as a live quote, and the methodology page says every cap carries both.
+    - **a band is one of the published bands**, because the page prints the band's
+      name and the table's line, and an unknown key would render nothing.
+    - **the thresholds are the pipeline's own**, so a page that recomputes a band
+      from the payload cannot disagree with the build that wrote it.
+    - **the counts add up**: ``placed`` equals the caps, and the two lane counts
+      (``frame``, ``cover``) sum to it, so the log line and the artefact cannot drift.
+    """
+    path = release_dir / "companies" / "sizes.json"
+    if not path.is_file():
+        return
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError:
+        report.fail("sizes.json", "companies/sizes.json is not valid JSON")
+        return
+    if not isinstance(payload, dict):
+        report.fail("sizes.shape", "companies/sizes.json is not an object")
+        return
+    if payload.get("schema_version") != 1:
+        report.fail("sizes.schema", "companies/sizes.json is not schema_version 1")
+    if payload.get("kind") != "sizes":
+        report.fail("sizes.kind", f"companies/sizes.json kind is {payload.get('kind')!r}")
+    thresholds = payload.get("thresholds")
+    if not isinstance(thresholds, dict) or thresholds != {
+        "megacap": 200_000_000_000.0,
+        "largecap": 10_000_000_000.0,
+        "midcap": 2_000_000_000.0,
+        "smallcap": 300_000_000.0,
+        "microcap": 0.0,
+    }:
+        report.fail(
+            "sizes.thresholds",
+            "companies/sizes.json thresholds are not the published lines "
+            f"({thresholds!r})",
+        )
+    if payload.get("bands") != list(sizes.BAND_ORDER):
+        report.fail(
+            "sizes.bands",
+            f"companies/sizes.json bands are {payload.get('bands')!r}, "
+            f"not {list(sizes.BAND_ORDER)!r}",
+        )
+    caps = payload.get("caps")
+    if not isinstance(caps, dict):
+        report.fail("sizes.caps", "companies/sizes.json has no caps object")
+        return
+    allowed = set(sizes.BAND_ORDER)
+    for company_id, cap in caps.items():
+        if not COMPANY_ID_RE.match(str(company_id)):
+            report.fail(
+                "sizes.company_id",
+                f"companies/sizes.json key {company_id!r} is not a company id",
+            )
+            break
+        if not isinstance(cap, dict):
+            report.fail("sizes.cap", f"companies/sizes.json {company_id} is not an object")
+            break
+        missing = [
+            key
+            for key in ("usd", "shares", "price", "share_date", "report_date", "basis", "band")
+            if key not in cap
+        ]
+        if missing:
+            report.fail(
+                "sizes.fields",
+                f"companies/sizes.json {company_id} is missing {', '.join(missing)}",
+            )
+            break
+        if cap["band"] not in allowed:
+            report.fail("sizes.band", f"companies/sizes.json {company_id} has band {cap['band']!r}")
+            break
+        if not _DAY_RE.match(str(cap["share_date"])) or not _DAY_RE.match(str(cap["report_date"])):
+            report.fail(
+                "sizes.dates",
+                f"companies/sizes.json {company_id} dates are "
+                f"{cap['share_date']!r} / {cap['report_date']!r}",
+            )
+            break
+        if cap["basis"] not in ("frame", "cover"):
+            report.fail("sizes.basis", f"companies/sizes.json {company_id} basis is {cap['basis']!r}")
+            break
+    counts = payload.get("counts") or {}
+    if isinstance(counts, dict):
+        if counts.get("placed") != len(caps):
+            report.fail(
+                "sizes.counts",
+                f"companies/sizes.json says {counts.get('placed')!r} placed but carries {len(caps)} caps",
+            )
+        lanes = (counts.get("frame") or 0) + (counts.get("cover") or 0)
+        if lanes != len(caps):
+            report.fail(
+                "sizes.counts",
+                f"companies/sizes.json lanes sum to {lanes} but {len(caps)} caps are published",
+            )
+    band_counts = payload.get("band_counts") or {}
+    if isinstance(band_counts, dict) and sum(band_counts.values()) != len(caps):
+        report.fail(
+            "sizes.band_counts",
+            f"companies/sizes.json band_counts sum to {sum(band_counts.values())}, not {len(caps)}",
+        )
+
+
 def _check_cusip(release_dir: Path, manifest: dict, report: Report) -> None:
     """No CUSIP, ISIN or other licensed identifier may leave the pipeline.
 
@@ -1800,6 +1915,7 @@ def validate(release_dir: Path) -> int:
     _check_catalogue(release_dir, manifest, funds, report)
     _check_benchmarks(release_dir, funds, report)
     _check_company_countries(release_dir, report)
+    _check_sizes(release_dir, report)
     _check_cusip(release_dir, manifest, report)
     _check_lei(release_dir, manifest, report)
     _check_budget(release_dir, report)
