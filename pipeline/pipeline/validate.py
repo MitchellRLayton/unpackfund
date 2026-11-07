@@ -1036,7 +1036,11 @@ def _check_company_countries(release_dir: Path, report: Report) -> None:
     shard_ids: set[str] = set()
     shards = 0
     for shard_path in sorted((release_dir / "companies").glob("*.json")):
-        if shard_path.name in {"index.json", "countries.json"}:
+        # Only a company shard is a shard. The directory also carries browser objects
+        # — ``index.json``, ``countries.json``, and the size table ``sizes.json`` — and
+        # counting one of those as a company failed the 2026-11-07 refresh by exactly
+        # one company. The id shape is the filter, so a future object cannot do it again.
+        if not COMPANY_ID_RE.match(shard_path.stem):
             continue
         try:
             shard = json.loads(shard_path.read_text())

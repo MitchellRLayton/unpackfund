@@ -279,3 +279,27 @@ def test_the_lane_counts_must_add_up_to_the_caps(tmp_path, document, capsys):
     write_sizes(release_dir, payload)
     assert validate.validate(release_dir) == 1
     assert "sizes.counts" in capsys.readouterr().out
+
+
+def test_a_browser_object_beside_the_shards_is_not_a_company(tmp_path, document):
+    """``companies/`` holds shards *and* objects, and only shards are companies.
+
+    The count gate compares the countries object's ``counts.companies`` with the shard
+    files on disk. Counting ``sizes.json`` — a browser object, not a company — made the
+    2026-11-07 refresh fail by exactly one company, so the shape of the file name is the
+    filter and this test holds it.
+    """
+    probe = write_release(tmp_path / "probe", [document])
+    company_ids = sorted(
+        path.stem
+        for path in (probe / "companies").glob("*.json")
+        if path.stem not in {"index", "countries"}
+    )
+    assert company_ids, "the fixture release publishes at least one company shard"
+    release_dir = write_release(
+        tmp_path / "release",
+        [document],
+        countries={company_id: "US" for company_id in company_ids},
+    )
+    write_sizes(release_dir, sizes_payload())
+    assert validate.validate(release_dir) == 0
