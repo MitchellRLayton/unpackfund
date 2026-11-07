@@ -56,6 +56,7 @@ from . import (
     manifest as manifest_mod,
     sec,
     securities,
+    sizes,
     universe,
     weights,
 )
@@ -579,6 +580,7 @@ def _walk(
     series_out: dict[str, str] | None = None,
     votes: company_countries.Tally | None = None,
     security_map: identifiers.SecurityMap | None = None,
+    sizes_tally: sizes.PriceTally | None = None,
 ) -> tuple[list[FundBuild], list[dict[str, str]]]:
     """Build every fund once, collecting the artifacts and the failures.
 
@@ -617,6 +619,11 @@ def _walk(
                     build.countries, build.stats.get("net_assets"), build.invalid_country_rows
                 )
                 build.countries = {}
+            # The size lane's evidence, folded and dropped the same way: the fund's own
+            # filed value and share balance per company, which become the implied price
+            # the release multiplies by a ``dei`` share count.
+            if sizes_tally is not None and build.vector is not None:
+                sizes_tally.add_fund(build.vector, build.stats.get("as_of", ""))
             builds.append(build)
         if log and done % log == 0:
             elapsed = time.monotonic() - started
@@ -883,6 +890,8 @@ def build_release(
     security_identity: bool = True,
     security_map: identifiers.SecurityMap | None = None,
     layer_dir: Path | None = None,
+    size_buckets: bool = True,
+    size_cover_limit: int | None = None,
 ) -> Path:
     started = time.monotonic()
     index = CompanyIndex.load()
@@ -1012,6 +1021,9 @@ def build_release(
     # fund's mapped rows arrive on this thread as it lands, so the votes are folded in
     # a single deterministic order and no per-fund map is retained.
     country_tally = company_countries.Tally()
+    # The size lane's tally: folded per fund on this thread, so a full-universe build
+    # holds one dict of (value, balance) sums per company rather than 9,327 vectors.
+    size_tally = sizes.PriceTally() if size_buckets else None
     builds, failures = _walk(
         refs,
         index,
@@ -1024,6 +1036,7 @@ def build_release(
         fund_leis=fund_leis or None,
         votes=country_tally,
         security_map=security_map,
+        sizes_tally=size_tally,
     )
 
     if failures and on_error == "fail":
@@ -1227,6 +1240,36 @@ def build_release(
         countries_contested=contested_countries,
         countries_overrides=override_stats,
     )
+    # The size table is a browser object by presence, like the country map: it is
+    # written beside the catalogue, uploaded with the release (every file in the
+    # release directory is published), and a release without it simply has no size
+    # bar. It is deliberately *not* a manifest entry: the manifest's ``files`` is the
+    # fund set, which the validator checks as an exact set.
+    size_summary: dict | None = None
+    if size_tally is not None and len(size_tally):
+        started_sizes = time.monotonic()
+        sized = sizes.build(
+            size_tally.observations(),
+            release=release,
+            log=_log,
+            **({"cover_limit": size_cover_limit} if size_cover_limit else {}),
+        )
+        _, size_body = sizes.write(sized, release_dir)
+        counts = sized.counts
+        size_summary = {
+            "bytes": len(size_body),
+            "sha256": artifact.sha256_hex(size_body),
+            **counts,
+        }
+        _log(
+            f"size table: {counts['placed']:,} companies placed of "
+            f"{counts['companies']:,} ({counts['frame']:,} by frame, "
+            f"{counts['cover']:,} by cover page), {len(size_body):,}B in "
+            f"{time.monotonic() - started_sizes:.0f}s"
+        )
+    else:
+        _log("size table: skipped (no equity price observations)")
+
     elapsed = time.monotonic() - started
     _log(
         f"manifest: {len(documents):,} funds, {document['company_count']:,} companies, "
@@ -1255,6 +1298,7 @@ def build_release(
         "release_object_bytes": browser_objects["release_bytes"],
         "release_object_sha256": browser_objects["release_sha256"],
         "browser_objects": browser_objects["sizes"],
+        "size_buckets": size_summary,
         "elapsed_seconds": round(elapsed, 1),
         "workers": workers,
         "generated_at": document["generated_at"],
@@ -1363,6 +1407,19 @@ def main(argv: list[str] | None = None) -> int:
         "measuring what GLEIF jurisdiction and EDGAR incorporation are worth",
     )
     parser.add_argument(
+        "--size-cover-limit",
+        type=int,
+        default=None,
+        help="how many companies the cover-page lane may visit (default 600, ranked by "
+        "value); a smaller number is how a smoke build stays fast",
+    )
+    parser.add_argument(
+        "--no-size-buckets",
+        action="store_true",
+        help="skip the size table (implied price × dei share count); the control build "
+        "for measuring what the two lanes place",
+    )
+    parser.add_argument(
         "--no-securities",
         action="store_true",
         help="skip the typed-symbol object (securities/), so a release without it can "
@@ -1411,7 +1468,9 @@ def main(argv: list[str] | None = None) -> int:
             country_fallback=not args.no_country_fallback,
             securities_source=securities_source,
             security_identity=not args.no_security_identity,
-        layer_dir=args.layer,
+            layer_dir=args.layer,
+            size_buckets=not args.no_size_buckets,
+            size_cover_limit=args.size_cover_limit,
         )
     except (
         GateError,

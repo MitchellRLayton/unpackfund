@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Two share classes, no undimensioned total: the count is the sum of the parts. -->
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:dei="http://xbrl.sec.gov/dei/2024"
+            xmlns:us-gaap="http://fasb.org/us-gaap/2024"
+            xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
+            xmlns:acme="http://www.acme.com/20240928"
+            xmlns:link="http://www.xbrl.org/2003/linkbase"
+            xmlns:xlink="http://www.w3.org/1999/xlink">
+
+  <link:schemaRef xlink:type="simple" xlink:href="acme-20240928.xsd"/>
+
+  <xbrli:context id="C-class-a">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.sec.gov/CIK">0000000002</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:instant>2024-09-28</xbrli:instant>
+    </xbrli:period>
+    <xbrli:scenario>
+      <xbrldi:explicitMember dimension="us-gaap:StatementClassOfStockAxis">acme:CommonClassAMember</xbrldi:explicitMember>
+    </xbrli:scenario>
+  </xbrli:context>
+
+  <xbrli:context id="C-class-b">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.sec.gov/CIK">0000000002</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:instant>2024-09-28</xbrli:instant>
+    </xbrli:period>
+    <xbrli:scenario>
+      <xbrldi:explicitMember dimension="us-gaap:StatementClassOfStockAxis">acme:CommonClassBMember</xbrldi:explicitMember>
+    </xbrli:scenario>
+  </xbrli:context>
+
+  <xbrli:unit id="shares">
+    <xbrli:measure>xbrli:shares</xbrli:measure>
+  </xbrli:unit>
+
+  <dei:EntityCommonStockSharesOutstanding contextRef="C-class-a" unitRef="shares" decimals="0">1000000000</dei:EntityCommonStockSharesOutstanding>
+  <dei:EntityCommonStockSharesOutstanding contextRef="C-class-b" unitRef="shares" decimals="0">500000000</dei:EntityCommonStockSharesOutstanding>
+
+</xbrli:xbrl>

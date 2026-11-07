@@ -306,7 +306,7 @@ status indicator of the bar itself, blue completes it fully at 100% and red for 
 - **The percentage is the pane's big number.** `70.00%` is set at `--text-28` (28px) and the whole it is a share of —
   `of 100.00%` — stays at label size beside it. The number is what the visitor is steering; at label size it read as a
   caption about the word `Total` rather than the total itself.
-- **The bar is the state.** `meter__fill` is `--alert` (red) whenever the portfolio is not exactly 100% — short *or*
+- **The bar is the state.** `meter__fill` is `--alert` (red) whenever the portfolio is not exactly 100% — short _or_
   over — and `--whole` (a royal blue, `oklch(55% 0.18 264)`, `oklch(74% 0.15 264)` in the dark scheme) at exactly 100%.
   Over-100 still fills the track rather than overflowing it: the width is clamped, and the red plus the words carry the
   direction.
