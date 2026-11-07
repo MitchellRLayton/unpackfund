@@ -620,6 +620,12 @@ def _size_section(fund: dict, table: dict | None) -> str:
         for row in rows
         if row.get("asset_cat") == "equity"
     )
+    # The callout below says "of the rest", and the rest is the *equity* weight, so every
+    # reason is a share of equity — not of the fund. Dividing by gross made the three
+    # reasons add to less than the gap the same paragraph had just stated (IEFA, 2026-11-07:
+    # 52.7 + 4.9 + 19.4 against a stated 78.6%).
+    if equity <= 0:
+        return ""
     band_bp = {key: 0 for key in sizes.BAND_ORDER}
     foreign_bp = 0
     unidentified_bp = 0
@@ -741,18 +747,18 @@ def _size_section(fund: dict, table: dict | None) -> str:
         reasons = []
         if foreign_bp:
             reasons.append(
-                f"<strong>{100.0 * foreign_bp / gross:.1f}%</strong> is in companies that file no "
+                f"<strong>{100.0 * foreign_bp / equity:.1f}%</strong> is in companies that file no "
                 "US share count with the SEC — mostly foreign issuers, whose only US filing is an "
                 "annual report"
             )
         if unidentified_bp:
             reasons.append(
-                f"<strong>{100.0 * unidentified_bp / gross:.1f}%</strong> is in positions this "
+                f"<strong>{100.0 * unidentified_bp / equity:.1f}%</strong> is in positions this "
                 "release cannot identify"
             )
         if no_share_bp:
             reasons.append(
-                f"<strong>{100.0 * no_share_bp / gross:.1f}%</strong> is in companies whose US "
+                f"<strong>{100.0 * no_share_bp / equity:.1f}%</strong> is in companies whose US "
                 "filings carry no share count this release could use"
             )
         reason_text = "; ".join(reasons) if reasons else "the release holds no share count for them"

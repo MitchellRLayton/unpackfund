@@ -147,7 +147,7 @@ def test_a_quarter_covered_international_fund_gets_the_callout_not_a_bar():
          "weight_bp": 1_500},
         {"company_id": None, "name": "Cash", "asset_cat": "cash", "weight_bp": 500},
     ]
-    # placed 1000 of 10,000 gross: 10% of equity, comfortably under the gate.
+    # placed 1,000bp of 9,500bp equity = 10.5%, comfortably under the gate.
     markup = section(
         render(fund(name="iShares MSCI EAFE ETF", holdings=holdings), SIZED)
     )
@@ -158,10 +158,15 @@ def test_a_quarter_covered_international_fund_gets_the_callout_not_a_bar():
     assert "Inferred" in body
     assert "large- and mid-cap mandate" in body
     assert 'class="bar bar--tall"' not in markup  # no bar under 80% coverage
-    # The missing-coverage note names each reason, with its share of the fund.
-    assert "60.0% is in companies that file no US share count" in body  # 6000/10000
-    assert "15.0%" in body  # the company whose US filings carry no usable count
-    assert "10.0% is in positions this release cannot identify" in body
+    # The missing-coverage note names each reason, as a share of the *equity* weight the
+    # sentence says it is the rest of — so the three reasons add up to the gap the same
+    # paragraph states. Divided by gross they printed 60.0 + 10.0 + 15.0 = 85.0 against a
+    # stated 89.5% gap (equity 9,500bp of 10,000bp gross), which is what the live IEFA page
+    # said on 2026-11-07 before this assertion existed.
+    assert "63.2% is in companies that file no US share count" in body  # 6000/9500
+    assert "10.5% is in positions this release cannot identify" in body  # 1000/9500
+    assert "15.8% is in companies whose US filings carry no share count" in body  # 1500/9500
+    assert abs((63.2 + 10.5 + 15.8) - (100.0 - 10.5)) < 0.2
 
 
 def test_a_quarter_covered_fund_with_no_mandate_is_tagged_callout_only():
