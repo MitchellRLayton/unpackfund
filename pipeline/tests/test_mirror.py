@@ -221,7 +221,9 @@ def test_pages_built_from_a_mirrored_release_know_who_is_american(tmp_path):
 
     assert report.countries == 2
     assert report.objects == {"companies/countries.json": len(objects["releases/2026-10-31.2/companies/countries.json"])}
-    assert report.missing == []
+    # The size table is declared optional by `fund_pages.RELEASE_INPUTS` and this host
+    # does not publish one, so it is a *named* gap rather than a silent absence.
+    assert report.missing == ["companies/sizes.json"]
     assert (tmp_path / "companies" / "countries.json").read_bytes() == objects[
         "releases/2026-10-31.2/companies/countries.json"
     ]
@@ -242,7 +244,7 @@ def test_a_release_without_a_country_map_still_mirrors_and_says_what_is_missing(
     report = mirror.mirror(out=tmp_path, reader=reader)
 
     assert report.countries == 0
-    assert report.missing == ["companies/countries.json"]
+    assert report.missing == ["companies/countries.json", "companies/sizes.json"]
     assert "no country map" in report.summary()
     assert "companies/countries.json is not published by this release" in capsys.readouterr().err
     assert not (tmp_path / "companies" / "countries.json").exists()

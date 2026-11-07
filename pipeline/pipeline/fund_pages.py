@@ -111,6 +111,7 @@ CATALOGUE_FILE = "catalogue.json"
 FUNDS_DIR = "funds"
 FUNDS_FILE = f"{FUNDS_DIR}/{{ticker}}.json"
 COUNTRIES_FILE = "companies/countries.json"
+SIZES_FILE = "companies/sizes.json"
 
 
 @dataclass(frozen=True)
@@ -159,6 +160,12 @@ RELEASE_INPUTS: tuple[ReleaseInput, ...] = (
         False,
         "the release's company→domicile map; without it the market split says 'Not traced'",
         pointer=("companies", "countries"),
+    ),
+    ReleaseInput(
+        SIZES_FILE,
+        False,
+        "the release's market-cap table; without it a fund page draws no size bar "
+        "and states no inferred mandate",
     ),
 )
 
@@ -1512,7 +1519,7 @@ def build(
     is reported back, not raised — a stale name in a list must not fail a deploy.
     """
     size_table: dict | None = None
-    size_path = release_dir / "companies" / "sizes.json"
+    size_path = release_dir / SIZES_FILE
     if size_path.exists():
         size_table = json.loads(size_path.read_text())
     catalogue_doc = json.loads((release_dir / CATALOGUE_FILE).read_text())

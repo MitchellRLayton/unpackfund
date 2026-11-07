@@ -875,13 +875,38 @@ def test_the_release_contract_names_every_input_the_pages_read(tmp_path: Path):
     release = write_release(
         tmp_path, [fund()], release_id="2026-10-30.5", countries={"c_0001045810": "US"}
     )
+    # The size table is optional by presence, so this release carries one; a release
+    # built with --no-size-buckets simply has none, and that case is the last assertion.
+    (release / "companies" / "sizes.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "kind": "sizes",
+                "as_of": "2026-10-30.5",
+                "price_basis": "nport_implied",
+                "thresholds": {
+                    "megacap": 200_000_000_000.0,
+                    "largecap": 10_000_000_000.0,
+                    "midcap": 2_000_000_000.0,
+                    "smallcap": 300_000_000.0,
+                    "microcap": 0.0,
+                },
+                "bands": ["mega", "large", "mid", "small", "micro"],
+                "counts": {"companies": 1, "placed": 0, "frame": 0, "cover": 0},
+                "band_counts": {"mega": 0, "large": 0, "mid": 0, "small": 0, "micro": 0},
+                "caps": {},
+            }
+        ),
+        encoding="utf-8",
+    )
     assert fund_pages.CATALOGUE_FILE == "catalogue.json"
     assert fund_pages.FUNDS_FILE.format(ticker="AVUV") == "funds/AVUV.json"
     assert fund_pages.COUNTRIES_FILE == "companies/countries.json"
+    assert fund_pages.SIZES_FILE == "companies/sizes.json"
     assert fund_pages.missing_release_inputs(release, ["AVUV"]) == {"required": [], "optional": []}
 
-    # The optional input is optional in the page: drop it and the page still builds,
-    # saying "Not traced" rather than colouring a guess.
+    # The optional inputs are optional in the page: drop the country map and the page
+    # still builds, saying "Not traced" rather than colouring a guess.
     (release / fund_pages.COUNTRIES_FILE).unlink()
     assert fund_pages.missing_release_inputs(release, ["AVUV"]) == {
         "required": [],
