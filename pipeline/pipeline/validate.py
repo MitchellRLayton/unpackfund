@@ -1340,7 +1340,8 @@ def _check_sizes(release_dir: Path, report: Report) -> None:
 
     The object is additive — a release built with ``--no-size-buckets`` simply has no
     file and is valid — so everything here fires only when it is present, and each
-    refusal is a promise the fund page makes to a reader (ADR-0024):
+    refusal is a promise the fund page makes to a reader (ADR-0025, which replaced the
+    fixed dollar bands ADR-0022 introduced):
 
     - **the method is the published one.** ``method`` names the zone-percentile rule and
       ``band_starts`` carries its four cumulative lines, so a page that bands a holding
