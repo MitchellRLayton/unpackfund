@@ -1,0 +1,110 @@
+# The gate a pull request has to pass before it can merge.
+#
+# Why this exists: until 2026-11-08 every workflow in this repo fired on `schedule`,
+# `push` or `workflow_dispatch`, so nothing ran on a pull request, and
+# `required_status_checks` on `main` was empty. A red pull request could merge.
+# Branch protection could already stop the two irreversible things (force-push,
+# deletion) but not the ordinary one: merging code nobody checked.
+#
+# What it runs is the repository's own definition of verified — `pnpm verify` — with
+# two steps rewritten for a runner. `pnpm verify` is:
+#
+#   typecheck && lint && test && pipeline:test && data:validate --fixtures && build
+#
+# `pipeline:test` and `data:validate` are pnpm wrappers around `../.venv/pipeline/bin/
+# python`, a path that only exists in a local checkout (the refresh workflow documents
+# the same substitution). Here the module is installed with `pip install ./pipeline`
+# and called with `python -m`, which is the identical module and the identical
+# arguments. Everything else is the same command the local gate runs, so a red check
+# means the same thing locally and here.
+#
+# Deliberately NOT in this job:
+#   - any secret. Nothing here touches SEC, Cloudflare or R2, so a pull request from a
+#     fork runs exactly what a maintainer's runs.
+#   - `pipeline.refresh` / `build`. Those fetch from EDGAR and take ~26-55 minutes; the
+#     daily loop owns them. This job answers "is the tree valid", not "is the data fresh".
+#   - a deploy. Workers Builds deploys from `main`, which is the point: this gate is
+#     what makes reaching `main` mean something.
+#
+# Cost: public repository, standard runners, no metered resource.
+
+name: pr-checks
+
+on:
+  pull_request:
+    # `opened` and `synchronize` are the two that matter: the first is the initial
+    # gate, the second re-runs it after a push, which is what makes the required check
+    # honest on the commit that actually merges.
+    types: [opened, synchronize, reopened, ready_for_review]
+  # Manual runs, so the gate can be proved without inventing a pull request.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A superseded push cancels its own run: the newest commit is the one that matters, and
+# a queue of stale runs would delay the answer for the current head.
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Matching refresh.yml and the pipeline's `requires-python = ">=3.13"`.
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  checks:
+    # The job name is the required-status-check context. Renaming it silently
+    # un-requires the gate, so it is fixed: `checks`.
+    name: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install the pipeline
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ./pipeline
+          # pytest is a test tool, not a runtime dependency, and without it the
+          # pipeline half of the gate dies before it checks anything.
+          python -m pip install pytest
+
+      - name: Install the site
+        run: pnpm install --frozen-lockfile
+
+      # `pnpm verify` splits into one step per gate below, rather than a single
+      # `pnpm verify`, so a failure names the gate that failed on the PR page instead
+      # of pointing at line 6 of one long command.
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint and formatting
+        run: pnpm lint
+
+      - name: Frontend tests (vitest, includes the theme and contrast gates)
+        run: pnpm test
+
+      - name: Pipeline tests (pytest)
+        working-directory: pipeline
+        run: python -m pytest
+
+      - name: Validate artifacts against the committed fixtures
+        working-directory: pipeline
+        run: python -m pipeline.validate --fixtures
+
+      # Last, and deliberately: it is the slowest step, and a type or test failure
+      # should fail the run before four minutes are spent exporting the site.
+      - name: Build the static export
+        run: pnpm build
