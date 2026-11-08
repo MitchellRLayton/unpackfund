@@ -749,10 +749,11 @@ export default function MethodologyPage() {
         index weights are <strong>float-adjusted</strong> while Morningstar&rsquo;s
         published breakpoints are total market capitalisation, so this method puts
         slightly more weight on the smallest companies and the micro line lands higher
-        than Morningstar&rsquo;s: on the same DFA fund the share in micro is{" "}
-        <strong>70%</strong> here against 63.9% there. And a company the index fund holds
-        in its third decimal place is ranked, not dropped: the ranking uses the dollars
-        behind each holding, not the rounded weight the page prints.
+        than Morningstar&rsquo;s: on the same DFA fund it reads <strong>72.7%</strong>{" "}
+        micro against 63.9% on their page, and the direction is the method&rsquo;s rather
+        than a defect. And a company the index fund holds in its third decimal place is
+        ranked, not dropped: the ranking uses the dollars behind each holding, not the
+        rounded weight the page prints.
       </p>
 
       <h3 id="size-inferred">One label, and what it is not</h3>
