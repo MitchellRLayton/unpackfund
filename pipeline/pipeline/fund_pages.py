@@ -701,7 +701,7 @@ def _size_section_zones(fund: dict, table: dict) -> str:
         attributes += f' data-size-label="{label}"'
 
     zone_sentence = _zone_mix_sentence(zone_bp, placed_bp, table)
-    ranking_note = _zone_source_sentence(table)
+    ranking_note = _zone_source_sentence(table, zone_keys)
     inference = _inference_notice(mandate, ranges) if inferred else ""
 
     if basis == "computed":
@@ -857,11 +857,21 @@ def _zone_mix_sentence(zone_bp: dict[str, int], placed_bp: int, table: dict) -> 
     return f"Its holdings sit in {joined} of that placed weight."
 
 
-def _zone_source_sentence(table: dict) -> str:
-    """Say which fund ranked each zone, and when, without inventing a date."""
+def _zone_source_sentence(table: dict, zone_keys: list[str] | None = None) -> str:
+    """Say which fund ranked each zone, and when, without inventing a date.
+
+    ``zone_keys`` narrows the sentence to the zones this fund actually holds. Without it
+    a US-only fund's caption named VXUS as well, which ranked nothing on that page: true of
+    the table and misleading about the fund.
+    """
     zones = table.get("zones") or {}
+    wanted = set(zone_keys) if zone_keys is not None else None
     pairs = sorted(
-        {(zone.get("source") or "", zone.get("as_of") or "") for zone in zones.values()}
+        {
+            (zone.get("source") or "", zone.get("as_of") or "")
+            for key, zone in zones.items()
+            if wanted is None or key in wanted
+        }
     )
     bits = [
         f"{_esc(source)} ({long_date(as_of)})" if as_of else _esc(source)

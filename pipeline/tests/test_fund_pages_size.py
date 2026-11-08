@@ -197,6 +197,22 @@ def test_the_computed_bar_prints_the_lines_the_zone_and_the_sample():
     assert "The smallest 3% of its zone" in body
 
 
+def test_the_sample_sentence_names_only_the_zones_this_fund_holds():
+    # The table's rankings come from VTI and VXUS; a US-only fund was ranked by VTI alone,
+    # so naming VXUS in its caption was true of the table and misleading about the fund.
+    two = table(
+        {"c_0000000001": cap("us", "giant")},
+        zones={
+            "us": zone("us", "United States", "VTI"),
+            "europe": zone("europe", "Europe", "VXUS"),
+        },
+    )
+    holdings = [{"company_id": "c_0000000001", "asset_cat": "equity", "weight_bp": 10_000}]
+    body = text(section(render(fund(holdings=holdings), two)))
+    assert "own holdings of VTI (Jun 30, 2026)" in body
+    assert "VXUS" not in body
+
+
 def test_the_asset_weighted_label_is_printed_with_its_scale():
     body = text(section(render(fund(), SIZED)))
     assert "Asset-weighted size: large-cap" in body
