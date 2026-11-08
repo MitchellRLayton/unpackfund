@@ -101,7 +101,7 @@
    * deuteranopia, protanopia and tritanopia — in both schemes (`lib/theme.test.ts`).
    * `sizes.json` prints each band's name and number in the legend and the table, so the
    * hue only has to make the segments tell apart; it never carries the band alone. */
-  --band-mega: oklch(28% 0.09 265);
+  --band-giant: oklch(28% 0.09 265);
   --band-large: oklch(56% 0.13 85);
   --band-mid: oklch(28% 0.12 165);
   --band-small: oklch(58% 0.09 250);
@@ -200,7 +200,7 @@
     /* The band ramp on the dark page: each step repainted bright enough to clear 3:1 on
      * it, keeping the alternation of the light ramp so a reader who switches scheme sees
      * the same five bands in the same five hues. */
-    --band-mega: oklch(76% 0.1 265);
+    --band-giant: oklch(76% 0.1 265);
     --band-large: oklch(56% 0.13 85);
     --band-mid: oklch(86% 0.12 165);
     --band-small: oklch(56% 0.09 250);
@@ -1075,8 +1075,8 @@ table {
 /* The Company size bands. One hue per band, from the ordered band ramp; the legend and
  * the table print every number, so the colour only has to make the segments tell apart
  * at a glance. */
-.bar__seg--band-mega {
-  background: var(--band-mega);
+.bar__seg--band-giant {
+  background: var(--band-giant);
 }
 
 .bar__seg--band-large {

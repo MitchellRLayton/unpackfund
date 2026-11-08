@@ -286,7 +286,7 @@ const UI_PAIRS: Array<[fg: string, bg: string, why: string]> = [
   // The Company size bar. Its segments are graphics a reader has to find, and the band
   // ramp is the only palette with five entries, so each step is held to the same 3:1
   // floor the geography edges answer to — measured against the page the bar is drawn on.
-  ["band-mega", "paper", "the largest band's segment"],
+  ["band-giant", "paper", "the largest band's segment"],
   ["band-large", "paper", "the large band's segment"],
   ["band-mid", "paper", "the mid band's segment"],
   ["band-small", "paper", "the small band's segment"],
@@ -444,7 +444,7 @@ describe("automatic light/dark", () => {
       // the job is the same job: two fills a reader can tell apart, one of which is
       // painted next to the other.
       const ADJACENT: Array<[string, string, string]> = [
-        ["band-mega", "band-large", "mega against large"],
+        ["band-giant", "band-large", "giant against large"],
         ["band-large", "band-mid", "large against mid"],
         ["band-mid", "band-small", "mid against small"],
         ["band-small", "band-micro", "small against micro"],

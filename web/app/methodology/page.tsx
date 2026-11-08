@@ -46,9 +46,10 @@ const SECTIONS: readonly ReadingSection[] = [
   { id: "country-decision", title: "How a country is decided", depth: 3 },
   { id: "country-contested", title: "When the vote cannot decide", depth: 3 },
   { id: "size", title: "Company size" },
-  { id: "size-bands", title: "The five bands, and the lines", depth: 3 },
-  { id: "size-lanes", title: "Where the share count comes from", depth: 3 },
-  { id: "size-inferred", title: "A size inferred from a fund's own name", depth: 3 },
+  { id: "size-zones", title: "Seven zones, one line each", depth: 3 },
+  { id: "size-bands", title: "Why percentiles, and not dollar lines", depth: 3 },
+  { id: "size-lanes", title: "Where the ranking comes from", depth: 3 },
+  { id: "size-inferred", title: "One label, and what it is not", depth: 3 },
   { id: "limits", title: "What is not known" },
   { id: "benchmark", title: "The benchmark: VT" },
   { id: "corrections", title: "Corrections" },
@@ -676,87 +677,118 @@ export default function MethodologyPage() {
         <strong>
           how much of the fund is in big companies and how much in small ones
         </strong>
-        , by market capitalisation. Nothing new is fetched for it: the fund&rsquo;s own
-        filing states, for each position, the dollar value it held and the number of
-        shares, so dividing one by the other gives the price per share the fund itself
-        implies at its report date. Multiplying that price by the issuer&rsquo;s own share
-        count from its latest SEC filing gives the company&rsquo;s market value at that
-        date.
+        . Each company is ranked against the other companies in its own part of the world,
+        and the rank is published as a band — giant, large, mid, small or micro — with the
+        share of the fund each band holds.
       </p>
       <p>
-        That is an <strong>implied price</strong>, not a live quote, and the value carries
-        the report date it was computed from. A company the release cannot size is drawn
-        as
-        <strong>not placed</strong>, with its share of the fund, so the bar&rsquo;s
-        denominator is the whole fund rather than the part we could see.
+        A company below everything the ranking covers is drawn as{" "}
+        <strong>not placed in the index</strong> and counted as micro, and a company whose
+        country has no band — an offshore filing address such as the Cayman Islands or
+        Bermuda — is drawn as <strong>not placed</strong> with its share of the fund, so
+        the bar&rsquo;s denominator is the whole fund rather than the part we could see.
       </p>
 
-      <h3 id="size-bands">The five bands, and the lines</h3>
+      <h3 id="size-zones">Seven zones, one line each</h3>
       <p>
-        The lines are the release&rsquo;s own, not a provider&rsquo;s, and they are
-        printed on the page beside the bar: <strong>mega</strong> is USD 200bn and over,
-        <strong>large</strong> USD 10bn to 200bn, <strong>mid</strong> USD 2bn to 10bn,
-        <strong>small</strong> USD 300m to 2bn, and <strong>micro</strong> under USD 300m.
-        A fixed dollar line can be checked by a reader and does not move when the market
-        moves; a percentile band would silently relabel a company every time the
-        distribution shifted.
+        Stocks are divided into seven style zones by the country they belong to: the{" "}
+        <strong>United States</strong>, <strong>Canada</strong>,{" "}
+        <strong>Latin America</strong>, <strong>Europe</strong> (which includes every
+        African country), <strong>Japan</strong>, <strong>Asia ex-Japan</strong> (which
+        includes the Middle East), and <strong>Australia and New Zealand</strong>. A
+        Japanese small cap is compared with other Japanese companies, not with the world:
+        one global ranking would call almost every non-US company small, because the
+        United States is about half of the world&rsquo;s market value.
       </p>
       <p>
-        Two rules keep the number honest. A share count is used only within{" "}
-        <strong>400 days</strong> of the price date, because a split or a large issuance
-        makes an old count wrong; the window is a year rather than a quarter because a
-        foreign private issuer files one annual report, and its only share fact is
-        therefore up to twelve months old. Where a company files several share classes,
-        the cap sums the classes — that is the count the cover page itself reports — so a
-        company whose classes trade at different prices is overstated or understated by
-        that difference. Berkshire Hathaway is the known case: its Class A shares are
-        quoted as 1,500 Class B equivalents but the filing reports the raw sum, so the
-        release understates its market value by about a third. It stays in the same band
-        either way, and the limitation is stated here rather than patched with a
-        conversion the page would have to guess.
+        Inside each zone the companies are sorted by market capitalisation, largest first,
+        and their share of the zone&rsquo;s total is accumulated. The companies that
+        together make up the <strong>largest 40%</strong> of the zone&rsquo;s value are
+        giant, the next 30% large, the next 20% mid, the next 7% small, and the smallest
+        3% micro. This is Morningstar&rsquo;s breakpoint method — its Style Box divides
+        each zone the same way, and the band names are its names so that a reader can put
+        this page beside that one.
       </p>
 
-      <h3 id="size-lanes">Where the share count comes from</h3>
+      <h3 id="size-bands">Why percentiles, and not dollar lines</h3>
       <p>
-        Two SEC-only lanes, and the cheaper one runs first. The <strong>frames</strong>{" "}
-        lane reads the SEC&rsquo;s XBRL frames API for{" "}
-        <code>dei:EntityCommonStockSharesOutstanding</code>, one request per quarter,
-        which covers most US filers. The <strong>cover page</strong> lane reads the share
-        count off the cover of the issuer&rsquo;s own 10-K or 10-Q, which is where a
-        company with several share classes publishes one fact per class; it is bounded to
-        the companies that carry the most weight in the release, because it costs a filing
-        fetch each. Where the two disagree by more than a tenth, the cover page wins: it
-        sums the classes, and the frames endpoint often publishes only one of them.
+        The first version of this feature published five fixed dollar lines: mega at USD
+        200bn, large at USD 10bn, mid at USD 2bn, small at USD 300m. A dollar line is easy
+        to check and does not move, which is why it was chosen. It was also wrong, and
+        measurably so: measured against the lines the market actually trades at on 7
+        November 2026,{" "}
+        <strong>
+          every one of the five sat at least twenty times below the line it stood in for
+        </strong>{" "}
+        — micro&rsquo;s USD 300m against USD 6.9bn, mid&rsquo;s USD 2bn against USD 86bn —
+        because a dollar line cannot track a market whose total capitalisation triples.
+        DFA&rsquo;s US Micro Cap fund was published as <strong>68.8% mid cap</strong>{" "}
+        against Morningstar&rsquo;s <strong>63.9% micro</strong> — its own average holding
+        was a USD 2.6bn company, which no reader would call mid.
       </p>
       <p>
-        A company is sized only when its share count is filed with the SEC. That is almost
-        every US-listed company and few foreign ones: a foreign issuer files an annual
-        20-F, and there is no quarterly share count to read. So a US fund typically has a
-        computed size split for more than nine tenths of its equity weight, while an
-        international fund often has one for a quarter or less. Below{" "}
-        <strong>80% of equity weight</strong> the page does not draw the bar at all — a
-        chart drawn from the visible quarter would describe our coverage rather than the
-        fund — and prints the coverage note and the reasons instead.
+        A percentile cannot go stale the same way: it is a position in a distribution that
+        this release recomputes from its own holdings, and the boundary between two bands
+        moves with the market instead of falling behind it. The cost is that the boundary
+        cannot be written down as a dollar figure, so the page prints the percentile rule
+        — the largest 40%, the next 30% — and the date the ranking was taken.
       </p>
 
-      <h3 id="size-inferred">A size inferred from a fund&rsquo;s own name</h3>
+      <h3 id="size-lanes">Where the ranking comes from</h3>
       <p>
-        For a fund whose weight cannot be sized, the name is sometimes a statement of its
-        own: a fund called a small-cap fund is a small-cap fund. Where the registered name
-        states a size mandate, the page prints a <strong>labelled inference</strong> — the
-        ranges the same mandate produced on the US funds where it could be computed, as
-        the 10th to 90th percentile of the sized weight — rather than a bar. It is written
-        as an inference on the page, it is tagged in the page&rsquo;s own HTML as inferred
-        with the mandate that produced it, and it is fund-level only: no company is ever
-        given a size class because of the funds that hold it. A name that states a market
-        rather than a size — a total international fund, an all-cap or total-market fund —
-        produces no inference at all.
+        Each zone is ranked by the reported holdings of the fund built to cover it, from
+        the same release: <strong>VTI</strong> for the United States and{" "}
+        <strong>VXUS</strong> for the other six, split by each company&rsquo;s country. No
+        new source is fetched, and the sample is the release&rsquo;s own weight, so a
+        reader can see exactly which companies were ranked.
       </p>
       <p>
-        Nothing here ranks funds by size, colours a band by its name, scores a company, or
-        parses a prospectus. A band is a fact about a company at a date, printed in words
-        and in numbers, and the same band can appear on the page of a fund that is doing
-        well and one that is not.
+        A company in VTI is ranked as part of the United States whatever its filing
+        address, because VTI <em>is</em> the US market; a company in VXUS is ranked in the
+        zone of its country. Two consequences are worth stating rather than hiding. The
+        index weights are <strong>float-adjusted</strong> while Morningstar&rsquo;s
+        published breakpoints are total market capitalisation, so this method puts
+        slightly more weight on the smallest companies and the micro line lands higher
+        than Morningstar&rsquo;s: on the same DFA fund the share in micro is{" "}
+        <strong>70%</strong> here against 63.9% there. And a company the index fund holds
+        in its third decimal place is ranked, not dropped: the ranking uses the dollars
+        behind each holding, not the rounded weight the page prints.
+      </p>
+
+      <h3 id="size-inferred">One label, and what it is not</h3>
+      <p>
+        The page also prints a single <strong>asset-weighted size</strong> — large-cap,
+        mid-cap, small-cap, micro-cap, or a large-and-small blend — computed by weighting
+        each holding&rsquo;s band by its share of the fund on Morningstar&rsquo;s
+        three-row scale, where giant and large are the top row. The rule is a verdict, not
+        an average: a row that holds <strong>half the fund</strong> names it, checked in
+        the order large, mid, then small. Two exceptions are printed because an average
+        gets both wrong. A fund with at least a{" "}
+        <strong>fifth of its weight at each end</strong> and less than half in the middle
+        is called a <strong>large-and-small blend</strong> — its own average would say
+        mid, which is not a size any holding in it has. And micro-cap is used only when{" "}
+        <strong>nine tenths</strong> of the weight is micro: the style box has no micro
+        row, so &ldquo;small-cap&rdquo; is the word a reader compares against, and the
+        finer word has to be emphatic before it replaces the coarse one.
+      </p>
+      <p>
+        Below <strong>80% of equity weight</strong> placed, the page does not draw the bar
+        at all — a chart drawn from the visible part would describe our coverage rather
+        than the fund — and prints the coverage note instead. Where a fund&rsquo;s
+        registered name states a size mandate, that note may add a{" "}
+        <strong>labelled inference</strong>: the ranges the same mandate produced across
+        the 111 funds where it could be computed, as the 10th to 90th percentile of the
+        placed weight. It is written as an inference on the page, tagged in the
+        page&rsquo;s own HTML with the mandate that produced it, and it is fund-level only
+        — no company is ever given a size class because of the funds that hold it. A name
+        that states a market rather than a size — a total international fund, an all-cap
+        or total-market fund — produces no inference at all.
+      </p>
+      <p>
+        Nothing here ranks funds by size, scores a company against its peers, or parses a
+        prospectus. A band is a fact about a company at a date, printed in words and in
+        numbers, and the same band can appear on the page of a fund that is doing well and
+        one that is not.
       </p>
 
       <h2 id="limits">What is not known</h2>
