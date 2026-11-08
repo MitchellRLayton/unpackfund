@@ -2,10 +2,10 @@
 
 **What this builds now.** ``companies/sizes.json`` used to be a market-capitalisation
 table: an implied price from N-PORT marks times a filed share count, bucketed by five
-fixed dollar lines. Measured against Morningstar on 2026-11-07 the lines were 4-13x away
-from the market — DFA's US Micro Cap fund was published as 68.8% *mid* cap against
-Morningstar's 63.9% micro — because a dollar line cannot track a market whose total
-capitalisation triples. The bands are now percentiles of each company's own style zone,
+fixed dollar lines. Measured against the market on 2026-11-07 every one of the five sat
+23-66x below the line it stood in for, so DFA's US Micro Cap fund was published as 68.8%
+*mid* cap against Morningstar's 63.9% micro — a dollar line cannot track a market whose
+total capitalisation triples. The bands are now percentiles of each company's own style zone,
 computed from the reported holdings of the index fund that covers the zone
 (:mod:`pipeline.size_zones`), and this module is the join: it takes the zone answer and
 the release's country map and writes the company → band object the fund page reads.
@@ -15,20 +15,24 @@ issuer files none: 24% of an ex-US fund's weight was sized under the old method 
 99% of VTI's. A percentile needs no cap at all — only the order of the companies, which
 the index's own weight gives — so the whole lane that fetched share counts, read cover
 pages and repaired split-drift is retired. The evidence for that decision, including the
-fund that exposed it, is ADR-0024.
+fund that exposed it, is ADR-0025.
 
-**What a company's entry means.** ``{"zone": "us", "band": "giant", "pct": 0.0021}`` is
-one company: the zone it was ranked in, the band that rank put it in, and the cumulative
-share of its zone's capitalisation that sat above it. A company with no ``pct`` is
-``below_index`` — outside the zone's index, smaller than everything the index ranks — and
-is banded ``micro`` by that fact alone. A company with no entry at all is *unplaced*: its
+**What a company's entry means.** ``{"zone": "us", "band": "giant", "basis": "ranked",
+"pct": 0.0021}`` is one company: the zone it was ranked in, the band that rank put it in,
+the basis of the answer, and the cumulative share of its zone's capitalisation that sat
+above it. A company with ``basis: "below_index"`` and no ``pct`` is outside the zone's
+index — either smaller than everything the index ranks or listed after its report date —
+and is banded ``micro`` by that fact alone; the page says which case it is rather than
+claiming the company is small. A company with no entry at all is *unplaced*: its
 country has no style zone (an offshore filing address), and the page says so rather than
 spreading it over the other bands.
 
-**Coverage is the reason this works.** 99.0% of VTI's equity weight and 94.5% of VXUS's is
-a company with a country, so a fund's own holdings are placed at close to its coverage of
-named, country-mapped securities. Measured 2026-11-07, VTI itself scores 96.3% placed where
-the old table placed 96.3% of it and placed only 24.4% of VXUS. That is the change the
+**Coverage is the reason this works.** Measured on the live release 2026-11-07.3: VTI
+scores 99.99% of its equity weight placed, VXUS 92.50%, where the retired dollar lane
+placed 24.4% of VXUS — a cap needs a share count and a foreign private issuer files none.
+Ranked in the same run: 12,094 companies across seven zones (us 4,001, europe 2,612,
+asia_x_japan 3,410, japan 760, canada 707, australia_nz 381, latin_america 223), banded
+giant 111 / large 445 / mid 1,235 / small 1,136 / micro 9,167. That is the change the
 operator asked for: the size bar stops being a US-only fact.
 
 **Company identity is never a ticker.** ``company_id`` is ``c_<CIK>`` for a US filer and
