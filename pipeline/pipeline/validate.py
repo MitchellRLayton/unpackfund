@@ -1336,21 +1336,23 @@ def _strings(node: Any):
 
 
 def _check_sizes(release_dir: Path, report: Report) -> None:
-    """``companies/sizes.json``: the market-cap table, when the release published one.
+    """``companies/sizes.json``: the size-band table, when the release published one.
 
     The object is additive — a release built with ``--no-size-buckets`` simply has no
     file and is valid — so everything here fires only when it is present, and each
-    refusal is a promise the fund page makes to a reader (ADR-0022):
+    refusal is a promise the fund page makes to a reader (ADR-0024):
 
-    - **a cap is never published without its two dates.** ``usd`` is a price at the
-      report date multiplied by a share count at ``share_date``; a bare number reads
-      as a live quote, and the methodology page says every cap carries both.
-    - **a band is one of the published bands**, because the page prints the band's
-      name and the table's line, and an unknown key would render nothing.
-    - **the thresholds are the pipeline's own**, so a page that recomputes a band
+    - **the method is the published one.** ``method`` names the zone-percentile rule and
+      ``band_starts`` carries its four cumulative lines, so a page that bands a holding
       from the payload cannot disagree with the build that wrote it.
-    - **the counts add up**: ``placed`` equals the caps, and the two lane counts
-      (``frame``, ``cover``) sum to it, so the log line and the artefact cannot drift.
+    - **every zone is a real zone, and every line is the published line.** A band that
+      did not come from the rule is a band the page would print as if it had.
+    - **the zone sample is stated**: how many companies were ranked, how many were
+      placed below the index, and how many have no zone at all. The three add up to the
+      company count, so the summary line in the log cannot drift from the artefact.
+    - **a cap is a placement, not a price.** Each entry names its zone and its band, and
+      the percentile only when the company was ranked: a company outside the zone's index
+      carries ``basis: below_index`` and no percentile, because there is none to publish.
     """
     path = release_dir / "companies" / "sizes.json"
     if not path.is_file():
@@ -1363,34 +1365,68 @@ def _check_sizes(release_dir: Path, report: Report) -> None:
     if not isinstance(payload, dict):
         report.fail("sizes.shape", "companies/sizes.json is not an object")
         return
-    if payload.get("schema_version") != 1:
-        report.fail("sizes.schema", "companies/sizes.json is not schema_version 1")
+    if payload.get("schema_version") != sizes.SCHEMA_VERSION:
+        report.fail(
+            "sizes.schema",
+            f"companies/sizes.json is schema_version {payload.get('schema_version')!r}, "
+            f"not {sizes.SCHEMA_VERSION}",
+        )
     if payload.get("kind") != "sizes":
         report.fail("sizes.kind", f"companies/sizes.json kind is {payload.get('kind')!r}")
-    thresholds = payload.get("thresholds")
-    if not isinstance(thresholds, dict) or thresholds != {
-        "megacap": 200_000_000_000.0,
-        "largecap": 10_000_000_000.0,
-        "midcap": 2_000_000_000.0,
-        "smallcap": 300_000_000.0,
-        "microcap": 0.0,
-    }:
-        report.fail(
-            "sizes.thresholds",
-            "companies/sizes.json thresholds are not the published lines "
-            f"({thresholds!r})",
-        )
+    if payload.get("method") != sizes.METHOD:
+        report.fail("sizes.method", f"companies/sizes.json method is {payload.get('method')!r}")
     if payload.get("bands") != list(sizes.BAND_ORDER):
         report.fail(
             "sizes.bands",
             f"companies/sizes.json bands are {payload.get('bands')!r}, "
             f"not {list(sizes.BAND_ORDER)!r}",
         )
+    starts = payload.get("band_starts")
+    if starts != dict(sizes.BAND_STARTS):
+        report.fail("sizes.band_starts", f"companies/sizes.json band_starts are {starts!r}")
+    labels = payload.get("band_labels")
+    if labels != dict(sizes.BAND_LABELS):
+        report.fail("sizes.band_labels", f"companies/sizes.json band_labels are {labels!r}")
+
+    zones = payload.get("zones")
+    if not isinstance(zones, dict) or not zones:
+        report.fail("sizes.zones", "companies/sizes.json has no zones object")
+        return
+    unknown = sorted(set(zones) - set(sizes.ZONE_ORDER))
+    if unknown:
+        report.fail("sizes.zones", f"companies/sizes.json has unknown zones {unknown!r}")
+    for key, zone in zones.items():
+        if not isinstance(zone, dict):
+            report.fail("sizes.zone", f"companies/sizes.json zone {key} is not an object")
+            break
+        missing = [field for field in ("key", "label", "source", "as_of", "companies") if field not in zone]
+        if missing:
+            report.fail("sizes.zone", f"companies/sizes.json zone {key} is missing {', '.join(missing)}")
+            break
+        if zone["key"] != key:
+            report.fail("sizes.zone", f"companies/sizes.json zone {key} says its key is {zone['key']!r}")
+            break
+        if not zone.get("companies"):
+            report.fail("sizes.zone", f"companies/sizes.json zone {key} ranked no companies")
+            break
+        counts = zone.get("counts")
+        if not isinstance(counts, dict) or sum(counts.values()) != zone["companies"]:
+            report.fail(
+                "sizes.zone_counts",
+                f"companies/sizes.json zone {key} counts sum to "
+                f"{sum((counts or {}).values())}, not {zone['companies']}",
+            )
+            break
+        if not _DAY_RE.match(str(zone.get("as_of"))):
+            report.fail("sizes.zone_as_of", f"companies/sizes.json zone {key} as_of is {zone.get('as_of')!r}")
+            break
+
     caps = payload.get("caps")
     if not isinstance(caps, dict):
         report.fail("sizes.caps", "companies/sizes.json has no caps object")
         return
-    allowed = set(sizes.BAND_ORDER)
+    bands = set(sizes.BAND_ORDER)
+    zone_keys = set(sizes.ZONE_ORDER)
     for company_id, cap in caps.items():
         if not COMPANY_ID_RE.match(str(company_id)):
             report.fail(
@@ -1401,42 +1437,81 @@ def _check_sizes(release_dir: Path, report: Report) -> None:
         if not isinstance(cap, dict):
             report.fail("sizes.cap", f"companies/sizes.json {company_id} is not an object")
             break
-        missing = [
-            key
-            for key in ("usd", "shares", "price", "share_date", "report_date", "basis", "band")
-            if key not in cap
-        ]
+        missing = [field for field in ("zone", "band", "basis") if field not in cap]
         if missing:
             report.fail(
                 "sizes.fields",
                 f"companies/sizes.json {company_id} is missing {', '.join(missing)}",
             )
             break
-        if cap["band"] not in allowed:
+        if cap["zone"] not in zone_keys:
+            report.fail("sizes.zone_key", f"companies/sizes.json {company_id} has zone {cap['zone']!r}")
+            break
+        if cap["zone"] not in zones:
+            report.fail(
+                "sizes.zone_sample",
+                f"companies/sizes.json {company_id} is in {cap['zone']!r}, "
+                "which this release ranked no companies for",
+            )
+            break
+        if cap["band"] not in bands:
             report.fail("sizes.band", f"companies/sizes.json {company_id} has band {cap['band']!r}")
             break
-        if not _DAY_RE.match(str(cap["share_date"])) or not _DAY_RE.match(str(cap["report_date"])):
-            report.fail(
-                "sizes.dates",
-                f"companies/sizes.json {company_id} dates are "
-                f"{cap['share_date']!r} / {cap['report_date']!r}",
-            )
-            break
-        if cap["basis"] not in ("frame", "cover"):
+        if cap["basis"] not in sizes.BASES:
             report.fail("sizes.basis", f"companies/sizes.json {company_id} basis is {cap['basis']!r}")
             break
+        if cap["basis"] == "ranked":
+            percentile = cap.get("pct")
+            if not isinstance(percentile, (int, float)) or not 0.0 <= percentile < 1.000001:
+                report.fail(
+                    "sizes.pct",
+                    f"companies/sizes.json {company_id} is ranked with pct {percentile!r}",
+                )
+                break
+            # The band must be the band the published lines give for this percentile: a
+            # payload where the two disagree would let a page and a table name the same
+            # company two different sizes.
+            expected = sizes.band_at(percentile)
+            if cap["band"] != expected:
+                report.fail(
+                    "sizes.pct_band",
+                    f"companies/sizes.json {company_id} is {cap['band']!r} at pct {percentile!r}, "
+                    f"which the published lines make {expected!r}",
+                )
+                break
+        else:
+            if cap.get("pct") is not None:
+                report.fail(
+                    "sizes.pct",
+                    f"companies/sizes.json {company_id} is {cap['basis']} but carries a pct",
+                )
+                break
+            if cap["band"] != "micro":
+                report.fail(
+                    "sizes.band",
+                    f"companies/sizes.json {company_id} is below the index but banded "
+                    f"{cap['band']!r}, not micro",
+                )
+                break
     counts = payload.get("counts") or {}
     if isinstance(counts, dict):
-        if counts.get("placed") != len(caps):
+        for field, expected in (
+            ("companies", len(caps)),
+            ("ranked", sum(1 for cap in caps.values() if cap.get("basis") == "ranked")),
+            ("below_index", sum(1 for cap in caps.values() if cap.get("basis") == "below_index")),
+        ):
+            if counts.get(field) != expected:
+                report.fail(
+                    "sizes.counts",
+                    f"companies/sizes.json says {field} is {counts.get(field)!r} "
+                    f"but carries {expected}",
+                )
+        per_zone = counts.get("zone_companies") or {}
+        if isinstance(per_zone, dict) and sum(per_zone.values()) != counts.get("companies"):
             report.fail(
                 "sizes.counts",
-                f"companies/sizes.json says {counts.get('placed')!r} placed but carries {len(caps)} caps",
-            )
-        lanes = (counts.get("frame") or 0) + (counts.get("cover") or 0)
-        if lanes != len(caps):
-            report.fail(
-                "sizes.counts",
-                f"companies/sizes.json lanes sum to {lanes} but {len(caps)} caps are published",
+                f"companies/sizes.json zone counts sum to {sum(per_zone.values())}, "
+                f"not {counts.get('companies')} caps",
             )
     band_counts = payload.get("band_counts") or {}
     if isinstance(band_counts, dict) and sum(band_counts.values()) != len(caps):

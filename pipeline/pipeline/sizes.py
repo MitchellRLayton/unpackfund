@@ -1,430 +1,199 @@
-"""Market-capitalisation size classes for a fund's holdings, from SEC filings only.
+"""The size-band answer for every company a fund can hold, published as one small object.
 
-**Why this exists.** A reader looking at a fund's holdings can see what it owns but not
-how big those companies are. The size mix is the one fact about a portfolio that a
-professional asks for first ("is this a large-cap fund or a small-cap fund?") and the
-one the page could not answer. Every input is already fetched by the build: an N-PORT
-row carries ``valUSD`` and ``balance``, so ``ΣvalUSD / Σbalance`` across the funds that
-hold a security is its quarter-end price per share; a ``dei`` share count turns that
-price into a market capitalisation. No vendor, no new source, no scraper.
+**What this builds now.** ``companies/sizes.json`` used to be a market-capitalisation
+table: an implied price from N-PORT marks times a filed share count, bucketed by five
+fixed dollar lines. Measured against Morningstar on 2026-11-07 the lines were 4-13x away
+from the market — DFA's US Micro Cap fund was published as 68.8% *mid* cap against
+Morningstar's 63.9% micro — because a dollar line cannot track a market whose total
+capitalisation triples. The bands are now percentiles of each company's own style zone,
+computed from the reported holdings of the index fund that covers the zone
+(:mod:`pipeline.size_zones`), and this module is the join: it takes the zone answer and
+the release's country map and writes the company → band object the fund page reads.
 
-**The two lanes, and why both exist.**
+**Why the caps are no longer here.** A cap needs a share count, and a foreign private
+issuer files none: 24% of an ex-US fund's weight was sized under the old method against
+99% of VTI's. A percentile needs no cap at all — only the order of the companies, which
+the index's own weight gives — so the whole lane that fetched share counts, read cover
+pages and repaired split-drift is retired. The evidence for that decision, including the
+fund that exposed it, is ADR-0024.
 
-1. **Frames** — SEC's XBRL frames API publishes
-   ``dei:EntityCommonStockSharesOutstanding`` for every filer, one JSON per quarter
-   (about 0.4 MB each). Four quarters place 73% of CIK-form companies in one request per
-   quarter and are the fast path.
-2. **Cover page** — a company that files several share classes (Alphabet, Meta,
-   Berkshire, Visa, Mastercard) publishes one fact *per class* on the cover of its
-   10-K/10-Q, and the frames endpoint carries the class-dimensioned facts in a shape we
-   cannot sum from one row. ``cover_shares`` reads the filing itself and sums the
-   classes, with the subtotal trap handled. This lane is bounded to the companies whose
-   absence actually costs coverage; it is not a second full pass over the market.
+**What a company's entry means.** ``{"zone": "us", "band": "giant", "pct": 0.0021}`` is
+one company: the zone it was ranked in, the band that rank put it in, and the cumulative
+share of its zone's capitalisation that sat above it. A company with no ``pct`` is
+``below_index`` — outside the zone's index, smaller than everything the index ranks — and
+is banded ``micro`` by that fact alone. A company with no entry at all is *unplaced*: its
+country has no style zone (an offshore filing address), and the page says so rather than
+spreading it over the other bands.
 
-**What the numbers are not.** The cap is the *filer's own* share count times a price
-implied by institutional quarter-end marks, so it is a market value at the fund's report
-date, not a live quote. It is published with both dates, rounded, and bucketed by lines
-that are ours (``BANDS``) — a reader can recompute every band from the numbers shown.
+**Coverage is the reason this works.** 99.0% of VTI's equity weight and 94.5% of VXUS's is
+a company with a country, so a fund's own holdings are placed at close to its coverage of
+named, country-mapped securities. Measured 2026-11-07, VTI itself scores 96.3% placed where
+the old table placed 96.3% of it and placed only 24.4% of VXUS. That is the change the
+operator asked for: the size bar stops being a US-only fact.
 
 **Company identity is never a ticker.** ``company_id`` is ``c_<CIK>`` for a US filer and
-``l_<LEI>`` for a foreign issuer. Only the CIK prefix has a cover page, so only it can
-be placed by either lane; an ``l_`` company is reported as unplaced rather than guessed.
+``l_<LEI>`` for a foreign issuer, and the zone table keys on it, so a dual listing is one
+company and never two.
 """
 
 from __future__ import annotations
 
 import json
-import math
 import re
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import Mapping
 
-from . import sec
-
-#: The published lines, descending. Ours, not a vendor's: a fixed dollar line is
-#: auditable and does not rebalance, whereas a percentile band silently moves under the
-#: reader. Morningstar's familiar names are in the same family; its top band is "giant"
-#: and its lines are percentiles, so the two are not interchangeable and the page does
-#: not claim they are.
-BANDS: tuple[tuple[str, float], ...] = (
-    ("mega", 200e9),
-    ("large", 10e9),
-    ("mid", 2e9),
-    ("small", 300e6),
-    ("micro", 0.0),
+from .size_zones import (
+    BAND_LABELS,
+    BAND_ORDER,
+    BAND_STARTS,
+    LABEL_TEXT,
+    ROW_OF,
+    ROW_TEXT,
+    ZONE_LABELS,
+    ZONE_ORDER,
+    ZoneTable,
+    band_at,
+    label_for,
+    zone_for_country,
 )
 
-BAND_ORDER: tuple[str, ...] = tuple(key for key, _ in BANDS)
+__all__ = [
+    "BAND_LABELS",
+    "BAND_ORDER",
+    "BAND_STARTS",
+    "LABEL_TEXT",
+    "ROW_OF",
+    "ROW_TEXT",
+    "ZONE_LABELS",
+    "ZONE_ORDER",
+    "BuildResult",
+    "MANDATE_LABELS",
+    "MANDATE_MIX",
+    "Mandate",
+    "ZoneTable",
+    "build",
+    "label_for",
+    "mandate_for",
+    "band_at",
+    "METHOD",
+    "mix_ranges",
+    "write",
+    "zone_for_country",
+]
 
-BAND_LABELS: dict[str, str] = {
-    "mega": "Mega",
-    "large": "Large",
-    "mid": "Mid",
-    "small": "Small",
-    "micro": "Micro",
-}
+#: Schema 2 replaced the fixed dollar line with a zone percentile. The version moved
+#: because a v1 consumer would read ``thresholds`` (dollars) and a v2 object has none: a
+#: reader that cannot tell the two apart would silently mislabel every company.
+SCHEMA_VERSION = 2
 
-#: The share-count concept every cover page carries (dei namespace, all years).
-SHARE_CONCEPT = "EntityCommonStockSharesOutstanding"
+#: How a company got its band. ``ranked`` is a position in its zone's index; the other
+#: two are the two ways of being placed without one, and they are published so a reader
+#: can see what the index does not cover.
+BASES: tuple[str, ...] = ("ranked", "below_index")
 
-#: A share fact older than this, relative to the price date, is not a current share
-#: count: splits and issuance move it. Thirteen months rather than the plan's first
-#: 180 days because a foreign private issuer files one 20-F a year: its only share fact
-#: is up to twelve months old (HSBC, Novartis, TSMC, ASML — measured 2026-11-07, the
-#: 180-day window placed 1.4% of an international fund's equity weight, this places a
-#: quarter of it). The fact's date is published beside every cap, and the band is
-#: coarse enough that a few percent of issuance drift does not move it.
-MAX_SHARE_AGE_DAYS = 400
-
-#: How many companies the cover-page lane may visit in one build. Ranked by the value
-#: they represent, so the lane spends its requests where the coverage is. That bound is
-#: what keeps a daily build honest: an unbounded lane is ~1,500 filings a day to recover
-#: names the frames never had, and the cache is what makes the second build cheap.
-COVER_LANE_LIMIT = 600
+#: The name of the rule, published beside the lines it draws. A consumer that reads
+#: ``caps`` has to know which rule produced the bands before it can describe them, and a
+#: release that changed the rule without changing this string would let a page print the
+#: old description over new numbers.
+METHOD = "zone_percentile"
 
 CIK_ID = re.compile(r"^c_(\d{10})$")
 
-FRAME_URL = (
-    "https://data.sec.gov/api/xbrl/frames/dei/"
-    "{concept}/shares/CY{year}Q{quarter}I.json"
-)
-
-
-def band_for(cap_usd: float | None) -> str | None:
-    """The band a market capitalisation falls in, or ``None`` without a cap."""
-    if cap_usd is None or not math.isfinite(cap_usd) or cap_usd <= 0:
-        return None
-    for key, floor in BANDS:
-        if cap_usd >= floor:
-            return key
-    return "micro"
-
 
 @dataclass(frozen=True)
-class CompanyCap:
-    """One company's cap and the two facts it is made of."""
-
-    company_id: str
-    usd: int
-    shares: int
-    share_date: str
-    price: float
-    report_date: str
-    basis: str  # "frame" | "cover"
-
-    @property
-    def band(self) -> str:
-        return band_for(self.usd) or "micro"
-
-    def as_json(self) -> dict:
-        return {
-            "usd": self.usd,
-            "shares": self.shares,
-            "share_date": self.share_date,
-            "price": round(self.price, 2),
-            "report_date": self.report_date,
-            "basis": self.basis,
-            "band": self.band,
-        }
-
-
-@dataclass
 class BuildResult:
+    """The published object, the counts behind it, and a per-company lookup."""
+
     payload: dict
-    caps: dict[str, CompanyCap]
-    counts: dict[str, int] = field(default_factory=dict)
+    #: company_id → (zone, band) — what the page needs for a holding, without the payload.
+    placed: Mapping[str, tuple[str, str]]
+    counts: dict
+
+    def band_of(self, company_id: str | None) -> tuple[str, str] | None:
+        if not company_id:
+            return None
+        return self.placed.get(company_id)
 
 
-class PriceTally:
-    """The release-wide accumulator of per-fund price observations.
+def _place(
+    zones: ZoneTable,
+    countries: Mapping[str, str],
+) -> tuple[dict[str, dict], dict[str, tuple[str, str]]]:
+    """Company → published entry, and the same answer as a compact lookup.
 
-    Folded on the walk's consumer thread as each fund lands (the same pattern as the
-    country vote), so a full-universe build holds one dict of sums, not 9,327 vectors.
-    A company's *latest* report date wins; older dates stay only as a fallback when the
-    latest one has no share fact.
+    A company in the zone table is ranked. A company the table does not have, but whose
+    country has a zone, is below the index that ranks that zone and therefore smaller
+    than every company the index ranks: it is placed as ``micro`` and marked as such. A
+    company whose country has no zone is not placed at all.
     """
-
-    def __init__(self) -> None:
-        self.rows: dict[str, dict[str, list[float]]] = {}
-
-    def add_fund(self, vector, report_date: str) -> None:
-        if not report_date:
-            return
-        for row in vector.holdings:
-            if not row.company_id or row.asset_cat != "equity":
-                continue
-            if not row.value_usd or not row.balance:
-                continue
-            dated = self.rows.setdefault(row.company_id, {})
-            slot = dated.setdefault(report_date, [0.0, 0.0, 0.0])
-            slot[0] += row.value_usd
-            slot[1] += row.balance
-            slot[2] += 1
-
-    def observations(self):
-        for company_id, dated in self.rows.items():
-            for report_date, (value, balance, rows) in dated.items():
-                yield company_id, report_date, value, balance
-
-    def __len__(self) -> int:
-        return len(self.rows)
-
-
-def _quarter(date: str) -> tuple[int, int]:
-    year, month = int(date[:4]), int(date[5:7])
-    return year, (month - 1) // 3 + 1
-
-
-def _quarters_between(first: str, last: str) -> list[tuple[int, int]]:
-    """Every calendar quarter from ``first`` to ``last`` (inclusive), oldest first."""
-    fy, fq = _quarter(first)
-    ly, lq = _quarter(last)
-    quarters: list[tuple[int, int]] = []
-    while (fy, fq) <= (ly, lq):
-        quarters.append((fy, fq))
-        fq += 1
-        if fq > 4:
-            fy, fq = fy + 1, 1
-    return quarters
-
-
-def fetch_frame_facts(
-    dates: Iterable[str], *, max_age: float | None = 7 * 24 * 3600
-) -> dict[str, list[tuple[str, float]]]:
-    """``cik → [(end, shares), …]`` from the XBRL frames endpoint.
-
-    One request per calendar quarter touched by the price dates (a few MB total), and
-    the HTTP cache in ``sec`` makes a second build pay nothing. ``max_age`` is a week:
-    a frame is a view of filings, not an immutable document, and a stale share count
-    after a split is the one error this lane must not repeat.
-    """
-    dates = sorted(dates)
-    if not dates:
-        return {}
-    # Reach back by the age window, not to the fund's own quarter: a foreign private
-    # issuer's only share fact sits on its fiscal-year-end quarter (HSBC's is
-    # 2025-12-31, seven months before a July fund report), and a one-quarter window
-    # would silently miss every one of them.
-    from datetime import timedelta
-
-    window_start = (_parse_date(dates[0]) - timedelta(days=MAX_SHARE_AGE_DAYS)).isoformat()
-    facts: dict[str, list[tuple[str, float]]] = {}
-    for year, quarter in _quarters_between(window_start, dates[-1]):
-        url = FRAME_URL.format(concept=SHARE_CONCEPT, year=year, quarter=quarter)
-        try:
-            document = sec.fetch_json(url, max_age=max_age)
-        except sec.SecError:
-            # A missing quarter is not fatal: the nearest-fact rule has other quarters
-            # to work with, and a company it cannot date is published as unplaced.
+    entries: dict[str, dict] = {}
+    lookup: dict[str, tuple[str, str]] = {}
+    for company_id, (zone, band, percentile) in zones.members.items():
+        if percentile is None:
+            entries[company_id] = {"zone": zone, "band": band, "basis": "below_index"}
+        else:
+            entries[company_id] = {
+                "zone": zone,
+                "band": band,
+                "pct": round(percentile, 6),
+                "basis": "ranked",
+            }
+        lookup[company_id] = (zone, band)
+    for company_id, code in countries.items():
+        if company_id in entries:
             continue
-        for row in document.get("data") or []:
-            cik = row.get("cik")
-            value = row.get("val")
-            end = row.get("end")
-            if not cik or not value or not end:
-                continue
-            # The frame's ``cik`` is an integer, ``company_id`` carries the zero-padded
-            # ten-digit form; normalise on the way in or the join silently misses every
-            # company (measured 2026-11-07: 0 of 9,070 placed).
-            key = str(int(cik)).zfill(10)
-            facts.setdefault(key, []).append((str(end), float(value)))
-    for key in facts:
-        facts[key].sort()
-    return facts
-
-
-def _days_between(first: str, second: str) -> int:
-    return abs(
-        int(
-            (
-                _parse_date(second).toordinal() - _parse_date(first).toordinal()
-            )
-        )
-    )
-
-
-def _parse_date(value: str):
-    from datetime import date
-
-    return date(int(value[:4]), int(value[5:7]), int(value[8:10]))
-
-
-def nearest_share(
-    facts: list[tuple[str, float]], report_date: str
-) -> tuple[float, str] | None:
-    """The share fact closest to ``report_date``, never older than the gate allows."""
-    if not facts:
-        return None
-    best: tuple[int, str, float] | None = None
-    for end, value in facts:
-        age = _days_between(end, report_date)
-        if age > MAX_SHARE_AGE_DAYS:
+        zone = zone_for_country(code)
+        if zone is None:
             continue
-        if best is None or age < best[0]:
-            best = (age, end, value)
-    if best is None:
-        return None
-    return best[2], best[1]
-
-
-def _cover_shares(cik: str):
-    """Lazy import so the module is testable before the cover lane exists."""
-    from . import cover_shares
-
-    return cover_shares.latest_cover_shares(int(cik))
+        entries[company_id] = {"zone": zone, "band": "micro", "basis": "below_index"}
+        lookup[company_id] = (zone, "micro")
+    return entries, lookup
 
 
 def build(
-    observations: Iterable[tuple[str, str, float, float]],
     *,
+    zones: ZoneTable,
+    countries: Mapping[str, str],
     release: str,
-    cover_lane: bool = True,
-    cover_limit: int = COVER_LANE_LIMIT,
-    log=None,
 ) -> BuildResult:
-    """Turn per-fund price observations into one published size table.
+    """Join the zone table to the release's country map and produce the published object.
 
-    ``observations`` is ``(company_id, report_date, value_usd, balance)`` per fund row.
-    Aggregation is per company and per report date — the *latest* date wins, so a
-    company priced on 2026-06-30 by one fund and 2026-07-31 by another uses the later
-    filing, not a blend of the two.
+    ``countries`` is ``companies/countries.json`` as the release publishes it (only
+    companies the release has a shard for), so every company a page can name is in here
+    and the join cannot produce an entry for a company a reader cannot look up.
     """
-    by_company: dict[str, dict[str, list[float]]] = {}
-    for company_id, report_date, value, balance in observations:
-        if not company_id or not report_date:
-            continue
-        if not value or not balance or balance <= 0 or value <= 0:
-            continue
-        dated = by_company.setdefault(company_id, {})
-        slot = dated.setdefault(report_date, [0.0, 0.0, 0.0])
-        slot[0] += value
-        slot[1] += balance
-        slot[2] += 1
+    entries, lookup = _place(zones, countries)
 
-    caps: dict[str, CompanyCap] = {}
-    price_dates: list[str] = []
-    prices: dict[str, tuple[str, float, float, int]] = {}
-    for company_id, dated in by_company.items():
-        report_date = max(dated)
-        value, balance, rows = dated[report_date]
-        if balance <= 0 or value <= 0:
-            continue
-        prices[company_id] = (report_date, value / balance, value, int(rows or 1))
-        price_dates.append(report_date)
-
-    frame_facts = fetch_frame_facts(price_dates)
-    for company_id, (report_date, price, value, rows) in prices.items():
-        match = CIK_ID.match(company_id)
-        if match is None:
-            continue
-        cik = match.group(1)
-        fact = nearest_share(frame_facts.get(cik, []), report_date)
-        if fact is None:
-            continue
-        shares, share_date = fact
-        caps[company_id] = CompanyCap(
-            company_id=company_id,
-            usd=int(round(price * shares)),
-            shares=int(round(shares)),
-            share_date=share_date,
-            price=price,
-            report_date=report_date,
-            basis="frame",
-        )
-
-    # The cover lane, in two passes and both ranked by the value the company represents.
-    #
-    # The first pass is the companies the frames lane could **not** place: that is the
-    # coverage the lane exists to recover, so it goes first and a limited budget cannot
-    # be spent on companies that already have a cap. The second pass visits companies
-    # the frame lane *did* place, because the frames endpoint publishes one fact per
-    # filer and for a multi-class issuer that fact is often one class (Alphabet's Class A
-    # alone, not A+C+D), so a frame count and a cover total can disagree by a factor.
-    # Agreement within 10% keeps the cheaper lane; disagreement is decided by the cover
-    # page, because summing the classes is the thing the frame cannot do.
-    ranked = [
-        (company_id, prices[company_id][1], prices[company_id][2], company_id not in caps)
-        for company_id in prices
-        if CIK_ID.match(company_id)
-    ]
-    ranked.sort(key=lambda row: (not row[3], -row[2]))
-    if log is not None and ranked:
-        unplaced_in_lane = sum(1 for row in ranked[:cover_limit] if row[3])
-        log(
-            f"size lane: {unplaced_in_lane} of {sum(1 for row in ranked if row[3])} "
-            f"unplaced company(ies) inside the {cover_limit}-lookup budget"
-        )
-    overrides = 0
-    visited = 0
-    if cover_lane and ranked:
-        started = time.monotonic()
-        for company_id, price, _value, _was_unplaced in ranked[:cover_limit]:
-            matter = CIK_ID.match(company_id)
-            if matter is None:
-                continue
-            report_date = prices[company_id][0]
-            try:
-                covers = _cover_shares(matter.group(1))
-            except Exception:  # noqa: BLE001 - one bad filing must not fail a release
-                continue
-            if covers is None:
-                continue
-            if _days_between(covers.as_of, report_date) > MAX_SHARE_AGE_DAYS:
-                continue
-            visited += 1
-            existing = caps.get(company_id)
-            if existing is not None and existing.shares:
-                ratio = covers.shares / existing.shares
-                if 0.9 <= ratio <= 1.1:
-                    continue
-                overrides += 1
-            caps[company_id] = CompanyCap(
-                company_id=company_id,
-                usd=int(round(price * covers.shares)),
-                shares=int(round(covers.shares)),
-                share_date=covers.as_of,
-                price=price,
-                report_date=report_date,
-                basis="cover",
-            )
-        if log is not None:
-            log(
-                f"size lane: {visited} cover-page lookups in "
-                f"{time.monotonic() - started:.0f}s ({overrides} replaced a frame count, "
-                f"{len(ranked) - min(len(ranked), cover_limit)} company(ies) beyond the lane)"
-            )
-
-    by_basis = {"frame": 0, "cover": 0}
-    for cap in caps.values():
-        by_basis[cap.basis] += 1
-
-    band_counts = {key: 0 for key in BAND_ORDER}
-    for cap in caps.values():
-        band_counts[cap.band] += 1
+    basis_counts = {basis: 0 for basis in BASES}
+    band_counts = {band: 0 for band in BAND_ORDER}
+    zone_counts = {zone: 0 for zone in ZONE_ORDER}
+    for entry in entries.values():
+        basis_counts[entry["basis"]] += 1
+        band_counts[entry["band"]] += 1
+        zone_counts[entry["zone"]] += 1
 
     payload = {
-        "schema_version": 1,
-        "as_of": release,
+        "schema_version": SCHEMA_VERSION,
         "kind": "sizes",
-        "thresholds": {f"{key}cap": threshold for key, threshold in BANDS},
+        "as_of": release,
+        "method": METHOD,
         "bands": list(BAND_ORDER),
-        "price_basis": "nport_implied",
+        "band_starts": {band: BAND_STARTS[band] for band in BAND_ORDER},
+        "band_labels": {band: BAND_LABELS[band] for band in BAND_ORDER},
+        "zones": zones.as_json(),
         "counts": {
-            "companies": len(by_company),
-            "priced": len(prices),
-            "placed": len(caps),
-            "frame": by_basis["frame"],
-            "cover": by_basis["cover"],
-            "cover_overrides": overrides,
-            "no_shares": len(prices) - len(caps),
-            "no_price": len(by_company) - len(prices),
+            "companies": len(entries),
+            "ranked": basis_counts["ranked"],
+            "below_index": basis_counts["below_index"],
+            "no_zone": sum(1 for code in countries.values() if zone_for_country(code) is None),
+            "zone_companies": {zone: zone_counts[zone] for zone in ZONE_ORDER},
         },
         "band_counts": band_counts,
-        "caps": {company_id: cap.as_json() for company_id, cap in sorted(caps.items())},
+        "caps": {company_id: entry for company_id, entry in sorted(entries.items())},
     }
-    return BuildResult(payload=payload, caps=caps, counts=payload["counts"])
+    return BuildResult(payload=payload, placed=lookup, counts=payload["counts"])
 
 
 def write(objects: BuildResult, release_dir: Path) -> tuple[Path, bytes]:
@@ -439,30 +208,75 @@ def write(objects: BuildResult, release_dir: Path) -> tuple[Path, bytes]:
 
 
 # --------------------------------------------------------------------------------------
-# The international lane: what a fund's own name says about its size mandate.
+# The fallback lane: what a fund's own name says about its size mandate.
 #
 # This is inference, and it is labelled as inference everywhere it is rendered. It is
 # fund-level only — a company is never given an inferred bucket from the names of the
 # funds that hold it (measured 2026-11-06: top-1 agreement 46-48%, "small" precision
 # 54-69%, so the company-level version was rejected).
+#
+# It is a *fallback* now rather than the main answer: with percentile bands a fund needs
+# 80% of its equity in named, country-mapped holdings to draw a bar, and most funds clear
+# that. The ranges exist for the ones that do not.
 # --------------------------------------------------------------------------------------
 
-#: Fraction of *sized* equity weight in each band, measured on US funds with a stated
-#: mandate (p10 / p50 / p90 across funds, release 2026-11-06.2). A mandate predicts the
-#: fund-level mix strongly enough to band it — a "large cap" fund is about 98%
-#: mega-or-large — but it does not reproduce a five-band bar, and the band names do not
-#: map onto our lines (a "small cap" fund is mostly our *mid*). Hence ranges, not points.
+#: The band names the ranges below were measured on. If the published bands change and
+#: these are not re-measured, ``mix_ranges`` returns nothing rather than a range from a
+#: different band definition — the failure mode that put a stale dollar line on the page
+#: in the first place.
+MANDATE_BANDS: tuple[str, ...] = ("giant", "large", "mid", "small", "micro")
+
+#: Share of *placed* equity weight in each band, as (p10, p50, p90) across funds that
+#: state the mandate in their registered name.
+#:
+#: Re-measured 2026-11-07 for the zone bands, because the retired table was measured on
+#: dollar bands whose top band was called ``large`` — which is now the *second* band. The
+#: sample is release 2026-11-07.3: every one of its 9,332 funds whose name states a size
+#: mandate, largest 24 per mandate by net assets, 111 funds measured (a fund under 1%
+#: placed is skipped, because its mix is a coincidence rather than a mix). Each fund's
+#: holdings were scored with the same zone table this module publishes, built from that
+#: release's own VTI and VXUS objects and its country map.
+#:
+#: Read the number as a prediction interval, not a definition: an S&P 500 fund puts
+#: 19-68% of its placed weight in giant companies, because a large-cap mandate does not
+#: fix how much of the market it holds. The ranges overlap on purpose — that overlap is
+#: why this is an inference the page labels as one.
 MANDATE_MIX: dict[str, dict[str, tuple[int, int, int]]] = {
-    "large": {"mega": (16, 57, 76), "large": (24, 41, 81), "mid": (0, 0, 5)},
-    "mid": {"large": (41, 75, 93), "mid": (6, 22, 50), "small": (0, 0, 7)},
-    "small": {
-        "large": (1, 12, 38),
-        "mid": (47, 65, 82),
-        "small": (4, 15, 36),
+    "large": {
+        "giant": (19, 46, 68),
+        "large": (24, 32, 43),
+        "mid": (7, 19, 33),
+        "small": (0, 2, 10),
         "micro": (0, 0, 2),
     },
-    "micro": {"mid": (3, 27, 66), "small": (26, 58, 74), "micro": (0, 5, 27)},
-    "large_mid": {"mega": (10, 55, 68), "large": (32, 45, 82), "mid": (0, 0, 13)},
+    "large_mid": {
+        "giant": (34, 43, 52),
+        "large": (24, 29, 35),
+        "mid": (12, 17, 20),
+        "small": (1, 4, 7),
+        "micro": (2, 5, 12),
+    },
+    "mid": {
+        "giant": (0, 0, 1),
+        "large": (0, 3, 7),
+        "mid": (22, 60, 87),
+        "small": (3, 27, 56),
+        "micro": (0, 10, 27),
+    },
+    "small": {
+        "giant": (0, 0, 0),
+        "large": (0, 0, 2),
+        "mid": (0, 2, 27),
+        "small": (28, 37, 55),
+        "micro": (26, 51, 72),
+    },
+    "micro": {
+        "giant": (0, 0, 0),
+        "large": (0, 0, 1),
+        "mid": (0, 0, 3),
+        "small": (0, 8, 32),
+        "micro": (64, 91, 100),
+    },
 }
 
 MANDATE_LABELS: dict[str, str] = {
@@ -542,7 +356,14 @@ def mandate_for(name: str) -> Mandate | None:
 
 
 def mix_ranges(key: str) -> dict[str, tuple[int, int]]:
-    """The p10-p90 ranges for one mandate, in band order, dropping empty bands."""
+    """The p10-p90 ranges for one mandate, in band order, dropping empty bands.
+
+    Empty when the ranges were measured on a different set of bands than the one
+    published now: a range from another band definition is a wrong number, and the page
+    must fall back to the stated mandate rather than print it.
+    """
+    if MANDATE_BANDS != BAND_ORDER:
+        return {}
     mix = MANDATE_MIX.get(key) or {}
     answer: dict[str, tuple[int, int]] = {}
     for band in BAND_ORDER:

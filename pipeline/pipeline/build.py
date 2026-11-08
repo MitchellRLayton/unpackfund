@@ -58,6 +58,7 @@ from . import (
     manifest as manifest_mod,
     sec,
     securities,
+    size_zones,
     sizes,
     universe,
     weights,
@@ -663,7 +664,6 @@ def _walk(
     series_out: dict[str, str] | None = None,
     votes: company_countries.Tally | None = None,
     security_map: identifiers.SecurityMap | None = None,
-    sizes_tally: sizes.PriceTally | None = None,
 ) -> tuple[list[FundBuild], list[dict[str, str]]]:
     """Build every fund once, collecting the artifacts and the failures.
 
@@ -702,11 +702,6 @@ def _walk(
                     build.countries, build.stats.get("net_assets"), build.invalid_country_rows
                 )
                 build.countries = {}
-            # The size lane's evidence, folded and dropped the same way: the fund's own
-            # filed value and share balance per company, which become the implied price
-            # the release multiplies by a ``dei`` share count.
-            if sizes_tally is not None and build.vector is not None:
-                sizes_tally.add_fund(build.vector, build.stats.get("as_of", ""))
             builds.append(build)
         if log and done % log == 0:
             elapsed = time.monotonic() - started
@@ -974,7 +969,6 @@ def build_release(
     security_map: identifiers.SecurityMap | None = None,
     layer_dir: Path | None = None,
     size_buckets: bool = True,
-    size_cover_limit: int | None = None,
 ) -> Path:
     started = time.monotonic()
     index = CompanyIndex.load()
@@ -1104,9 +1098,6 @@ def build_release(
     # fund's mapped rows arrive on this thread as it lands, so the votes are folded in
     # a single deterministic order and no per-fund map is retained.
     country_tally = company_countries.Tally()
-    # The size lane's tally: folded per fund on this thread, so a full-universe build
-    # holds one dict of (value, balance) sums per company rather than 9,327 vectors.
-    size_tally = sizes.PriceTally() if size_buckets else None
     builds, failures = _walk(
         refs,
         index,
@@ -1119,7 +1110,6 @@ def build_release(
         fund_leis=fund_leis or None,
         votes=country_tally,
         security_map=security_map,
-        sizes_tally=size_tally,
     )
 
     if failures and on_error == "fail":
@@ -1329,29 +1319,60 @@ def build_release(
     # bar. It is deliberately *not* a manifest entry: the manifest's ``files`` is the
     # fund set, which the validator checks as an exact set.
     size_summary: dict | None = None
-    if size_tally is not None and len(size_tally):
+    if size_buckets:
         started_sizes = time.monotonic()
-        sized = sizes.build(
-            size_tally.observations(),
-            release=release,
-            log=_log,
-            **({"cover_limit": size_cover_limit} if size_cover_limit else {}),
+        # The zone rankings come from two funds in this very build, so a release can
+        # never publish a band table ranked against another release's holdings: the
+        # sample and the answer are the same run.
+        by_ticker = {row.ticker: row for row in builds}
+        zone_sources = [("VTI", by_ticker.get("VTI")), ("VXUS", by_ticker.get("VXUS"))]
+        for ticker, row in zone_sources:
+            if row is None or row.vector is None:
+                _log(
+                    f"size zones: {ticker} is not in this build, so the zone(s) it ranks "
+                    "have no ranking — a company there is placed as below-index micro, "
+                    "which is only the right answer for a fund that really is outside "
+                    "the index"
+                )
+        def zone_rows(ticker: str) -> tuple[list, str]:
+            """The rows and the report date, or nothing — never a vector that is not there."""
+            row = by_ticker.get(ticker)
+            vector = getattr(row, "vector", None)
+            if vector is None:
+                return [], ""
+            return list(vector.holdings), str((row.stats or {}).get("as_of") or "")
+
+        vti_rows, vti_date = zone_rows("VTI")
+        vxus_rows, vxus_date = zone_rows("VXUS")
+        zones = size_zones.build(
+            vti_rows=vti_rows,
+            vxus_rows=vxus_rows,
+            countries=countries,
+            vti_date=vti_date,
+            vxus_date=vxus_date,
         )
-        _, size_body = sizes.write(sized, release_dir)
-        counts = sized.counts
-        size_summary = {
-            "bytes": len(size_body),
-            "sha256": artifact.sha256_hex(size_body),
-            **counts,
-        }
-        _log(
-            f"size table: {counts['placed']:,} companies placed of "
-            f"{counts['companies']:,} ({counts['frame']:,} by frame, "
-            f"{counts['cover']:,} by cover page), {len(size_body):,}B in "
-            f"{time.monotonic() - started_sizes:.0f}s"
-        )
-    else:
-        _log("size table: skipped (no equity price observations)")
+        if not len(zones):
+            _log("size table: skipped (neither zone fund is in this build)")
+        else:
+            sized = sizes.build(zones=zones, countries=countries, release=release)
+            _, size_body = sizes.write(sized, release_dir)
+            counts = sized.counts
+            size_summary = {
+                "bytes": len(size_body),
+                "sha256": artifact.sha256_hex(size_body),
+                **counts,
+            }
+            zone_bits = ", ".join(
+                f"{zone.key} {zone.companies:,}cos/{zone.weight_bp / 100:.1f}%"
+                for zone in zones.zones.values()
+            )
+            _log(
+                f"size table: {counts['companies']:,} companies placed "
+                f"({counts['ranked']:,} ranked in {len(zones.zones)} zone(s), "
+                f"{counts['below_index']:,} below their index, "
+                f"{counts['no_zone']:,} in no zone), {len(size_body):,}B in "
+                f"{time.monotonic() - started_sizes:.0f}s — {zone_bits}"
+            )
 
     elapsed = time.monotonic() - started
     _log(
@@ -1490,17 +1511,10 @@ def main(argv: list[str] | None = None) -> int:
         "measuring what GLEIF jurisdiction and EDGAR incorporation are worth",
     )
     parser.add_argument(
-        "--size-cover-limit",
-        type=int,
-        default=None,
-        help="how many companies the cover-page lane may visit (default 600, ranked by "
-        "value); a smaller number is how a smoke build stays fast",
-    )
-    parser.add_argument(
         "--no-size-buckets",
         action="store_true",
-        help="skip the size table (implied price × dei share count); the control build "
-        "for measuring what the two lanes place",
+        help="skip the size-band table (zone percentiles); the control build for "
+        "measuring a release without a size section",
     )
     parser.add_argument(
         "--no-securities",
@@ -1553,7 +1567,6 @@ def main(argv: list[str] | None = None) -> int:
             security_identity=not args.no_security_identity,
             layer_dir=args.layer,
             size_buckets=not args.no_size_buckets,
-            size_cover_limit=args.size_cover_limit,
         )
     except (
         GateError,

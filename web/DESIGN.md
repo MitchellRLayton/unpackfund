@@ -170,7 +170,7 @@ measured pairs are the test, not this paragraph.
 | `--whole`                                               | `55% 0.18 264` (`74% 0.15 264`)                                                                                              | the holdings meter's bar at exactly 100%                |
 | `--delta-up` / `--delta-down`                           | green / red, each adjusted until it clears its floor                                                                         | the `In VT` bracket's sign — the sign is always printed |
 | `--tint-direct` / `--tint-direct-hover`                 | pale violet, deepened in the dark scheme                                                                                     | the ledger row of a stock the visitor holds directly    |
-| `--band-mega` … `--band-micro`                          | five-step ordered ramp — see _Charts and the size-band ramp_                                                                 | the Company size bar's five bands, largest to smallest  |
+| `--band-giant` … `--band-micro`                         | five-step ordered ramp — see _Charts and the size-band ramp_                                                                 | the Company size bar's five bands, largest to smallest  |
 
 The coverage chips, the sorted column and the direct-row tint are all reinforcement over text that already says the
 fact. Nothing in the palette carries a meaning on its own (rule 3).
@@ -184,7 +184,7 @@ prints.** A chart is the glance; the table under it is the record. A chart with 
 The rule that made this section necessary is rule 6: **a chart is never one flat fill.** The Company size bar shipped
 with every band painted `--tier-none` — one grey bar, separated only by position — and the operator could not tell the
 bands apart ("I don't want this all grey, users need to be able to differentiate"). It now draws five hues from the
-`--band-mega` … `--band-micro` ramp, one per band, and the legend under it repeats each band's name and share. The
+`--band-giant` … `--band-micro` ramp, one per band, and the legend under it repeats each band's name and share. The
 country bar keeps the tier hues because there the hue _is_ the geography.
 
 The ramp is an **ordered** categorical ramp — one step per band, largest to smallest — and it is deliberately **not** the
@@ -196,7 +196,7 @@ from its size. Two measured constraints shaped the values:
   running one lightness ramp.
 - **Every pair that touches clears 28 dE of separation, and 25 after simulating deuteranopia, protanopia and
   tritanopia.** Inside that 3:1 cap there is not enough lightness range for five steps of one hue to be far enough
-  apart, so the ramp changes hue as it goes; a pair that is close in lightness is never adjacent. `mega` and `mid` are
+  apart, so the ramp changes hue as it goes; a pair that is close in lightness is never adjacent. `giant` and `mid` are
   both deep and sit two steps apart, which is the arrangement the test permits.
 
 `web/lib/theme.test.ts` holds both floors in both schemes, and `pipeline/tests/test_fund_pages_size.py` holds the page's

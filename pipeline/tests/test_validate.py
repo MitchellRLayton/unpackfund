@@ -194,34 +194,44 @@ def test_a_catalogue_size_of_null_against_a_filed_size_fails(
 def sizes_payload(**overrides) -> dict:
     """A minimal valid ``companies/sizes.json``, the shape ``sizes.write`` makes.
 
-    One company, so a test can mutate exactly the field it is about and know that
-    every other gate in the object is satisfied.
+    One zone, one placed company, so a test can mutate exactly the field it is about and
+    know every other gate in the object is satisfied.
     """
     payload = {
-        "as_of": "2026-11-07.1",
-        "band_counts": {"mega": 0, "large": 0, "mid": 1, "small": 0, "micro": 0},
-        "bands": ["mega", "large", "mid", "small", "micro"],
-        "caps": {
-            "c_0000320193": {
-                "band": "mid",
-                "basis": "frame",
-                "price": 142.93,
-                "report_date": "2026-06-30",
-                "share_date": "2026-06-30",
-                "shares": 39_892_472,
-                "usd": 5_701_831_023.0,
+        "schema_version": 2,
+        "kind": "sizes",
+        "as_of": "2026-11-07.4",
+        "method": "zone_percentile",
+        "bands": ["giant", "large", "mid", "small", "micro"],
+        "band_starts": {"giant": 0.0, "large": 0.4, "mid": 0.7, "small": 0.9, "micro": 0.97},
+        "band_labels": {
+            "giant": "Giant",
+            "large": "Large",
+            "mid": "Mid",
+            "small": "Small",
+            "micro": "Micro",
+        },
+        "zones": {
+            "us": {
+                "key": "us",
+                "label": "United States",
+                "source": "VTI",
+                "as_of": "2026-06-30",
+                "companies": 1,
+                "weight_bp": 10_000,
+                "counts": {"giant": 0, "large": 0, "mid": 1, "small": 0, "micro": 0},
             }
         },
-        "counts": {"companies": 1, "cover": 0, "frame": 1, "placed": 1},
-        "kind": "sizes",
-        "price_basis": "nport_implied",
-        "schema_version": 1,
-        "thresholds": {
-            "largecap": 10_000_000_000.0,
-            "megacap": 200_000_000_000.0,
-            "microcap": 0.0,
-            "midcap": 2_000_000_000.0,
-            "smallcap": 300_000_000.0,
+        "counts": {
+            "companies": 1,
+            "ranked": 1,
+            "below_index": 0,
+            "no_zone": 0,
+            "zone_companies": {"us": 1},
+        },
+        "band_counts": {"giant": 0, "large": 0, "mid": 1, "small": 0, "micro": 0},
+        "caps": {
+            "c_0000320193": {"zone": "us", "band": "mid", "basis": "ranked", "pct": 0.72}
         },
     }
     payload.update(overrides)
@@ -245,10 +255,15 @@ def test_a_valid_size_table_validates(tmp_path, document):
     assert validate.validate(release_dir) == 0
 
 
-def test_a_cap_without_its_share_date_is_refused(tmp_path, document, capsys):
+def test_a_cap_without_its_zone_is_refused(tmp_path, document, capsys):
+    """A band with no zone is the old dollar claim in a new vocabulary.
+
+    The whole point of schema 2 is that a band is a position *in a market*; a cap that
+    names no zone describes a size in the abstract, which is what the retired table did.
+    """
     release_dir = write_release(tmp_path, [document])
     payload = sizes_payload()
-    del payload["caps"]["c_0000320193"]["share_date"]
+    del payload["caps"]["c_0000320193"]["zone"]
     write_sizes(release_dir, payload)
     assert validate.validate(release_dir) == 1
     assert "sizes.fields" in capsys.readouterr().out
@@ -257,28 +272,102 @@ def test_a_cap_without_its_share_date_is_refused(tmp_path, document, capsys):
 def test_an_unpublished_band_is_refused(tmp_path, document, capsys):
     release_dir = write_release(tmp_path, [document])
     payload = sizes_payload()
-    payload["caps"]["c_0000320193"]["band"] = "giant"
+    payload["caps"]["c_0000320193"]["band"] = "mega"
     write_sizes(release_dir, payload)
     assert validate.validate(release_dir) == 1
     assert "sizes.band" in capsys.readouterr().out
 
 
-def test_thresholds_must_be_the_published_lines(tmp_path, document, capsys):
+def test_a_band_that_disagrees_with_its_own_percentile_is_refused(
+    tmp_path, document, capsys
+):
+    """The lines and the placement are one claim, checked against each other.
+
+    If the payload says a company at the 72nd percentile is mid, and the published lines
+    say the 72nd percentile is mid, they agree — which is the case here. Change the band
+    and the two names for the same company disagree, so the release is refused rather than
+    let a page and a table print different sizes for it.
+    """
     release_dir = write_release(tmp_path, [document])
     payload = sizes_payload()
-    payload["thresholds"]["megacap"] = 100_000_000_000.0
+    payload["caps"]["c_0000320193"]["pct"] = 0.2  # giant, not mid
     write_sizes(release_dir, payload)
     assert validate.validate(release_dir) == 1
-    assert "sizes.thresholds" in capsys.readouterr().out
+    assert "sizes.pct_band" in capsys.readouterr().out
+
+
+def test_a_ranked_company_must_publish_its_percentile(tmp_path, document, capsys):
+    release_dir = write_release(tmp_path, [document])
+    payload = sizes_payload()
+    del payload["caps"]["c_0000320193"]["pct"]
+    write_sizes(release_dir, payload)
+    assert validate.validate(release_dir) == 1
+    assert "sizes.pct" in capsys.readouterr().out
+
+
+def test_a_company_below_its_index_carries_no_percentile(tmp_path, document, capsys):
+    """The other half of the rule: micro by basis, never micro by invention."""
+    release_dir = write_release(tmp_path, [document])
+    payload = sizes_payload()
+    payload["caps"]["c_0000320193"] = {"zone": "us", "band": "micro", "basis": "below_index"}
+    payload["counts"]["ranked"] = 0
+    payload["counts"]["below_index"] = 1
+    payload["band_counts"] = {"giant": 0, "large": 0, "mid": 0, "small": 0, "micro": 1}
+    write_sizes(release_dir, payload)
+    assert validate.validate(release_dir) == 0
+    payload["caps"]["c_0000320193"]["pct"] = 0.99
+    write_sizes(release_dir, payload)
+    assert validate.validate(release_dir) == 1
+    assert "sizes.pct" in capsys.readouterr().out
+
+
+def test_the_lines_must_be_the_published_lines(tmp_path, document, capsys):
+    release_dir = write_release(tmp_path, [document])
+    payload = sizes_payload()
+    payload["band_starts"]["giant"] = 0.5
+    write_sizes(release_dir, payload)
+    assert validate.validate(release_dir) == 1
+    assert "sizes.band_starts" in capsys.readouterr().out
+
+
+def test_a_company_in_a_zone_the_release_did_not_rank_is_refused(
+    tmp_path, document, capsys
+):
+    release_dir = write_release(tmp_path, [document])
+    payload = sizes_payload()
+    payload["caps"]["c_0000320193"]["zone"] = "japan"
+    write_sizes(release_dir, payload)
+    assert validate.validate(release_dir) == 1
+    assert "sizes.zone_sample" in capsys.readouterr().out
+
+
+def test_the_zone_counts_must_add_up_to_the_ranked_companies(
+    tmp_path, document, capsys
+):
+    release_dir = write_release(tmp_path, [document])
+    payload = sizes_payload()
+    payload["zones"]["us"]["companies"] = 5
+    write_sizes(release_dir, payload)
+    assert validate.validate(release_dir) == 1
+    assert "sizes.zone_counts" in capsys.readouterr().out
 
 
 def test_the_lane_counts_must_add_up_to_the_caps(tmp_path, document, capsys):
     release_dir = write_release(tmp_path, [document])
     payload = sizes_payload()
-    payload["counts"]["placed"] = 2
+    payload["counts"]["ranked"] = 2
     write_sizes(release_dir, payload)
     assert validate.validate(release_dir) == 1
     assert "sizes.counts" in capsys.readouterr().out
+
+
+def test_the_band_counts_must_add_up_to_the_caps(tmp_path, document, capsys):
+    release_dir = write_release(tmp_path, [document])
+    payload = sizes_payload()
+    payload["band_counts"]["giant"] = 4
+    write_sizes(release_dir, payload)
+    assert validate.validate(release_dir) == 1
+    assert "sizes.band_counts" in capsys.readouterr().out
 
 
 def test_a_browser_object_beside_the_shards_is_not_a_company(tmp_path, document):

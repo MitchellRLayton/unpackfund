@@ -566,9 +566,30 @@ def _sibling_links(funds: list[tuple[str, str]], *, exclude: str, limit: int) ->
     return "\n".join(links)
 
 
-#: Size bands in draw order, with the wording the page prints. The lines are the
-#: release's own (`sizes.BANDS`), not a provider's: the table under the bar prints each
-#: line so a reader can check the bucket, and the page never claims a vendor's bands.
+#: How each band is described in the table under the bar. A band is a percentile of the
+#: company's own zone, so the column says where the company sits rather than a dollar
+#: figure: a reader can check a percentile against the bar above it, and no dollar line
+#: has to be kept current.
+SIZE_COLUMN = {
+    "giant": "Largest 40% of its zone's value",
+    "large": "The next 30% (40th to 70th percentile)",
+    "mid": "The next 20% (70th to 90th percentile)",
+    "small": "The next 7% (90th to 97th percentile)",
+    "micro": "The smallest 3% of its zone",
+}
+
+#: The five lines as one clause, spelled out once so a sentence never re-derives them.
+SIZE_LINES_SENTENCE = (
+    "inside a zone, the companies that make up the largest 40% of its market value are "
+    "giant, the next 30% are large, the next 20% mid, the next 7% small, and the smallest "
+    "3% micro"
+)
+
+#: The retired dollar bands, kept for exactly one purpose: a release published before
+#: schema 2 still carries them, and the site deploys before the data release that
+#: replaces them. Rendering that object with its own labels is honest — those bands were
+#: dollar lines, and the reader sees which release they came from — where refusing to
+#: render it would blank every fund page for the hours between the two deploys.
 SIZE_THRESHOLDS = {
     "mega": "USD 200bn and over",
     "large": "USD 10bn to 200bn",
@@ -577,30 +598,40 @@ SIZE_THRESHOLDS = {
     "micro": "under USD 300m",
 }
 
-#: The same five lines as a clause inside a sentence, spelled out once so the page
-#: never has to lowercase "USD" to fit a sentence.
-SIZE_LINES_SENTENCE = (
+SIZE_LABELS = {
+    "mega": "Mega",
+    "large": "Large",
+    "mid": "Mid",
+    "small": "Small",
+    "micro": "Micro",
+}
+
+#: A retired band's colour slot. "Mega" and "giant" are the same step of the palette's
+#: five-step ramp, so a legacy object paints in the same colours as a current one.
+LEGACY_SEGMENT = {"mega": "giant", "large": "large", "mid": "mid", "small": "small", "micro": "micro"}
+
+#: The same five lines as a clause inside a sentence, for the legacy renderer.
+SIZE_LINES_SENTENCE_LEGACY = (
     "mega is USD 200bn and over, large is USD 10bn to 200bn, mid is USD 2bn to 10bn, "
     "small is USD 300m to 2bn, and micro is under USD 300m"
 )
 
 
 def _size_section(fund: dict, table: dict | None) -> str:
-    """The size-class block: a computed bar, or the coverage callout plus inference.
+    """The size-class block: a computed bar, or the coverage callout plus mandate inference.
 
     Two products in one section, and which one a fund gets is a measured question:
 
-    * **placed ≥ 80% of equity weight** — the computed bar. Five bands plus "not
-      placed" and "not equity", so the bar's denominator is the whole fund and a
-      reader can see what the classes do not cover.
-    * **placed < 80%** — the callout. International funds sit here (a VXUS-style fund
-      places about a quarter of its equity weight, because a foreign issuer files no
-      US cover page), and drawing a bar from a quarter of the portfolio would describe
-      our mapping rather than the fund. If the fund's own name states a size mandate,
-      the callout is followed by an explicitly labelled *inferred* range, calibrated on
-      the US funds where the same mandate can be computed. The section carries
-      ``data-size-basis="inferred"`` and the mandate key, so the inference is
-      machine-readable as well as visible.
+    * **placed ≥ 80% of equity weight** — the computed bar. Five bands plus "not placed"
+      and "not equity", so the bar's denominator is the whole fund and a reader can see
+      what the classes do not cover.
+    * **placed < 80%** — the callout. A fund holding mostly companies this release cannot
+      place would get a bar describing our mapping rather than the fund; the callout says
+      which part is missing and why.
+
+    The bands are percentiles of each company's own style zone (``size_zones``), so the
+    section also names the zones the fund actually holds — a fund's bar mixes zones only
+    in the sense that each of its companies was ranked inside one.
 
     Nothing is drawn when the release carries no size table (a build with
     ``--no-size-buckets``, or a release older than the feature): the page then says
@@ -608,6 +639,13 @@ def _size_section(fund: dict, table: dict | None) -> str:
     """
     if not table:
         return ""
+    if int(table.get("schema_version") or 1) >= 2:
+        return _size_section_zones(fund, table)
+    return _size_section_dollars(fund, table)
+
+
+def _size_section_zones(fund: dict, table: dict) -> str:
+    """The schema-2 renderer: zone percentiles, with the zone mix named."""
     caps = table.get("caps") or {}
     if not caps:
         return ""
@@ -620,13 +658,266 @@ def _size_section(fund: dict, table: dict | None) -> str:
         for row in rows
         if row.get("asset_cat") == "equity"
     )
-    # The callout below says "of the rest", and the rest is the *equity* weight, so every
-    # reason is a share of equity — not of the fund. Dividing by gross made the three
-    # reasons add to less than the gap the same paragraph had just stated (IEFA, 2026-11-07:
-    # 52.7 + 4.9 + 19.4 against a stated 78.6%).
     if equity <= 0:
         return ""
     band_bp = {key: 0 for key in sizes.BAND_ORDER}
+    zone_bp: dict[str, int] = {}
+    below_bp = 0
+    unplaced_bp = 0
+    for row in rows:
+        if row.get("asset_cat") != "equity":
+            continue
+        weight = abs(int(row.get("weight_bp") or 0))
+        cap = caps.get(row.get("company_id")) if row.get("company_id") else None
+        if cap is None:
+            unplaced_bp += weight
+            continue
+        band_bp[cap["band"]] = band_bp.get(cap["band"], 0) + weight
+        zone_bp[cap["zone"]] = zone_bp.get(cap["zone"], 0) + weight
+        if cap.get("basis") == "below_index":
+            below_bp += weight
+    placed_bp = sum(band_bp.values())
+    non_equity_bp = gross - equity
+    placed_of_equity = 100.0 * placed_bp / equity if equity else 0.0
+    placed_of_gross = 100.0 * placed_bp / gross
+    label = sizes.label_for(band_bp, placed_bp)
+
+    mandate = sizes.mandate_for(fund.get("name") or "")
+    ranges = sizes.mix_ranges(mandate.key) if mandate is not None else {}
+    inferred = bool(ranges) and placed_of_equity < 85.0
+    if placed_of_equity >= 80.0:
+        basis = "computed"
+    elif inferred:
+        basis = "inferred"
+    else:
+        basis = "callout"
+
+    zone_keys = [key for key in sizes.ZONE_ORDER if zone_bp.get(key)]
+    attributes = f'data-size-basis="{basis}"'
+    attributes += f' data-size-zones="{",".join(zone_keys)}"'
+    if basis == "inferred":
+        attributes += f' data-size-mandate="{_esc(mandate.key)}"'
+    if label:
+        attributes += f' data-size-label="{label}"'
+
+    zone_sentence = _zone_mix_sentence(zone_bp, placed_bp, table)
+    ranking_note = _zone_source_sentence(table)
+    inference = _inference_notice(mandate, ranges) if inferred else ""
+
+    if basis == "computed":
+        # The bar is drawn from the placed weight, so it is drawn only when that weight is
+        # most of the fund. An "inferred" basis has a mandate range instead, and a
+        # "callout" has neither: a bar from a tenth of a fund describes our mapping.
+        bars = []
+        legend = []
+        table_rows = []
+        for key in sizes.BAND_ORDER:
+            share = 100.0 * band_bp[key] / gross
+            if band_bp[key]:
+                bars.append(
+                    f'<span class="bar__seg bar__seg--band-{key}" style="width:{share:.4f}%" '
+                    f'title="{sizes.BAND_LABELS[key]}: {share:.2f}% of the fund"></span>'
+                )
+                legend.append(
+                    f'<span class="legend__item"><span class="legend__swatch bar__seg--band-{key}"'
+                    f' aria-hidden="true"></span>{sizes.BAND_LABELS[key]} '
+                    f'<span class="mono">{share:.2f}%</span></span>'
+                )
+            table_rows.append(
+                "<tr>"
+                f"<td>{sizes.BAND_LABELS[key]}</td>"
+                f"<td>{SIZE_COLUMN[key]}</td>"
+                f'<td class="num">{share:.2f}%</td>'
+                "</tr>"
+            )
+        for text, bp, klass in (
+            ("Not placed", unplaced_bp, "unplaced"),
+            ("Not equity", non_equity_bp, "none"),
+        ):
+            share = 100.0 * bp / gross
+            if bp:
+                bars.append(
+                    f'<span class="bar__seg bar__seg--{klass}" style="width:{share:.4f}%" '
+                    f'title="{text}: {share:.2f}% of the fund"></span>'
+                )
+                legend.append(
+                    f'<span class="legend__item"><span class="legend__swatch bar__seg--{klass}"'
+                    f' aria-hidden="true"></span>{text} '
+                    f'<span class="mono">{share:.2f}%</span></span>'
+                )
+                table_rows.append(
+                    "<tr>"
+                    f"<td>{text}</td><td>{'—' if klass == 'none' else 'No style zone for its country'}</td>"
+                    f'<td class="num">{share:.2f}%</td>'
+                    "</tr>"
+                )
+        spoken = ", ".join(
+            f"{sizes.BAND_LABELS[key]} {100.0 * band_bp[key] / gross:.2f}%"
+            for key in sizes.BAND_ORDER
+            if band_bp[key]
+        )
+        label_html = ""
+        if label:
+            label_html = (
+                f'<p class="size-label"><strong>Asset-weighted size: '
+                f"{_esc(sizes.LABEL_TEXT[label])}.</strong> "
+                '<span class="muted">Every holding weighted by its share of the fund, on '
+                "Morningstar's three-row scale, where giant and large are the top row.</span></p>"
+            )
+        body = f"""<p class="muted small doc-note">Each company is ranked against its own style
+        zone — the United States, Canada, Latin America, Europe, Japan, Asia ex-Japan, or
+        Australia/New Zealand — and {SIZE_LINES_SENTENCE}. The lines are percentiles, so
+        they move with the market instead of going stale; the method is Morningstar's, and
+        this page publishes no dollar line because none would stay true.</p>
+            <div class="bar bar--tall" role="img" aria-label="Share of the fund by company size: {spoken}">
+              {"".join(bars)}
+            </div>
+            <div class="legend">
+              {"".join(legend)}
+            </div>
+            {label_html}
+            <div class="table-wrap">
+              <table class="table">
+                <caption class="small muted">The bar above, as numbers: each band's share of
+                the fund's gross weight. {zone_sentence} {ranking_note}</caption>
+                <thead>
+                  <tr><th scope="col">Band</th><th scope="col">Where the company sits</th>
+                  <th scope="col" class="num">Share of the fund</th></tr>
+                </thead>
+                <tbody>
+                  {"".join(table_rows)}
+                </tbody>
+              </table>
+            </div>
+            <p class="muted small doc-note">Of the {equity / gross * 100:.1f}% of this fund in
+            equities, {placed_of_equity:.1f}% is placed in its zone, which is
+            {placed_of_gross:.1f}% of the whole fund. {_below_index_sentence(below_bp, gross)}
+            {_unplaced_sentence(unplaced_bp, gross, fund)}</p>
+            {inference}"""
+    else:
+        body = f"""<div class="notice notice--quiet">
+          <p><strong>No computed size split for this fund.</strong> Only
+          {placed_of_equity:.1f}% of its equity weight could be placed in a style zone
+          ({placed_of_gross:.1f}% of the fund), which is below the 80% this page needs before
+          it draws one. {_unplaced_sentence(unplaced_bp, gross, fund)} A bar drawn from the
+          remainder would describe our mapping rather than the fund.</p>
+        </div>"""
+        body += inference
+        body += f"""
+        <p class="muted small doc-note">A company is placed when its country has a style zone
+        in this release and the release can identify it: {100.0 - placed_of_equity:.1f}% of this
+        fund's equity weight is neither, and the note above is the whole of that gap — nothing
+        is estimated to fill it.</p>"""
+    return f"""<section aria-labelledby="size-heading" class="stack stack--tight" id="size" {attributes}>
+      <h2 id="size-heading" class="title--sm">Company size</h2>
+      {body}
+    </section>"""
+
+
+def _inference_notice(mandate, ranges: dict) -> str:
+    """The labelled inference, and what it is not.
+
+    It is printed under a bar that has a gap in it, so the reader sees both: what the fund
+    holds, and the range its own name predicts for the part we could not place. The chip
+    and the closing clause are the whole point — a range measured across funds is not a
+    computed split of this one.
+    """
+    if not ranges:
+        return ""
+    parts = [
+        f"{sizes.BAND_LABELS[band].lower()} {low}–{high}%"
+        for band, (low, high) in ranges.items()
+    ]
+    return f"""
+            <div class="notice notice--quiet">
+              <p><span class="chip">Inferred</span> <strong>From the fund's stated mandate:
+              {_esc(mandate.label)}.</strong> On funds with that mandate, the computed size mix
+              falls in these ranges across funds (10th to 90th percentile of the placed
+              weight): {", ".join(parts)}. This is an inference from the fund's own name, not
+              a computed split of its holdings, and it is not a size class for any single
+              company in it.</p>
+            </div>"""
+
+
+def _zone_mix_sentence(zone_bp: dict[str, int], placed_bp: int, table: dict) -> str:
+    """Name the zones a fund's placed weight sits in, largest first."""
+    if placed_bp <= 0 or not zone_bp:
+        return ""
+    ordered = sorted(zone_bp.items(), key=lambda pair: -pair[1])
+    zones = table.get("zones") or {}
+    parts = []
+    for key, weight in ordered[:4]:
+        label = (zones.get(key) or {}).get("label") or sizes.ZONE_LABELS.get(key, key)
+        parts.append(f"{_esc(label)} {100.0 * weight / placed_bp:.1f}%")
+    rest = len(ordered) - 4
+    if rest > 0:
+        tail = sum(weight for _, weight in ordered[4:])
+        parts.append(f"{rest} smaller zone{'s' if rest > 1 else ''} {100.0 * tail / placed_bp:.1f}%")
+    joined = ", ".join(parts[:-1]) + f" and {parts[-1]}" if len(parts) > 1 else parts[0]
+    return f"Its holdings sit in {joined} of that placed weight."
+
+
+def _zone_source_sentence(table: dict) -> str:
+    """Say which fund ranked each zone, and when, without inventing a date."""
+    zones = table.get("zones") or {}
+    pairs = sorted(
+        {(zone.get("source") or "", zone.get("as_of") or "") for zone in zones.values()}
+    )
+    bits = [
+        f"{_esc(source)} ({long_date(as_of)})" if as_of else _esc(source)
+        for source, as_of in pairs
+        if source
+    ]
+    if not bits:
+        return ""
+    joined = " and ".join(bits)
+    return f"The rankings are this release's own holdings of {joined}."
+
+
+def _below_index_sentence(below_bp: int, gross: int) -> str:
+    if below_bp <= 0:
+        return ""
+    return (
+        f"{100.0 * below_bp / gross:.1f}% of the fund is in companies the ranking index does "
+        "not hold, so they have no percentile and are counted in micro — the band the lines "
+        "give anything below the index's smallest holding. A company that listed after the "
+        "index's report date lands there too."
+    )
+
+
+def _unplaced_sentence(unplaced_bp: int, gross: int, fund: dict) -> str:
+    if unplaced_bp <= 0:
+        return ""
+    return (
+        f"{100.0 * unplaced_bp / gross:.1f}% is in companies this release cannot place: no "
+        "country, or an offshore filing address that belongs to no market."
+    )
+
+
+def _size_section_dollars(fund: dict, table: dict) -> str:
+    """The schema-1 renderer: the retired dollar bands, for a release built before schema 2.
+
+    Kept deliberately small and unchanged in behaviour: it runs only in the window between
+    the site deploy that added the zone bands and the data release that carries them, and
+    it must not describe those bands as something they are not. Delete it once every
+    published release is schema 2.
+    """
+    caps = table.get("caps") or {}
+    if not caps:
+        return ""
+    rows = fund.get("holdings") or []
+    gross = sum(abs(int(row.get("weight_bp") or 0)) for row in rows)
+    if gross <= 0:
+        return ""
+    equity = sum(
+        abs(int(row.get("weight_bp") or 0))
+        for row in rows
+        if row.get("asset_cat") == "equity"
+    )
+    if equity <= 0:
+        return ""
+    order = tuple(table.get("bands") or ("mega", "large", "mid", "small", "micro"))
+    band_bp = {key: 0 for key in order}
     foreign_bp = 0
     unidentified_bp = 0
     no_share_bp = 0
@@ -649,149 +940,93 @@ def _size_section(fund: dict, table: dict | None) -> str:
     non_equity_bp = gross - equity
     placed_of_equity = 100.0 * placed_bp / equity if equity else 0.0
     placed_of_gross = 100.0 * placed_bp / gross
-
-    mandate = sizes.mandate_for(fund.get("name") or "")
-    inferred = mandate is not None and placed_of_equity < 85.0
-    if placed_of_equity >= 80.0:
-        basis = "computed"
-    elif inferred:
-        basis = "inferred"
-    else:
-        basis = "callout"
-
-    attributes = f'data-size-basis="{basis}"'
-    if basis == "inferred":
-        attributes += f' data-size-mandate="{_esc(mandate.key)}"'
-
-    if placed_of_equity >= 80.0:
-        bars = []
-        legend = []
-        table_rows = []
-        for key in sizes.BAND_ORDER:
-            share = 100.0 * band_bp[key] / gross
-            if band_bp[key]:
-                bars.append(
-                    f'<span class="bar__seg bar__seg--band-{key}" style="width:{share:.4f}%" '
-                    f'title="{sizes.BAND_LABELS[key]}: {share:.2f}% of the fund"></span>'
-                )
-                legend.append(
-                    f'<span class="legend__item"><span class="legend__swatch bar__seg--band-{key}"'
-                    f' aria-hidden="true"></span>{sizes.BAND_LABELS[key]} '
-                    f'<span class="mono">{share:.2f}%</span></span>'
-                )
+    if placed_of_equity < 80.0:
+        reason_text = _size_gap_sentence(
+            unplaced_bp, foreign_bp, unidentified_bp, no_share_bp, gross
+        )
+        return f"""<section aria-labelledby="size-heading" class="stack stack--tight" id="size" data-size-basis="callout">
+      <h2 id="size-heading" class="title--sm">Company size</h2>
+      <div class="notice notice--quiet">
+        <p><strong>No computed size split for this release.</strong> This data release was
+        built before the size bands became zone percentiles, and the dollar bands it carried
+        place only {placed_of_equity:.1f}% of this fund's equity weight. {reason_text} The
+        zone bands arrive with the next data release.</p>
+      </div>
+    </section>"""
+    bars = []
+    legend = []
+    table_rows = []
+    for key in order:
+        share = 100.0 * band_bp.get(key, 0) / gross
+        segment = LEGACY_SEGMENT.get(key, key)
+        if band_bp.get(key):
+            bars.append(
+                f'<span class="bar__seg bar__seg--band-{segment}" style="width:{share:.4f}%" '
+                f'title="{SIZE_LABELS.get(key, key)}: {share:.2f}% of the fund"></span>'
+            )
+            legend.append(
+                f'<span class="legend__item"><span class="legend__swatch bar__seg--band-{segment}"'
+                f' aria-hidden="true"></span>{SIZE_LABELS.get(key, key)} '
+                f'<span class="mono">{share:.2f}%</span></span>'
+            )
+        table_rows.append(
+            "<tr>"
+            f"<td>{SIZE_LABELS.get(key, key)}</td>"
+            f"<td>{SIZE_THRESHOLDS.get(key, '')}</td>"
+            f'<td class="num">{share:.2f}%</td>'
+            "</tr>"
+        )
+    for text, bp, klass in (
+        ("Not placed", unplaced_bp, "unplaced"),
+        ("Not equity", non_equity_bp, "none"),
+    ):
+        share = 100.0 * bp / gross
+        if bp:
+            bars.append(
+                f'<span class="bar__seg bar__seg--{klass}" style="width:{share:.4f}%" '
+                f'title="{text}: {share:.2f}% of the fund"></span>'
+            )
+            legend.append(
+                f'<span class="legend__item"><span class="legend__swatch bar__seg--{klass}"'
+                f' aria-hidden="true"></span>{text} '
+                f'<span class="mono">{share:.2f}%</span></span>'
+            )
             table_rows.append(
                 "<tr>"
-                f"<td>{sizes.BAND_LABELS[key]}</td>"
-                f"<td>{SIZE_THRESHOLDS[key]}</td>"
+                f"<td>{text}</td><td>—</td>"
                 f'<td class="num">{share:.2f}%</td>'
                 "</tr>"
             )
-        for label, bp, klass in (
-            ("Not placed", unplaced_bp, "unplaced"),
-            ("Not equity", non_equity_bp, "none"),
-        ):
-            share = 100.0 * bp / gross
-            if bp:
-                bars.append(
-                    f'<span class="bar__seg bar__seg--{klass}" style="width:{share:.4f}%" '
-                    f'title="{label}: {share:.2f}% of the fund"></span>'
-                )
-                legend.append(
-                    f'<span class="legend__item"><span class="legend__swatch bar__seg--{klass}"'
-                    f' aria-hidden="true"></span>{label} '
-                    f'<span class="mono">{share:.2f}%</span></span>'
-                )
-                table_rows.append(
-                    "<tr>"
-                    f"<td>{label}</td><td>—</td>"
-                    f'<td class="num">{share:.2f}%</td>'
-                    "</tr>"
-                )
-        spoken = ", ".join(
-            f"{sizes.BAND_LABELS[key]} {100.0 * band_bp[key] / gross:.2f}%"
-            for key in sizes.BAND_ORDER
-            if band_bp[key]
-        )
-        body = f"""<p class="muted small doc-note">Market capitalisation of each company,
-        as of this filing: an implied price per share (the fund's own value divided by the
-        shares it filed) times the issuer's own share count from its latest SEC filing. The
-        bands are this release's lines — {SIZE_LINES_SENTENCE} — and the release publishes each
-        company's cap beside the date of the share count behind it.</p>
-            <div class="bar bar--tall" role="img" aria-label="Share of the fund by company size: {spoken}">
-              {"".join(bars)}
-            </div>
-            <div class="legend">
-              {"".join(legend)}
-            </div>
-            <div class="table-wrap">
-              <table class="table">
-                <caption class="small muted">The bar above, as numbers: each band's share of the
-                fund's gross weight. {_size_gap_sentence(unplaced_bp, foreign_bp, unidentified_bp, no_share_bp, gross)}</caption>
-                <thead>
-                  <tr><th scope="col">Band</th><th scope="col">Market capitalisation</th>
-                  <th scope="col" class="num">Share of the fund</th></tr>
-                </thead>
-                <tbody>
-                  {"".join(table_rows)}
-                </tbody>
-              </table>
-            </div>
-            <p class="muted small doc-note">Of the {equity / gross * 100:.1f}% of this fund in
-            equities, {placed_of_equity:.1f}% carries a computed size, which is
-            {placed_of_gross:.1f}% of the whole fund. A size describes the company at the
-            filing's date, not a live quote, and a company that files several share classes is
-            sized by the sum of those classes. Weights are the fund's own, in basis points, so a
-            position under 0.005% of the fund rounds to zero and is not drawn — on a total-market
-            fund that is most of the tail by count and a fraction of a point by weight.</p>"""
-    else:
-        reasons = []
-        if foreign_bp:
-            reasons.append(
-                f"<strong>{100.0 * foreign_bp / equity:.1f}%</strong> is in companies that file no "
-                "US share count with the SEC — mostly foreign issuers, whose only US filing is an "
-                "annual report"
-            )
-        if unidentified_bp:
-            reasons.append(
-                f"<strong>{100.0 * unidentified_bp / equity:.1f}%</strong> is in positions this "
-                "release cannot identify"
-            )
-        if no_share_bp:
-            reasons.append(
-                f"<strong>{100.0 * no_share_bp / equity:.1f}%</strong> is in companies whose US "
-                "filings carry no share count this release could use"
-            )
-        reason_text = "; ".join(reasons) if reasons else "the release holds no share count for them"
-        body = f"""<div class="notice notice--quiet">
-          <p><strong>No computed size split for this fund.</strong> Only
-          {placed_of_equity:.1f}% of its equity weight carries a market capitalisation
-          ({placed_of_gross:.1f}% of the fund), which is below the 80% this page needs before it
-          draws one. Of the rest, {reason_text}. A bar drawn from the remainder would describe
-          our mapping rather than the fund.</p>
-        </div>"""
-        if inferred:
-            ranges = sizes.mix_ranges(mandate.key)
-            parts = [
-                f"{sizes.BAND_LABELS[band].lower()} {low}–{high}%"
-                for band, (low, high) in ranges.items()
-            ]
-            body += f"""
-            <div class="notice notice--quiet">
-              <p><span class="chip">Inferred</span> <strong>From the fund's stated mandate:
-              {_esc(mandate.label)}.</strong> On US funds with that mandate, the computed size
-              mix falls in these ranges across funds (10th to 90th percentile of the sized
-              weight): {", ".join(parts)}. This is an inference from the fund's own name, not a
-              computed split of its holdings, and it is not a size class for any single company
-              in it. The bands are this release's lines, not the index's.</p>
-            </div>"""
-        body += f"""
-        <p class="muted small doc-note">A company is sized only when its share count is filed
-        with the SEC: that covers almost every US-listed company and few foreign ones, which is
-        why {100.0 - placed_of_equity:.1f}% of this fund's equity weight has no computed size.
-        The coverage note above is the whole of the gap — nothing is estimated to fill it.</p>"""
-    return f"""<section aria-labelledby="size-heading" class="stack stack--tight" id="size" {attributes}>
+    return f"""<section aria-labelledby="size-heading" class="stack stack--tight" id="size" data-size-basis="computed" data-size-bands="dollars">
       <h2 id="size-heading" class="title--sm">Company size</h2>
-      {body}
+      <p class="muted small doc-note">Market capitalisation of each company, as of this
+      filing: an implied price per share (the fund's own value divided by the shares it
+      filed) times the issuer's own share count from its latest SEC filing. This data
+      release predates the zone-percentile bands, so the lines are the retired dollar bands —
+      {SIZE_LINES_SENTENCE_LEGACY} — and the bar returns as a percentile of each company's
+      style zone with the next release.</p>
+      <div class="bar bar--tall" role="img" aria-label="Share of the fund by company size: {", ".join(f"{SIZE_LABELS.get(k, k)} {100.0 * band_bp.get(k, 0) / gross:.2f}%" for k in order if band_bp.get(k))}">
+        {"".join(bars)}
+      </div>
+      <div class="legend">
+        {"".join(legend)}
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <caption class="small muted">The bar above, as numbers: each band's share of the
+          fund's gross weight. {_size_gap_sentence(unplaced_bp, foreign_bp, unidentified_bp, no_share_bp, gross)}</caption>
+          <thead>
+            <tr><th scope="col">Band</th><th scope="col">Market capitalisation</th>
+            <th scope="col" class="num">Share of the fund</th></tr>
+          </thead>
+          <tbody>
+            {"".join(table_rows)}
+          </tbody>
+        </table>
+      </div>
+      <p class="muted small doc-note">Of the {equity / gross * 100:.1f}% of this fund in
+      equities, {placed_of_equity:.1f}% carries a computed size, which is
+      {placed_of_gross:.1f}% of the whole fund.</p>
     </section>"""
 
 
