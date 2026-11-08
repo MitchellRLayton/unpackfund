@@ -191,6 +191,7 @@ LFSC,F/m Emerald Life Sciences Innovation ETF,,,0.790,typesafe/jev-1.14,style-je
 SPIT,F/m Emerald Special Situations ETF,,,0.960,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 FPACX,FPA Crescent Fund,,,0.970,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 ACYQ,FT Vest Autocallable Barrier & High Income ETF,,,0.700,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+QJUN,FT Vest Nasdaq-100 Buffer ETF - June,u_s_buffered_outcome,below threshold,0.740,typesafe/jev-1.14-20261014,style-jev-2026-11-08.1-1794147625
 FEUGX,Federated Hermes Adjustable Rate Fund,,,0.350,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 KAUAX,Federated Hermes Kaufmann Fund,,,0.970,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 MKTN,Federated Hermes MDT Market Neutral ETF,,,0.890,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -500,6 +501,7 @@ PGFEX,PGIM Enhanced Retirement Spending Fund,,,0.450,typesafe/jev-1.14,style-jev
 PJBF,PGIM Jennison Better Future ETF,,,0.800,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 PGFMX,PGIM Moderate Retirement Spending Fund,,,0.710,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 PBL,PGIM Portfolio Ballast ETF,,,0.790,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+PAUAX,PIMCO All Asset All Authority Fund,balanced_allocation,below threshold,0.430,typesafe/jev-1.14-20261014,style-jev-2026-11-08.1-1794147625
 PAAIX,PIMCO All Asset Fund,,,0.460,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 VPVAADV,PIMCO All Asset Portfolio,,,0.410,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 PCLAX,PIMCO CommoditiesPLUS Strategy Fund,,,0.510,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
