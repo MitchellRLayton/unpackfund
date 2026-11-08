@@ -25,9 +25,9 @@
 # Deliberately NOT in this job:
 #   - any secret. Nothing here touches SEC, Cloudflare or R2, so a pull request from a
 #     fork runs exactly what a maintainer's runs.
-#   - `pipeline.refresh` / `build`. Those fetch from EDGAR and take ~52-60 minutes (observed
-#     on successful runs); the daily loop owns them. This job answers "is the tree valid",
-#     not "is the data fresh".
+#   - `pipeline.refresh` / `build`. Those fetch from EDGAR and take about an hour (observed
+#     successful runs span roughly 50-70 minutes, so do not plan on a tight bound); the daily
+#     loop owns them. This job answers "is the tree valid", not "is the data fresh".
 #   - a deploy. Workers Builds deploys from `main`, which is the point: this gate is
 #     what makes reaching `main` mean something.
 #
