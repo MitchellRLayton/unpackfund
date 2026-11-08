@@ -280,6 +280,27 @@ def test_a_quarter_covered_international_fund_gets_the_callout_not_a_bar():
     assert "Inferred" not in body  # no stated mandate in the name, no inference
 
 
+def test_the_callout_does_not_print_the_same_share_twice():
+    # Of equity and of the fund are different quantities, and they coincide when the fund
+    # holds nothing but equity. "70.7% of its equity weight (70.7% of the fund)" reads like
+    # a bug, so the parenthetical is printed only when it adds a number.
+    all_equity = [
+        {"company_id": "c_0000000001", "asset_cat": "equity", "weight_bp": 2_100},
+        {"company_id": "c_0000000009", "asset_cat": "equity", "weight_bp": 7_900},
+    ]
+    body = text(section(render(fund(name="Acme Core Fund", holdings=all_equity), SIZED)))
+    assert "21.0% of its equity weight" in body
+    assert "of the fund)" not in body.split("No computed size split")[1].split("</p>")[0]
+
+    # A cash sleeve makes the two differ, and the second number is then worth printing.
+    with_cash = all_equity + [
+        {"company_id": None, "asset_cat": "cash", "weight_bp": 1_000},
+    ]
+    body = text(section(render(fund(name="Acme Core Fund", holdings=with_cash), SIZED)))
+    assert "21.0% of its equity weight could be placed in a style zone "
+    "(19.1% of the fund)" in body
+
+
 def test_a_quarter_covered_fund_with_a_stated_mandate_adds_the_labelled_inference():
     # The ranges are measured on the zone bands now, so a fund whose name states a
     # mandate gets the labelled prediction for the weight we could not place — and the

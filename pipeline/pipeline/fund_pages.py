@@ -703,6 +703,14 @@ def _size_section_zones(fund: dict, table: dict) -> str:
     zone_sentence = _zone_mix_sentence(zone_bp, placed_bp, table)
     ranking_note = _zone_source_sentence(table, zone_keys)
     inference = _inference_notice(mandate, ranges) if inferred else ""
+    # The two shares are different quantities (of equity, of the fund) that coincide on a
+    # fund with no cash, options or borrowed sleeve. Printing "70.7% ... (70.7% ...)" reads
+    # like a mistake, so the parenthetical appears only when it adds a number.
+    of_fund = (
+        ""
+        if round(placed_of_equity, 1) == round(placed_of_gross, 1)
+        else f" ({placed_of_gross:.1f}% of the fund)"
+    )
 
     if basis == "computed":
         # The bar is drawn from the placed weight, so it is drawn only when that weight is
@@ -798,8 +806,7 @@ def _size_section_zones(fund: dict, table: dict) -> str:
         body = f"""<div class="notice notice--quiet">
           <p><strong>No computed size split for this fund.</strong> Only
           {placed_of_equity:.1f}% of its equity weight could be placed in a style zone
-          ({placed_of_gross:.1f}% of the fund), which is below the 80% this page needs before
-          it draws one. {_unplaced_sentence(unplaced_bp, gross, fund)} A bar drawn from the
+          {of_fund}, which is below the 80% this page needs before it draws one. {_unplaced_sentence(unplaced_bp, gross, fund)} A bar drawn from the
           remainder would describe our mapping rather than the fund.</p>
         </div>"""
         body += inference
