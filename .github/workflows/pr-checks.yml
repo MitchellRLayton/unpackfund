@@ -14,15 +14,20 @@
 # `pipeline:test` and `data:validate` are pnpm wrappers around `../.venv/pipeline/bin/
 # python`, a path that only exists in a local checkout (the refresh workflow documents
 # the same substitution). Here the module is installed with `pip install ./pipeline`
-# and called with `python -m`, which is the identical module and the identical
-# arguments. Everything else is the same command the local gate runs, so a red check
-# means the same thing locally and here.
+# and called with `python -m`: the same module with the same arguments, so a failure
+# here is a failure there.
+#
+# Same command is not quite the same coverage, and the difference is worth stating so
+# nobody over-reads a green run: eleven pipeline tests self-skip in CI because they gate
+# on machine-local paths (`verify_effective_holdings` defaults to a mirror under `.work/`,
+# and `pipeline/artifacts` commits no files). Locally they run. Tracked as T-0003.
 #
 # Deliberately NOT in this job:
 #   - any secret. Nothing here touches SEC, Cloudflare or R2, so a pull request from a
 #     fork runs exactly what a maintainer's runs.
-#   - `pipeline.refresh` / `build`. Those fetch from EDGAR and take ~26-55 minutes; the
-#     daily loop owns them. This job answers "is the tree valid", not "is the data fresh".
+#   - `pipeline.refresh` / `build`. Those fetch from EDGAR and take ~52-60 minutes (observed
+#     on successful runs); the daily loop owns them. This job answers "is the tree valid",
+#     not "is the data fresh".
 #   - a deploy. Workers Builds deploys from `main`, which is the point: this gate is
 #     what makes reaching `main` mean something.
 #
@@ -77,9 +82,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install ./pipeline
-          # pytest is a test tool, not a runtime dependency, and without it the
-          # pipeline half of the gate dies before it checks anything.
-          python -m pip install pytest
+          # pytest is a test tool, not a runtime dependency, and without it the pipeline
+          # half of the gate dies before it checks anything. **Pinned**, because this
+          # command decides what the required merge condition is: an unpinned install
+          # would let a pytest release change the gate with no commit to review. Bump it
+          # deliberately, in a PR that the gate itself re-tests. Matches the version the
+          # local venv runs.
+          python -m pip install "pytest==9.2.0"
 
       - name: Install the site
         run: pnpm install --frozen-lockfile
@@ -104,7 +113,8 @@ jobs:
         working-directory: pipeline
         run: python -m pipeline.validate --fixtures
 
-      # Last, and deliberately: it is the slowest step, and a type or test failure
-      # should fail the run before four minutes are spent exporting the site.
+      # Last, and deliberately. The export itself is quick (13 s observed), so this is not
+      # about the time: it is about the signal. A broken typecheck or a failing test names
+      # the defect, while a failed export is the downstream symptom of one.
       - name: Build the static export
         run: pnpm build
