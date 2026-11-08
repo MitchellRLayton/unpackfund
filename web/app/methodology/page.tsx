@@ -755,6 +755,14 @@ export default function MethodologyPage() {
         ranked, not dropped: the ranking uses the dollars behind each holding, not the
         rounded weight the page prints.
       </p>
+      <p>
+        That ordering has one visible consequence, and VTI itself shows it: the
+        market&rsquo;s smallest 3% should read as 3% on the bar of the fund that{" "}
+        <em>is</em> the market, and VTI&rsquo;s micro line reads lower, because the tail
+        of the market is held in positions under one basis point each and a published
+        weight floors to zero. The ranking counts those dollars; the bar, built from the
+        weights the page prints, cannot. No band is corrected to hide the difference.
+      </p>
 
       <h3 id="size-inferred">One label, and what it is not</h3>
       <p>
