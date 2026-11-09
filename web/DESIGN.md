@@ -139,11 +139,12 @@ One palette, defined once in `app/globals.css` as OKLCH custom properties and re
 copies `globals.css` verbatim into every page's `fund-page.css` — so a token that moves in the app moves on the static
 page at its next build, and the two surfaces cannot drift into different palettes.
 
-The operator's palette, recorded 2026-11-07 (light; the dark-scheme value in parentheses): paper 97% 0.012 85
-(17% 0.015 260); surface 99% 0.006 85 (21% 0.015 260); ink 22% 0.02 260 (93% 0.012 85); graphite 55% 0.01 260
-(68% 0.01 260); tier-us 55% 0.13 250 (68% 0.12 250); tier-dm 76% 0.11 85 (72% 0.10 85); tier-em 58% 0.12 60
-(64% 0.11 60); tier-none 70% 0 0 (55% 0 0); alert 58% 0.19 30 (68% 0.17 30) — errors only, always with an icon and
-words.
+The operator's palette, recorded 2026-11-07, is the table in _Tokens_ below — values for both schemes, one row per
+token, checked against `app/globals.css` on 2026-11-09. **This section carried a second, inline copy of those numbers
+until then and the two had drifted**: the copy named graphite `55% 0.01 260`, tier-us `55% 0.13 250`, tier-dm
+`76% 0.11 85`, tier-em `58% 0.12 60` and tier-none `70% 0 0`, while the stylesheet shipped `48%`, `50%`, `60% 0.12 85`,
+`38% 0.15 55` and `50% 0 0`. A palette written twice is a palette that disagrees with itself; the table is now the only
+record in this document, and `app/globals.css` is the only record anywhere.
 
 **The stylesheet moves every value that has to move, and both schemes have moved, because a token is a value with a job
 and the job is measured.** Words answer to WCAG AA 4.5:1, a 6 px edge or a bar fill answers to 3:1 as a graphical
