@@ -17,10 +17,11 @@ not invent:
   Taylor series.
 
 The real-release tests (the five redesign portfolios and the three real funds) need
-the mirrored release, which lives outside the repository and is not present in CI.
-They skip with the reason named rather than failing, and every number they check is
-also recorded here, so a reader can see what the release said on 2026-11-03.1
-without having it.
+the mirrored release — ``pnpm pages:mirror``, ~2.3 MB of fund documents, deliberately
+not committed — which is not present in CI. They skip with the reason named rather
+than failing, every number they check is also recorded here, and ``tests/conftest.py``
+fails the suite if anything skips for a reason that is not on its allowlist, so a
+silent skip cannot appear. Point ``UNPACKFUND_MIRROR`` at a mirror to run them.
 """
 
 from __future__ import annotations

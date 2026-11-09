@@ -1171,9 +1171,12 @@ def print_fixtures(digits: int = DPS) -> None:
 # 8. Real release data: readers
 # ---------------------------------------------------------------------------
 
-DEFAULT_MIRROR = Path(
-    "/Users/mitchell.layton/Personal-AI-Sandbox/.work/mirror-test/live"
-)
+#: Where ``pnpm pages:mirror`` puts the live release on a developer machine. It is
+#: derived from this file so the default is the same on any machine and inside any
+#: git worktree; ``UNPACKFUND_MIRROR`` overrides it. CI has no mirror, which is why
+#: the release-dependent tests skip there with a named reason (contract: the suite
+#: fails on a skip reason that is not on the allowlist — see ``tests/conftest.py``).
+DEFAULT_MIRROR = Path(__file__).resolve().parents[2] / ".work" / "mirror-test" / "live"
 
 
 @dataclass(frozen=True)
