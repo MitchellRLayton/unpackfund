@@ -1171,12 +1171,38 @@ def print_fixtures(digits: int = DPS) -> None:
 # 8. Real release data: readers
 # ---------------------------------------------------------------------------
 
-#: Where ``pnpm pages:mirror`` puts the live release on a developer machine. It is
-#: derived from this file so the default is the same on any machine and inside any
-#: git worktree; ``UNPACKFUND_MIRROR`` overrides it. CI has no mirror, which is why
-#: the release-dependent tests skip there with a named reason (contract: the suite
-#: fails on a skip reason that is not on the allowlist — see ``tests/conftest.py``).
-DEFAULT_MIRROR = Path(__file__).resolve().parents[2] / ".work" / "mirror-test" / "live"
+def _mirror_candidates() -> tuple[Path, ...]:
+    """Where a mirrored release can be, in the order worth checking.
+
+    The clone-relative paths are derived from this file, so the answer does not
+    depend on who is logged in or which worktree runs it. Nothing here is committed:
+    a mirror is ~2.3 MB of fund documents that ``pnpm pages:mirror`` copies from the
+    live release, so CI has none and the release-dependent tests skip there with a
+    named reason (``tests/conftest.py`` fails a skip reason that is not registered).
+    """
+    clone = Path(__file__).resolve().parents[2]
+    return (
+        clone / "pipeline" / "artifacts" / "mirror" / "live",  # what pages:mirror writes
+        clone / ".work" / "mirror-test" / "live",
+        # a mirror placed beside the clone, or beside the workspace that holds both the
+        # clone and its worktrees (`.work/wt-*/`), which is where this machine keeps one
+        clone.parent / ".work" / "mirror-test" / "live",
+        clone.parent.parent / ".work" / "mirror-test" / "live",
+    )
+
+
+def _first_mirror() -> Path:
+    candidates = _mirror_candidates()
+    for candidate in candidates:
+        if (candidate / "funds").is_dir():
+            return candidate
+    return candidates[0]
+
+
+#: ``$UNPACKFUND_MIRROR`` wins; otherwise the first candidate that actually holds
+#: ``funds/``; otherwise the documented place to build one, so the skip message says
+#: which path was looked for.
+DEFAULT_MIRROR = Path(os.environ["UNPACKFUND_MIRROR"]) if os.environ.get("UNPACKFUND_MIRROR") else _first_mirror()
 
 
 @dataclass(frozen=True)

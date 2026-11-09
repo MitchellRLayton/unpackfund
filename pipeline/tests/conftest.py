@@ -69,79 +69,103 @@ def corrupt_release(root: Path, document: dict, mutate) -> Path:
 
 
 
+
 # ---------------------------------------------------------------------------
-# No silent skips.
+# No unregistered skips.
 #
-# Twelve tests in this suite can only run against data a developer machine has and
-# CI does not: the mirrored live release (`pnpm pages:mirror`, ~2.3 MB, deliberately
-# not committed) and one built release under `artifacts/`. Those may skip, and only
-# those, and only with a reason string registered below. Any other skip — a later
-# `skipif`, `importorskip` or `pytest.skip` — stops the run instead of quietly
-# shrinking what the gate proves.
+# Eleven tests can only run against data a developer machine has and CI does not:
+# the mirrored live release (`pnpm pages:mirror`, ~2.3 MB, deliberately not
+# committed) and one built release under `artifacts/`. Those may skip, and only
+# those, and only with a reason registered below. Any other skip stops the run —
+# whatever mechanism produced it: a `skipif` mark (bool or string condition), an
+# unconditional `skip` mark, `pytest.importorskip`, or a bare `pytest.skip` inside a
+# test body.
 #
 # Why this exists: the required `checks` job reported "1369 passed, 11 skipped"
 # while a local run reported "1379 passed, 1 skipped", and nothing recorded which
-# eleven they were or why (task T-0003).
+# eleven they were or why (task T-0003). The first version of this hook only
+# inspected decidable `skipif` marks, so `importorskip` and `pytest.skip` still
+# exited 0 — caught in review, fixed here by also failing the session on any
+# observed skip whose reason is not registered.
 # ---------------------------------------------------------------------------
 
 SKIP_ALLOWLIST = (
-    "mirrored release not present at",
+    "mirrored release not present at ",
     "no built release on this machine",
 )
 
-#: Skips actually taken this session, as (nodeid, reason), for the summary below.
-_OBSERVED_SKIPS: list[tuple[str, str]] = []
-
 
 def _allowed(reason: str) -> bool:
-    return any(allowed in reason for allowed in SKIP_ALLOWLIST)
+    """A reason must *begin* with a registered phrase — containing one is not enough."""
+    return any(reason.startswith(prefix) for prefix in SKIP_ALLOWLIST)
 
 
-def _skip_condition(mark) -> tuple[bool, str] | None:
-    """The mark's condition as a bool, plus its reason; None when it is not decidable here."""
-    if not mark.args:
-        return None
-    condition = mark.args[0]
-    if isinstance(condition, str):
-        return None  # pytest evaluates string conditions itself
-    reason = mark.kwargs.get("reason") or (mark.args[1] if len(mark.args) > 1 else "")
-    return bool(condition), str(reason)
+def _registered() -> str:
+    return " | ".join(repr(prefix) for prefix in SKIP_ALLOWLIST)
+
+
+def _reason_text(report) -> str:
+    """The skip reason as the marker wrote it, without pytest's own decoration."""
+    reason = report.longrepr
+    if isinstance(reason, tuple) and len(reason) == 3:
+        reason = reason[2]
+    text = " ".join(str(reason).split())
+    for prefix in ("Skipped: ", "skipped: "):
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+    return text.strip()
 
 
 def pytest_collection_modifyitems(config, items):
-    """Refuse a skip whose reason is not registered: a silent skip is a hole in the gate."""
+    """Stop before the run when a mark can never be satisfied for an unregistered reason."""
     for item in items:
-        for mark in item.iter_markers(name="skipif"):
-            decided = _skip_condition(mark)
-            if decided is None:
-                continue
-            condition, reason = decided
-            if condition and not _allowed(reason):
+        marks = list(item.iter_markers(name="skipif")) + list(item.iter_markers(name="skip"))
+        for mark in marks:
+            condition = True
+            if mark.name == "skipif":
+                if not mark.args:
+                    continue
+                condition = mark.args[0]
+                if isinstance(condition, str):
+                    continue  # pytest evaluates the expression; the session-end check covers it
+                condition = bool(condition)
+            reason = mark.kwargs.get("reason") or (mark.args[1] if len(mark.args) > 1 else "")
+            if condition and not _allowed(str(reason)):
                 raise pytest.UsageError(
-                    f"{item.nodeid} would skip for an unregistered reason: {reason!r}. "
-                    "Register it in tests/conftest.py SKIP_ALLOWLIST deliberately, with a "
-                    "comment saying what data it needs and why the gate cannot have it."
+                    f"{item.nodeid} would skip for an unregistered reason: {str(reason)!r}. "
+                    f"Registered reasons begin with: {_registered()}. Add a new one to "
+                    "SKIP_ALLOWLIST in tests/conftest.py deliberately, with a comment saying "
+                    "what data it needs and why the gate cannot have it."
                 )
 
 
-def pytest_runtest_logreport(report):
-    """Remember every skip taken, so the terminal summary can name them."""
-    if report.skipped and report.when in {"setup", "call"}:
-        reason = report.longrepr
-        if isinstance(reason, tuple) and len(reason) == 3:
-            reason = reason[2]
-        _OBSERVED_SKIPS.append((report.nodeid, str(reason).strip().splitlines()[0]))
+def pytest_sessionfinish(session, exitstatus):
+    """Fail the session when anything skipped for an unregistered reason at runtime.
+
+    This is the half a collection-time hook cannot see: `pytest.skip()`,
+    `pytest.importorskip()` and string `skipif` conditions only decide during the run.
+    """
+    offenders = [
+        (report.nodeid, _reason_text(report))
+        for report in (session.config.pluginmanager.get_plugin("terminalreporter").stats.get("skipped") or [])
+        if not _allowed(_reason_text(report))
+    ]
+    if not offenders:
+        return
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is not None:
+        reporter.section("unregistered skips (the gate is smaller than it looks)")
+        for nodeid, reason in offenders:
+            reporter.write_line(f"  {nodeid}\n    {reason}")
+        reporter.write_line(f"  registered reasons begin with: {_registered()}")
+    session.exitstatus = 1
 
 
 def pytest_terminal_summary(terminalreporter):
-    """Print the skips by name: eleven anonymous `s` characters prove nothing."""
-    _OBSERVED_SKIPS.clear()
+    """Print every skip taken, by name: anonymous `s` characters prove nothing."""
     skipped = terminalreporter.stats.get("skipped") or []
     if not skipped:
         return
     terminalreporter.section("registered skips (data this gate cannot have)")
     for report in skipped:
-        reason = report.longrepr
-        if isinstance(reason, tuple) and len(reason) == 3:
-            reason = reason[2]
-        terminalreporter.write_line(f"  {report.nodeid}\n    {str(reason).strip().splitlines()[0]}")
+        terminalreporter.write_line(f"  {report.nodeid}\n    {_reason_text(report)}")
