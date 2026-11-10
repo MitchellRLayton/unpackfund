@@ -4,7 +4,13 @@ import Link from "next/link";
 import { SearchPalette } from "@/components/shell/SearchPalette";
 import { SiteFooter } from "@/components/shell/SiteFooter";
 import { SiteNav } from "@/components/shell/SiteNav";
-import { OG_IMAGE, SITE_NAME, SITE_URL } from "@/lib/metadata";
+import {
+  HOME_DESCRIPTION,
+  HOME_TITLE,
+  OG_IMAGE,
+  SITE_NAME,
+  SITE_URL,
+} from "@/lib/metadata";
 import "./globals.css";
 
 /**
@@ -26,14 +32,14 @@ const INDEXABLE = process.env.NEXT_PUBLIC_INDEXABLE === "1";
  */
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "UnpackFund — see the companies behind your funds",
-  description: "See the companies you actually own through your ETFs and mutual funds.",
+  title: HOME_TITLE,
+  description: HOME_DESCRIPTION,
   robots: { index: INDEXABLE, follow: INDEXABLE },
   openGraph: {
     type: "website",
     siteName: SITE_NAME,
-    title: "UnpackFund — see the companies behind your funds",
-    description: "See the companies you actually own through your ETFs and mutual funds.",
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
     url: SITE_URL,
     images: [
       {
@@ -46,8 +52,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "UnpackFund — see the companies behind your funds",
-    description: "See the companies you actually own through your ETFs and mutual funds.",
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
     images: [OG_IMAGE.path],
   },
 };
