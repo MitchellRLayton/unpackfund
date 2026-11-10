@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   MAX_MEMBER_LAG_DAYS,
+  unownedBenchmarkNames,
   MIN_FUND_WEIGHT,
   activeShare,
   blendWeights,
@@ -479,5 +480,68 @@ describe("the registry", () => {
     // AVUV is the case the feature exists for: tagged US small value, not part of it.
     expect(FUND_STYLE_BY_TICKER.get("AVUV")?.peerMember).toBe(false);
     expect(FUND_STYLE_BY_TICKER.get("VBR")?.peerMember).toBe(true);
+  });
+});
+
+// -- §9.4: the names you don't own -------------------------------------------
+describe("unownedBenchmarkNames", () => {
+  const names = {
+    c_a: { name: "Alpha", ticker: "AAA" },
+    c_b: { name: "Beta", ticker: null },
+    c_c: { name: "Gamma", ticker: "CCC" },
+  };
+  const holders = { c_a: 3, c_b: 1, c_c: 2 };
+
+  it("lists only companies the reader holds none of, largest first", () => {
+    const rows = unownedBenchmarkNames(
+      { c_b: 0.4 },
+      { c_a: 0.2, c_b: 0.3, c_c: 0.1 },
+      names,
+      holders,
+    );
+    expect(rows.map((row) => row.companyId)).toEqual(["c_a", "c_c"]);
+    expect(rows[0]).toEqual({
+      companyId: "c_a",
+      name: "Alpha",
+      ticker: "AAA",
+      weight: 0.2,
+      holders: 3,
+    });
+  });
+
+  it("treats a rounding-sized holding as owned, not as none", () => {
+    // 0.0001 is 0.01%: it prints as a number, so saying "you own none of it" would be false.
+    const rows = unownedBenchmarkNames(
+      { c_a: 0.0001 },
+      { c_a: 0.2, c_c: 0.1 },
+      names,
+      holders,
+    );
+    expect(rows.map((row) => row.companyId)).toEqual(["c_c"]);
+  });
+
+  it("breaks ties on the holder count, so the same data prints the same order", () => {
+    const rows = unownedBenchmarkNames(
+      {},
+      { c_a: 0.1, c_b: 0.1, c_c: 0.1 },
+      names,
+      holders,
+    );
+    expect(rows.map((row) => row.companyId)).toEqual(["c_a", "c_c", "c_b"]);
+  });
+
+  it("skips a company it has no name for rather than printing an id", () => {
+    const rows = unownedBenchmarkNames({}, { c_a: 0.1, c_zzz: 0.5 }, names, holders);
+    expect(rows.map((row) => row.companyId)).toEqual(["c_a"]);
+  });
+
+  it("honours the limit", () => {
+    const many = Object.fromEntries(
+      Array.from({ length: 30 }, (_, index) => [`c_${index}`, 0.01 * (index + 1)]),
+    );
+    const manyNames = Object.fromEntries(
+      Object.keys(many).map((id) => [id, { name: id, ticker: null }]),
+    );
+    expect(unownedBenchmarkNames({}, many, manyNames, {}, 20)).toHaveLength(20);
   });
 });

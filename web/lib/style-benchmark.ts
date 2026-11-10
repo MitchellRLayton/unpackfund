@@ -214,6 +214,22 @@ export interface ClassBenchmark {
   classId: string;
   /** Company id to fraction of the composite. Sums to the members' mean coverage. */
   weights: Record<string, number>;
+  /**
+   * Company id to its name and ticker, taken from the members' own rows.
+   *
+   * The §9.4 section lists benchmark holdings the reader does not own, and those are
+   * precisely the companies the ledger has no row for — so the names have to come from
+   * the filings that produced the benchmark. No extra request: every member document
+   * carries the name on each holding.
+   */
+  names: Record<string, { name: string; ticker: string | null }>;
+  /**
+   * Company id to how many members hold it, so the section can say "held by 8 of 9".
+   *
+   * A count of *funds*, not of weight: it answers "is this name a consensus holding or
+   * one manager's position", which is the question a benchmark-only row raises.
+   */
+  holders: Record<string, number>;
   members: CompositeMember[];
   /** Members the registry names but the release could not supply, or that went stale. */
   dropped: { ticker: string; why: "missing" | "stale" }[];
@@ -250,7 +266,15 @@ export function compositeFromDocuments(
     else dropped.push({ ticker: member.ticker, why: "missing" });
   }
   if (present.length === 0) {
-    return { classId, weights: {}, members: [], dropped, asOf: null };
+    return {
+      classId,
+      weights: {},
+      names: {},
+      holders: {},
+      members: [],
+      dropped,
+      asOf: null,
+    };
   }
 
   const newest = present.reduce(
@@ -265,18 +289,34 @@ export function compositeFromDocuments(
     return false;
   });
   if (fresh.length === 0) {
-    return { classId, weights: {}, members: [], dropped, asOf: null };
+    return {
+      classId,
+      weights: {},
+      names: {},
+      holders: {},
+      members: [],
+      dropped,
+      asOf: null,
+    };
   }
 
   // Equal weight, then the same company-id roll-up the ledger uses: two share classes of
   // one issuer are one company, and a row with no company is not a company.
   const totals = new Map<string, number>();
+  const names: ClassBenchmark["names"] = {};
+  const holders: Record<string, number> = {};
   for (const document of fresh) {
     const share = 1 / fresh.length;
+    const seen = new Set<string>();
     for (const holding of document.holdings) {
       if (!holding.company_id || holding.weight_bp === 0) continue;
       const weight = (holding.weight_bp / FULL_ALLOCATION_BP) * share;
       totals.set(holding.company_id, (totals.get(holding.company_id) ?? 0) + weight);
+      names[holding.company_id] ??= { name: holding.name, ticker: holding.ticker };
+      if (!seen.has(holding.company_id)) {
+        seen.add(holding.company_id);
+        holders[holding.company_id] = (holders[holding.company_id] ?? 0) + 1;
+      }
     }
   }
 
@@ -286,6 +326,8 @@ export function compositeFromDocuments(
   return {
     classId,
     weights,
+    names,
+    holders,
     members: fresh.map((document) => ({
       ticker: document.ticker,
       asOf: document.as_of,
@@ -338,4 +380,56 @@ function daysBetween(from: string, to: string): number {
   const end = Date.parse(`${to}T00:00:00Z`);
   if (Number.isNaN(start) || Number.isNaN(end)) return 0;
   return Math.abs(end - start) / 86_400_000;
+}
+
+/** One benchmark-only name, for §9.4's "style names you don't own". */
+export interface UnownedName {
+  companyId: string;
+  name: string;
+  ticker: string | null;
+  /** The company's weight in the style benchmark, as a fraction. */
+  weight: number;
+  /** How many members of the benchmark hold it. */
+  holders: number;
+}
+
+/**
+ * §9.4: the largest style-benchmark holdings the reader does not own at all.
+ *
+ * "Does not own" is `weight === 0`, not "owns little": a row already in the table above
+ * can be inspected there, and repeating it would make the list read as a recommendation
+ * to buy more of something. The list is therefore a description of the benchmark, and the
+ * copy says so.
+ *
+ * Ties break on the member count and then the name, so two runs over the same data print
+ * the same 20 rows — a list that reshuffled between renders would look like it changed.
+ */
+export function unownedBenchmarkNames(
+  portfolio: Record<string, number>,
+  benchmark: Record<string, number>,
+  names: Record<string, { name: string; ticker: string | null }>,
+  holders: Record<string, number>,
+  limit = 20,
+): UnownedName[] {
+  const rows: UnownedName[] = [];
+  for (const [companyId, weight] of Object.entries(benchmark)) {
+    if (weight <= 0) continue;
+    // `> 0` rather than `=== 0`: a rounding artefact that prints "0.00%" is still a
+    // holding, and telling a reader they own none of it would be wrong.
+    if ((portfolio[companyId] ?? 0) > 0) continue;
+    const identity = names[companyId];
+    if (!identity) continue;
+    rows.push({
+      companyId,
+      name: identity.name,
+      ticker: identity.ticker,
+      weight,
+      holders: holders[companyId] ?? 0,
+    });
+  }
+  rows.sort(
+    (a, b) =>
+      b.weight - a.weight || b.holders - a.holders || a.name.localeCompare(b.name),
+  );
+  return rows.slice(0, limit);
 }

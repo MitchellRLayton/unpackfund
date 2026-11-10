@@ -59,7 +59,11 @@
 import { useMemo, useState } from "react";
 
 import { PAGE_SIZE, pageOf } from "@/components/directory/paging";
-import { activeShare, type GateResult } from "@/lib/style-benchmark";
+import {
+  activeShare,
+  unownedBenchmarkNames,
+  type GateResult,
+} from "@/lib/style-benchmark";
 import { captionFor } from "@/lib/use-style-benchmark";
 import { benchmarkDelta } from "@/lib/benchmark";
 import { TIER_AS_OF, tierConvention, tierOf } from "@/lib/country-tier";
@@ -213,6 +217,12 @@ function directionWords(
 
 type Comparator = (a: LedgerRow, b: LedgerRow) => number;
 
+/** What the table opens on: your weight, largest first (operator, 2026-11-10). */
+const DEFAULT_SORT: SortState<CompanySortKey> = {
+  key: "weight",
+  direction: "descending",
+};
+
 /** The four comparators that do not depend on which benchmark the style column shows. */
 const BASE_COMPARE: Record<"name" | "country" | "weight" | "funds", Comparator> = {
   name: (a, b) =>
@@ -325,10 +335,25 @@ export function CompaniesLens({ model }: LensProps) {
   const gate = lensGateState(model);
   const ledger = model.ledger;
   const releaseAsOf = model.releaseAsOf ?? "unknown";
-  const [sort, setSort] = useState<SortState<CompanySortKey>>({
-    key: "weight",
-    direction: "descending",
+  // The sort belongs to the portfolio it was chosen for. Storing the key it was chosen
+  // under and *deriving* the fallback is what keeps a style sort from following the
+  // reader into a different book — and it is a derivation rather than an effect, because
+  // the React Compiler (rightly) refuses a setState in an effect body.
+  const portfolioKey = Object.keys(model.split.fundWeights)
+    .sort()
+    .map((ticker) => `${ticker}:${model.split.fundWeights[ticker]}`)
+    .concat(model.split.direct.map((entry) => `${entry.key}:${entry.weight}`))
+    .join(",");
+  const [sortFor, setSortFor] = useState<{
+    key: string;
+    sort: SortState<CompanySortKey>;
+  }>({
+    key: portfolioKey,
+    sort: DEFAULT_SORT,
   });
+  const sort = sortFor.key === portfolioKey ? sortFor.sort : DEFAULT_SORT;
+  const chooseSort = (next: SortState<CompanySortKey>) =>
+    setSortFor({ key: portfolioKey, sort: next });
   const [query, setQuery] = useState("");
   // Pages are 1-based and clamped on the way out, so a filter that shortens the list while
   // the reader is on page 40 shows the last page instead of an empty table.
@@ -373,6 +398,12 @@ export function CompaniesLens({ model }: LensProps) {
         weights: style.weights,
         activeShare: style.activeShare,
         caption: style.caption,
+        label: "Blend",
+        names: style.names,
+        holders: style.holders,
+        members: Math.max(
+          ...style.classes.map((entry) => entry.composite.members.length),
+        ),
       };
     }
     const weights = chosenClass.composite.weights;
@@ -382,8 +413,33 @@ export function CompaniesLens({ model }: LensProps) {
       weights,
       activeShare: activeShare(portfolio, weights),
       caption: captionFor(style.gate, [chosenClass]),
+      label: chosenClass.styleClass.display,
+      members: chosenClass.composite.members.length,
+      // One class's own maps: "held by 3 of 3" must count *its* members, not every
+      // member the blend happens to include.
+      names: chosenClass.composite.names,
+      holders: chosenClass.composite.holders,
     };
   }, [style, chosenClass, ledger]);
+
+  /** Your book as a company→weight map: what active share and §9.4 both read. */
+  const portfolioWeights = useMemo(() => {
+    const weights: Record<string, number> = {};
+    for (const row of ledger?.rows ?? []) weights[row.company_id] = row.weight;
+    return weights;
+  }, [ledger]);
+
+  /** §9.4: the largest benchmark names the reader holds none of. */
+  const unowned = useMemo(() => {
+    if (!style || !styleBasis) return [];
+    return unownedBenchmarkNames(
+      portfolioWeights,
+      styleBasis.weights,
+      styleBasis.names,
+      styleBasis.holders,
+      20,
+    );
+  }, [style, styleBasis, portfolioWeights]);
 
   /**
    * Sorting. §9.3's fallback: when the style columns are gone the style sort is gone too,
@@ -582,38 +638,45 @@ export function CompaniesLens({ model }: LensProps) {
           </p>
         ) : null}
         {/*
-          Which style the columns are against (§9.3's "sorting works on both new columns"
-          needs a defined subject when the portfolio is a blend). `mode-toggle` is the
-          site's segmented control, so this reads as one more view switch, not a new
-          control type. Hidden for a single-class portfolio: there is nothing to choose.
+          Which style the columns are against (§9.3). It is the same chip shape the rest
+          of the page uses, with the label above it in the note's small caps, and it is
+          `no-print`: a printed page has one table, not a choice of comparisons.
         */}
         {showStyleColumns && styleOptions.length > 1 ? (
-          <div
-            className="mode-toggle"
-            role="group"
-            aria-label="Which style the columns compare against"
-            data-style-choice
-          >
-            <button
-              type="button"
-              aria-pressed={styleChoice === null}
-              className={styleChoice === null ? "primary" : undefined}
-              onClick={() => setStyleChoice(null)}
+          <div className={`${styles.stylePicker} no-print`}>
+            <span className={styles.stylePickerLabel} id="style-picker-label">
+              Style benchmark
+            </span>
+            <div
+              className={styles.styleOptions}
+              role="group"
+              aria-labelledby="style-picker-label"
+              data-style-choice
             >
-              Blend
-            </button>
-            {styleOptions.map(({ styleClass }) => (
               <button
-                key={styleClass.id}
                 type="button"
-                aria-pressed={styleChoice === styleClass.id}
-                className={styleChoice === styleClass.id ? "primary" : undefined}
-                onClick={() => setStyleChoice(styleClass.id)}
+                className={styles.styleOption}
+                aria-pressed={styleChoice === null}
+                onClick={() => setStyleChoice(null)}
               >
-                {styleClass.display}
+                Blend
               </button>
-            ))}
-            <span className="muted">{styleBasis ? styleBasis.caption : ""}</span>
+              {styleOptions.map(({ styleClass }) => (
+                <button
+                  key={styleClass.id}
+                  type="button"
+                  className={styles.styleOption}
+                  aria-pressed={styleChoice === styleClass.id}
+                  onClick={() => setStyleChoice(styleClass.id)}
+                >
+                  {styleClass.display}
+                </button>
+              ))}
+            </div>
+            {/* What the selection is made of — members and weighting — in one quiet line. */}
+            <span className={styles.styleBasis}>
+              {styleBasis ? styleBasis.caption : ""}
+            </span>
           </div>
         ) : null}
         {/* §6: EFV-only, or any book that is its own benchmark. Words, not a column of
@@ -644,10 +707,10 @@ export function CompaniesLens({ model }: LensProps) {
             */}
             <caption>
               One row per company. Sorted by {sortLabel},{" "}
-              {directionWords(sort.key, sort.direction)}.
+              {directionWords(effectiveSort.key, effectiveSort.direction)}.
               {benchmark
-                ? styleBasis && showStyleColumns
-                  ? ` Benchmarks: ${benchmark.ticker} · ${styleBasis.caption}.`
+                ? showStyleColumns
+                  ? ` Benchmarks: ${benchmark.ticker} · style.`
                   : ` Benchmark: ${benchmark.ticker}.`
                 : null}
             </caption>
@@ -678,7 +741,7 @@ export function CompaniesLens({ model }: LensProps) {
                         type="button"
                         className="table__sort"
                         onClick={() => {
-                          setSort((current) => nextSort(current, key, column.first));
+                          chooseSort(nextSort(sort, key, column.first));
                           resetPage();
                         }}
                       >
@@ -823,6 +886,70 @@ export function CompaniesLens({ model }: LensProps) {
           rows down the page; the facts are the same and the shape is `/x`'s: the answer
           first, the explanation one click from it.
         */}
+        {/*
+          §9.4: the benchmark's biggest names you do not hold. It describes the benchmark,
+          not your portfolio, so it is closed by default and sits with the method copy —
+          and it is never a buy list, which the copy says outright.
+        */}
+        {showStyleColumns && unowned.length > 0 ? (
+          <details className={`${styles.unowned} no-print`} data-style-unowned>
+            <summary>
+              Style names you don&rsquo;t own — {styleBasis?.label ?? "style"}
+            </summary>
+            <p className="small muted">
+              The {unowned.length} largest holdings of{" "}
+              {styleBasis?.caption ?? "the style benchmark"} that your portfolio holds
+              none of. A description of the benchmark, not a suggestion: nothing here is a
+              recommendation to buy.
+            </p>
+            <div className={`table-wrap ${styles.unownedTable}`}>
+              <table className="table">
+                <caption className="small muted">
+                  Ranked by the company&rsquo;s weight in the style benchmark. &ldquo;Held
+                  by&rdquo; counts how many member funds hold it, out of{" "}
+                  {styleBasis?.members ?? 0}.
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col" className="num">
+                      #
+                    </th>
+                    <th scope="col">Company</th>
+                    <th scope="col" className="num">
+                      Style weight
+                    </th>
+                    <th scope="col" className="num">
+                      Held by
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {unowned.map((entry, index) => (
+                    <tr key={entry.companyId}>
+                      <td className="num">{formatCount(index + 1)}</td>
+                      <th scope="row">
+                        <button
+                          type="button"
+                          className="table__sort"
+                          onClick={() => model.openCompany(entry.companyId)}
+                        >
+                          {entry.name}
+                        </button>
+                        {entry.ticker ? <CellNote>{entry.ticker}</CellNote> : null}
+                      </th>
+                      <td className="num">{formatShare(entry.weight)}</td>
+                      <td className="num">
+                        {formatCount(entry.holders)} of{" "}
+                        {formatCount(styleBasis?.members ?? 0)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        ) : null}
+
         <details className={`${styles.method} no-print`}>
           <summary>How to read this table</summary>
           <p className="small muted">
@@ -838,6 +965,20 @@ export function CompaniesLens({ model }: LensProps) {
             scale for the whole table, set by the largest company in it and unchanged by
             the filter.
           </p>
+          {showStyleColumns && styleBasis ? (
+            <p className="small muted">
+              <strong>Style bench.</strong> is the company&rsquo;s weight in a benchmark
+              built from the style the table is set to. The benchmark is{" "}
+              <strong>equal-weighted</strong>: each member fund contributes{" "}
+              <strong>1/n</strong> of its own look-through, so no fund and no index family
+              dominates and a large fund is not the benchmark by accident of size. The
+              members are named above the table with their filing date.{" "}
+              <strong>Change vs style</strong> is your weight minus that weight in
+              percentage points. <strong>Active share</strong> is ½ Σ |yours − benchmark|
+              across every company either side holds: 0% means you hold the benchmark,
+              100% means you share no name with it.
+            </p>
+          ) : null}
           {benchmark ? (
             <p className="small muted">
               <strong>{benchmark.ticker}</strong> is {benchmark.name}, the one benchmark

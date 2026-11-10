@@ -92,16 +92,22 @@ const ROWS = [
 
 // Built through the real effective-holdings function: the summary block above the table
 // reads it, and a hand-written pair would crash on the shape rather than on the maths.
-const LEDGER: Ledger = withEffective({
-  rows: ROWS,
-  funds: [],
-  benchmark: {
-    ticker: "VT",
-    name: "Vanguard Total World Stock ETF",
-    as_of: "2026-09-30",
-  },
-  unmapped: [],
-} as unknown as Omit<Ledger, "effective">);
+function ledgerOf(rows: LedgerRow[]): Ledger {
+  // Built through the real effective-holdings function: the summary block above the table
+  // reads it, and a hand-written pair would crash on the shape rather than on the maths.
+  return withEffective({
+    rows,
+    funds: [],
+    benchmark: {
+      ticker: "VT",
+      name: "Vanguard Total World Stock ETF",
+      as_of: "2026-09-30",
+    },
+    unmapped: [],
+  } as unknown as Omit<Ledger, "effective">);
+}
+
+const LEDGER: Ledger = ledgerOf(ROWS);
 
 const US_MEMBERS = ["VBR", "IJS", "IWN"];
 const INTL_MEMBERS = ["AVDV", "DISV", "ISVL"];
@@ -149,9 +155,20 @@ function styleState() {
       ["INTL_SCV", intl],
     ]),
   );
+  const names: Record<string, { name: string; ticker: string | null }> = {};
+  const holders: Record<string, number> = {};
+  for (const composite of [us, intl]) {
+    for (const [companyId, identity] of Object.entries(composite.names))
+      names[companyId] ??= identity;
+    for (const [companyId, count] of Object.entries(composite.holders)) {
+      holders[companyId] = Math.max(holders[companyId] ?? 0, count);
+    }
+  }
   return {
     gate,
     weights,
+    names,
+    holders,
     activeShare: 0.4,
     classes: [
       { styleClass: STYLE_CLASS_BY_ID.get("US_SCV")!, composite: us },
@@ -167,7 +184,11 @@ function styleState() {
   };
 }
 
-function model(withStyle = true): WorkspaceModel {
+function model(
+  withStyle = true,
+  fundWeights: Record<string, number> = {},
+  ledger: Ledger = LEDGER,
+): WorkspaceModel {
   return {
     ready: true,
     problem: null,
@@ -183,7 +204,7 @@ function model(withStyle = true): WorkspaceModel {
       unallocatedBp: 0,
       overBp: 0,
     },
-    split: { fundWeights: {}, direct: [], cash: 0, invested: 1, unallocated: 0 },
+    split: { fundWeights, direct: [], cash: 0, invested: 1, unallocated: 0 },
     funds: [],
     style: withStyle
       ? { state: styleState(), gate: styleState().gate, pending: [] }
@@ -193,7 +214,7 @@ function model(withStyle = true): WorkspaceModel {
     securities: { rows: new Map(), pending: [], error: null },
     countries: {},
     benchmark: null,
-    ledger: LEDGER,
+    ledger,
     ledgerError: null,
     ledgerMode: "worker",
     durationMs: 1,
@@ -281,20 +302,20 @@ describe("the style columns' sort", () => {
 
     // Pick one class. US small value holds nothing of c_ghi and 10% of c_abc, so the style
     // numbers themselves move — which is the whole point of the picker.
-    const picker = screen.getByRole("group", {
-      name: /which style the columns compare against/i,
-    });
+    const picker = screen.getByRole("group", { name: /style benchmark/i });
     fireEvent.click(within(picker).getByRole("button", { name: "US Small Cap Value" }));
-    expect(screen.getByText(/Benchmarks: VT · US Small Cap Value/)).toBeTruthy();
+    // The caption is one line by design (static-xray-frontend v1.0.27); the *identity* of
+    // the chosen benchmark belongs to the picker's own line.
+    expect(
+      screen.getByText(/US Small Cap Value \(equal-weighted index blend/),
+    ).toBeTruthy();
     expect(styleCells("C_GHI")).toEqual({ bench: "0.00%", delta: "(+20.00%)" });
     expect(styleCells("C_ABC")).toEqual({ bench: "10.00%", delta: "(+40.00%)" });
   });
 
   it("shows the blend by default and offers every class the gate selected", () => {
     render(<CompaniesLens model={model(true)} />);
-    const picker = screen.getByRole("group", {
-      name: /which style the columns compare against/i,
-    });
+    const picker = screen.getByRole("group", { name: /style benchmark/i });
     expect(
       within(picker).getByRole("button", { name: "Blend" }).getAttribute("aria-pressed"),
     ).toBe("true");
@@ -308,5 +329,53 @@ describe("the style columns' sort", () => {
     // caption and beside the picker, which is deliberate (one is the record, one is the
     // explanation of what the buttons chose).
     expect(screen.getAllByText(/Style blend:/).length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("the style columns' defaults", () => {
+  it("opens on your weight, and picking a style does not change the sort", () => {
+    render(<CompaniesLens model={model(true)} />);
+    expect(screen.getByText(/Sorted by Your weight, largest first/)).toBeTruthy();
+
+    const picker = screen.getByRole("group", { name: /style benchmark/i });
+    fireEvent.click(within(picker).getByRole("button", { name: "US Small Cap Value" }));
+    // Choosing a benchmark re-bases the numbers; it is not a sort command.
+    expect(screen.getByText(/Sorted by Your weight, largest first/)).toBeTruthy();
+  });
+
+  it("does not carry a style sort into a different portfolio", () => {
+    const { rerender } = render(
+      <CompaniesLens model={model(true, { AVUV: 0.6, AVDV: 0.4 })} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Change vs style" }));
+    expect(screen.getByText(/Sorted by Change vs style/)).toBeTruthy();
+
+    // The reader replaces the funds. The table opens the way a first visit does.
+    rerender(<CompaniesLens model={model(true, { SPMO: 1 })} />);
+    expect(screen.getByText(/Sorted by Your weight, largest first/)).toBeTruthy();
+  });
+
+  it("names the benchmark's biggest names the reader does not hold, and says it is not advice", () => {
+    // This book holds two of the three companies the benchmark carries, so c_ghi is the
+    // (only) name it does not own.
+    render(
+      <CompaniesLens
+        model={model(
+          true,
+          {},
+          ledgerOf(ROWS.filter((row) => row.company_id !== "c_ghi")),
+        )}
+      />,
+    );
+    const summary = screen.getByText(/Style names you don.t own/i);
+    const section = summary.closest("details");
+    expect(section).not.toBeNull();
+    const text = section?.textContent ?? "";
+    // c_ghi is in the benchmark and at 0% of the portfolio; c_abc and c_def are held. The
+    // name printed is the one the filings carry, which in this fixture is the id itself.
+    expect(text).toMatch(/c_ghi/i);
+    expect(text).not.toMatch(/c_abc/i);
+    expect(text).toContain("not a suggestion");
+    expect(text).toMatch(/held by/i);
   });
 });

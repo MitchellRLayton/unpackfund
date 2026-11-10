@@ -47,13 +47,17 @@ export interface StyleBenchmarkState {
   gate: Extract<GateResult, { eligible: true }>;
   /** Company id → weight in the blended style benchmark. */
   weights: Record<string, number>;
+  /** Company id → its name and ticker, from the members' own filed rows (§9.4). */
+  names: Record<string, { name: string; ticker: string | null }>;
+  /** Company id → how many members of the benchmark hold it (§9.4). */
+  holders: Record<string, number>;
   /** `½ Σ |yours − benchmark|`; 0 when the reader holds the benchmark itself. */
   activeShare: number;
   /** The classes used, with the members that actually contributed. */
   classes: { styleClass: StyleClass; composite: ClassBenchmark }[];
   /** The newest filing date across the members used. */
   asOf: string | null;
-  /** The caption's middle clause: "US Small Cap Value (index blend: VBR · IJS · IWN, as of …)". */
+  /** The caption's middle clause: "US Small Cap Value (equal-weighted index blend: VBR · IJS · IWN, as of …)". */
   caption: string;
   /** True when the reader's book and the benchmark agree — print words, not zeros. */
   holdsBenchmark: boolean;
@@ -70,9 +74,18 @@ export interface StyleBenchmarkResult {
   pending: string[];
 }
 
-/** The POC's switch: nothing renders unless the build asks for it. */
+/**
+ * The feature switch, **on by default** so a merge ships it, with `=0` as the kill switch.
+ *
+ * It began as opt-in (`=== "1"`) while the build was a POC. It is default-on now because
+ * the pull request that carries it is the one that is meant to reach production: a flag
+ * that defaults to off would make "ready to merge" mean "ready to merge and do nothing".
+ * Setting `NEXT_PUBLIC_STYLE_BENCH=0` at build time removes it again — the same lever the
+ * preview and any rollback would use, and the gate is the product's own condition, so a
+ * portfolio that is not one style family never fetches a member fund either way.
+ */
 export function styleBenchmarkEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_STYLE_BENCH === "1";
+  return process.env.NEXT_PUBLIC_STYLE_BENCH !== "0";
 }
 
 /**
@@ -200,6 +213,19 @@ export function useStyleBenchmark(
     if (classes.length === 0) return null;
 
     const weights = blendWeights(gate.classes, composites);
+    const names: StyleBenchmarkState["names"] = {};
+    const holders: StyleBenchmarkState["holders"] = {};
+    for (const { composite } of classes) {
+      for (const [companyId, identity] of Object.entries(composite.names)) {
+        names[companyId] ??= identity;
+      }
+      for (const [companyId, count] of Object.entries(composite.holders)) {
+        // A company can be in two classes' benchmarks (a US name with a small intl
+        // holding, say); the count is across every member the reader's blend uses, which
+        // is the number the section prints.
+        holders[companyId] = Math.max(holders[companyId] ?? 0, count);
+      }
+    }
     const distance = activeShare(portfolioCompanyWeights(ledger.rows), weights);
     const asOf =
       classes
@@ -211,6 +237,8 @@ export function useStyleBenchmark(
     return {
       gate,
       weights,
+      names,
+      holders,
       activeShare: distance,
       classes,
       asOf,
@@ -228,18 +256,20 @@ export function useStyleBenchmark(
 /**
  * The caption's middle clause, exactly as §1 specifies it.
  *
- * One class: `US Small Cap Value (index blend: VBR · IJS · IWN, as of 2026-09-30)`.
+ * One class: `US Small Cap Value (equal-weighted index blend: VBR · IJS · IWN, as of …)`.
  * Several: `Style blend: 60% US Small Cap Value · 40% Intl Small Cap Value`.
  */
 export function captionFor(
   gate: Extract<GateResult, { eligible: true }>,
   classes: { styleClass: StyleClass; composite: ClassBenchmark }[],
 ): string {
+  // "Equal-weighted" is in the caption on purpose: the benchmark is `(1/n) Σ member`, and
+  // a reader who assumed cap-weighting would read every number here as a different claim.
   const kindWord = (styleClass: StyleClass): string =>
     styleClass.kind === "index_blend"
-      ? "index blend"
+      ? "equal-weighted index blend"
       : styleClass.kind === "peer_composite"
-        ? "peer composite"
+        ? "equal-weighted peer composite"
         : "single ETF";
 
   if (classes.length === 1) {
