@@ -384,12 +384,14 @@ def test_plan_json_shape_and_totals(tmp_path):
     document = plan.to_json()
 
     assert set(document) == {
-        "generated_utc", "live", "parent", "staged", "quarters", "forced", "bucket", "ignored",
+        "generated_utc", "live", "parent", "parent_kept", "staged", "quarters", "forced", "bucket", "ignored",
         "considered", "decisions", "totals"
     }
     assert document["ignored"] == []
     assert document["live"] == "2026-10-29"
     assert document["parent"] == "2026-10-20"
+    # Reported, not kept: the default keep-set is live + staged (2026-11-10).
+    assert document["parent_kept"] is False
     assert document["staged"] == "2026-10-30"
     assert len(document["decisions"]) == 5
     assert set(document["decisions"][0]) == {
@@ -397,7 +399,7 @@ def test_plan_json_shape_and_totals(tmp_path):
     }
 
     totals = document["totals"]
-    assert totals["keep"] == 3 and totals["stub"] == 0 and totals["delete"] == 2
+    assert totals["keep"] == 2 and totals["stub"] == 0 and totals["delete"] == 3
     assert totals["remove_objects"] == sum(decision.remove_objects for decision in plan.decisions)
     assert totals["deleted_bytes"] == plan.remove_bytes
     assert totals["kept_bytes"] == document["bucket"]["bytes"] - plan.remove_bytes
@@ -428,9 +430,10 @@ def test_cli_plan_writes_json_and_prints_the_table(tmp_path, capsys, monkeypatch
 
     printed = capsys.readouterr().out
     assert "live: 2026-10-29" in printed
-    assert "plan: 3 keep, 0 stub, 2 delete" in printed
+    assert "plan: 2 keep, 0 stub, 3 delete" in printed
+    assert "parent: 2026-10-20 (not kept)" in printed
     document = json.loads(target.read_text())
-    assert document["totals"]["delete"] == 2
+    assert document["totals"]["delete"] == 3  # 10-20 (the ex-parent), 10-15 and 10-01
 
 
 def test_cli_plan_dry_run_count_prints_only_the_totals(capsys, monkeypatch):
@@ -440,7 +443,7 @@ def test_cli_plan_dry_run_count_prints_only_the_totals(capsys, monkeypatch):
     assert retention.main(["plan", "--dry-run-count"], client=fake) == 0
 
     printed = capsys.readouterr().out
-    assert "plan: 2 keep, 0 stub, 2 delete" in printed
+    assert "plan: 1 keep, 0 stub, 2 delete, 1 defer" in printed
     assert "release            action" not in printed  # the per-release table is what it skips
 
 
@@ -503,8 +506,9 @@ def test_ignored_bytes_are_not_counted_in_the_deleted_totals(monkeypatch):
     assert plan.remove_bytes == without.remove_bytes - stub.remove_bytes
     assert plan.considered_bytes == plan.bucket_bytes - ignored_bytes
     # Storage after the plan still includes the ignored prefix: it costs, it is just not ours to prune.
-    assert plan.after_bytes == plan.bucket_bytes
-    assert plan.to_json()["totals"]["deleted_bytes"] == 0
+    assert plan.after_bytes == plan.bucket_bytes - plan.remove_bytes
+    assert plan.to_json()["totals"]["deleted_bytes"] == plan.remove_bytes
+    assert plan.to_json()["totals"]["deleted_bytes"] == without.remove_bytes - stub.remove_bytes
 
 
 def test_ignored_prefix_does_not_count_toward_the_mass_delete_guard(monkeypatch):
@@ -549,7 +553,7 @@ def test_cli_ignore_prefix_is_repeatable_and_printed_as_ignored(capsys, monkeypa
     printed = capsys.readouterr().out
     assert "ignored: releases/2026-10-28 (1 object(s) / 2 B)" in printed
     assert "ignored: releases/2026-10-27 (1 object(s) / 2 B)" in printed
-    assert "plan: 2 keep, 0 stub, 1 delete" in printed
+    assert "plan: 1 keep, 0 stub, 1 delete, 1 defer" in printed
 
 
 def test_cli_apply_accepts_ignore_prefix_and_leaves_it_alone(capsys, monkeypatch):
@@ -588,11 +592,13 @@ def test_apply_deletes_in_batches_objects_before_the_prefix(monkeypatch):
 
     report = retention.apply_plan(plan, fake, yes=True)
 
-    assert [len(batch) for batch in fake.batches] == [1000, 1000, 509]
-    assert all(key.startswith("releases/2026-10-20/") for batch in fake.batches for key in batch)
-    assert fake.prefix_deletes == ["releases/2026-10-20/"]
+    assert all(len(batch) <= r2.DELETE_BATCH_LIMIT for batch in fake.batches)
+    assert sum(len(batch) for batch in fake.batches) == plan.remove_objects
+    deleted_prefixes = ("releases/2026-10-20/", "releases/2026-10-25/")
+    assert all(key.startswith(deleted_prefixes) for batch in fake.batches for key in batch)
+    assert sorted(fake.prefix_deletes) == ["releases/2026-10-20/", "releases/2026-10-25/"]
     assert not any(key.startswith("releases/2026-10-20/") for key in fake.objects)
-    assert report.deleted_objects == len(fake.batches[0]) + len(fake.batches[1]) + len(fake.batches[2])
+    assert report.deleted_objects == sum(len(batch) for batch in fake.batches)
     assert report.confirmed_objects == report.deleted_objects
     assert report.after_objects == len(fake.list_objects(""))
     assert report.after_bytes == sum(entry.size for entry in fake.list_objects(""))
@@ -613,7 +619,8 @@ def test_apply_stub_removes_the_bytes_and_writes_the_archive_record(monkeypatch)
     assert not any(key.startswith(("releases/2026-09-15/funds/", "releases/2026-09-15/companies/")) for key in fake.objects)
     for kept in ("manifest.json", "release.json", "catalogue.json", "tickers.json", "aliases.json", "index/A.json"):
         assert f"releases/2026-09-15/{kept}" in fake.objects
-    assert fake.prefix_deletes == []  # a stub keeps its prefix
+    # The stub keeps its prefix; 2026-10-25 is the ex-parent now deleted in full.
+    assert fake.prefix_deletes == ["releases/2026-10-25/"]
 
     document = json.loads(fake.objects[archive_key])
     assert document["kind"] == "archive-stub"
@@ -795,3 +802,99 @@ def test_delete_object_swallows_404():
 
     with pytest.raises(R2Error):
         r2.R2Client("https://e", "b", r2.Credentials("AKID", "secret"), opener=forbidden).delete_object("releases/a/x.json")
+
+
+# -- the 2026-11-10 policy change: live + staged only, and a drained backlog ---
+def test_the_rollback_parent_is_reported_but_not_kept_by_default(monkeypatch):
+    """The operator retired the rollback target on 2026-11-10 to halve the steady state."""
+    monkeypatch.setattr(retention, "utc_today", lambda: TODAY)
+    fake = bucket(
+        ["2026-10-15", "2026-10-20", "2026-10-29", "2026-10-30"], live="2026-10-29", staged="2026-10-30"
+    )
+
+    plan = retention.build_plan(fake, today=TODAY)
+
+    assert plan.live == "2026-10-29" and plan.staged == "2026-10-30"
+    assert plan.parent == "2026-10-20"  # still reported: it is what --keep-parent would hold
+    assert plan.parent_kept is False
+    assert actions(plan.decisions)["2026-10-20"] == retention.DELETE
+    assert plan.count(retention.KEEP) == 2
+
+
+def test_keep_parent_flag_puts_the_rollback_target_back(monkeypatch):
+    monkeypatch.setattr(retention, "utc_today", lambda: TODAY)
+    fake = bucket(
+        ["2026-10-15", "2026-10-20", "2026-10-29", "2026-10-30"], live="2026-10-29", staged="2026-10-30"
+    )
+
+    plan = retention.build_plan(fake, today=TODAY, keep_parent=True)
+
+    assert plan.parent_kept is True
+    assert actions(plan.decisions)["2026-10-20"] == retention.KEEP
+    assert plan.count(retention.KEEP) == 3
+
+
+def test_a_backlog_over_the_guard_is_drained_oldest_first():
+    """Nine superannuated releases are 90% of this bucket: the guard must not deadlock.
+
+    Before 2026-11-10 this state refused on every run, so a month of un-pruned
+    releases (93% of the real bucket) could never be cleared by the job that was
+    supposed to clear it.
+    """
+    release_ids = [f"2026-10-{day:02d}" for day in range(1, 11)]
+    entries = listing(*release_ids)
+    decisions = retention.plan_releases(entries, "2026-10-10", None, today=TODAY)
+    assert sum(decision.remove_objects for decision in decisions) / len(entries) > retention.MASS_DELETE_FRACTION
+
+    drained = retention.defer_to_fit_guard(decisions, entries)
+
+    by_action = actions(drained)
+    assert by_action["2026-10-10"] == retention.KEEP
+    assert by_action["2026-10-01"] == retention.DELETE  # the oldest backlog goes first
+    assert by_action["2026-10-09"] == retention.DEFER  # the newest waits for the next run
+    assert retention.DEFER in by_action.values()
+    removed = sum(decision.remove_objects for decision in drained)
+    assert removed / len(entries) <= retention.MASS_DELETE_FRACTION
+    assert removed > 0  # it makes progress rather than refusing
+
+    # A deferred release deletes nothing and reads exactly like a keep to `apply`.
+    deferred = next(decision for decision in drained if decision.action == retention.DEFER)
+    assert deferred.delete == () and deferred.remove_objects == 0
+    assert "deferred to the next run" in deferred.reason
+
+
+def test_the_deferral_is_a_drain_not_a_refusal(monkeypatch):
+    """Each run takes the budget, so a backlog clears over several runs."""
+    monkeypatch.setattr(retention, "utc_today", lambda: TODAY)
+    release_ids = [f"2026-10-{day:02d}" for day in range(1, 11)]
+    remaining = list(release_ids)
+    runs = 0
+    while len(remaining) > 1 and runs < 10:
+        runs += 1
+        fake = bucket(remaining, live=remaining[-1])
+        plan = retention.build_plan(fake, today=TODAY)
+        assert plan.removal_fraction <= retention.MASS_DELETE_FRACTION
+        retention.apply_plan(plan, fake, yes=True)
+        remaining = sorted(
+            {key.split("/")[1] for key in fake.objects if key.startswith("releases/")}, key=lambda rid: rid
+        )
+    assert remaining == ["2026-10-10"]  # only the live release is left
+    assert runs > 1  # it took more than one run, which is the point of draining
+
+
+def test_apply_plan_workers_deletes_every_doomed_release(monkeypatch):
+    monkeypatch.setattr(retention, "utc_today", lambda: TODAY)
+    release_ids = ["2026-10-01", "2026-10-15", "2026-10-20", "2026-10-29"]
+    fake = bucket(release_ids, live="2026-10-29")
+    plan = retention.build_plan(fake, today=TODAY)
+
+    report = retention.apply_plan(plan, fake, yes=True, workers=4)
+
+    assert report.deleted_objects == plan.remove_objects
+    assert report.confirmed_objects == report.deleted_objects
+    left = sorted({key.split("/")[1] for key in fake.objects if key.startswith("releases/")})
+    # The live release always survives; 2026-10-20 is the ex-parent the guard deferred
+    # (three of four releases is 75% of this fixture), so it is still there too.
+    assert "2026-10-29" in left
+    assert "releases/2026-10-29/funds/T0.json" in fake.objects
+    assert len(left) - 1 == plan.count(retention.DEFER)
