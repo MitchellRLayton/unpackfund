@@ -59,10 +59,17 @@
 import { useMemo, useState } from "react";
 
 import { PAGE_SIZE, pageOf } from "@/components/directory/paging";
+import { activeShare, type GateResult } from "@/lib/style-benchmark";
 import { benchmarkDelta } from "@/lib/benchmark";
 import { TIER_AS_OF, tierConvention, tierOf } from "@/lib/country-tier";
 import { saveCsv } from "@/lib/export";
-import { deltaInkClass, formatCount, formatShare, formatSignedShare } from "@/lib/format";
+import {
+  deltaInkClass,
+  formatCount,
+  formatPct1,
+  formatShare,
+  formatSignedShare,
+} from "@/lib/format";
 import type { LedgerRow, LedgerSource } from "@/lib/types";
 import type { LensProps } from "@/components/workspace/types";
 
@@ -93,6 +100,12 @@ interface Column {
   first: "ascending" | "descending";
   /** Only shown when the release publishes a benchmark (`static-xray-frontend` §4a). */
   benchmark?: boolean;
+  /**
+   * Only shown when the style gate passed (POC, `equity-style-benchmark-plan.md` §1).
+   * A column whose existence depends on the portfolio is a column the *reader* asked
+   * for by holding one style family, which is why it can appear and disappear.
+   */
+  style?: boolean;
 }
 
 /**
@@ -124,9 +137,43 @@ const COLUMNS: Column[] = [
     first: "descending",
     benchmark: true,
   },
+  // POC: `Style bench.` keeps a short header so the table width is stable (§9.2); the
+  // class name lives in the caption and the tooltip.
+  { key: null, label: "Style bench.", numeric: true, first: "descending", style: true },
+  {
+    key: null,
+    label: "Change vs style",
+    numeric: true,
+    first: "descending",
+    style: true,
+  },
   { key: "funds", label: "Held by", numeric: true, first: "descending" },
   { key: null, label: "From your funds", numeric: false, first: "descending" },
 ];
+
+/**
+ * The optional mixed-family hint (§1), behind its own flag and off by default.
+ *
+ * A gate that fails silently is right for the product — a column appearing and vanishing
+ * with no explanation is worse than no column — but it is unhelpful while building the
+ * feature, so the POC can turn one muted line on to see *why* it hid.
+ */
+function styleHintEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_STYLE_HINT === "1";
+}
+
+function styleHintText(gate: Extract<GateResult, { eligible: false }>): string {
+  switch (gate.reason) {
+    case "unclassified":
+      return `Style benchmark needs every fund to be classified. Unclassified: ${gate.offenders.join(", ")}.`;
+    case "mixed_family":
+      return `Style benchmark needs every fund in one style family. Mixed: ${gate.offenders.join(", ")}.`;
+    case "region_fail":
+      return `Style benchmark needs each fund's holdings in its class's region. Outside: ${gate.offenders.join(", ")}.`;
+    default:
+      return "Style benchmark needs at least one fund.";
+  }
+}
 
 const COLUMN_LABEL: Record<CompanySortKey, string> = {
   name: "Company",
@@ -292,6 +339,20 @@ export function CompaniesLens({ model }: LensProps) {
     return sortBy(matching, sort, COMPARE);
   }, [ledger, query, sort, provider]);
 
+  // Active share against VT, the same distance the style columns print against the style
+  // benchmark: `½ Σ |yours − benchmark|` over the companies either side holds. Computed
+  // above the early returns because hooks may not be called conditionally.
+  const vtActiveShare = useMemo(() => {
+    if (!ledger?.benchmark) return null;
+    const portfolio: Record<string, number> = {};
+    const vt: Record<string, number> = {};
+    for (const row of ledger.rows) {
+      portfolio[row.company_id] = row.weight;
+      vt[row.company_id] = row.benchmark_weight ?? 0;
+    }
+    return activeShare(portfolio, vt);
+  }, [ledger]);
+
   if (gate.kind === "blocked") {
     return <LensState title={gate.title} body={gate.body} />;
   }
@@ -318,7 +379,17 @@ export function CompaniesLens({ model }: LensProps) {
   // benchmark's own ticker and name, and a boolean does not narrow `ledger.benchmark`.
   const benchmark = ledger.benchmark;
   const hasBenchmark = benchmark !== null;
-  const columns = COLUMNS.filter((column) => !column.benchmark || hasBenchmark);
+  // The style gate's verdict lives on the model; `state` is non-null only when the flag is
+  // on, the gate passed and the member benchmarks are loaded.
+  const style = model.style?.state ?? null;
+  const styleGate = model.style?.gate ?? null;
+  // "You hold the benchmark" (§6, EFV-only): a column of zeros is not a comparison, so the
+  // columns are replaced by one sentence rather than printed.
+  const showStyleColumns = style !== null && !style.holdsBenchmark;
+  const columns = COLUMNS.filter(
+    (column) =>
+      (!column.benchmark || hasBenchmark) && (!column.style || showStyleColumns),
+  );
   const current = pageOf(visible, page, PAGE_SIZE);
   const totalWeight = ledger.rows.reduce((sum, row) => sum + row.weight, 0);
   const suppressed = ledger.funds.filter((fund) => fund.coverage_pct < 60);
@@ -398,6 +469,37 @@ export function CompaniesLens({ model }: LensProps) {
           Counted by company, not by fund: the weights in this table add up to the part of
           your portfolio a filing could place, {formatShare(totalWeight)} of the whole.
         </p>
+        {/*
+          Active share (§1): one line, two numbers, and only the ones that exist. VT's is
+          always computed when the release publishes VT; the style one only when the gate
+          passed.
+        */}
+        {hasBenchmark ? (
+          <p className="small muted" data-style-active-share>
+            Active share vs {benchmark.ticker}:{" "}
+            <strong>{vtActiveShare === null ? "—" : formatPct1(vtActiveShare)}</strong>
+            {style && !style.holdsBenchmark ? (
+              <>
+                {" "}
+                · vs style: <strong>{formatPct1(style.activeShare)}</strong>
+              </>
+            ) : null}
+          </p>
+        ) : null}
+        {/* §6: EFV-only, or any book that is its own benchmark. Words, not a column of
+            zeros — the comparison has no distance to report. */}
+        {style?.holdsBenchmark ? (
+          <p className="notice notice--quiet" role="status" data-style-holds-benchmark>
+            You hold the style benchmark. Your mix is {style.caption}, so every row would
+            show a difference of zero and the style columns are not shown.
+          </p>
+        ) : null}
+        {/* §1's optional hint, behind its own flag: a failed gate is otherwise silent. */}
+        {!style && styleGate && !styleGate.eligible && styleHintEnabled() ? (
+          <p className="small muted" data-style-hint>
+            {styleHintText(styleGate)}
+          </p>
+        ) : null}
         <div className="table-wrap">
           <table className={`tier-edge table ${styles.compact}`}>
             {/*
@@ -413,7 +515,11 @@ export function CompaniesLens({ model }: LensProps) {
             <caption>
               One row per company. Sorted by {sortLabel},{" "}
               {directionWords(sort.key, sort.direction)}.
-              {benchmark ? ` Benchmark: ${benchmark.ticker}.` : null}
+              {benchmark
+                ? style && showStyleColumns
+                  ? ` Benchmarks: ${benchmark.ticker} · ${style.caption}.`
+                  : ` Benchmark: ${benchmark.ticker}.`
+                : null}
             </caption>
             <thead>
               <tr>
@@ -460,6 +566,13 @@ export function CompaniesLens({ model }: LensProps) {
                 // The rank is the row's place in the whole sorted table, not on its page.
                 const rank = current.start + offset;
                 const delta = benchmarkDelta(row.weight, row.benchmark_weight);
+                // The style column's own pair. A company the style benchmark does not hold
+                // is `0`, not `null`: the benchmark *is* the class's holdings, so absent
+                // means zero weight — the same reading the VT column already uses.
+                const styleWeight = style?.weights[row.company_id] ?? 0;
+                const styleDelta = showStyleColumns
+                  ? benchmarkDelta(row.weight, styleWeight)
+                  : null;
                 // The market in words, which is what a reader without the colour needs.
                 // For a US company that word is the country code itself, so printing it
                 // would read "US US": the code already answers the market, and the note is
@@ -529,6 +642,20 @@ export function CompaniesLens({ model }: LensProps) {
                         )}
                       </td>
                     ) : null}
+                    {showStyleColumns ? (
+                      <>
+                        <td className="num">{formatShare(styleWeight)}</td>
+                        <td className="num">
+                          {styleDelta === null ? (
+                            "—"
+                          ) : (
+                            <span className={deltaInkClass(styleDelta)}>
+                              {formatSignedShare(styleDelta)}
+                            </span>
+                          )}
+                        </td>
+                      </>
+                    ) : null}
                     <td className="num">
                       {row.holder_count > 0 ? formatCount(row.holder_count) : "—"}
                       {row.held_directly ? <CellNote>plus direct</CellNote> : null}
@@ -549,6 +676,8 @@ export function CompaniesLens({ model }: LensProps) {
                 <td className="num">{formatShare(totalWeight)}</td>
                 {hasBenchmark ? <td className="num" /> : null}
                 {hasBenchmark ? <td className="num" /> : null}
+                {showStyleColumns ? <td className="num" /> : null}
+                {showStyleColumns ? <td className="num" /> : null}
                 <td className="num" />
                 <td>
                   <CellNote>the rest of your mix is untraced weight or cash</CellNote>
