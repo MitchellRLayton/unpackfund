@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { Workspace } from "@/components/workspace/Workspace";
+import { pageMetadata } from "@/lib/metadata";
 
 /**
  * `/` — the workspace.
@@ -11,11 +12,12 @@ import { Workspace } from "@/components/workspace/Workspace";
  * someone on a different page. The route only changes the title and the description a
  * link preview shows.
  */
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "UnpackFund — see the companies behind your funds",
   description:
     "Add the funds you own and see the companies behind them: the share of each fund that could be traced to a company, the markets those companies are in, the overlap between funds, and the filing dates behind every number.",
-};
+  path: "/",
+});
 
 export default function HomePage() {
   return (

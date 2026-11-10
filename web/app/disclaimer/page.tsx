@@ -9,12 +9,14 @@ import {
   LEGAL_COPY_VERSION,
   LEGAL_ENTITY,
 } from "@/lib/legal";
+import { pageMetadata } from "@/lib/metadata";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "UnpackFund — disclaimer",
   description:
     "UnpackFund is not investment advice. Holdings data lags by 60 to 150 days and may be wrong.",
-};
+  path: "/disclaimer/",
+});
 
 const SECTIONS: readonly ReadingSection[] = [
   { id: "advice", title: "Not investment advice" },

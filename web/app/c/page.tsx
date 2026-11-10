@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { CompaniesSurface } from "@/components/company/CompaniesSurface";
+import { pageMetadata } from "@/lib/metadata";
 
 /**
  * `/c/` — the companies directory, and the company detail it opens over itself.
@@ -11,11 +12,12 @@ import { CompaniesSurface } from "@/components/company/CompaniesSurface";
  * directory). Anything the server rendered into this element would be a second
  * source of truth for a company id, and a page that can disagree with its own URL.
  */
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "UnpackFund — company directory",
   description:
     "Every company in the published release, searchable by name and ticker, with the funds that report it and where it is domiciled.",
-};
+  path: "/c/",
+});
 
 export default function CompanyPage() {
   return (

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+
 import Link from "next/link";
 
 import { ReadingLayout, type ReadingSection } from "@/components/prose/ReadingLayout";
@@ -10,12 +11,14 @@ import {
   LEGAL_ENTITY,
   METHODOLOGY_VERSION,
 } from "@/lib/legal";
+import { pageMetadata } from "@/lib/metadata";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "UnpackFund — methodology",
   description:
     "How every number on UnpackFund is produced: the filings it reads, how a holding becomes a company, the look-through arithmetic, coverage and the 70/60 bands, the three dates, concentration, overlap, market tiers, the benchmark, and what is not known.",
-};
+  path: "/methodology/",
+});
 
 /**
  * The headings, in order, for the table of contents.
