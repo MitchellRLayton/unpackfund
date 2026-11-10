@@ -31,6 +31,7 @@ import {
   type LoadState,
 } from "./use-release";
 import { useSecurities, type SecuritiesState } from "./use-securities";
+import { useStyleBenchmark, type StyleBenchmarkResult } from "./use-style-benchmark";
 import type {
   BenchmarkComparison,
   DirectHolding,
@@ -56,6 +57,13 @@ export interface WorkspaceModel {
   securities: SecuritiesState;
   countries: Record<string, string> | null;
   benchmark: BenchmarkComparison | null;
+  /**
+   * The style benchmark for this portfolio, when the POC's flag is on and the gate passes
+   * (`equity-style-benchmark-plan.md` §6). `state` is `null` both when the feature is off
+   * and when the portfolio is not one style family — `gate` says which, and the lens reads
+   * only `state`, so a failed gate renders nothing rather than a reason.
+   */
+  style: StyleBenchmarkResult;
   ledger: Ledger | null;
   ledgerError: string | null;
   ledgerMode: "worker" | "main-thread";
@@ -169,6 +177,18 @@ export function useWorkspace(): WorkspaceModel {
     countriesLoad.data?.companies ?? null,
   );
 
+  const style = useStyleBenchmark(
+    releaseData,
+    funds,
+    useMemo(
+      () =>
+        Object.entries(split.fundWeights).map(([ticker, weight]) => ({ ticker, weight })),
+      [split.fundWeights],
+    ),
+    ledger,
+    countriesLoad.data?.companies ?? null,
+  );
+
   const fundByTicker = useMemo(() => {
     const map = new Map<string, FundDocument>();
     for (const fund of funds) map.set(fund.ticker, fund);
@@ -200,6 +220,7 @@ export function useWorkspace(): WorkspaceModel {
     portfolio,
     split,
     funds,
+    style,
     pendingFunds: pending,
     fundsError,
     securities,

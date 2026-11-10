@@ -112,7 +112,24 @@ function signedPoints(delta: number): string {
  * its page number are the view's, and a file that followed them would be a different
  * answer every time it was opened.
  */
-export function companiesCsv(ledger: Ledger, releaseAsOf: string): string {
+/**
+ * The style columns, when the table is showing them (§9.5).
+ *
+ * `caption` is the benchmark that produced `weights`: a file that carried `style_weight_pct`
+ * without saying *which* style it was against would be a number with no provenance, and the
+ * caption is exactly what the table prints for a reader. Passing `null` writes the file the
+ * table has always written — no empty style columns.
+ */
+export interface StyleCsvColumns {
+  caption: string;
+  weights: Record<string, number>;
+}
+
+export function companiesCsv(
+  ledger: Ledger,
+  releaseAsOf: string,
+  style?: StyleCsvColumns | null,
+): string {
   const lines = [
     csvLine([
       "company_id",
@@ -121,6 +138,7 @@ export function companiesCsv(ledger: Ledger, releaseAsOf: string): string {
       "portfolio_weight_pct",
       "vt_weight_pct",
       "change_vs_vt_pp",
+      ...(style ? ["style_weight_pct", "change_vs_style_pp", "style_benchmark"] : []),
       "held_directly",
       "fund_count",
       "sources",
@@ -130,6 +148,9 @@ export function companiesCsv(ledger: Ledger, releaseAsOf: string): string {
 
   for (const row of ledger.rows) {
     const delta = benchmarkDelta(row.weight, row.benchmark_weight);
+    const styleWeight = style ? (style.weights[row.company_id] ?? 0) : null;
+    const styleDelta =
+      styleWeight === null ? null : benchmarkDelta(row.weight, styleWeight);
     lines.push(
       csvLine([
         row.company_id,
@@ -138,6 +159,13 @@ export function companiesCsv(ledger: Ledger, releaseAsOf: string): string {
         share(row.weight),
         row.benchmark_weight === null ? "" : share(row.benchmark_weight),
         delta === null ? "" : signedPoints(delta),
+        ...(style
+          ? [
+              share(styleWeight ?? 0),
+              styleDelta === null ? "" : signedPoints(styleDelta),
+              style.caption,
+            ]
+          : []),
         row.held_directly ? "yes" : "no",
         row.holder_count,
         row.sources.map(sourceCell).join("; "),

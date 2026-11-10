@@ -101,3 +101,118 @@
   display: flex;
   gap: var(--space-2);
 }
+
+/* ------------------------------------------------------------------------- */
+/* Style benchmark (POC, plan §1 and §9.3)                                    */
+/* ------------------------------------------------------------------------- */
+
+/* The subject line above the table: a small label, then the choices as chips. The
+   controls are the site's own chip shape — hairline border, 3px radius, note-sized
+   text — and the selected one takes the ink fill the primary buttons use, so the
+   control reads as part of the page rather than as a widget dropped onto it. */
+.stylePicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+  margin-block: var(--space-2);
+}
+
+.stylePickerLabel {
+  font-size: var(--text-12);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--graphite);
+  white-space: nowrap;
+}
+
+.styleOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.styleOption {
+  padding: 0.15rem var(--space-2);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--graphite);
+  font: inherit;
+  font-size: var(--text-12);
+  line-height: 1.6;
+  cursor: pointer;
+}
+
+.styleOption:hover {
+  border-color: var(--graphite);
+  color: var(--ink);
+}
+
+.styleOption[aria-pressed="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.styleOption:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* What the selected benchmark is made of, in the picker's own line: the caption under
+   the table stays one line (static-xray-frontend v1.0.27), and this is where the
+   members and the weighting live. */
+.styleBasis {
+  flex: 1 1 18rem;
+  min-width: 0;
+  color: var(--graphite);
+  font-size: var(--text-12);
+}
+
+/* §9.4's list: the benchmark's largest names the reader does not hold. It sits under the
+   table with the other method copy, closed by default, because it describes the
+   benchmark rather than the portfolio. */
+.unowned {
+  margin-top: var(--space-3);
+}
+
+.unownedTable {
+  margin-top: var(--space-2);
+}
+
+/* The composition of every class in the benchmark: a definition list under the chips, so
+   a reader can check what "style" means without changing the column. */
+.styleDefs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin-block: 0 var(--space-3);
+}
+
+.styleDefList {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 24rem;
+}
+
+.styleDefRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-12);
+}
+
+.styleDefRow dt {
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.styleDefRow dd {
+  margin: 0;
+  color: var(--graphite);
+  font-variant-numeric: tabular-nums;
+}

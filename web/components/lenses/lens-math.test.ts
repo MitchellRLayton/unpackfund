@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  companiesCsv,
   csvLine,
   fundsCsv,
   lensCsvName,
@@ -21,8 +22,10 @@ import {
   untracedTotals,
   type FundMixRow,
 } from "./lens-math";
+import { withEffective } from "@/lib/testing/ledger";
 import type {
   FundDocument,
+  Ledger,
   Holding,
   LedgerMetrics,
   LedgerRow,
@@ -850,5 +853,72 @@ describe("CSV", () => {
     );
     expect(csv).toContain(`untraced,total,100.00,,`);
     expect(csv).toContain("untraced,filed weight outside the holding schedules,0.00,");
+  });
+});
+
+/* ------------------------------------------------------------------------- */
+/* The companies CSV's style columns (§9.5)                                   */
+/* ------------------------------------------------------------------------- */
+
+describe("companiesCsv with the style columns", () => {
+  const ledger = withEffective({
+    rows: [
+      {
+        company_id: "c_1",
+        name: "Alpha",
+        ticker: "AAA",
+        country: "US",
+        weight: 0.5,
+        benchmark_weight: 0.02,
+        holder_count: 1,
+        held_directly: false,
+        sources: [{ kind: "fund", ref: "AVUV", weight: 0.5 }],
+      },
+      {
+        company_id: "c_2",
+        name: "Beta",
+        ticker: null,
+        country: "US",
+        weight: 0.3,
+        benchmark_weight: null,
+        holder_count: 0,
+        held_directly: true,
+        sources: [{ kind: "security", ref: "BBB", weight: 0.3 }],
+      },
+    ],
+    funds: [],
+    benchmark: {
+      ticker: "VT",
+      name: "Vanguard Total World Stock ETF",
+      as_of: "2026-09-30",
+    },
+    unmapped: [],
+  } as unknown as Omit<Ledger, "effective">);
+
+  it("writes the file it always wrote when no style is passed", () => {
+    const csv = companiesCsv(ledger, "2026-11-09.1");
+    const header = csv.split("\n")[0];
+    expect(header).toBe(
+      "company_id,name,ticker,portfolio_weight_pct,vt_weight_pct,change_vs_vt_pp,held_directly,fund_count,sources,release_as_of",
+    );
+    expect(csv).not.toContain("style");
+  });
+
+  it("adds the pair and names the benchmark it was measured against", () => {
+    const csv = companiesCsv(ledger, "2026-11-09.1", {
+      caption: "US Small Cap Value (index blend: VBR · IJS · IWN, as of 2026-06-30)",
+      weights: { c_1: 0.1 },
+    });
+    const lines = csv.split("\n");
+    expect(lines[0]).toBe(
+      "company_id,name,ticker,portfolio_weight_pct,vt_weight_pct,change_vs_vt_pp,style_weight_pct,change_vs_style_pp,style_benchmark,held_directly,fund_count,sources,release_as_of",
+    );
+    // Alpha: 50% held, 10% of the style benchmark → 10.00% and +40.00 points.
+    // The file's units are percent-as-number and points, matching the existing columns.
+    expect(lines[1]).toContain("50.00,2.00,+48.00,10.00");
+    expect(lines[1]).toContain("US Small Cap Value");
+    // Beta is in no member fund: a style weight of 0 is a real answer, not a blank.
+    expect(lines[2]).toContain("30.00,,,0.00");
+    expect(lines[2]).toContain("US Small Cap Value");
   });
 });
