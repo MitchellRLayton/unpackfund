@@ -35,6 +35,17 @@ export const OG_IMAGE = {
 } as const;
 
 /**
+ * The home page's title and description, in one place.
+ *
+ * They are needed twice — by `/` for its own card, and by the layout as the fallback a
+ * page that declares nothing still shows — and a second copy of a sentence is a copy
+ * that drifts. The layout imports these rather than repeating them.
+ */
+export const HOME_TITLE = "UnpackFund — see the companies behind your funds";
+export const HOME_DESCRIPTION =
+  "See the companies you actually own through your ETFs and mutual funds.";
+
+/**
  * The metadata for one route: the page's own title and description, plus the card
  * that shows them.
  *

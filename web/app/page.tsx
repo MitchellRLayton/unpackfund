@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { Workspace } from "@/components/workspace/Workspace";
-import { pageMetadata } from "@/lib/metadata";
+import { HOME_TITLE, pageMetadata } from "@/lib/metadata";
 
 /**
  * `/` — the workspace.
@@ -13,7 +13,7 @@ import { pageMetadata } from "@/lib/metadata";
  * link preview shows.
  */
 export const metadata: Metadata = pageMetadata({
-  title: "UnpackFund — see the companies behind your funds",
+  title: HOME_TITLE,
   description:
     "Add the funds you own and see the companies behind them: the share of each fund that could be traced to a company, the markets those companies are in, the overlap between funds, and the filing dates behind every number.",
   path: "/",
