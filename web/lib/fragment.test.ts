@@ -315,6 +315,46 @@ describe("weights and completeness", () => {
   });
 });
 
+describe("a comparison keeps the order it was given", () => {
+  // The comparison writer used to alphabetise both sides, so `/compare` re-ordered the
+  // funds the moment it wrote the link: a list typed VTI, VXUS, BND came back BND, VTI,
+  // VXUS on the next render. The order is the visitor's on both pages (see the module
+  // header), so the writer must not normalise it — this is the regression test for that.
+  const typedA = [
+    { ticker: "VTI", weight_bp: 6000 },
+    { ticker: "VXUS", weight_bp: 3000 },
+    { ticker: "BND", weight_bp: 1000 },
+  ];
+  const typedB = [
+    { ticker: "AVGV", weight_bp: 5000 },
+    { ticker: "AVUV", weight_bp: 5000 },
+  ];
+
+  it("writes the sides in the order they were typed, not alphabetically", () => {
+    const decoded = decodeComparison(`#${encodeComparison(typedA, typedB)}`);
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    expect(decoded.a.map((entry) => entry.ticker)).toEqual(["VTI", "VXUS", "BND"]);
+    expect(decoded.b.map((entry) => entry.ticker)).toEqual(["AVGV", "AVUV"]);
+  });
+
+  it("round-trips a one-sided comparison in order too", () => {
+    const decoded = decodeComparison(`#${encodeComparison(typedA, [])}`);
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    expect(decoded.a.map((entry) => entry.ticker)).toEqual(["VTI", "VXUS", "BND"]);
+  });
+
+  it("keeps the order of a second side that was filled first", () => {
+    // `/compare` lets a visitor fill B before A, and that link is a real comparison.
+    const decoded = decodeComparison(`#${encodeComparison([], typedB)}`);
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    expect(decoded.a).toEqual([]);
+    expect(decoded.b.map((entry) => entry.ticker)).toEqual(["AVGV", "AVUV"]);
+  });
+});
+
 describe("a comparison with only a second side", () => {
   // `/compare` starts empty and lets a visitor fill either column first. A link that
   // carries only B is a real comparison, not an empty view: it has to decode, and it
