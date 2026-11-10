@@ -344,6 +344,15 @@ describe("a comparison keeps the order it was given", () => {
     if (!decoded.ok) return;
     expect(decoded.a.map((entry) => entry.ticker)).toEqual(["VTI", "VXUS", "BND"]);
   });
+
+  it("keeps the order of a second side that was filled first", () => {
+    // `/compare` lets a visitor fill B before A, and that link is a real comparison.
+    const decoded = decodeComparison(`#${encodeComparison([], typedB)}`);
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    expect(decoded.a).toEqual([]);
+    expect(decoded.b.map((entry) => entry.ticker)).toEqual(["AVGV", "AVUV"]);
+  });
 });
 
 describe("a comparison with only a second side", () => {

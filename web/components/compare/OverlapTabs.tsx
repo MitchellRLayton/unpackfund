@@ -103,7 +103,7 @@ export function OverlapTabs({
             key,
             direction: previous.direction === "descending" ? "ascending" : "descending",
           }
-        : { key, direction: OVERLAP_SORT_DEFAULT[key] },
+        : { key, direction: OVERLAP_SORT_DEFAULT },
     );
   }
 
@@ -163,7 +163,12 @@ export function OverlapTabs({
         tabIndex={0}
         className={styles.tabPanel}
       >
-        <p className="small muted">{caption()}</p>
+        {/* `aria-live` because the order is the answer to a click: a screen reader
+         * that activates a sort button otherwise hears nothing change, and the arrow
+         * is drawn in CSS where it cannot be announced. */}
+        <p className="small muted" aria-live="polite">
+          {caption()}
+        </p>
         {visible.length === 0 ? (
           <p className="small">{emptySentence()}</p>
         ) : (

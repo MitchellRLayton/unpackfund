@@ -488,6 +488,20 @@ describe("automatic light/dark", () => {
     expect(CSS).not.toMatch(/data-tier[^{]*\.delta--?(up|down)?\s*\{/);
   });
 
+  it("paints the allocation meter from its state class, blue only at a whole", () => {
+    // The operator's complaint on 2026-11-09 was a bar that stayed red at exactly 100%,
+    // and the cause was a class name no rule matched (`meter__fill--over`). A component
+    // test can only prove the right string is emitted; this holds the other half — that
+    // the string still paints the approved blue. A rename on either side would leave the
+    // component test green and put the red bar back, which is the failure this catches.
+    expect(CSS).toMatch(/\.meter__fill\s*\{[^}]*background:\s*var\(--alert\)/);
+    expect(CSS).toMatch(/\.meter__fill--whole\s*\{[^}]*background:\s*var\(--whole\)/);
+    // The validator's sentence takes the same pair, so the two pages cannot disagree
+    // about what "fully allocated" looks like.
+    expect(CSS).toMatch(/\.tally__gate--locked\s*\{[^}]*color:\s*var\(--danger\)/);
+    expect(CSS).toMatch(/\.tally__gate--open\s*\{[^}]*color:\s*var\(--ok\)/);
+  });
+
   it("lets a table's sort button take the cell's alignment instead of centring", () => {
     // A `<button>` is centred by the user-agent stylesheet, and `display: inline-flex`
     // does not change that: the text becomes an anonymous flex item and `text-align`

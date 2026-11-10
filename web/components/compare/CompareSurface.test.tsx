@@ -473,6 +473,11 @@ describe("sorting the shared table", () => {
 
     // And the caption says which column is in force, so the order is never a mystery.
     expect(screen.getByText(/Sorted by In Mix B, largest first\./)).toBeTruthy();
+
+    // Reversing says so too, in words rather than only in the arrow.
+    fireEvent.click(header("In Mix B"));
+    expect(sortOf("In Mix B")).toBe("ascending");
+    expect(screen.getByText(/Sorted by In Mix B, smallest first\./)).toBeTruthy();
   });
 });
 
@@ -509,5 +514,29 @@ describe("the order of a mix", () => {
     if (decoded.ok) {
       expect(decoded.a.map((entry) => entry.ticker)).toEqual(["VTI", "VOO"]);
     }
+  });
+
+  it("carries a portfolio's own order into Mix A, not an alphabetised copy", () => {
+    // The other half of the same rule: a portfolio written by the workspace is
+    // projected onto the comparison column by `fundsOf`, which used to sort. A
+    // portfolio dragged into a deliberate sequence has to arrive in that sequence.
+    write({
+      mode: "bp",
+      entries: [
+        { kind: "fund", key: "VTI", amount: 5000 },
+        { kind: "fund", key: "VOO", amount: 3000 },
+        { kind: "fund", key: "AVUV", amount: 2000 },
+      ],
+    });
+    render(<CompareSurface />);
+
+    const fields = within(
+      screen.getByRole("region", { name: "Mix A" }),
+    ).getAllByLabelText(/^Weight of /) as HTMLInputElement[];
+    expect(fields.map((field) => field.getAttribute("aria-label"))).toEqual([
+      "Weight of VTI in Mix A, in percent",
+      "Weight of VOO in Mix A, in percent",
+      "Weight of AVUV in Mix A, in percent",
+    ]);
   });
 });

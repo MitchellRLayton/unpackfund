@@ -175,18 +175,16 @@ export type OverlapSortKey = "a" | "b" | "both";
 export type SortDirection = "ascending" | "descending";
 
 /**
- * The order each column opens in: the largest number first.
+ * The order a column opens in: the largest number first.
  *
  * A reader who clicks "In Mix A" is asking "which companies is A most exposed to",
  * so the first click has to answer that. Clicking the same header again reverses it,
  * which is the only way to ask the opposite question — "where is A's weight
  * smallest" — and it is why the direction is a toggle rather than a second control.
+ * One value for all three columns: they are all weights, and a weight reads largest
+ * first.
  */
-export const OVERLAP_SORT_DEFAULT: Record<OverlapSortKey, SortDirection> = {
-  a: "descending",
-  b: "descending",
-  both: "descending",
-};
+export const OVERLAP_SORT_DEFAULT: SortDirection = "descending";
 
 /** What each column is called in the caption, in words a reader already knows. */
 export const OVERLAP_SORT_LABEL: Record<OverlapSortKey, string> = {
