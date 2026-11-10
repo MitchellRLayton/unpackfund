@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { CompareSurface } from "@/components/compare/CompareSurface";
+import { pageMetadata } from "@/lib/metadata";
 
 /**
  * `/compare` — two mixes of funds, the companies they share, and where each sits.
@@ -9,11 +10,12 @@ import { CompareSurface } from "@/components/compare/CompareSurface";
  * fragment and nowhere else, so there is nothing for the server to render into it.
  * `metadata` is the only server-side content, which keeps the route in the export.
  */
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "UnpackFund — compare two mixes",
   description:
     "Compare two mixes of funds: the share of each mix held in the same companies, the companies only one mix holds, and the market split of each, on one scale.",
-};
+  path: "/compare/",
+});
 
 export default function ComparePage() {
   return (

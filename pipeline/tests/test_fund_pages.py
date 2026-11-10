@@ -126,6 +126,50 @@ def test_the_page_states_the_filings_three_dates_and_its_source():
     assert "Form N-PORT on SEC EDGAR" in page
 
 
+def test_a_pasted_link_shows_a_card_with_the_pages_own_title_and_description():
+    page = render(fund())
+    # The card repeats the page's title and description rather than inventing a
+    # second summary, so a preview cannot promise something the page does not say.
+    title = "AVUV holdings — what Avantis U.S. Small Cap Value ETF owns"
+    assert f'<meta property="og:title" content="{title}">' in page
+    assert f'<meta name="twitter:title" content="{title}">' in page
+    description = re.search(r'<meta name="description" content="([^"]+)">', page).group(1)
+    assert f'<meta property="og:description" content="{description}">' in page
+    assert f'<meta name="twitter:description" content="{description}">' in page
+    # The URL the card names is the page's own canonical URL, not the site root.
+    assert '<meta property="og:url" content="https://unpackfund.com/f/AVUV/">' in page
+    assert '<link rel="canonical" href="https://unpackfund.com/f/AVUV/">' in page
+
+
+def test_the_card_image_is_absolute_and_declares_its_size():
+    page = render(fund())
+    # A relative image URL is silently dropped by every crawler, and a card without
+    # its dimensions is laid out at the wrong ratio before the image arrives.
+    assert '<meta property="og:image" content="https://unpackfund.com/og.png">' in page
+    assert '<meta property="og:image:width" content="1200">' in page
+    assert '<meta property="og:image:height" content="630">' in page
+    assert '<meta property="og:image:alt" content="UnpackFund — see the companies behind your funds">' in page
+    assert '<meta name="twitter:card" content="summary_large_image">' in page
+    assert '<meta name="twitter:image" content="https://unpackfund.com/og.png">' in page
+
+
+def test_the_card_image_the_pages_name_is_the_file_the_site_ships():
+    # One image, one path: the generator and the app's metadata module must agree,
+    # and the file must exist in the export's public directory.
+    assert fund_pages.OG_IMAGE == "/og.png"
+    assert (paths.REPO_ROOT / "web" / "public" / "og.png").is_file()
+    app_metadata = (paths.REPO_ROOT / "web" / "lib" / "metadata.ts").read_text()
+    assert f'path: "{fund_pages.OG_IMAGE}"' in app_metadata
+    assert f"width: {fund_pages.OG_IMAGE_WIDTH}" in app_metadata
+    assert f"height: {fund_pages.OG_IMAGE_HEIGHT}" in app_metadata
+
+
+def test_a_fund_name_cannot_inject_markup_through_the_card():
+    page = render(fund(name='Evil "><script>alert(1)</script>'))
+    assert "<script>alert(1)</script>" not in page
+    assert "&quot;&gt;&lt;script&gt;" in page
+
+
 def test_the_answer_says_how_many_companies_and_the_largest_weight():
     page = render(
         fund(

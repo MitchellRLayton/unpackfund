@@ -203,6 +203,44 @@ SITE = "https://unpackfund.com"
 #: is silently ignored by crawlers, so this is a constant rather than a guess.
 SITE_ORIGIN = SITE
 
+#: The card a pasted link shows. One image for the whole site, generated from the
+#: palette and typefaces in `web/public/og.png`; the app's routes declare the same
+#: file through `web/lib/metadata.ts`, so a fund page and the app cannot disagree
+#: about what a share of this site looks like.
+OG_IMAGE = "/og.png"
+OG_IMAGE_WIDTH = 1200
+OG_IMAGE_HEIGHT = 630
+OG_IMAGE_ALT = "UnpackFund — see the companies behind your funds"
+
+
+def _social_meta(title: str, description: str, url: str) -> str:
+    """The Open Graph and Twitter-card tags for one page.
+
+    Before this existed a fund page — the most-shared URL on the site — unfurled as
+    a bare link with no title, no description and no image. The tags repeat the
+    page's own `<title>` and `<meta name="description">` rather than inventing a
+    second summary, so a card cannot promise something the page does not say.
+    """
+    t = _esc(title)
+    d = _esc(description)
+    image = f"{SITE}{OG_IMAGE}"
+    return (
+        f'<meta property="og:type" content="website">\n'
+        f'<meta property="og:site_name" content="UnpackFund">\n'
+        f'<meta property="og:title" content="{t}">\n'
+        f'<meta property="og:description" content="{d}">\n'
+        f'<meta property="og:url" content="{_esc(url)}">\n'
+        f'<meta property="og:image" content="{image}">\n'
+        f'<meta property="og:image:width" content="{OG_IMAGE_WIDTH}">\n'
+        f'<meta property="og:image:height" content="{OG_IMAGE_HEIGHT}">\n'
+        f'<meta property="og:image:alt" content="{_esc(OG_IMAGE_ALT)}">\n'
+        f'<meta name="twitter:card" content="summary_large_image">\n'
+        f'<meta name="twitter:title" content="{t}">\n'
+        f'<meta name="twitter:description" content="{d}">\n'
+        f'<meta name="twitter:image" content="{image}">\n'
+    )
+
+
 #: The app's own routes, in the sitemap's order. Fund pages are added from the
 #: catalogue. `/x` is deliberately absent: it is a tool, not a document.
 APP_ROUTES = (
@@ -1452,15 +1490,24 @@ def render_page(
     )
     robots = "" if indexable else '<meta name="robots" content="noindex, follow">\n'
 
+    page_title = f"{ticker} holdings — what {name} owns"
+    page_description = (
+        f"{fund['ticker']} ({raw_name}): {_plural(mapped, 'company', 'companies')}, "
+        f"{coverage:.1f}% of the fund's weight mapped. Holdings as of {fund['as_of']}, "
+        f"filed {fund['filed_at']}, from the fund's own SEC Form N-PORT."
+    )
+    page_url = f"{SITE}/f/{ticker}/"
+    social = _social_meta(page_title, page_description, page_url)
+
     return f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{ticker} holdings — what {name} owns</title>
-<meta name="description" content="{_esc(f"{fund['ticker']} ({raw_name}): {_plural(mapped, 'company', 'companies')}, {coverage:.1f}% of the fund's weight mapped. Holdings as of {fund['as_of']}, filed {fund['filed_at']}, from the fund's own SEC Form N-PORT.")}">
-<link rel="canonical" href="{SITE}/f/{ticker}/">
-{robots}<link rel="stylesheet" href="/{CSS_NAME}">
+<title>{page_title}</title>
+<meta name="description" content="{_esc(page_description)}">
+<link rel="canonical" href="{page_url}">
+{social}{robots}<link rel="stylesheet" href="/{CSS_NAME}">
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>

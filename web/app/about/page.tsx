@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+
 import Link from "next/link";
 
 import { ReadingLayout, type ReadingSection } from "@/components/prose/ReadingLayout";
@@ -11,12 +12,14 @@ import {
   LEGAL_ENTITY,
   METHODOLOGY_VERSION,
 } from "@/lib/legal";
+import { pageMetadata } from "@/lib/metadata";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "UnpackFund — about and contact",
   description:
     "Who runs UnpackFund, where the data comes from, what it costs, and how to report a mistake.",
-};
+  path: "/about/",
+});
 
 const SECTIONS: readonly ReadingSection[] = [
   { id: "who", title: "Who runs it" },

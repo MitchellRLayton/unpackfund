@@ -8,12 +8,14 @@ import {
   LEGAL_COPY_VERSION,
   LEGAL_ENTITY,
 } from "@/lib/legal";
+import { pageMetadata } from "@/lib/metadata";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "UnpackFund — privacy policy",
   description:
     "What UnpackFund stores, what the server sees, and why your portfolio never leaves your browser.",
-};
+  path: "/privacy/",
+});
 
 const SECTIONS: readonly ReadingSection[] = [
   { id: "short", title: "The short version" },

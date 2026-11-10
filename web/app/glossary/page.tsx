@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
+
 import Link from "next/link";
 
 import { ReadingLayout, type ReadingSection } from "@/components/prose/ReadingLayout";
 import styles from "@/components/prose/Glossary.module.css";
 import { GLOSSARY_ALPHABET, GLOSSARY_LETTERS, GLOSSARY_TERMS } from "@/lib/glossary";
 import { EFFECTIVE_DATE, LEGAL_COPY_VERSION } from "@/lib/legal";
+import { pageMetadata } from "@/lib/metadata";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "UnpackFund — glossary",
   description:
     "The words UnpackFund uses — coverage, look-through, HHI, effective number of companies, overlap — defined against the code that computes them.",
-};
+  path: "/glossary/",
+});
 
 /**
  * Every term the site uses in a particular way, in one place.
