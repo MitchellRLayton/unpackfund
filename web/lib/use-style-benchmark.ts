@@ -38,7 +38,7 @@ import {
   type GateResult,
   type RegionMix,
 } from "./style-benchmark";
-import { STYLE_CLASS_BY_ID, type StyleClass } from "./style-registry";
+import { STYLE_CLASS_BY_ID, benchmarkMembers, type StyleClass } from "./style-registry";
 
 /** Basis points in 100%. */
 const FULL_BP = 10_000;
@@ -73,6 +73,18 @@ export interface StyleBenchmarkResult {
 /** The POC's switch: nothing renders unless the build asks for it. */
 export function styleBenchmarkEnabled(): boolean {
   return process.env.NEXT_PUBLIC_STYLE_BENCH === "1";
+}
+
+/**
+ * Whether the ◐ optional members join the composite (§2a: dividend, fundamental,
+ * cash-flow-yield and shareholder-yield weightings, and value-adjacent mandates).
+ *
+ * Off by default: the plan's benchmark is "every implementation", and a yield-weighted
+ * fund is a different bet. The flag exists so the difference can be *seen* rather than
+ * argued about.
+ */
+export function optionalMembersEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_STYLE_OPTIONAL === "1";
 }
 
 /**
@@ -145,8 +157,10 @@ export function useStyleBenchmark(
     if (!gate?.eligible) return [];
     const wanted = new Set<string>();
     for (const entry of gate.classes) {
-      for (const member of STYLE_CLASS_BY_ID.get(entry.classId)?.members ?? []) {
-        wanted.add(member);
+      const styleClass = STYLE_CLASS_BY_ID.get(entry.classId);
+      if (!styleClass) continue;
+      for (const member of benchmarkMembers(styleClass, optionalMembersEnabled())) {
+        wanted.add(member.ticker);
       }
     }
     return [...wanted].sort();
@@ -164,13 +178,20 @@ export function useStyleBenchmark(
     for (const entry of gate.classes) {
       const styleClass = STYLE_CLASS_BY_ID.get(entry.classId);
       if (!styleClass) continue;
+      const wanted = new Set(
+        benchmarkMembers(styleClass, optionalMembersEnabled()).map(
+          (member) => member.ticker,
+        ),
+      );
       const documents = members.funds.filter((fund) =>
-        styleClass.members.includes(fund.ticker.toUpperCase()),
+        wanted.has(fund.ticker.toUpperCase()),
       );
       // Wait for every member the release can give us before computing: an average over
       // two of three members is a different benchmark, and a half-built one would flash.
       if (documents.length === 0 && members.pending.length > 0) return null;
-      const composite = compositeFromDocuments(entry.classId, documents);
+      const composite = compositeFromDocuments(entry.classId, documents, {
+        includeOptional: optionalMembersEnabled(),
+      });
       if (Object.keys(composite.weights).length === 0) continue;
       composites.set(entry.classId, composite);
       classes.push({ styleClass, composite });

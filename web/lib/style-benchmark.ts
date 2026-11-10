@@ -23,6 +23,7 @@ import type { FundDocument } from "./types";
 
 import {
   STYLE_CLASS_BY_ID,
+  benchmarkMembers,
   classOf,
   type StyleClass,
   type StyleFamily,
@@ -231,7 +232,7 @@ export interface ClassBenchmark {
 export function compositeFromDocuments(
   classId: string,
   documents: FundDocument[],
-  options: { maxLagDays?: number } = {},
+  options: { maxLagDays?: number; includeOptional?: boolean } = {},
 ): ClassBenchmark {
   const styleClass = STYLE_CLASS_BY_ID.get(classId);
   if (!styleClass) throw new Error(`unknown style class ${classId}`);
@@ -241,10 +242,12 @@ export function compositeFromDocuments(
 
   const dropped: ClassBenchmark["dropped"] = [];
   const present: FundDocument[] = [];
-  for (const ticker of styleClass.members) {
-    const document = byTicker.get(ticker);
+  // ★ always; ◐ only when the optional flag is on (§2a). A clone is never a member, so it
+  // cannot enter here even if the reader happens to hold it.
+  for (const member of benchmarkMembers(styleClass, options.includeOptional ?? false)) {
+    const document = byTicker.get(member.ticker);
     if (document) present.push(document);
-    else dropped.push({ ticker, why: "missing" });
+    else dropped.push({ ticker: member.ticker, why: "missing" });
   }
   if (present.length === 0) {
     return { classId, weights: {}, members: [], dropped, asOf: null };

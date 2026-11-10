@@ -20,7 +20,14 @@ import {
   type PortfolioFund,
   type RegionMix,
 } from "./style-benchmark";
-import { STYLE_CLASS_BY_ID, classOf } from "./style-registry";
+import {
+  FUND_STYLE_BY_TICKER,
+  STYLE_CLASS_BY_ID,
+  benchmarkMembers,
+  classOf,
+  membersOf,
+  passiveFamilyCount,
+} from "./style-registry";
 import type { AssetCategory, FundDocument, Holding } from "./types";
 
 const US: RegionMix = { us: 0.99, dm: 0.0, em: 0.0, unplaced: 0.01 };
@@ -365,27 +372,112 @@ describe("the blend and active share", () => {
 
 // -- the registry itself ------------------------------------------------------
 describe("the registry", () => {
-  it("gives every class a family, a region and at least one member", () => {
+  it("gives every class a family, a region, a display name and a purity threshold", () => {
     for (const styleClass of STYLE_CLASS_BY_ID.values()) {
-      expect(styleClass.members.length).toBeGreaterThan(0);
       expect(["size", "value", "momentum"]).toContain(styleClass.family);
       expect(["US", "INTL", "EM"]).toContain(styleClass.region);
-      for (const member of styleClass.members) {
-        expect(member).toMatch(/^[A-Z]{2,5}$/);
+      expect(styleClass.display.length).toBeGreaterThan(0);
+      expect(styleClass.purity).toBeGreaterThan(0.5);
+      expect(membersOf(styleClass).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("applies the operator's 3-family rule to every class", () => {
+    // §2a as rewritten on 2026-11-10: three or more independent passive index families
+    // make an index blend; fewer make a peer composite of every implementation.
+    for (const styleClass of STYLE_CLASS_BY_ID.values()) {
+      const families = passiveFamilyCount(styleClass);
+      const members = membersOf(styleClass).length;
+      if (styleClass.kind === "index_blend") {
+        expect(families, `${styleClass.id} is an index blend`).toBeGreaterThanOrEqual(3);
+        expect(
+          members,
+          `${styleClass.id} needs one ETF per family`,
+        ).toBeGreaterThanOrEqual(3);
+      } else if (styleClass.kind === "peer_composite") {
+        expect(families, `${styleClass.id} is a peer composite`).toBeLessThan(3);
+      } else {
+        expect(members, `${styleClass.id} is a single ETF`).toBe(1);
       }
     }
   });
 
-  it("tags every registered member with the class that lists it", () => {
+  it("never counts a clone, an Alt or an optional member as a benchmark member", () => {
+    for (const styleClass of STYLE_CLASS_BY_ID.values()) {
+      for (const member of benchmarkMembers(styleClass)) {
+        expect(member.status, `${styleClass.id}/${member.ticker}`).toBe("member");
+      }
+      const withOptional = benchmarkMembers(styleClass, true);
+      expect(withOptional.length).toBeGreaterThanOrEqual(
+        benchmarkMembers(styleClass).length,
+      );
+      for (const member of withOptional) {
+        expect(["member", "optional"]).toContain(member.status);
+      }
+    }
+  });
+
+  it("points every clone at a ★ member of its own class", () => {
+    for (const styleClass of STYLE_CLASS_BY_ID.values()) {
+      const memberTickers = new Set(membersOf(styleClass).map((member) => member.ticker));
+      for (const member of styleClass.members) {
+        if (member.status !== "clone") continue;
+        expect(member.cloneOf, `${styleClass.id}/${member.ticker}`).toBeDefined();
+        expect(
+          memberTickers.has(member.cloneOf ?? ""),
+          `${member.ticker} clones ${member.cloneOf}`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("never makes one ticker a ★ member of two classes", () => {
+    const seen = new Map<string, string>();
+    for (const styleClass of STYLE_CLASS_BY_ID.values()) {
+      for (const member of membersOf(styleClass)) {
+        const previous = seen.get(member.ticker);
+        expect(
+          previous,
+          `${member.ticker} in ${previous} and ${styleClass.id}`,
+        ).toBeUndefined();
+        seen.set(member.ticker, styleClass.id);
+      }
+    }
+  });
+
+  it("classifies every listed fund to its own class, and leaves exclusions unclassified", () => {
     for (const styleClass of STYLE_CLASS_BY_ID.values()) {
       for (const member of styleClass.members) {
-        expect(classOf(member)?.id).toBe(styleClass.id);
+        if (member.status === "excluded") {
+          // An excluded fund may still be classified by another class (EEM is Alt under
+          // EM); what must not happen is being classified *by this* class.
+          expect(classOf(member.ticker)?.id ?? "").not.toBe(styleClass.id);
+          continue;
+        }
+        expect(classOf(member.ticker)?.id, member.ticker).toBe(styleClass.id);
+      }
+      for (const ticker of styleClass.evaluated) {
+        // Classified *somewhere*. A fund can be evaluated by one class and be a ◐ member
+        // of another — FNDF is both — and membership wins, because it is the stronger
+        // claim about what the fund is. That precedence is the registry's, not the gate's.
+        expect(classOf(ticker), ticker).not.toBeNull();
       }
     }
   });
 
-  it("leaves an untagged ticker untagged", () => {
+  it("resolves a fund that is both a member and an evaluated ticker to the member class", () => {
+    // FNDF is ◐ under Intl Large Cap Value and appears in Intl Developed's evaluated list.
+    expect(classOf("FNDF")?.id).toBe("INTL_LARGE_VALUE");
+  });
+
+  it("leaves a fund nobody researched untagged, so the gate fails closed", () => {
     expect(classOf("DFAC")).toBeNull();
     expect(classOf("VTI")).toBeNull();
+  });
+
+  it("marks the funds that are evaluated rather than members", () => {
+    // AVUV is the case the feature exists for: tagged US small value, not part of it.
+    expect(FUND_STYLE_BY_TICKER.get("AVUV")?.peerMember).toBe(false);
+    expect(FUND_STYLE_BY_TICKER.get("VBR")?.peerMember).toBe(true);
   });
 });

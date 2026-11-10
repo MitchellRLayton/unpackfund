@@ -60,6 +60,7 @@ import { useMemo, useState } from "react";
 
 import { PAGE_SIZE, pageOf } from "@/components/directory/paging";
 import { activeShare, type GateResult } from "@/lib/style-benchmark";
+import { captionFor } from "@/lib/use-style-benchmark";
 import { benchmarkDelta } from "@/lib/benchmark";
 import { TIER_AS_OF, tierConvention, tierOf } from "@/lib/country-tier";
 import { saveCsv } from "@/lib/export";
@@ -89,7 +90,7 @@ import { nextSort, sortBy, TIER_WORD, type SortState } from "./lens-math";
 import { useProvider } from "./provider-preference";
 import { flagEmoji } from "@/lib/country-flag";
 
-type CompanySortKey = "name" | "country" | "weight" | "funds";
+type CompanySortKey = "name" | "country" | "weight" | "funds" | "style" | "styleDelta";
 
 interface Column {
   /** `null` for a column that is not a sort: it prints and does not order. */
@@ -139,9 +140,15 @@ const COLUMNS: Column[] = [
   },
   // POC: `Style bench.` keeps a short header so the table width is stable (§9.2); the
   // class name lives in the caption and the tooltip.
-  { key: null, label: "Style bench.", numeric: true, first: "descending", style: true },
   {
-    key: null,
+    key: "style",
+    label: "Style bench.",
+    numeric: true,
+    first: "descending",
+    style: true,
+  },
+  {
+    key: "styleDelta",
     label: "Change vs style",
     numeric: true,
     first: "descending",
@@ -180,7 +187,19 @@ const COLUMN_LABEL: Record<CompanySortKey, string> = {
   country: "Country",
   weight: "Your weight",
   funds: "Held by",
+  style: "Style bench.",
+  styleDelta: "Change vs style",
 };
+
+/** "style" when the columns show the blend, the class's name when one is picked. */
+function styleChoiceLabel(chosen: { styleClass: { display: string } } | null): string {
+  return chosen ? chosen.styleClass.display : "style";
+}
+
+/** The two keys that exist only while the style columns do. */
+function isStyleKey(key: CompanySortKey): boolean {
+  return key === "style" || key === "styleDelta";
+}
 
 /** The caption says which sort is on in the column's own words, not "descending". */
 function directionWords(
@@ -192,7 +211,10 @@ function directionWords(
   return ascending ? "smallest first" : "largest first";
 }
 
-const COMPARE: Record<CompanySortKey, (a: LedgerRow, b: LedgerRow) => number> = {
+type Comparator = (a: LedgerRow, b: LedgerRow) => number;
+
+/** The four comparators that do not depend on which benchmark the style column shows. */
+const BASE_COMPARE: Record<"name" | "country" | "weight" | "funds", Comparator> = {
   name: (a, b) =>
     a.name.localeCompare(b.name) || a.company_id.localeCompare(b.company_id),
   country: (a, b) =>
@@ -319,6 +341,72 @@ export function CompaniesLens({ model }: LensProps) {
     return ledger.rows.reduce((max, row) => Math.max(max, row.weight), 0);
   }, [ledger]);
 
+  // The style gate's verdict lives on the model; `state` is non-null only when the flag is
+  // on, the gate passed and the member benchmarks are loaded.
+  const style = model.style?.state ?? null;
+  const styleGate = model.style?.gate ?? null;
+  // "You hold the benchmark" (§6, EFV-only): a column of zeros is not a comparison, so the
+  // columns are replaced by one sentence rather than printed.
+  const showStyleColumns = style !== null && !style.holdsBenchmark;
+
+  /**
+   * Which style the columns are against. `null` is the blend — the portfolio's own
+   * allocation-weighted benchmark, which is the default and the honest answer to "how far
+   * is my book from the style consensus". Picking one class answers the extra question a
+   * reader with two styles asks: "how do I look against *US* small value alone?"
+   *
+   * It is view state, not a fragment field: a link to a portfolio should open on the
+   * blend, and a URL that pinned a comparison would be a comparison someone chose for you.
+   */
+  const [styleChoice, setStyleChoice] = useState<string | null>(null);
+  const styleOptions = useMemo(() => style?.classes ?? [], [style]);
+  const chosenClass = useMemo(() => {
+    if (styleChoice === null) return null;
+    return styleOptions.find((entry) => entry.styleClass.id === styleChoice) ?? null;
+  }, [styleChoice, styleOptions]);
+
+  /** The company-weight vector the style column prints, sorts and writes to the CSV by. */
+  const styleBasis = useMemo(() => {
+    if (!style) return null;
+    if (!chosenClass) {
+      return {
+        weights: style.weights,
+        activeShare: style.activeShare,
+        caption: style.caption,
+      };
+    }
+    const weights = chosenClass.composite.weights;
+    const portfolio: Record<string, number> = {};
+    for (const row of ledger?.rows ?? []) portfolio[row.company_id] = row.weight;
+    return {
+      weights,
+      activeShare: activeShare(portfolio, weights),
+      caption: captionFor(style.gate, [chosenClass]),
+    };
+  }, [style, chosenClass, ledger]);
+
+  /**
+   * Sorting. §9.3's fallback: when the style columns are gone the style sort is gone too,
+   * so the table falls back to `Your weight ↓` instead of ordering by a hidden column.
+   */
+  const effectiveSort = useMemo(
+    () =>
+      !showStyleColumns && isStyleKey(sort.key)
+        ? { key: "weight" as CompanySortKey, direction: "descending" as const }
+        : sort,
+    [showStyleColumns, sort],
+  );
+  const compare = useMemo<Record<CompanySortKey, Comparator>>(() => {
+    const styleWeight = (row: LedgerRow): number =>
+      styleBasis?.weights[row.company_id] ?? 0;
+    const styleDelta = (row: LedgerRow): number => row.weight - styleWeight(row);
+    return {
+      ...BASE_COMPARE,
+      style: (a, b) => styleWeight(a) - styleWeight(b) || a.name.localeCompare(b.name),
+      styleDelta: (a, b) => styleDelta(a) - styleDelta(b) || a.name.localeCompare(b.name),
+    };
+  }, [styleBasis]);
+
   const visible = useMemo(() => {
     if (!ledger) return [];
     const needle = query.trim().toLowerCase();
@@ -336,8 +424,10 @@ export function CompaniesLens({ model }: LensProps) {
               tierWord.toLowerCase().includes(needle)
             );
           });
-    return sortBy(matching, sort, COMPARE);
-  }, [ledger, query, sort, provider]);
+    return sortBy(matching, effectiveSort, compare);
+    // `effectiveSort` and `compare` are the sort's real inputs; `sort` alone would miss
+    // the fallback and the selected style basis.
+  }, [ledger, query, effectiveSort, compare, provider]);
 
   // Active share against VT, the same distance the style columns print against the style
   // benchmark: `½ Σ |yours − benchmark|` over the companies either side holds. Computed
@@ -379,28 +469,30 @@ export function CompaniesLens({ model }: LensProps) {
   // benchmark's own ticker and name, and a boolean does not narrow `ledger.benchmark`.
   const benchmark = ledger.benchmark;
   const hasBenchmark = benchmark !== null;
-  // The style gate's verdict lives on the model; `state` is non-null only when the flag is
-  // on, the gate passed and the member benchmarks are loaded.
-  const style = model.style?.state ?? null;
-  const styleGate = model.style?.gate ?? null;
-  // "You hold the benchmark" (§6, EFV-only): a column of zeros is not a comparison, so the
-  // columns are replaced by one sentence rather than printed.
-  const showStyleColumns = style !== null && !style.holdsBenchmark;
   const columns = COLUMNS.filter(
     (column) =>
       (!column.benchmark || hasBenchmark) && (!column.style || showStyleColumns),
   );
+
   const current = pageOf(visible, page, PAGE_SIZE);
   const totalWeight = ledger.rows.reduce((sum, row) => sum + row.weight, 0);
   const suppressed = ledger.funds.filter((fund) => fund.coverage_pct < 60);
-  const sortLabel = COLUMN_LABEL[sort.key];
+  const sortLabel = COLUMN_LABEL[effectiveSort.key];
 
   /** Sorting and filtering replace the list, so the reader goes back to its first page. */
   const resetPage = () => setPage(1);
 
   const exportCompanies = () => {
     saveCsv(
-      companiesCsv(ledger, releaseAsOf),
+      companiesCsv(
+        ledger,
+        releaseAsOf,
+        // The file says which style it is against, because a column of style weights with
+        // no benchmark named is a number without provenance (§9.5).
+        showStyleColumns && styleBasis
+          ? { caption: styleBasis.caption, weights: styleBasis.weights }
+          : null,
+      ),
       // The same file name shape as the other four lenses, so a folder of exports
       // sorts by what it holds rather than by which component wrote it.
       lensCsvName("companies", new Date(), releaseAsOf),
@@ -481,10 +573,48 @@ export function CompaniesLens({ model }: LensProps) {
             {style && !style.holdsBenchmark ? (
               <>
                 {" "}
-                · vs style: <strong>{formatPct1(style.activeShare)}</strong>
+                · vs {styleChoiceLabel(chosenClass)}:{" "}
+                <strong>
+                  {formatPct1(styleBasis?.activeShare ?? style.activeShare)}
+                </strong>
               </>
             ) : null}
           </p>
+        ) : null}
+        {/*
+          Which style the columns are against (§9.3's "sorting works on both new columns"
+          needs a defined subject when the portfolio is a blend). `mode-toggle` is the
+          site's segmented control, so this reads as one more view switch, not a new
+          control type. Hidden for a single-class portfolio: there is nothing to choose.
+        */}
+        {showStyleColumns && styleOptions.length > 1 ? (
+          <div
+            className="mode-toggle"
+            role="group"
+            aria-label="Which style the columns compare against"
+            data-style-choice
+          >
+            <button
+              type="button"
+              aria-pressed={styleChoice === null}
+              className={styleChoice === null ? "primary" : undefined}
+              onClick={() => setStyleChoice(null)}
+            >
+              Blend
+            </button>
+            {styleOptions.map(({ styleClass }) => (
+              <button
+                key={styleClass.id}
+                type="button"
+                aria-pressed={styleChoice === styleClass.id}
+                className={styleChoice === styleClass.id ? "primary" : undefined}
+                onClick={() => setStyleChoice(styleClass.id)}
+              >
+                {styleClass.display}
+              </button>
+            ))}
+            <span className="muted">{styleBasis ? styleBasis.caption : ""}</span>
+          </div>
         ) : null}
         {/* §6: EFV-only, or any book that is its own benchmark. Words, not a column of
             zeros — the comparison has no distance to report. */}
@@ -516,8 +646,8 @@ export function CompaniesLens({ model }: LensProps) {
               One row per company. Sorted by {sortLabel},{" "}
               {directionWords(sort.key, sort.direction)}.
               {benchmark
-                ? style && showStyleColumns
-                  ? ` Benchmarks: ${benchmark.ticker} · ${style.caption}.`
+                ? styleBasis && showStyleColumns
+                  ? ` Benchmarks: ${benchmark.ticker} · ${styleBasis.caption}.`
                   : ` Benchmark: ${benchmark.ticker}.`
                 : null}
             </caption>
@@ -569,7 +699,7 @@ export function CompaniesLens({ model }: LensProps) {
                 // The style column's own pair. A company the style benchmark does not hold
                 // is `0`, not `null`: the benchmark *is* the class's holdings, so absent
                 // means zero weight — the same reading the VT column already uses.
-                const styleWeight = style?.weights[row.company_id] ?? 0;
+                const styleWeight = styleBasis?.weights[row.company_id] ?? 0;
                 const styleDelta = showStyleColumns
                   ? benchmarkDelta(row.weight, styleWeight)
                   : null;
