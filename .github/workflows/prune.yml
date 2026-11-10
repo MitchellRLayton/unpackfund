@@ -53,7 +53,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PYTHON_VERSION: "3.12"
+  # The pipeline requires >=3.13 (`pipeline/pyproject.toml`); pin the same version every
+  # other workflow uses, so this job cannot drift from the ones that install it successfully.
+  PYTHON_VERSION: "3.13"
   DATA_HOST: https://data.unpackfund.com
 
 jobs:
