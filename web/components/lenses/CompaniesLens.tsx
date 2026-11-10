@@ -674,9 +674,43 @@ export function CompaniesLens({ model }: LensProps) {
               ))}
             </div>
             {/* What the selection is made of — members and weighting — in one quiet line. */}
-            <span className={styles.styleBasis}>
-              {styleBasis ? styleBasis.caption : ""}
-            </span>
+          </div>
+        ) : null}
+        {/*
+          The composition, for every class the benchmark uses — not only the selected one.
+          A reader has to be able to check what "style" means without changing the column:
+          the members, the weighting, and the filing date each weight came from. It sits
+          under the chips when there is a choice to make, and on its own when there is not,
+          so a single-class book is never left with an undefined benchmark.
+        */}
+        {showStyleColumns ? (
+          <div className={`${styles.styleDefs} no-print`} data-style-definitions>
+            <span className={styles.stylePickerLabel}>Benchmark composition</span>
+            <dl className={styles.styleDefList}>
+              {styleOptions.map(({ styleClass, composite }) => {
+                const named = styleClass.members.filter(
+                  (member) => member.status === "member",
+                ).length;
+                return (
+                  <div className={styles.styleDefRow} key={styleClass.id}>
+                    <dt>
+                      {styleClass.display}
+                      {styleChoice === styleClass.id ? " — showing" : null}
+                    </dt>
+                    <dd>
+                      {styleClass.kind === "single_etf"
+                        ? "Single ETF: "
+                        : "Equal-weighted: "}
+                      {composite.members.map((member) => member.ticker).join(" · ")}
+                      {composite.members.length < named
+                        ? ` (${composite.members.length} of ${named} members available)`
+                        : null}
+                      {composite.asOf ? ` · filed ${composite.asOf}` : null}
+                    </dd>
+                  </div>
+                );
+              })}
+            </dl>
           </div>
         ) : null}
         {/* §6: EFV-only, or any book that is its own benchmark. Words, not a column of

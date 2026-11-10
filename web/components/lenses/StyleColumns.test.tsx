@@ -304,11 +304,13 @@ describe("the style columns' sort", () => {
     // numbers themselves move — which is the whole point of the picker.
     const picker = screen.getByRole("group", { name: /style benchmark/i });
     fireEvent.click(within(picker).getByRole("button", { name: "US Small Cap Value" }));
-    // The caption is one line by design (static-xray-frontend v1.0.27); the *identity* of
-    // the chosen benchmark belongs to the picker's own line.
-    expect(
-      screen.getByText(/US Small Cap Value \(equal-weighted index blend/),
-    ).toBeTruthy();
+    // The caption is one line by design (static-xray-frontend v1.0.27); what the chosen
+    // benchmark is *made of* lives in the composition list under the chips, which marks
+    // the one the column is currently showing.
+    const definitions = screen
+      .getByText(/Benchmark composition/)
+      .closest("[data-style-definitions]");
+    expect(definitions?.textContent).toContain("US Small Cap Value — showing");
     expect(styleCells("C_GHI")).toEqual({ bench: "0.00%", delta: "(+20.00%)" });
     expect(styleCells("C_ABC")).toEqual({ bench: "10.00%", delta: "(+40.00%)" });
   });
@@ -325,10 +327,18 @@ describe("the style columns' sort", () => {
     expect(
       within(picker).getByRole("button", { name: "Intl Small Cap Value" }),
     ).toBeTruthy();
-    // The caption names the blend, not one class — and it appears twice: in the table's
-    // caption and beside the picker, which is deliberate (one is the record, one is the
-    // explanation of what the buttons chose).
-    expect(screen.getAllByText(/Style blend:/).length).toBeGreaterThanOrEqual(1);
+    // Both classes' compositions are listed, not only the selected one: the reader has to
+    // be able to check what "style" means without changing the column.
+    const definitions = screen
+      .getByText(/Benchmark composition/)
+      .closest("[data-style-definitions]");
+    const text = definitions?.textContent ?? "";
+    expect(text).toContain("US Small Cap Value");
+    expect(text).toContain("VBR · IJS · IWN");
+    expect(text).toContain("Intl Small Cap Value");
+    expect(text).toContain("AVDV · DISV · ISVL");
+    expect(text).toContain("Equal-weighted");
+    expect(text).toContain("filed 2026-09-30");
   });
 });
 
