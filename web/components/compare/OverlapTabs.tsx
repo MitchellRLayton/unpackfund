@@ -7,7 +7,16 @@ import { formatCount, formatShare } from "@/lib/format";
 import type { Overlap, OverlapRow } from "@/lib/overlap";
 
 import styles from "./compare.module.css";
-import { onlyRows, sharedRows, type Side } from "./result";
+import {
+  onlyRows,
+  OVERLAP_SORT_DEFAULT,
+  OVERLAP_SORT_LABEL,
+  sharedRows,
+  sortSharedRows,
+  type OverlapSortKey,
+  type Side,
+  type SortDirection,
+} from "./result";
 
 /** Rows rendered before a table asks whether to show the rest. */
 const PAGE = 100;
@@ -45,8 +54,20 @@ export function OverlapTabs({
   const [selected, setSelected] = useState<TabIndex>(0);
   const [expanded, setExpanded] = useState(false);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  // The Shared table's order is the reader's, not the page's: the three weights are
+  // the three questions this table answers ("what does A hold most of", "what does B",
+  // "what do they share"), and only the reader knows which one they came for. The
+  // default is the overlap's own term, largest first, so the table still opens on the
+  // answer the sentence above it states.
+  const [sort, setSort] = useState<{
+    key: OverlapSortKey;
+    direction: SortDirection;
+  }>({ key: "both", direction: "descending" });
 
-  const shared = useMemo(() => sharedRows(overlap.rows), [overlap]);
+  const shared = useMemo(
+    () => sortSharedRows(sharedRows(overlap.rows), sort.key, sort.direction),
+    [overlap, sort],
+  );
   const onlyA = useMemo(() => onlyRows(overlap.rows, "a"), [overlap]);
   const onlyB = useMemo(() => onlyRows(overlap.rows, "b"), [overlap]);
   const rows = [shared, onlyA, onlyB] as const;
@@ -74,9 +95,23 @@ export function OverlapTabs({
     tabRefs.current[next]?.focus();
   }
 
+  /** Click a header to sort by it; click it again to reverse. */
+  function toggleSort(key: OverlapSortKey) {
+    setSort((previous) =>
+      previous.key === key
+        ? {
+            key,
+            direction: previous.direction === "descending" ? "ascending" : "descending",
+          }
+        : { key, direction: OVERLAP_SORT_DEFAULT[key] },
+    );
+  }
+
+  const ariaSort = (key: OverlapSortKey) => (sort.key === key ? sort.direction : "none");
+
   function caption(): string {
     if (selected === 0) {
-      return `Both mixes hold ${formatCount(shared.length)} companies in common, of ${formatCount(overlap.unionCount)} held across the two. In both is the smaller of each company's two weights, and those are the numbers the overlap adds up. Largest shared weight first.`;
+      return `Both mixes hold ${formatCount(shared.length)} companies in common, of ${formatCount(overlap.unionCount)} held across the two. In both is the smaller of each company's two weights, and those are the numbers the overlap adds up. Sorted by ${OVERLAP_SORT_LABEL[sort.key]}, ${sort.direction === "descending" ? "largest first" : "smallest first"}.`;
     }
     if (selected === 1) {
       return `Mix A holds ${formatCount(onlyA.length)} companies that Mix B does not. Weight is each company's share of Mix A. Largest first.`;
@@ -139,15 +174,22 @@ export function OverlapTabs({
                   <th scope="col">Company</th>
                   {selected === 0 ? (
                     <>
-                      <th scope="col" className="num">
-                        In Mix A
-                      </th>
-                      <th scope="col" className="num">
-                        In Mix B
-                      </th>
-                      <th scope="col" className="num">
-                        In both
-                      </th>
+                      {(["a", "b", "both"] as const).map((key) => (
+                        <th
+                          key={key}
+                          scope="col"
+                          className="num"
+                          aria-sort={ariaSort(key)}
+                        >
+                          <button
+                            type="button"
+                            className="table__sort"
+                            onClick={() => toggleSort(key)}
+                          >
+                            {OVERLAP_SORT_LABEL[key]}
+                          </button>
+                        </th>
+                      ))}
                     </>
                   ) : (
                     <th scope="col" className="num">

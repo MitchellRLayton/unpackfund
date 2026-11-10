@@ -73,18 +73,33 @@ export function MixColumn({
       </div>
 
       <div className="panel__body stack stack--tight">
+        {/* The same validator the Portfolio page's holdings form uses, because it is
+         * the same question: is this list a whole? `--whole` is the royal blue the
+         * operator approved for exactly 100%, and `--alert` red is for a side that is
+         * short *or* over — the bar's width is clamped either way, so the direction is
+         * carried by the ink and by the sentence, never by an overflowing bar. The
+         * sentence takes the same pair of inks the builder's gate does, so the two
+         * pages cannot disagree about what "fully allocated" looks like. */}
         <div className="meter">
           <span className="meter__track" aria-hidden="true">
             <span
               className={
-                tally.overBp > 0 ? "meter__fill meter__fill--over" : "meter__fill"
+                tally.complete ? "meter__fill meter__fill--whole" : "meter__fill"
               }
               style={{ width: `${Math.min(100, tally.total / 100)}%` }}
             />
           </span>
           <span className="meter__label" role="status">
             <span>Total {formatWeightBp(tally.total)}</span>
-            <span>{tally.sentence}</span>
+            <span
+              className={
+                tally.complete
+                  ? "tally__gate tally__gate--open"
+                  : "tally__gate tally__gate--locked"
+              }
+            >
+              {tally.sentence}
+            </span>
           </span>
         </div>
 

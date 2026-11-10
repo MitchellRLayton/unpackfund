@@ -169,6 +169,62 @@ export function marketSplit(
   return { us, dm, em, unplaced: Math.max(0, 1 - (us + dm + em)) };
 }
 
+/** The three numeric columns of the Shared table, and the order they are read in. */
+export type OverlapSortKey = "a" | "b" | "both";
+
+export type SortDirection = "ascending" | "descending";
+
+/**
+ * The order each column opens in: the largest number first.
+ *
+ * A reader who clicks "In Mix A" is asking "which companies is A most exposed to",
+ * so the first click has to answer that. Clicking the same header again reverses it,
+ * which is the only way to ask the opposite question — "where is A's weight
+ * smallest" — and it is why the direction is a toggle rather than a second control.
+ */
+export const OVERLAP_SORT_DEFAULT: Record<OverlapSortKey, SortDirection> = {
+  a: "descending",
+  b: "descending",
+  both: "descending",
+};
+
+/** What each column is called in the caption, in words a reader already knows. */
+export const OVERLAP_SORT_LABEL: Record<OverlapSortKey, string> = {
+  a: "In Mix A",
+  b: "In Mix B",
+  both: "In both",
+};
+
+/** The number a column sorts on. "In both" is the shared weight, the overlap's own term. */
+function sortValue(row: OverlapRow, key: OverlapSortKey): number {
+  if (key === "a") return row.weightA;
+  if (key === "b") return row.weightB;
+  return Math.min(row.weightA, row.weightB);
+}
+
+/**
+ * Order the shared rows by one of the three weights.
+ *
+ * The tie-break is the company id, always ascending, so two companies at the same
+ * weight keep one order whichever direction is chosen — a table that reshuffles
+ * equal rows when you reverse it looks like it is sorting on something else.
+ *
+ * This is the only comparator for these rows: `sharedRows` delegates to it, so the
+ * default order and a clicked order cannot drift apart.
+ */
+export function sortSharedRows(
+  rows: readonly OverlapRow[],
+  key: OverlapSortKey,
+  direction: SortDirection,
+): OverlapRow[] {
+  const factor = direction === "ascending" ? 1 : -1;
+  return [...rows].sort(
+    (x, y) =>
+      factor * (sortValue(x, key) - sortValue(y, key)) ||
+      (x.company_id < y.company_id ? -1 : 1),
+  );
+}
+
 /**
  * The companies both mixes hold, largest shared weight first.
  *
@@ -178,13 +234,11 @@ export function marketSplit(
  * tabs are a partition of the rows — no company can be counted twice on screen.
  */
 export function sharedRows(rows: readonly OverlapRow[]): OverlapRow[] {
-  return rows
-    .filter((row) => row.weightA > 0 && row.weightB > 0)
-    .sort(
-      (x, y) =>
-        Math.min(y.weightA, y.weightB) - Math.min(x.weightA, x.weightB) ||
-        (x.company_id < y.company_id ? -1 : 1),
-    );
+  return sortSharedRows(
+    rows.filter((row) => row.weightA > 0 && row.weightB > 0),
+    "both",
+    "descending",
+  );
 }
 
 /** The companies only one mix holds, largest weight on that side first. */

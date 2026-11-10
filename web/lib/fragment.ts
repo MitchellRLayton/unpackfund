@@ -324,18 +324,17 @@ export function decodePortfolio(hash: string): DecodeResult {
  * a v2 link opened on `/x` shows side A, and both are funds at basis points.
  */
 export function encodeComparison(a: FundWeight[], b: FundWeight[]): string {
-  const sideA = sortFundWeights(a).map((entry) => [entry.ticker, entry.weight_bp]);
-  const sideB = sortFundWeights(b).map((entry) => [entry.ticker, entry.weight_bp]);
+  // No sorting, for the same reason `encodePortfolio` has none: the order is the
+  // visitor's. This writer used to alphabetise both sides, so `/compare` re-ordered
+  // the funds the moment it wrote the link — a list typed VTI, VXUS, BND came back
+  // BND, VTI, VXUS on the next render, and the two pages disagreed about whether
+  // order is data. It is (see the header), so the comparison keeps it too.
+  const sideA = a.map((entry) => [entry.ticker, entry.weight_bp]);
+  const sideB = b.map((entry) => [entry.ticker, entry.weight_bp]);
   if (sideB.length === 0) {
     return `${LEGACY_VERSION}.${toBase64Url(JSON.stringify(sideA))}`;
   }
   return `${COMPARE_VERSION}.${toBase64Url(JSON.stringify({ a: sideA, b: sideB }))}`;
-}
-
-export function sortFundWeights(entries: FundWeight[]): FundWeight[] {
-  return [...entries].sort((a, b) =>
-    a.ticker < b.ticker ? -1 : a.ticker > b.ticker ? 1 : 0,
-  );
 }
 
 /** The URL to share: origin, path, and the fragment. No query, no shortener. */

@@ -13,6 +13,7 @@ import {
   mixTotals,
   onlyRows,
   sharedRows,
+  sortSharedRows,
   sourceTickers,
 } from "./result";
 
@@ -188,6 +189,41 @@ describe("sharedRows and onlyRows", () => {
     ).toEqual([0.2, 0.2, 0.1]);
     expect(onlyRows(rows, "a").map((entry) => entry.weightA)).toEqual([0.2]);
     expect(onlyRows(rows, "b").map((entry) => entry.weightB)).toEqual([0.2]);
+  });
+});
+
+describe("sortSharedRows", () => {
+  // X: A 0.5 / B 0.2 · Y: A 0.1 / B 0.4 · Z: A 0.2 / B 0.2
+  const rows = [
+    row("c_0000000001", 0.5, 0.2, "X"),
+    row("c_0000000002", 0.1, 0.4, "Y"),
+    row("c_0000000003", 0.2, 0.2, "Z"),
+  ];
+  const names = (key: "a" | "b" | "both", direction: "ascending" | "descending") =>
+    sortSharedRows(rows, key, direction).map((entry) => entry.name);
+
+  it("sorts by each of the three columns, largest first by default", () => {
+    expect(names("a", "descending")).toEqual(["X", "Z", "Y"]);
+    expect(names("b", "descending")).toEqual(["Y", "X", "Z"]);
+    // "In both" is the shared weight, min(wA, wB): X 0.2, Z 0.2, Y 0.1 — X and Z tie,
+    // so the company id decides, and it decides the same way in both directions.
+    expect(names("both", "descending")).toEqual(["X", "Z", "Y"]);
+  });
+
+  it("reverses on the same column, and keeps ties in one order", () => {
+    expect(names("a", "ascending")).toEqual(["Y", "Z", "X"]);
+    expect(names("b", "ascending")).toEqual(["X", "Z", "Y"]);
+    expect(names("both", "ascending")).toEqual(["Y", "X", "Z"]);
+  });
+
+  it("does not mutate the rows it is given", () => {
+    const before = rows.map((entry) => entry.name);
+    sortSharedRows(rows, "b", "ascending");
+    expect(rows.map((entry) => entry.name)).toEqual(before);
+  });
+
+  it("opens on the same order sharedRows returns", () => {
+    expect(sortSharedRows(rows, "both", "descending")).toEqual(sharedRows(rows));
   });
 });
 

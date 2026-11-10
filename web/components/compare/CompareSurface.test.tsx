@@ -371,3 +371,143 @@ describe("making a side whole", () => {
     }
   });
 });
+
+describe("the mix meter", () => {
+  /** The bar's fill, and the sentence beside it, for one side. */
+  function meter(label: string) {
+    const column = screen.getByRole("region", { name: label });
+    const fill = column.querySelector(".meter__fill") as HTMLElement;
+    const sentence = column.querySelector(".tally__gate") as HTMLElement;
+    return { fill, sentence };
+  }
+
+  it("is blue at exactly 100% and red when the side is short", () => {
+    writeComparison(
+      [{ ticker: "VOO", weight_bp: 10000 }],
+      [{ ticker: "VTI", weight_bp: 8800 }],
+    );
+    render(<CompareSurface />);
+
+    // The same pair the Portfolio page's holdings form uses: `--whole` royal blue at
+    // exactly 100%, `--alert` red for anything else. The class is written in full in
+    // both states — a concatenated name once rendered `meter__fillmeter__fill--whole`,
+    // which matched no rule and left the bar red at 100%.
+    expect(meter("Mix A").fill.className).toBe("meter__fill meter__fill--whole");
+    expect(meter("Mix B").fill.className).toBe("meter__fill");
+    expect(meter("Mix A").sentence.className).toContain("tally__gate--open");
+    expect(meter("Mix B").sentence.className).toContain("tally__gate--locked");
+  });
+
+  it("is red when the side is over 100%, and the bar does not overflow", () => {
+    writeComparison(
+      [{ ticker: "VOO", weight_bp: 12000 }],
+      [{ ticker: "VTI", weight_bp: 10000 }],
+    );
+    render(<CompareSurface />);
+
+    const over = meter("Mix A");
+    expect(over.fill.className).toBe("meter__fill");
+    expect(over.fill.style.width).toBe("100%");
+    expect(over.sentence.className).toContain("tally__gate--locked");
+    expect(over.sentence.textContent).toBe("20.00% over 100%");
+  });
+});
+
+describe("sorting the shared table", () => {
+  /** The company names in the Shared table, in the order they are drawn. */
+  function sharedOrder(): string[] {
+    const panel = screen.getByRole("tabpanel");
+    return within(panel)
+      .getAllByRole("row")
+      .slice(1)
+      .map((row) => row.querySelector("th")?.textContent?.trim() ?? "");
+  }
+
+  it("sorts by In Mix A, In Mix B and In both, and reverses on a second click", () => {
+    twoWholeMixes();
+    render(<CompareSurface />);
+
+    // Default: the overlap's own term, largest shared weight first. XYL 20%, TSM 20%,
+    // CB 10% — the tie broken by company id, so XYL before TSM.
+    expect(sharedOrder()).toEqual([
+      "Xylem Inc XYL",
+      "Taiwan Semiconductor TSM",
+      "Chubb Ltd CB",
+    ]);
+
+    const header = (name: string) =>
+      screen.getByRole("button", { name }) as HTMLButtonElement;
+    const sortOf = (name: string) =>
+      screen.getByRole("columnheader", { name }).getAttribute("aria-sort");
+
+    expect(sortOf("In both")).toBe("descending");
+    expect(sortOf("In Mix A")).toBe("none");
+
+    // In Mix A: XYL 50%, TSM 20%, CB 10%.
+    fireEvent.click(header("In Mix A"));
+    expect(sortOf("In Mix A")).toBe("descending");
+    expect(sortOf("In both")).toBe("none");
+    expect(sharedOrder()).toEqual([
+      "Xylem Inc XYL",
+      "Taiwan Semiconductor TSM",
+      "Chubb Ltd CB",
+    ]);
+
+    // A second click reverses it: CB 10%, TSM 20%, XYL 50%.
+    fireEvent.click(header("In Mix A"));
+    expect(sortOf("In Mix A")).toBe("ascending");
+    expect(sharedOrder()).toEqual([
+      "Chubb Ltd CB",
+      "Taiwan Semiconductor TSM",
+      "Xylem Inc XYL",
+    ]);
+
+    // In Mix B: CB 40%, TSM 20%, XYL 20% — the tie again by company id.
+    fireEvent.click(header("In Mix B"));
+    expect(sortOf("In Mix B")).toBe("descending");
+    expect(sharedOrder()).toEqual([
+      "Chubb Ltd CB",
+      "Xylem Inc XYL",
+      "Taiwan Semiconductor TSM",
+    ]);
+
+    // And the caption says which column is in force, so the order is never a mystery.
+    expect(screen.getByText(/Sorted by In Mix B, largest first\./)).toBeTruthy();
+  });
+});
+
+describe("the order of a mix", () => {
+  it("shows the funds in the order they were added, never re-sorted", () => {
+    // The store used to alphabetise both sides on every write, so a side typed
+    // VTI then VOO came back VOO then VTI — the same defect the Portfolio page fixed
+    // on 2026-11-02, still live on `/compare`. The order is the visitor's.
+    writeComparison(
+      [
+        { ticker: "VTI", weight_bp: 6000 },
+        { ticker: "VOO", weight_bp: 4000 },
+      ],
+      [{ ticker: "VXUS", weight_bp: 10000 }],
+    );
+    render(<CompareSurface />);
+
+    const labels = (label: string) =>
+      (
+        within(screen.getByRole("region", { name: label })).getAllByLabelText(
+          /^Weight of /,
+        ) as HTMLInputElement[]
+      ).map((field) => field.getAttribute("aria-label"));
+
+    expect(labels("Mix A")).toEqual([
+      "Weight of VTI in Mix A, in percent",
+      "Weight of VOO in Mix A, in percent",
+    ]);
+    expect(labels("Mix B")).toEqual(["Weight of VXUS in Mix B, in percent"]);
+
+    // And the link carries that order, so a reload or a copy shows the same list.
+    const decoded = decodeComparison(window.location.hash);
+    expect(decoded.ok).toBe(true);
+    if (decoded.ok) {
+      expect(decoded.a.map((entry) => entry.ticker)).toEqual(["VTI", "VOO"]);
+    }
+  });
+});

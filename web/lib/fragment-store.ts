@@ -215,8 +215,13 @@ export function writeComparison(
   b: FundWeight[],
   options: { replace?: boolean } = {},
 ): void {
-  const sideA = sortFunds(a);
-  const sideB = sortFunds(b);
+  // The order is the visitor's, on both sides — the same rule the portfolio has had
+  // since 2026-11-02. This writer used to alphabetise both lists, so `/compare`
+  // re-ordered the funds the moment it wrote the link: a side typed VTI, VXUS, BND
+  // came back BND, VTI, VXUS on the next render, and the two pages disagreed about
+  // whether order is data. It is (`fragment.ts` header), so nothing here sorts.
+  const sideA = [...a];
+  const sideB = [...b];
   // A comparison with only a second side is still a comparison: `/compare` lets a
   // visitor start from an empty page and fill B first, and that state has to survive
   // a reload and a copied link. Only a comparison with nothing on either side is
@@ -237,12 +242,6 @@ export function writeComparison(
     lens: DEFAULT_LENS,
     companyId: null,
   });
-}
-
-function sortFunds(entries: FundWeight[]): FundWeight[] {
-  return [...entries].sort((x, y) =>
-    x.ticker < y.ticker ? -1 : x.ticker > y.ticker ? 1 : 0,
-  );
 }
 
 function commit(
@@ -274,9 +273,15 @@ function commit(
   window.dispatchEvent(new Event(EVENT));
 }
 
-/** The fund-only projection of a portfolio, for the comparison column. */
+/**
+ * The fund-only projection of a portfolio, for the comparison column.
+ *
+ * `fundWeights` already returns the portfolio's own order, and that order is the
+ * visitor's — a portfolio dragged into a deliberate sequence arrives on `/compare`
+ * in that sequence, not alphabetised.
+ */
 function fundsOf(portfolio: Portfolio): FundWeight[] {
-  return sortFunds(fundWeights(portfolio));
+  return fundWeights(portfolio);
 }
 
 /** Re-exported so a caller does not have to import two modules to encode a link. */
