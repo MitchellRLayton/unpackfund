@@ -16,9 +16,11 @@ growing (13,482 → 13,764 → 14,239 objects in three days). Thirty daily copie
 
 Three rules, applied to every listing:
 
-* **Keep in full** the live release (`latest/release.json`), its parent — the
-  rollback target, because rolling back is a pointer write only while the older
-  bytes are still there — and the staged candidate (`staging/latest/release.json`).
+* **Keep in full** the live release (`latest/release.json`) and the staged candidate
+  (`staging/latest/release.json`). The rollback parent is *not* kept by default: the
+  operator retired that capability on 2026-11-10 ("I am okay not being able to roll
+  back") because it doubled the steady state for a window nobody used. `--keep-parent`
+  restores it for a run that wants the target.
 * **Keep as a stub** the newest release of each of the four most recent completed
   quarters. A stub keeps the *proof* and drops the *bytes*: `manifest.json`,
   `release.json`, `catalogue.json`, `tickers.json`, `aliases.json` and `index/`
@@ -33,8 +35,8 @@ published file with its sha256, and the parser that produced them is versioned b
 its current rendering: dropping the rendering costs nothing that cannot be rebuilt
 byte for byte, and keeping four renderings of the past year costs 1.3 GB.
 
-Steady state: 3 × 331.4 MB + 4 × ~4 MB ≈ 1.0 GB, i.e. ~10% of the free tier instead
-of 100%.
+Steady state: 2 × 331.4 MB + 4 × ~4 MB ≈ 0.7 GB, i.e. ~7% of the free tier instead of
+100%. Measured on 2026-11-10 on the wider release: 2 × 716 MB ≈ 1.4 GB.
 
 `plan` is the safe command — it lists, reads the two pointers, prints a table of
 one decision per release and mutates nothing. `apply` performs that plan and needs
@@ -43,6 +45,14 @@ refuse (exit 2, no changes) when the live pointer is missing or unreadable, when
 decision would touch the live, staged or rollback release, when a release prefix
 has no `release.json`, or when one run would delete more than 60% of the bucket
 unless `--force` — that last guard is for a listing bug, not for the policy.
+
+A backlog that genuinely exceeds that guard is *drained*, not refused. When the full
+plan would remove more than 60% of the bucket, `apply` deletes the oldest releases
+whose removal fits inside the guard this run and reports the rest as `defer`, so the
+next run continues from a fresh listing. Refusing outright deadlocked the prune on
+2026-11-09 — a month of un-pruned releases was 93% of the bucket, so every run
+refused and nothing ever shrank — while draining oldest-first is bounded per run by
+exactly the same guard.
 
 `--ignore-prefix` (both commands, repeatable) is the operator's explicit exception
 to the `release.json` guard: a prefix named there is left out of the plan
@@ -60,6 +70,7 @@ import argparse
 import json
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -98,7 +109,11 @@ FREE_TIER_BYTES = 10 * GB
 KEEP = "keep"
 STUB = "stub"
 DELETE = "delete"
-ACTIONS = (KEEP, STUB, DELETE)
+#: A `delete` the guard held back for a later run. It behaves exactly like `keep`
+#: this run — `Decision.delete` returns nothing for it — and is counted separately so
+#: a reader can watch the backlog drain instead of meeting a refusal.
+DEFER = "defer"
+ACTIONS = (KEEP, STUB, DELETE, DEFER)
 
 #: `2026-10-30.5` — an `as_of` date and the counter for a second release that day.
 #: The id is also the published directory name, and the only thing that says where
@@ -421,6 +436,55 @@ def plan_releases(
     return decisions
 
 
+def defer_to_fit_guard(
+    decisions: Sequence[Decision],
+    listing: Sequence[ObjectEntry],
+    *,
+    force: bool = False,
+) -> list[Decision]:
+    """Hold back the newest deletions so one run never exceeds the mass-delete guard.
+
+    Oldest first, because the oldest releases are the ones a backlog most needs gone
+    and the newest are still plausible rollback targets by accident of time. The
+    budget is the same 60% the guard uses, so a truncated listing still cannot empty
+    the bucket: a run removes at most 60% of what it saw, and the next run re-lists.
+
+    Pure arithmetic on a plan, like `plan_releases` — no network, no clock.
+    """
+    if force:
+        return list(decisions)
+    total = len(listing)
+    if not total:
+        return list(decisions)
+    removable = sum(decision.remove_objects for decision in decisions)
+    if removable / total <= MASS_DELETE_FRACTION:
+        return list(decisions)
+
+    budget = int(MASS_DELETE_FRACTION * total)
+    spent = 0
+    out: list[Decision] = []
+    # `plan_releases` returns newest first: the last items are the oldest releases.
+    for decision in reversed(decisions):
+        if decision.action != DELETE:
+            out.append(decision)
+            continue
+        if spent + decision.remove_objects <= budget:
+            spent += decision.remove_objects
+            out.append(decision)
+            continue
+        out.append(
+            Decision(
+                decision.release,
+                DEFER,
+                f"deferred to the next run: this run is capped at {MASS_DELETE_FRACTION:.0%} of the "
+                f"{total:,} listed objects ({budget:,}) to keep the listing-bug guard meaningful",
+                decision.entries,
+            )
+        )
+    out.reverse()
+    return out
+
+
 # -- the refusals -------------------------------------------------------------
 def check_plan(
     decisions: Sequence[Decision],
@@ -482,6 +546,8 @@ def check_plan(
 @dataclass
 class Plan:
     live: str
+    #: The release behind live: the rollback target. Reported whether or not it is
+    #: kept this run, so a reader can see what a `--keep-parent` run would hold on to.
     parent: str | None
     staged: str | None
     decisions: list[Decision]
@@ -489,6 +555,9 @@ class Plan:
     bucket_bytes: int
     quarters: int = DEFAULT_QUARTERS
     forced: bool = False
+    #: False by default: the operator retired the rollback target on 2026-11-10 to
+    #: halve the steady state. `--keep-parent` turns it back on for one run.
+    parent_kept: bool = False
     generated_utc: str = ""
     ignored: list[IgnoredPrefix] = field(default_factory=list)
 
@@ -544,6 +613,7 @@ class Plan:
             "generated_utc": self.generated_utc,
             "live": self.live,
             "parent": self.parent,
+            "parent_kept": self.parent_kept,
             "staged": self.staged,
             "quarters": self.quarters,
             "forced": self.forced,
@@ -555,6 +625,7 @@ class Plan:
                 "keep": self.count(KEEP),
                 "stub": self.count(STUB),
                 "delete": self.count(DELETE),
+                "defer": self.count(DEFER),
                 "remove_objects": self.remove_objects,
                 "deleted_bytes": self.remove_bytes,
                 "kept_bytes": self.after_bytes,
@@ -596,6 +667,7 @@ def build_plan(
     force: bool = False,
     today: date | None = None,
     ignore_prefixes: Sequence[str] = (),
+    keep_parent: bool = False,
 ) -> Plan:
     """List the bucket, read the two pointers, decide, and refuse if anything is off.
 
@@ -630,14 +702,20 @@ def build_plan(
         document = read_pointer(client, STAGED_POINTER, required=False)
         staged_id = document["as_of"] if document else None
 
+    # Resolved either way — it is what a `--keep-parent` run would keep, and the
+    # refusal still checks it when it is a role. By default it is not a role, so the
+    # release right behind live is deletable (operator, 2026-11-10).
     parent = resolve_parent(release_groups(listing), live_id, declared_parent)
-    decisions = plan_releases(listing, live_id, staged_id, quarters, parent=parent, today=today)
+    kept_parent = parent if keep_parent else None
+    decisions = plan_releases(listing, live_id, staged_id, quarters, parent=kept_parent, today=today)
+    decisions = defer_to_fit_guard(decisions, listing, force=force)
     # The refusals see the considered listing: an ignored prefix is not a release
     # missing its release.json, and it is not part of the mass-delete denominator.
-    check_plan(decisions, listing, live=live_id, staged=staged_id, parent=parent, force=force)
+    check_plan(decisions, listing, live=live_id, staged=staged_id, parent=kept_parent, force=force)
     return Plan(
         live=live_id,
         parent=parent,
+        parent_kept=keep_parent,
         staged=staged_id,
         decisions=decisions,
         bucket_objects=len(full),
@@ -717,11 +795,37 @@ def archive_document(
     }
 
 
-def apply_plan(plan: Plan, client: R2Client, *, yes: bool = False) -> ApplyReport:
+def _delete_release(client: R2Client, decision: Decision) -> int:
+    """Delete one release's doomed objects in batches.
+
+    The prefix marker goes too for a full delete, and is deliberately left alone for
+    a stub — the stub keeps objects, so its prefix must stay. Objects go first
+    because an empty prefix is a leftover of a tool that made one, and deleting it is
+    a no-op when it never existed.
+    """
+    confirmed = 0
+    removals = decision.delete
+    for start in range(0, len(removals), DELETE_BATCH):
+        chunk = [entry.key for entry in removals[start : start + DELETE_BATCH]]
+        confirmed += client.delete_objects(chunk)
+    if decision.action == DELETE:
+        client.delete_object(f"{RELEASES_PREFIX}{decision.release}/")
+    return confirmed
+
+
+def apply_plan(
+    plan: Plan, client: R2Client, *, yes: bool = False, workers: int = 1
+) -> ApplyReport:
     """Delete what the plan says to delete, batched, objects before the prefix.
 
     Safe to re-run: a delete of a missing key is not an error, and the next plan is
     computed from a fresh listing, so an interrupted run simply continues.
+
+    `workers` deletes that many releases at once. A steady-state run removes one
+    release, so the default of 1 keeps it sequential and readable; a catch-up run
+    (the 2026-11-10 backfill was 580,475 objects) needs the parallelism or it takes
+    hours. Deletes are independent per release, and R2 bills `DeleteObject` at zero,
+    so the only thing parallelism changes is wall time.
     """
     if not yes:
         raise RetentionError("apply deletes objects; it needs --yes once you have read the plan")
@@ -735,27 +839,27 @@ def apply_plan(plan: Plan, client: R2Client, *, yes: bool = False) -> ApplyRepor
     }
 
     report = ApplyReport()
+    todo = [decision for decision in plan.decisions if decision.delete]
+    confirmed_by_release: dict[str, int] = {}
+    if todo:
+        with ThreadPoolExecutor(max_workers=max(1, min(workers, len(todo)))) as pool:
+            futures = {pool.submit(_delete_release, client, decision): decision for decision in todo}
+            for future in as_completed(futures):
+                confirmed_by_release[futures[future].release] = future.result()
+
     for decision in plan.decisions:
         removals = decision.delete
         if not removals:
             continue
-        confirmed = 0
-        for start in range(0, len(removals), DELETE_BATCH):
-            chunk = [entry.key for entry in removals[start : start + DELETE_BATCH]]
-            confirmed += client.delete_objects(chunk)
         removed_bytes = sum(entry.size for entry in removals)
         report.deleted_objects += len(removals)
         report.deleted_bytes += removed_bytes
-        report.confirmed_objects += confirmed
+        report.confirmed_objects += confirmed_by_release.get(decision.release, 0)
         print(
             f"  {decision.action:<6} {decision.release:<16} {len(removals):>7,} object(s) / "
             f"{format_bytes(removed_bytes):>10}  {decision.reason}"
         )
-        if decision.action == DELETE:
-            # Objects first, then the prefix marker: an empty prefix is a leftover of
-            # a tool that made one, and deleting it is a no-op when it never existed.
-            client.delete_object(f"{RELEASES_PREFIX}{decision.release}/")
-        elif decision.action == STUB:
+        if decision.action == STUB:
             body = canonical_bytes(archive_document(decision, manifests[decision.release]))
             client.put(f"{RELEASES_PREFIX}{decision.release}/{ARCHIVE_OBJECT}", body, cache_control=IMMUTABLE)
             report.archived.append(decision.release)
@@ -771,7 +875,8 @@ def print_plan(plan: Plan, *, counts_only: bool = False) -> None:
     if not counts_only:
         print(
             f"  bucket: {plan.bucket_objects:,} objects / {format_bytes(plan.bucket_bytes)}"
-            f"    live: {plan.live}    parent: {plan.parent or '—'}    staged: {plan.staged or '—'}"
+            f"    live: {plan.live}    parent: {plan.parent or '—'}"
+            + ("" if plan.parent_kept or not plan.parent else " (not kept)") + f"    staged: {plan.staged or '—'}"
         )
         print(f"  {'release':<16}{'action':<8}{'objects':>9}{'now':>12}{'after':>12}  reason")
         for decision in plan.decisions:
@@ -784,13 +889,20 @@ def print_plan(plan: Plan, *, counts_only: bool = False) -> None:
             f"  ignored: {row.prefix} ({row.objects:,} object(s) / {format_bytes(row.bytes)})"
             " — left out of the decisions, the totals and the guard"
         )
+    deferred = plan.count(DEFER)
     print(
-        f"  plan: {plan.count(KEEP)} keep, {plan.count(STUB)} stub, {plan.count(DELETE)} delete — removes "
-        f"{plan.remove_objects:,} object(s) / {format_bytes(plan.remove_bytes)} "
+        f"  plan: {plan.count(KEEP)} keep, {plan.count(STUB)} stub, {plan.count(DELETE)} delete"
+        + (f", {deferred} defer" if deferred else "")
+        + f" — removes {plan.remove_objects:,} object(s) / {format_bytes(plan.remove_bytes)} "
         f"({plan.removal_fraction:.1%} of the {plan.considered_objects:,} considered objects); after ≈ "
         f"{plan.after_gb:.3f} GB of the {FREE_TIER_BYTES // GB} GB free tier "
         f"({plan.after_gb * GB / FREE_TIER_BYTES:.1%})"
     )
+    if deferred:
+        print(
+            f"  backlog: {deferred} release(s) deferred — the next run continues from a fresh listing "
+            "(60% per run keeps the listing-bug guard meaningful)"
+        )
     if plan.after_bytes > FREE_TIER_BYTES:
         print("  warning: that is over the free tier — the policy cannot keep up with the release size; check the listing")
 
@@ -832,13 +944,19 @@ def _add_state_arguments(parser: argparse.ArgumentParser) -> None:
         help="leave this prefix out of the plan entirely (repeatable); it is printed as `ignored`, "
         "counted nowhere, and is the operator's exception to the release.json guard",
     )
+    parser.add_argument(
+        "--keep-parent",
+        action="store_true",
+        help="also keep the release behind live — the rollback target (default: keep only live + staged, "
+        "per the operator's 2026-11-10 decision)",
+    )
 
 
 def main(argv: list[str] | None = None, *, client: R2Client | None = None) -> int:
     """`plan` prints and exits 0; a refusal exits 2; `apply` needs `--yes`."""
     parser = argparse.ArgumentParser(
         prog="python -m pipeline.retention",
-        description="Prune published releases to the live/staged pair, their rollback parent, and four quarterly stubs.",
+        description="Prune published releases to the live release, the staged candidate and four quarterly stubs.",
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -850,6 +968,13 @@ def main(argv: list[str] | None = None, *, client: R2Client | None = None) -> in
     apply_parser = commands.add_parser("apply", help="perform the plan; refuses without --yes")
     _add_state_arguments(apply_parser)
     apply_parser.add_argument("--yes", action="store_true", help="required: actually delete objects")
+    apply_parser.add_argument(
+        "--workers",
+        type=int,
+        default=8,
+        metavar="N",
+        help="delete N releases at once (default 8); a steady-state run has one, a catch-up run thousands",
+    )
 
     args = parser.parse_args(argv)
 
@@ -861,6 +986,7 @@ def main(argv: list[str] | None = None, *, client: R2Client | None = None) -> in
             staged=args.staged,
             force=args.force,
             ignore_prefixes=args.ignore_prefix or (),
+            keep_parent=args.keep_parent,
         )
     except (RetentionError, release.ReleaseError) as error:
         print(f"REFUSED: {error}")
@@ -879,7 +1005,7 @@ def main(argv: list[str] | None = None, *, client: R2Client | None = None) -> in
         print("\n  refusing to delete anything: re-run with --yes once this plan is what you want")
         return 2
     try:
-        report = apply_plan(plan, connection, yes=True)
+        report = apply_plan(plan, connection, yes=True, workers=max(1, args.workers))
     except RetentionError as error:
         print(f"REFUSED: {error}")
         return 2
