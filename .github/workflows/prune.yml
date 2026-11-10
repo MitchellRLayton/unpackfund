@@ -1,0 +1,147 @@
+# Prune published releases so the R2 bucket stays inside the free tier.
+#
+# Why this is its own workflow and not a step in `promote.yml` (where it lived from
+# 2026-10-30 to 2026-11-10):
+#
+# `promote.yml` carried the prune with `continue-on-error: true`, and `pipeline.retention`
+# exits 2 when its plan trips the 60% mass-delete guard. The two together meant the prune
+# printed `REFUSED: the plan removes 558,118 of 602,851 objects (92.6%) …` on every
+# promotion for ten days and never deleted anything, while the job stayed green: R2 reached
+# 16.33 GB against a 10 GB free tier before anyone looked.
+#
+# The obvious fix — drop `continue-on-error` — has a consequence worth avoiding:
+# `deploy-site.yml` runs only when `promote` concludes *success* (its `if:` tests
+# `workflow_run.conclusion == 'success'`), so a red prune would block the site rebuild that
+# follows every promotion and leave the fund pages a release behind. Failing the prune must
+# not fail the promotion.
+#
+# So the prune runs here, on its own: a failure is a red run of this workflow, visible and
+# alertable, and the promotion stays green. It also runs on days when nothing was promoted,
+# which is exactly when a backlog quietly builds.
+#
+# The 60% guard is unchanged and still the policy's ceiling: `pipeline.retention` drains a
+# bigger backlog oldest-first, at most 60% per run, and reports the rest as `defer`.
+name: prune
+
+on:
+  # After a promotion — the normal path: the new release is live, the previous one is now
+  # either the rollback parent (kept, since 2026-11-10 the parent is *not* kept) or garbage.
+  workflow_run:
+    workflows: [promote]
+    types: [completed]
+  # A safety net for days with no promotion (a quiet EDGAR day stages nothing): the bucket
+  # is still checked, and any drift is corrected.
+  schedule:
+    - cron: "15 7 * * *"
+  workflow_dispatch:
+    inputs:
+      prune_force:
+        description: "allow one run to remove more than 60% of the bucket (listing-bug guard off)"
+        type: boolean
+        default: false
+      keep_parent:
+        description: "also keep the release behind live — the rollback target"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# One prune at a time: two overlapping listings could decide against the same bucket state.
+concurrency:
+  group: prune
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.12"
+  DATA_HOST: https://data.unpackfund.com
+
+jobs:
+  prune:
+    name: prune old releases (stay inside the R2 free tier)
+    # A promotion that failed has not moved the pointer; pruning after one would act on a
+    # state nobody finished setting up. The schedule and dispatch runs ignore this.
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A workflow_run run starts on the default branch's workflow file but should
+          # prune with the code the promotion used.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install the pipeline
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ./pipeline
+
+      - name: Prune
+        working-directory: pipeline
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          # The five prefixes below were never releases (the day-4 rehearsals, uploaded
+          # before `release.json` existed). Named as ignored, never deleted — the same list
+          # `promote.yml` used, so the two cannot disagree about what is off-limits.
+          LEGACY=(
+            --ignore-prefix releases/2026-10-28
+            --ignore-prefix releases/2026-10-28.2
+            --ignore-prefix releases/2026-10-28.3
+            --ignore-prefix releases/2026-10-29.1
+            --ignore-prefix releases/2026-10-29.2
+          )
+          OPTIONS=("${LEGACY[@]}")
+          [ "${{ inputs.prune_force }}" = "true" ] && OPTIONS+=(--force)
+          [ "${{ inputs.keep_parent }}" = "true" ] && OPTIONS+=(--keep-parent)
+
+          # Plan first and always publish it: a refused or deferred run is then readable
+          # without re-running anything, and the numbers are in the job summary below.
+          python -m pipeline.retention plan "${OPTIONS[@]}" --json ../artifacts/retention/plan.json
+          python -m pipeline.retention apply "${OPTIONS[@]}" --yes
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "### Prune"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| trigger | ${{ github.event_name }} |"
+            echo "| code | \`${{ github.event.workflow_run.head_sha || github.sha }}\` |"
+            echo
+            echo '```'
+            python - <<'PY'
+          import json
+          import pathlib
+
+          path = pathlib.Path("artifacts/retention/plan.json")
+          if not path.exists():
+              print("no plan written: the prune did not get as far as planning")
+              raise SystemExit(0)
+          plan = json.loads(path.read_text())
+          totals = plan["totals"]
+          print(f"bucket   {plan['bucket']['objects']:,} objects / {plan['bucket']['bytes'] / 1e9:.3f} GB")
+          print(f"live     {plan['live']}    staged {plan['staged']}    parent {plan['parent']} (kept: {plan['parent_kept']})")
+          print(f"plan     {totals['keep']} keep, {totals['stub']} stub, {totals['delete']} delete, {totals.get('defer', 0)} defer")
+          print(f"removes  {totals['remove_objects']:,} objects / {totals['deleted_bytes'] / 1e9:.3f} GB")
+          print(f"after    {totals['after_objects']:,} objects / {totals['estimated_gb_after']} GB of the 10 GB free tier")
+          PY
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: retention-plan
+          path: artifacts/retention/
+          retention-days: 14
+          if-no-files-found: ignore

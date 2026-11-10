@@ -11,7 +11,11 @@
 #   2. then the Worker, in two pieces: the *app* is rebuilt from this run's checkout, and
 #      the *fund pages* are taken from the artifact day 1 built, so a promotion cannot
 #      publish pages nobody reviewed — and cannot publish code older than `main` either;
-#   3. then retention, so the prune runs only after a successful promotion.
+#   3. retention is *not* step 3 here any more: the prune moved to `prune.yml`, which
+#      runs on this workflow's success (and daily as a safety net). It used to be a step
+#      below, with `continue-on-error: true`, and that combination hid a ten-day backlog:
+#      the prune refused on every run and the job stayed green. It cannot simply fail
+#      here, because `deploy-site.yml` only runs when this workflow concludes success.
 # A failure at (2) leaves fresh data with pages one day old, which is visible and
 # recoverable; the reverse (new pages, old data) would show a fund page the app disagrees
 # with.
@@ -306,39 +310,6 @@ jobs:
             echo "served /x/ names this build's chunks"
           fi
 
-      # Free operations only: DeleteObject is not billed, so a prune never touches the ops
-      # budget — it moves GB-month, which is the whole point (ADR-0011).
-      #
-      # `plan` runs first and its JSON is kept with the run even if `apply` fails; `apply`
-      # then re-derives the same plan from the same inputs and acts on it. It never runs if
-      # the promotion itself failed (`already_live` short-circuit above) and is
-      # `continue-on-error` because a refused prune must not mark a good promotion failed.
-      #
-      # The five prefixes below are named as ignored, never deleted: they are the day-4
-      # five-fund rehearsals, uploaded before `release.json` existed, so they have `funds/`
-      # and no descriptor. `retention` refuses any release-looking prefix it cannot read,
-      # which is the right default; this list is the operator's explicit exception.
-      - name: Prune old releases (stay inside the R2 free tier)
-        if: steps.resolve.outputs.already_live != 'true'
-        working-directory: pipeline
-        continue-on-error: true
-        env:
-          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-        run: |
-          LEGACY=(
-            --ignore-prefix releases/2026-10-28
-            --ignore-prefix releases/2026-10-28.2
-            --ignore-prefix releases/2026-10-28.3
-            --ignore-prefix releases/2026-10-29.1
-            --ignore-prefix releases/2026-10-29.2
-          )
-          python -m pipeline.retention plan "${LEGACY[@]}" --json ../artifacts/retention/plan.json
-          FORCE=()
-          if [ "${{ inputs.prune_force }}" = "true" ]; then FORCE+=(--force); fi
-          python -m pipeline.retention apply "${LEGACY[@]}" "${FORCE[@]}" --yes
-
       - name: Summarise
         if: always()
         run: |
@@ -352,6 +323,9 @@ jobs:
             echo "| already live | ${{ steps.resolve.outputs.already_live }} |"
             echo "| candidate age (days) | ${{ steps.resolve.outputs.age_days }} |"
             echo
+            # The prune moved to `prune.yml` on 2026-11-10 (a red prune must not gate
+            # deploy-site), so this run writes no plan; say so rather than printing nothing.
+            echo "**retention** — pruned by the separate \`prune\` workflow after this run."
             if [ -f artifacts/retention/plan.json ]; then
               echo "**retention plan**"
               echo '```json'
