@@ -50,14 +50,6 @@ on:
         description: "move the data pointer only, leave the site on its current version"
         type: boolean
         default: false
-      prune_force:
-        # The 60% mass-delete guard exists so a truncated bucket listing cannot empty the
-        # bucket. The first real prune legitimately crosses it (72.6%: four full releases
-        # and one five-fund rehearsal release exist, and only two are kept), so this is a
-        # one-time switch for that run — never leave it on.
-        description: "allow the prune to remove more than 60% of the bucket (first run only)"
-        type: boolean
-        default: false
   # Live since 2026-10-30: the first promotion was watched by hand (`workflow_dispatch`),
   # went green, and only then was this schedule switched on.
   #
@@ -107,9 +99,10 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # Node is here only to rebuild the app (see the header); the pointer move, the
-      # promotion and the prune are Python. Same three setup steps `deploy-site.yml` uses,
-      # so the two publishers cannot drift on the toolchain.
+      # Node is here only to rebuild the app (see the header); the pointer move and the
+      # promotion are Python (the prune left for `prune.yml` on 2026-11-10). Same three
+      # setup steps `deploy-site.yml` uses, so the two publishers cannot drift on the
+      # toolchain.
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
