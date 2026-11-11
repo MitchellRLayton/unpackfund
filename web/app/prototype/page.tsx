@@ -12,7 +12,7 @@
  * the only thing it writes.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 
 import { BENCHMARK_CHOICES } from "@/lib/benchmark";
 import { useBenchmarkPreference } from "@/lib/benchmark-preference";
@@ -22,6 +22,8 @@ import { formatCount, formatPct1, formatShare } from "@/lib/format";
 import { CASH_KEY, type PortfolioEntry } from "@/lib/types";
 import { useWorkspace, type WorkspaceModel } from "@/lib/use-workspace";
 
+import type { CurveProps } from "./ConcentrationCurve";
+import type { WeightedCompany } from "./concentration";
 import styles from "./prototype.module.css";
 
 type Variant = "a" | "b" | "c";
@@ -404,6 +406,47 @@ export default function PrototypePage() {
   });
   const model = useWorkspace();
   const view = useMemo(() => buildView(model), [model]);
+  // The curve module is loaded only when the expander opens: nothing of it is in
+  // the initial page bundle, which is the production rule the prototype is testing.
+  const [Curve, setCurve] = useState<ComponentType<CurveProps> | null>(null);
+  const [curveOpen, setCurveOpen] = useState(false);
+  useEffect(() => {
+    if (!curveOpen || Curve) return;
+    let cancelled = false;
+    import("./ConcentrationCurve").then((module) => {
+      if (!cancelled) setCurve(() => module.ConcentrationCurve);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [curveOpen, Curve]);
+
+  // Company-level weights, normalised to 1 over the matched total (the same rule the
+  // effective counts use); the benchmark is normalised over its own traced total.
+  const curveYou = useMemo<WeightedCompany[]>(() => {
+    const rows = model.ledger?.rows ?? [];
+    const total = rows.reduce((sum, row) => sum + row.weight, 0);
+    if (total <= 0) return [];
+    return rows.map((row) => ({
+      name: row.name,
+      ticker: row.ticker,
+      weight: row.weight / total,
+    }));
+  }, [model.ledger]);
+  const curveBenchmark = useMemo<CurveProps["benchmark"]>(() => {
+    if (!model.benchmark) return null;
+    const entries = Object.entries(model.benchmark.weights).filter(([, weight]) => weight > 0);
+    const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
+    if (total <= 0) return null;
+    return {
+      ticker: model.benchmark.ticker,
+      weights: entries.map(([companyId, weight]) => ({
+        name: companyId,
+        ticker: null,
+        weight: weight / total,
+      })),
+    };
+  }, [model.benchmark]);
 
   useEffect(() => {
     setParams(readParams());
@@ -464,6 +507,22 @@ export default function PrototypePage() {
         {params.variant === "a" ? <Section view={view} /> : null}
         {params.variant === "b" ? <VariantB view={view} /> : null}
         {params.variant === "c" ? <VariantC view={view} /> : null}
+
+        {!view.empty ? (
+          <details
+            className={styles.curveDetails}
+            onToggle={(event) => setCurveOpen(event.currentTarget.open)}
+          >
+            <summary>See the curve</summary>
+            {curveOpen ? (
+              Curve ? (
+                <Curve you={curveYou} benchmark={curveBenchmark} />
+              ) : (
+                <p className="small muted">Loading the chart…</p>
+              )
+            ) : null}
+          </details>
+        ) : null}
       </section>
 
       <p className="small muted">

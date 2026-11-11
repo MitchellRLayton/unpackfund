@@ -1,0 +1,163 @@
+/* PROTOTYPE styles for the concentration curve — throwaway, never merged. */
+
+.wrapper {
+  position: relative;
+  margin-top: var(--space-2);
+}
+
+.summary {
+  font-size: var(--text-16);
+  margin: 0 0 var(--space-1);
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-12);
+  color: var(--graphite);
+  margin: 0 0 var(--space-1);
+}
+
+.swatchYou,
+.swatchBench {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.swatchYou {
+  background: var(--accent);
+}
+
+.swatchBench {
+  background: var(--graphite);
+}
+
+.chartWrap {
+  position: relative;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  outline: none;
+}
+
+.svg:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.grid {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+
+.axis {
+  stroke: var(--rule-strong);
+  stroke-width: 1;
+}
+
+.minorTick {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+
+.tick {
+  fill: var(--graphite);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.axisTitle {
+  fill: var(--graphite);
+  font-size: 11px;
+}
+
+.youLine {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.benchLine {
+  fill: none;
+  stroke: var(--graphite);
+  stroke-width: 2;
+}
+
+.gap {
+  fill: var(--accent);
+  opacity: 0.12;
+}
+
+.halfLine {
+  stroke: var(--graphite);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.7;
+}
+
+.topLine {
+  stroke: var(--rule-strong);
+  stroke-width: 1;
+}
+
+.dotYou {
+  fill: var(--accent);
+}
+
+.dotBench {
+  fill: var(--graphite);
+}
+
+.annotation {
+  fill: var(--ink);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.crosshair {
+  stroke: var(--ink);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+
+.tooltip {
+  position: absolute;
+  background: var(--paper);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-12);
+  box-shadow: 0 4px 16px color-mix(in oklch, var(--ink) 12%, transparent);
+  pointer-events: none;
+  min-width: 12rem;
+}
+
+.tooltip p {
+  margin: 0;
+}
+
+.tooltipTitle {
+  font-weight: 600;
+}
+
+.tooltipCompany {
+  color: var(--graphite);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
