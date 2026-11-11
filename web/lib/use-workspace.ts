@@ -18,7 +18,8 @@
 
 import { useCallback, useMemo } from "react";
 
-import { BENCHMARK_TICKER, benchmarkFor, benchmarkFromRollup } from "./benchmark";
+import { benchmarkFor, benchmarkFromRollup } from "./benchmark";
+import { useBenchmarkPreference } from "./benchmark-preference";
 import { getSnapshot, writeCompany, writeLens } from "./fragment-store";
 import { splitPortfolio } from "./portfolio-weights";
 import { useLedger } from "./use-ledger";
@@ -95,6 +96,10 @@ export interface WorkspaceModel {
 const EMPTY_CONTESTED: Record<string, string> = {};
 
 export function useWorkspace(): WorkspaceModel {
+  // Which fund the comparison columns are against. A display preference in the query
+  // string, so it is read before anything loads: the benchmark fetch and the ledger
+  // recompute follow the choice. Default VT keeps a plain URL benchmark-free.
+  const { benchmark: benchmarkTicker } = useBenchmarkPreference();
   const portfolio = usePortfolio();
   const release = useRelease();
   const releaseData = release.status === "ready" ? release.data : null;
@@ -139,28 +144,26 @@ export function useWorkspace(): WorkspaceModel {
 
   // The benchmark is read from the fund document in memory, the compact rollup, or
   // the full document — the same three-way fallback the ledger has always used, so
-  // the comparison column cannot tell which one answered.
+  // the comparison column cannot tell which one answered. Only VT has a compact
+  // rollup in the release; the other four choices take the fund-document path.
   const holdsBenchmark = portfolio.entries.some(
-    (entry) => entry.kind === "fund" && entry.key === BENCHMARK_TICKER,
+    (entry) => entry.kind === "fund" && entry.key === benchmarkTicker,
   );
   const hasHoldings = tickers.length > 0 || symbols.length > 0;
   const hasEntries = portfolio.entries.length > 0;
   const wantsBenchmark = !holdsBenchmark && hasHoldings;
-  const compactEntry = releaseData?.objects.benchmarks?.files?.[BENCHMARK_TICKER];
+  const compactEntry = releaseData?.objects.benchmarks?.files?.[benchmarkTicker];
   const wantsCompact = wantsBenchmark && compactEntry !== undefined;
   const wantsFundDocument = wantsBenchmark && compactEntry === undefined;
-  const compactLoad = useBenchmark(releaseData, wantsCompact ? BENCHMARK_TICKER : null);
-  const benchmarkLoad = useFunds(
-    releaseData,
-    wantsFundDocument ? [BENCHMARK_TICKER] : [],
-  );
+  const compactLoad = useBenchmark(releaseData, wantsCompact ? benchmarkTicker : null);
+  const benchmarkLoad = useFunds(releaseData, wantsFundDocument ? [benchmarkTicker] : []);
   const benchmark = useMemo(() => {
-    const inMemory = funds.find((fund) => fund.ticker === BENCHMARK_TICKER);
+    const inMemory = funds.find((fund) => fund.ticker === benchmarkTicker);
     if (inMemory) return benchmarkFor(inMemory);
     if (compactLoad.data) return benchmarkFromRollup(compactLoad.data);
     const document = benchmarkLoad.funds[0];
     return document ? benchmarkFor(document) : null;
-  }, [funds, compactLoad.data, benchmarkLoad.funds]);
+  }, [funds, benchmarkTicker, compactLoad.data, benchmarkLoad.funds]);
 
   const countriesLoad = useCountries(releaseData);
   const {

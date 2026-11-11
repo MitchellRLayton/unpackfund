@@ -47,7 +47,7 @@ export interface AggregateInput {
   /** Cash as a fraction of the whole portfolio; never a coverage candidate. */
   cash?: number;
   /**
-   * The fixed benchmark's per-company weights ([ADR-0015](../../../docs/04-decisions/ADR-0015-vt-benchmark.md)).
+   * The selected benchmark's per-company weights (ADR-0015, amended 2026-11-11 for the picker).
    * Absent means the release publishes no benchmark, and every row reports
    * `benchmark_weight: null` rather than a zero that would claim the benchmark
    * holds nothing.

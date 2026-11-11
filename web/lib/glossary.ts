@@ -77,10 +77,11 @@ export const GLOSSARY_TERMS = [
     id: "benchmark-weight",
     label: "Benchmark weight",
     short:
-      "A company's share of VT's own portfolio — the benchmark's holding, not yours. The bracketed figure beside it is your weight minus VT's, in percentage points.",
+      "A company's share of the benchmark fund's own portfolio — the fund's holding, not yours. The bracketed figure beside it is your weight minus the fund's, in percentage points.",
     definition:
-      "Every portfolio is compared against one fixed fund, VT (the Vanguard Total World Stock ETF), and the comparison shows each company's weight inside VT's own filing. That weight is read from VT's N-PORT and has nothing to do with how much of your portfolio is in VT, which is usually none of it. VT is not configurable: a benchmark a reader could pick can be made to flatter a portfolio. A row with no VT weight means VT's traced holdings do not include the company; the column's caption prints how much of VT's own weight could be traced, so the reader can see what the comparison is against. The bracketed figure is your weight minus VT's in percentage points — an aid to reading, never a score.",
-    appears: "The ledger's VT column, and the methodology section on the benchmark.",
+      "Every portfolio is compared against one published fund at a time — VT (Vanguard Total World Stock ETF) unless you pick another — and the comparison shows each company's weight inside that fund's own filing. The picker offers VT, VTI, VOO, IDEV and IEMG: the whole world, the US total market, the S&P 500, developed ex-US and emerging markets, so a book can be read against the market it is actually in. The choice changes which comparison you are reading, never the meaning of the number: the weight is read from that fund's N-PORT and has nothing to do with how much of your portfolio is in it, which is usually none. Every surface names the fund — the column heading, the caption, the active-share line and the exported file — because a comparison that does not say what it is against is a number without provenance. A row with no weight means the benchmark's traced holdings do not include the company; the caption prints how much of the benchmark's own weight could be traced, so the reader can see what the comparison is against. The bracketed figure is your weight minus the benchmark's in percentage points — an aid to reading, never a score.",
+    appears:
+      "The Companies lens benchmark columns, the active-share line, and the methodology section on the benchmark.",
   },
   {
     id: "broad",
