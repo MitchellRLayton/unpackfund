@@ -21,7 +21,7 @@ import { getServerSnapshot, getSnapshot, subscribe, write } from "./fragment-sto
 import {
   convertMode,
   equalise as equaliseEntries,
-  isEqualSplit,
+  followsEvenSplit,
 } from "./portfolio-weights";
 import { moveItem } from "./reorder";
 import {
@@ -53,6 +53,11 @@ export interface PortfolioState {
    * `noop` (that holding is already in the portfolio).
    */
   add: (kind: EntryKind, key: string) => AddOutcome;
+  /**
+   * Drop one entry, under the same rule `add` follows: a list the app itself spread
+   * evenly is re-spread over what remains, so removing one row of five equal rows
+   * returns the other four to 100%; a list weighted by hand keeps every amount.
+   */
   remove: (kind: EntryKind, key: string) => void;
   /**
    * Move one entry to a 0-based position in the list.
@@ -115,11 +120,10 @@ export function usePortfolio(): PortfolioState {
       // weighted by hand keeps every amount it has, because moving a number they typed
       // is silent data loss: "I added a fund and my whole portfolio reset to equal
       // weights" (operator, 2026-11-02). Whole is not the test — `60/40` is whole and
-      // is still the visitor's, which is why the check is `isEqualSplit`, not a total.
-      // Cash and stocks additionally start at zero: guessing a dollar amount is
+      // is still the visitor's, which is why the check is `followsEvenSplit`, not a
+      // total. Cash and stocks additionally start at zero: guessing a dollar amount is
       // guessing money.
-      const followSplit =
-        entries.length === 0 || (mode === "bp" && isEqualSplit(entries));
+      const followSplit = entries.length === 0 || followsEvenSplit(mode, entries);
       write({ mode, entries: followSplit ? equaliseEntries(next) : next });
       return followSplit ? "split" : "kept";
     },
@@ -128,7 +132,15 @@ export function usePortfolio(): PortfolioState {
 
   const remove = useCallback(
     (kind: EntryKind, key: string) => {
-      write({ mode, entries: entries.filter((entry) => !isSame(entry, kind, key)) });
+      const remaining = entries.filter((entry) => !isSame(entry, kind, key));
+      // The mirror image of `add`, decided on the list as it was *before* the row
+      // leaves: dropping one of five equal 20% rows re-spreads the other four to 25%
+      // each, so the portfolio comes back to exactly 100% instead of being stranded at
+      // 80% — the operator's complaint (2026-11-11). A set weighted by hand keeps every
+      // amount it has; the pane's incomplete-portfolio sentence covers the shortfall,
+      // and the Equal weight button is there when the visitor wants the even split back.
+      const followSplit = followsEvenSplit(mode, entries);
+      write({ mode, entries: followSplit ? equaliseEntries(remaining) : remaining });
     },
     [entries, mode],
   );

@@ -551,6 +551,24 @@ export function HoldingsPane({ model }: { model: WorkspaceModel }) {
     ]);
   }, [entries, portfolio]);
 
+  /**
+   * Spread the whole evenly across every row, whatever their amounts are now.
+   *
+   * The same split a fresh portfolio receives (`equalise`), offered as a button because
+   * a set the visitor weighted by hand is never re-spread automatically: after hand
+   * edits this is the way back to equal weights. Percent mode only — in dollars the
+   * amounts are the visitor's money, and `equalise` writes nothing there.
+   */
+  const equalWeights = useCallback(() => {
+    if (entries.length === 0) return;
+    portfolio.equalise();
+    setMessage({
+      tone: "info",
+      title: "Equal weights",
+      body: "Every holding now carries the same share of the whole; the amounts add up to exactly 100.00%.",
+    });
+  }, [entries.length, portfolio]);
+
   /** Rescale every row so the set totals exactly 100%, keeping its proportions. */
   const scaleToHundred = useCallback(() => {
     if (entries.length === 0) return;
@@ -860,6 +878,15 @@ export function HoldingsPane({ model }: { model: WorkspaceModel }) {
                   Scale to 100%
                 </button>
               ) : null}
+              {/* Always here in percent mode, not only when the total is off: the way
+                  back to equal weights has to exist after a hand edit too. */}
+              <button
+                type="button"
+                className="btn btn--sm btn--quiet"
+                onClick={equalWeights}
+              >
+                Equal weight
+              </button>
             </div>
           ) : null}
         </div>

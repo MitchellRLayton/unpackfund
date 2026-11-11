@@ -198,16 +198,39 @@ describe("the invariants, on random portfolios", () => {
           // move either count.
           expect(partial.core!).toBeCloseTo(base.core!, 12);
           expect(partial.broad!).toBeCloseTo(base.broad!, 12);
-          // The range brackets the pair: putting the unmatched money back can only
-          // spread the portfolio further, never concentrate it.
-          expect(partial.coreRange![0]).toBeGreaterThanOrEqual(partial.core! - 1e-12);
+
+          // The range is the same pair recomputed over the *whole* portfolio, so its
+          // denominator is Q = T + unmatched rather than T and it is not a bracket of
+          // Core/Broad above: renormalising the matched companies down to make room for
+          // the unmatched money can move the whole-portfolio count below the
+          // matched-only one. "The whole-portfolio range" below is the deterministic
+          // case — ten equal names plus 2.5 unmatched is Core 10 against a floor of
+          // 9.615 — and the ordering is all that holds between the two bounds.
           expect(partial.coreRange![0]).toBeLessThanOrEqual(
             partial.coreRange![1] + 1e-12,
           );
-          expect(partial.broadRange![0]).toBeGreaterThanOrEqual(partial.broad! - 1e-12);
           expect(partial.broadRange![0]).toBeLessThanOrEqual(
             partial.broadRange![1] + 1e-12,
           );
+
+          // What *is* guaranteed: `[0]` is the whole-portfolio pair with all the
+          // unmatched money in one holding, `[1]` is the same with it spread over
+          // `unmatchedPositions` equal ones, and every other split lands between. Each
+          // bound is checked against `build` — the same Core/Broad path the rest of this
+          // file tests — rather than by restating the arithmetic here. 10 digits because
+          // Q is reached through a different summation than the one `build` uses; a
+          // wrong bound is off by O(1), not by 1e-13.
+          const one = build([...weights, unmatched]);
+          expect(partial.coreRange![0]).toBeCloseTo(one.core!, 10);
+          expect(partial.broadRange![0]).toBeCloseTo(one.broad!, 10);
+
+          const parts = Math.max(1, positions);
+          const spread = build([
+            ...weights,
+            ...Array.from({ length: parts }, () => unmatched / parts),
+          ]);
+          expect(partial.coreRange![1]).toBeCloseTo(spread.core!, 10);
+          expect(partial.broadRange![1]).toBeCloseTo(spread.broad!, 10);
         },
       ),
       { numRuns: RUNS },
@@ -279,6 +302,94 @@ describe("the coverage bands", () => {
       }
     });
   }
+});
+
+describe("the whole-portfolio range", () => {
+  // Hand-calculated from the definitions in effective-holdings.ts. Ten equal companies
+  // of weight 1 give T = 10 and Σw² = 10, so Core = T²/Σw² = 10 and Broad = exp(ln 10)
+  // = 10. Adding 2.5 of unmatched weight puts the whole-portfolio denominator at
+  // Q = 12.5: with all of it in one holding the floor is
+  //   12.5² / (10·1² + 2.5²) = 156.25 / 16.25 = 9.615384…
+  // which is *below* Core. That is the claim the property above used to make — "putting
+  // the unmatched money back can only spread the portfolio further" — and it is false:
+  // a count over Q is not a count over T.
+  const tenEqualCompanies = Array.from({ length: 10 }, () => ({
+    weight: 1,
+    sources: [{ weight: 1 }],
+  }));
+
+  it("puts the range on the whole-portfolio denominator, so its floor can sit below Core", () => {
+    const result = effectiveHoldings({
+      companies: tenEqualCompanies,
+      unmatchedWeight: 2.5,
+      unmatchedPositions: 1,
+    });
+
+    expect(result.coveragePct).toBeCloseTo(80, 9);
+    expect(result.band).toBe("full");
+    expect(result.core).toBeCloseTo(10, 9);
+    expect(result.broad).toBeCloseTo(10, 9);
+
+    // One unmatched position, so the range is a point: 156.25/16.25 = 9.615384…
+    expect(result.coreRange![0]).toBeCloseTo(156.25 / 16.25, 12);
+    expect(result.coreRange![1]).toBeCloseTo(156.25 / 16.25, 12);
+    // The assertion the property above used to make, stated where it can be seen to
+    // fail by 0.38 rather than by a rounding step.
+    expect(result.coreRange![0]).toBeLessThan(result.core!);
+    // Broad over Q: exp(−10·0.08·ln 0.08 − 0.2·ln 0.2) = exp(2.3424705) = 10.4069…
+    expect(result.broadRange![0]).toBeCloseTo(10.407, 3);
+    expect(result.broadRange![1]).toBeCloseTo(10.407, 3);
+  });
+
+  it("spreads the unmatched money over `unmatchedPositions` equal holdings for the ceiling", () => {
+    const result = effectiveHoldings({
+      companies: tenEqualCompanies,
+      unmatchedWeight: 2.5,
+      unmatchedPositions: 5,
+    });
+
+    // Floor unchanged — all of it in one holding. Ceiling:
+    // 12.5² / (10 + 2.5²/5) = 156.25 / 11.25 = 13.888…
+    expect(result.coreRange![0]).toBeCloseTo(156.25 / 16.25, 12);
+    expect(result.coreRange![1]).toBeCloseTo(156.25 / 11.25, 12);
+    // Broad ceiling: exp(2.3424705 + 0.2·ln 5) = exp(2.6643621) = 14.3587…
+    expect(result.broadRange![0]).toBeCloseTo(10.407, 3);
+    expect(result.broadRange![1]).toBeCloseTo(14.359, 3);
+  });
+
+  // The exact counterexample fast-check printed when deploy-site went red on 2026-11-10
+  // (run 42770129517, seed 913528741, shrunk 1,765 times): nine companies and
+  // 792,727.62 of unmatched weight in one position, landing on the 60% coverage edge
+  // where the discarded `coreRange[0] >= core` claim failed by 1e-12. At this input the
+  // two are mathematically equal, so only the rounding of T decided it — the case above
+  // is the same falsehood with room to see it.
+  it("pinned CI counterexample, on the 60% edge, is the whole-portfolio pair", () => {
+    const weights = [
+      181697.77900302372, 466017.14922029746, 1.7552995824223188, 118575.89134444504,
+      229273.1333619948, 0.000019409551044280505, 191488.86132440835,
+      0.000001279245330121294, 2036.866423932359,
+    ];
+    const unmatched = 792727.6239989144;
+    const companies = weights.map((weight) => ({ weight, sources: [{ weight }] }));
+
+    const result = effectiveHoldings({
+      companies,
+      unmatchedWeight: unmatched,
+      unmatchedPositions: 1,
+    });
+    // The same portfolio with the unmatched money standing in as a tenth company: one
+    // position, so the whole-portfolio pair is the range.
+    const one = effectiveHoldings({
+      companies: [...companies, { weight: unmatched, sources: [{ weight: unmatched }] }],
+      unmatchedWeight: 0,
+      unmatchedPositions: 0,
+    });
+
+    expect(result.coveragePct).toBeCloseTo(60, 6);
+    expect(result.band).toBe("partial");
+    expect(result.coreRange![0]).toBeCloseTo(one.core!, 9);
+    expect(result.broadRange![0]).toBeCloseTo(one.broad!, 9);
+  });
 });
 
 describe("the input contract", () => {

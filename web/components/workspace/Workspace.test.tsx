@@ -23,6 +23,7 @@ import type { WorkspaceModel } from "@/lib/use-workspace";
 import type { Lens } from "@/lib/view-fragment";
 
 import { Workspace } from "./Workspace";
+import { EXAMPLE_LABEL, EXAMPLE_TICKERS } from "./example";
 
 /**
  * The workspace shell, driven through a hand-built model.
@@ -61,9 +62,15 @@ vi.mock("@/lib/export", async (importOriginal) => {
 });
 
 vi.mock("@/lib/use-release", () => ({
-  useTickers: () => ({ status: "ready", data: ["VTI", "VXUS", "BND"], error: null }),
+  // The release publishes the example's seven tickers as well as the three fixture funds,
+  // because the worked example on the empty state fetches exactly those seven.
+  useTickers: () => ({
+    status: "ready",
+    data: [...EXAMPLE_TICKERS, "VTI", "VXUS", "BND"],
+    error: null,
+  }),
   useCatalogue: () => ({ status: "idle", data: null, error: null }),
-  useFunds: () => ({ funds: [VTI, VXUS, BND], pending: [], error: null }),
+  useFunds: () => ({ funds: EXAMPLE_FUNDS, pending: [], error: null }),
   useBenchmark: () => ({ status: "idle", data: null, error: null }),
   useCountries: () => ({
     status: "ready",
@@ -129,6 +136,44 @@ const VXUS = fund("VXUS", 100, [
 const BND = fund("BND", 100, [["c_treasury", 10_000]]);
 
 const FUNDS = [VTI, VXUS, BND];
+
+/**
+ * The worked example's seven filings, so the empty state's example reaches "ready".
+ *
+ * Each fund holds two of the fixture companies and they overlap heavily — the example
+ * exists to make that overlap visible, and the shell only needs filings that add up, not
+ * the funds' real portfolios.
+ */
+const EXAMPLE_FUNDS = [
+  fund("QQQ", 100, [
+    ["c_apple", 5_000],
+    ["c_msft", 5_000],
+  ]),
+  fund("VOO", 100, [
+    ["c_apple", 6_000],
+    ["c_nvda", 4_000],
+  ]),
+  fund("SMH", 100, [
+    ["c_nvda", 8_000],
+    ["c_tsmc", 2_000],
+  ]),
+  fund("VGT", 100, [
+    ["c_msft", 6_000],
+    ["c_apple", 4_000],
+  ]),
+  fund("RSPT", 100, [
+    ["c_nvda", 5_000],
+    ["c_nestle", 5_000],
+  ]),
+  fund("ARKK", 100, [
+    ["c_tsmc", 5_000],
+    ["c_samsung", 5_000],
+  ]),
+  fund("ALAI", 100, [
+    ["c_samsung", 4_000],
+    ["c_msft", 6_000],
+  ]),
+];
 
 const ENTRIES: PortfolioEntry[] = [
   { kind: "fund", key: "VTI", amount: 6_000 },
@@ -755,10 +800,61 @@ describe("Workspace — the holdings pane and the lenses", () => {
     renderWorkspace();
 
     expect(screen.getByText("Nothing in this portfolio yet")).toBeTruthy();
-    expect(
-      screen.getAllByText("Example portfolio, not a recommendation.").length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByText(EXAMPLE_LABEL).length).toBeGreaterThan(0);
     // A portfolio with no entries has no chip bar to collapse.
     expect(screen.queryByRole("button", { name: "Edit holdings" })).toBeNull();
+  });
+
+  it("puts the empty card, the lenses, the worked example, then the actions in that order", () => {
+    renderWorkspace();
+
+    const card = screen.getByRole("heading", { name: "Nothing in this portfolio yet" });
+    const lenses = screen.getByRole("tablist", { name: "Lenses" });
+    const example = screen.getByRole("heading", { name: "Worked example" });
+    const actions = screen.getByRole("button", { name: "Print summary" });
+
+    // The module in the middle is the five-lens tablist, not some other tab strip.
+    expect(
+      within(lenses)
+        .getAllByRole("tab")
+        .map((tab) => tab.textContent),
+    ).toEqual(["Companies", "Markets", "Funds", "Overlap", "Data quality"]);
+
+    const comesBefore = (first: Node, second: Node) =>
+      (first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+    expect(comesBefore(card, lenses)).toBe(true);
+    expect(comesBefore(lenses, example)).toBe(true);
+    expect(comesBefore(example, actions)).toBe(true);
+  });
+
+  it("shows the example as real numbers without printing its weights first", () => {
+    renderWorkspace();
+
+    const section = screen
+      .getByRole("heading", { name: "Worked example" })
+      .closest("section");
+    expect(section).not.toBeNull();
+
+    // Tickers only: the percentages arrive with the holdings pane after "Open the
+    // example", not before the visitor has chosen anything.
+    const chips = Array.from(section?.querySelectorAll(".chip") ?? []).map((chip) =>
+      chip.textContent?.trim(),
+    );
+    expect(chips).toEqual([...EXAMPLE_TICKERS]);
+    expect(section?.textContent).not.toContain("14.29%");
+
+    // The example is a demonstration, not a mock-up: its filings are aggregated into the
+    // same answer box the visitor's own portfolio gets.
+    expect(section?.querySelector(".summary-box__headline")?.textContent).toContain(
+      "You own 6 companies through 7 funds.",
+    );
+  });
+
+  it("leaves the worked example out once the portfolio has entries", () => {
+    renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+
+    expect(screen.queryByRole("heading", { name: "Worked example" })).toBeNull();
+    expect(screen.queryByText(EXAMPLE_LABEL)).toBeNull();
   });
 });

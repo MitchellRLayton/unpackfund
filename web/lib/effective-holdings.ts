@@ -88,8 +88,9 @@ export interface EffectiveHoldings {
   /** Evidence layer: the ten largest companies' share of each count's total. */
   topTenConcentrationShare: number | null;
   topTenBreadthShare: number | null;
-  /** How many equal-sized holdings over the whole portfolio, unmatched weight counted
-   *  once and as `unmatchedPositions` equal parts. Evidence layer only. */
+  /** How many equal-sized holdings over the whole portfolio: unmatched weight counted
+   *  once (lower bound) and as `unmatchedPositions` equal parts (upper). Both bounds
+   *  divide by `Q = T + u`, so this is not a bracket of `core`. Evidence layer only. */
   coreRange: readonly [number, number] | null;
   broadRange: readonly [number, number] | null;
   /** Companies included — the ceiling for both counts. */
@@ -222,10 +223,14 @@ export function effectiveHoldings(input: EffectiveInput): EffectiveHoldings {
   const topTenBreadth = sumAscending(largest.map(entropyTerm));
 
   // The range over the whole portfolio: the same two counts with the unmatched weight
-  // put back in, once as one holding and once split into `unmatchedPositions` equal
-  // ones. Both denominators are Q, so this is a different pair of numbers from Core and
-  // Broad by construction — it describes what the portfolio would look like if the
-  // unmatched money were as evenly spread as each case assumes.
+  // put back in, once as one holding (`[0]`, the most concentrated it can be) and once
+  // split into `unmatchedPositions` equal ones (`[1]`, the most spread). Both
+  // denominators are Q = T + u, not T, so this is a different pair of numbers from Core
+  // and Broad by construction and neither bound is a bracket of them: renormalising to Q
+  // moves the matched companies' shares too, so `[0]` can sit below Core — ten equal
+  // names plus 2.5 unmatched is Core 10 against a floor of 9.615. Every other split of
+  // the unmatched money lands between the two bounds, because Σx² is largest for one
+  // holding and smallest for equal ones, and the entropy is the mirror image.
   const q = totalWeight > 0 ? totalWeight : 1;
   const qShares = positive.map((weight) => weight / q);
   const unmatchedShare = unmatchedWeight / q;

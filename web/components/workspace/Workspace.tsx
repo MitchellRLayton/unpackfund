@@ -19,6 +19,11 @@
  * - **The lenses, below the answer.** The five tables, on the URL's own state.
  * - **The actions, last.** A share link, a comparison, a file, a page.
  *
+ * An empty portfolio reads in the operator's order: the "nothing here yet" card, then the
+ * lens tabs, then the worked example, then the actions. The example is a sibling of the
+ * card rather than part of it, because its place in that order is between two other
+ * modules.
+ *
  * Honesty rules the shell enforces, whatever a lens does:
  *
  * - an incomplete portfolio (percentages that do not add to 100%) is said out loud before
@@ -37,7 +42,7 @@ import { useProvider } from "@/components/lenses/provider-preference";
 import { ActionsRow } from "./ActionsRow";
 import { Summary } from "./Summary";
 import { buildAnswer, type Answer, type AnswerInput } from "./answer";
-import { EmptyState } from "./EmptyState";
+import { EmptyState, WorkedExample } from "./EmptyState";
 import { EXAMPLE_LABEL, isExamplePortfolio } from "./example";
 import { HoldingsChips, HoldingsPane } from "./HoldingsPane";
 import { LensTabs } from "./LensTabs";
@@ -215,6 +220,9 @@ export function Workspace() {
           {!hasEntries ? <EmptyState model={model} onReveal={revealPane} /> : null}
 
           <LensTabs model={model} />
+
+          {!hasEntries ? <WorkedExample model={model} /> : null}
+
           <ActionsRow model={model} />
         </div>
       </div>
