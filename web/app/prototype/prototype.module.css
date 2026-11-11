@@ -1,0 +1,208 @@
+/* PROTOTYPE styles — throwaway, never merged. Tokens only, from globals.css. */
+
+.chips {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-block: var(--space-2);
+}
+
+.chipsLabel {
+  font-size: var(--text-12);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--graphite);
+}
+
+.chip {
+  padding: 0.15rem var(--space-2);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--graphite);
+  font: inherit;
+  font-size: var(--text-12);
+  line-height: 1.6;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.chip:hover {
+  border-color: var(--graphite);
+  color: var(--ink);
+}
+
+.chip[aria-pressed="true"],
+.chip[aria-current="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.headline {
+  font-size: var(--text-20);
+  line-height: 1.35;
+  margin: 0;
+  max-width: 34ch;
+}
+
+.verdict {
+  font-size: var(--text-16);
+  color: var(--graphite);
+  margin: 0;
+}
+
+.bars {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-2) 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: minmax(9rem, 15rem) 1fr 3.5rem;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.barLabel {
+  font-size: var(--text-14);
+  color: var(--graphite);
+}
+
+.track {
+  display: block;
+  height: 0.75rem;
+  background: var(--wash);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius);
+}
+
+.you {
+  background: var(--accent);
+}
+
+.neutral {
+  background: var(--wash-strong);
+  border: 1px solid var(--rule-strong);
+  box-sizing: border-box;
+}
+
+.barValue {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.bullets {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: var(--space-1);
+  max-width: 72ch;
+}
+
+.details {
+  border-top: 1px solid var(--rule);
+  padding-top: var(--space-2);
+}
+
+.details summary {
+  cursor: pointer;
+  color: var(--graphite);
+}
+
+.details p {
+  max-width: 62ch;
+}
+
+.note {
+  color: var(--graphite);
+}
+
+.scenarios {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin-top: var(--space-2);
+}
+
+.heroRow {
+  display: grid;
+  grid-template-columns: minmax(10rem, 14rem) 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.bigNumber {
+  font-size: 3.5rem;
+  line-height: 1;
+  margin: 0;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.bigCaption {
+  color: var(--graphite);
+  margin: 0.25rem 0 0;
+}
+
+.smallHeadline {
+  color: var(--graphite);
+  margin-top: var(--space-2);
+}
+
+.heroSide {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.bar {
+  position: fixed;
+  bottom: var(--space-3);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  background: var(--paper);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  box-shadow: 0 6px 24px color-mix(in oklch, var(--ink) 12%, transparent);
+  z-index: 10;
+  max-width: min(96vw, 62rem);
+}
+
+.barTitle {
+  font-size: var(--text-12);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--graphite);
+}
+
+.barQuestion {
+  font-size: var(--text-12);
+  color: var(--graphite);
+  flex-basis: 100%;
+}
+
+@media (max-width: 720px) {
+  .heroRow {
+    grid-template-columns: 1fr;
+  }
+
+  .bigNumber {
+    font-size: 2.75rem;
+  }
+}
