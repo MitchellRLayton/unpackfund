@@ -134,9 +134,9 @@ export function benchmarkFromRollup(rollup: BenchmarkRollup): BenchmarkCompariso
  * **This is a difference of two shares of different wholes**, and it is the only
  * arithmetic the benchmark column is allowed to carry (operator decision, ADR-0015,
  * 2026-11-02 amendment). `0.0152 - 0.0406 = -0.0254` is "you hold 2.54 percentage
- * points less of this company than VT does" — it is not a holding, not a share of your
- * portfolio, and never a number that feeds a metric, a ranking, or a score. The
- * ledger's own weights are computed from filings and allocations only.
+ * points less of this company than the benchmark does" — it is not a holding, not a
+ * share of your portfolio, and never a number that feeds a metric, a ranking, or a
+ * score. The ledger's own weights are computed from filings and allocations only.
  *
  * `null` in, `null` out: with no benchmark there is nothing to difference, and the
  * column is absent rather than full of zeros (`static-xray-frontend` §4a).
