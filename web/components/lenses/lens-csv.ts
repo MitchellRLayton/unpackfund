@@ -15,7 +15,7 @@
  * are (`lib/export.ts` explains why that matters).
  */
 
-import { benchmarkDelta } from "@/lib/benchmark";
+import { DEFAULT_BENCHMARK, benchmarkDelta } from "@/lib/benchmark";
 import type { EffectiveHoldings } from "@/lib/effective-holdings";
 import type { CoverageBand } from "@/lib/format";
 import { coverageBand } from "@/lib/format";
@@ -102,11 +102,13 @@ function signedPoints(delta: number): string {
  * from the workspace keeps every column it had.
  *
  * The two new columns carry the page's meaning and the page's single subtraction:
- * `vt_weight_pct` is the company's weight **inside the benchmark fund's own NAV** (not a
- * share of the visitor's mix, not how much of the benchmark they hold), and
- * `change_vs_vt_pp` is your weight minus that, in percentage points. A release that
- * publishes no benchmark leaves both empty rather than writing `0.00`, because a zero in a
- * spreadsheet is a measurement and this would be a missing one.
+ * `{benchmark}_weight_pct` is the company's weight **inside the benchmark fund's own
+ * NAV** (not a share of the visitor's mix, not how much of the benchmark they hold), and
+ * `change_vs_{benchmark}_pp` is your weight minus that, in percentage points. The name is
+ * the fund the comparison actually used, so a file cannot say VT while holding VOO's
+ * numbers; VT keeps its historic `vt_` names. A release that publishes no benchmark
+ * leaves both empty rather than writing `0.00`, because a zero in a spreadsheet is a
+ * measurement and this would be a missing one.
  *
  * Rows are in the ledger's order, which is the table's default order — the page's sort and
  * its page number are the view's, and a file that followed them would be a different
@@ -129,15 +131,19 @@ export function companiesCsv(
   ledger: Ledger,
   releaseAsOf: string,
   style?: StyleCsvColumns | null,
+  benchmarkTicker: string = DEFAULT_BENCHMARK,
 ): string {
+  // Lower case so the column reads `voo_weight_pct` beside `portfolio_weight_pct`, and so
+  // VT keeps the historic `vt_weight_pct` / `change_vs_vt_pp` names exactly.
+  const benchmark = benchmarkTicker.toLowerCase();
   const lines = [
     csvLine([
       "company_id",
       "name",
       "ticker",
       "portfolio_weight_pct",
-      "vt_weight_pct",
-      "change_vs_vt_pp",
+      `${benchmark}_weight_pct`,
+      `change_vs_${benchmark}_pp`,
       ...(style ? ["style_weight_pct", "change_vs_style_pp", "style_benchmark"] : []),
       "held_directly",
       "fund_count",

@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BENCHMARK_CHOICES,
   BENCHMARK_TICKER,
+  DEFAULT_BENCHMARK,
   benchmarkDelta,
   benchmarkFor,
   benchmarkFromRollup,
+  isBenchmarkTicker,
+  parseBenchmark,
 } from "./benchmark";
 import type { BenchmarkRollup, FundDocument, Holding } from "./types";
 
@@ -164,5 +168,30 @@ describe("benchmarkDelta", () => {
 
   it("has no value without a benchmark, because there is nothing to difference", () => {
     expect(benchmarkDelta(0.0152, null)).toBeNull();
+  });
+});
+
+describe("the benchmark choices", () => {
+  it("offers exactly the operator's five proxy funds, VT first", () => {
+    expect([...BENCHMARK_CHOICES]).toEqual(["VT", "VTI", "VOO", "IDEV", "IEMG"]);
+    expect(DEFAULT_BENCHMARK).toBe("VT");
+    // The historic name the retired builder and the older tests read is the default.
+    expect(BENCHMARK_TICKER).toBe(DEFAULT_BENCHMARK);
+  });
+
+  it("reads a query value case-insensitively and refuses anything else", () => {
+    expect(parseBenchmark("voo")).toBe("VOO");
+    expect(parseBenchmark(" iemg ")).toBe("IEMG");
+    expect(parseBenchmark("VT")).toBe("VT");
+    expect(parseBenchmark("SPY")).toBeNull();
+    expect(parseBenchmark("")).toBeNull();
+    expect(parseBenchmark(null)).toBeNull();
+    expect(parseBenchmark(undefined)).toBeNull();
+  });
+
+  it("recognises only the five tickers", () => {
+    expect(BENCHMARK_CHOICES.every((ticker) => isBenchmarkTicker(ticker))).toBe(true);
+    expect(isBenchmarkTicker("VT ")).toBe(false);
+    expect(isBenchmarkTicker("vti")).toBe(false);
   });
 });

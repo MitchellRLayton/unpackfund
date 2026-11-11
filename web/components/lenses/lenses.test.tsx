@@ -273,6 +273,41 @@ describe("the four lenses render a worked portfolio", () => {
     );
   });
 
+  it("companies: the comparison headings and picker name the chosen benchmark", () => {
+    // The same ledger with VOO's weights: the pair of headings, the caption and the
+    // picker must all name VOO rather than the default, and exactly one option is on.
+    const benchmarked = withEffective({
+      ...LEDGERBase,
+      rows: ROWS.map((row, index) => ({
+        ...row,
+        benchmark_weight: index === 0 ? 0.08 : null,
+      })),
+      benchmark: {
+        ticker: "VOO",
+        name: "Vanguard 500 Index Fund",
+        as_of: "2026-06-30",
+        filed_at: "2026-08-28",
+        lag_days: 59,
+        coverage_pct: 99.2,
+        source_url: "https://www.sec.gov/x",
+      },
+    });
+    const html = renderToStaticMarkup(
+      <CompaniesLens model={model({ ledger: benchmarked, funds: FUNDS })} />,
+    );
+    expect(html).toContain("Change vs VOO");
+    expect(html).not.toContain("Change vs VT");
+    expect(html).toContain("Benchmark: VOO.");
+    expect(html).toContain("Active share vs VOO");
+    // The picker: one group, five options, exactly one pressed (VT is the stored default
+    // in this render; the headings follow the loaded benchmark, which is VOO).
+    expect(html.match(/data-benchmark-choice/g)).toHaveLength(1);
+    expect(html.match(/aria-pressed="true"/g)).toHaveLength(1);
+    for (const ticker of ["VT", "VTI", "VOO", "IDEV", "IEMG"]) {
+      expect(html).toContain(`>${ticker}</button>`);
+    }
+  });
+
   it("companies: the country cell carries the flag and the market word", () => {
     const html = renderToStaticMarkup(<CompaniesLens model={MODEL} />);
     expect(html).toContain(

@@ -39,10 +39,11 @@
  *    the table semantics a screen reader relies on instead of an `aria-rowindex` we
  *    maintain by hand.
  *
- * The VT columns are the comparison, not a second holding: `benchmarkDelta` and
+ * The benchmark columns are the comparison, not a second holding: `benchmarkDelta` and
  * `formatSignedShare` are ADR-0015's one place where two displayed weights are subtracted,
  * the sign is always printed, and a release with no benchmark drops both columns rather
- * than printing a column of zeros.
+ * than printing a column of zeros. Which fund supplies the weights is the reader's choice
+ * (`?bench=`), one at a time, defaulting to VT; both headings and the exported file name it.
  *
  * **The caption is one line** (operator's instruction, 2026-11-03). It used to carry all
  * five rules above as prose — eight sentences between the heading and the first row, which
@@ -65,7 +66,8 @@ import {
   type GateResult,
 } from "@/lib/style-benchmark";
 import { captionFor } from "@/lib/use-style-benchmark";
-import { benchmarkDelta } from "@/lib/benchmark";
+import { BENCHMARK_CHOICES, benchmarkDelta } from "@/lib/benchmark";
+import { useBenchmarkPreference } from "@/lib/benchmark-preference";
 import { TIER_AS_OF, tierConvention, tierOf } from "@/lib/country-tier";
 import { saveCsv } from "@/lib/export";
 import {
@@ -115,52 +117,56 @@ interface Column {
 
 /**
  * The columns, in order: your weight, then how it compares with the benchmark, then the
- * two columns that say where the weight came from. The VT pair sits between them because
- * the difference only reads as a difference next to the number it is against.
+ * two columns that say where the weight came from. The benchmark pair sits between them
+ * because the difference only reads as a difference next to the number it is against.
  */
-const COLUMNS: Column[] = [
-  { key: null, label: "Rank", numeric: true, first: "descending" },
-  { key: "name", label: "Company", numeric: false, first: "ascending" },
-  {
-    key: "country",
-    label: "Country, market",
-    numeric: false,
-    first: "ascending",
-  },
-  { key: "weight", label: "Your weight", numeric: true, first: "descending" },
-  {
-    key: null,
-    label: "VT",
-    numeric: true,
-    first: "descending",
-    benchmark: true,
-  },
-  {
-    key: null,
-    label: "Change vs VT",
-    numeric: true,
-    first: "descending",
-    benchmark: true,
-  },
-  // POC: `Style bench.` keeps a short header so the table width is stable (§9.2); the
-  // class name lives in the caption and the tooltip.
-  {
-    key: "style",
-    label: "Style bench.",
-    numeric: true,
-    first: "descending",
-    style: true,
-  },
-  {
-    key: "styleDelta",
-    label: "Change vs style",
-    numeric: true,
-    first: "descending",
-    style: true,
-  },
-  { key: "funds", label: "Held by", numeric: true, first: "descending" },
-  { key: null, label: "From your funds", numeric: false, first: "descending" },
-];
+function columnsFor(benchmarkTicker: string): Column[] {
+  return [
+    { key: null, label: "Rank", numeric: true, first: "descending" },
+    { key: "name", label: "Company", numeric: false, first: "ascending" },
+    {
+      key: "country",
+      label: "Country, market",
+      numeric: false,
+      first: "ascending",
+    },
+    { key: "weight", label: "Your weight", numeric: true, first: "descending" },
+    // The pair's headings carry the ticker of the fund the columns are actually against:
+    // "VT", then "Change vs VT" — or "VOO" and "Change vs VOO" once the reader picks it.
+    {
+      key: null,
+      label: benchmarkTicker,
+      numeric: true,
+      first: "descending",
+      benchmark: true,
+    },
+    {
+      key: null,
+      label: `Change vs ${benchmarkTicker}`,
+      numeric: true,
+      first: "descending",
+      benchmark: true,
+    },
+    // POC: `Style bench.` keeps a short header so the table width is stable (§9.2); the
+    // class name lives in the caption and the tooltip.
+    {
+      key: "style",
+      label: "Style bench.",
+      numeric: true,
+      first: "descending",
+      style: true,
+    },
+    {
+      key: "styleDelta",
+      label: "Change vs style",
+      numeric: true,
+      first: "descending",
+      style: true,
+    },
+    { key: "funds", label: "Held by", numeric: true, first: "descending" },
+    { key: null, label: "From your funds", numeric: false, first: "descending" },
+  ];
+}
 
 /**
  * The optional mixed-family hint (§1), behind its own flag and off by default.
@@ -332,6 +338,9 @@ function SourceList({ row }: { row: LedgerRow }) {
 
 export function CompaniesLens({ model }: LensProps) {
   const { provider } = useProvider();
+  // Which published fund the comparison is against — a display preference in the query
+  // string, so it survives a reload and a shared link without touching the portfolio.
+  const { benchmark: benchmarkChoice, setBenchmark } = useBenchmarkPreference();
   const gate = lensGateState(model);
   const ledger = model.ledger;
   const releaseAsOf = model.releaseAsOf ?? "unknown";
@@ -485,18 +494,19 @@ export function CompaniesLens({ model }: LensProps) {
     // the fallback and the selected style basis.
   }, [ledger, query, effectiveSort, compare, provider]);
 
-  // Active share against VT, the same distance the style columns print against the style
-  // benchmark: `½ Σ |yours − benchmark|` over the companies either side holds. Computed
-  // above the early returns because hooks may not be called conditionally.
-  const vtActiveShare = useMemo(() => {
+  // Active share against the selected benchmark, the same distance the style columns
+  // print against the style benchmark: `½ Σ |yours − benchmark|` over the companies
+  // either side holds. Computed above the early returns because hooks may not be called
+  // conditionally.
+  const benchmarkActiveShare = useMemo(() => {
     if (!ledger?.benchmark) return null;
     const portfolio: Record<string, number> = {};
-    const vt: Record<string, number> = {};
+    const benchmarkWeights: Record<string, number> = {};
     for (const row of ledger.rows) {
       portfolio[row.company_id] = row.weight;
-      vt[row.company_id] = row.benchmark_weight ?? 0;
+      benchmarkWeights[row.company_id] = row.benchmark_weight ?? 0;
     }
-    return activeShare(portfolio, vt);
+    return activeShare(portfolio, benchmarkWeights);
   }, [ledger]);
 
   if (gate.kind === "blocked") {
@@ -525,7 +535,10 @@ export function CompaniesLens({ model }: LensProps) {
   // benchmark's own ticker and name, and a boolean does not narrow `ledger.benchmark`.
   const benchmark = ledger.benchmark;
   const hasBenchmark = benchmark !== null;
-  const columns = COLUMNS.filter(
+  // The headings name the fund the numbers are actually against — the loaded benchmark,
+  // falling back to the selection while a newly chosen fund is still arriving.
+  const benchmarkTicker = benchmark?.ticker ?? benchmarkChoice;
+  const columns = columnsFor(benchmarkTicker).filter(
     (column) =>
       (!column.benchmark || hasBenchmark) && (!column.style || showStyleColumns),
   );
@@ -548,6 +561,7 @@ export function CompaniesLens({ model }: LensProps) {
         showStyleColumns && styleBasis
           ? { caption: styleBasis.caption, weights: styleBasis.weights }
           : null,
+        benchmarkTicker,
       ),
       // The same file name shape as the other four lenses, so a folder of exports
       // sorts by what it holds rather than by which component wrote it.
@@ -618,14 +632,45 @@ export function CompaniesLens({ model }: LensProps) {
           your portfolio a filing could place, {formatShare(totalWeight)} of the whole.
         </p>
         {/*
-          Active share (§1): one line, two numbers, and only the ones that exist. VT's is
-          always computed when the release publishes VT; the style one only when the gate
-          passed.
+          Which fund the two comparison columns are against. A display preference in the
+          query string, exactly one at a time, defaulting to VT; the same picker shape the
+          style comparison uses because it is the same kind of choice. `no-print`: a
+          printed page prints the headings, which name the fund.
+        */}
+        <div className={`${styles.choicePicker} no-print`}>
+          <span className={styles.choiceLabel} id="benchmark-picker-label">
+            Compare against
+          </span>
+          <div
+            className={styles.choiceOptions}
+            role="group"
+            aria-labelledby="benchmark-picker-label"
+            data-benchmark-choice
+          >
+            {BENCHMARK_CHOICES.map((ticker) => (
+              <button
+                key={ticker}
+                type="button"
+                className={styles.choiceOption}
+                aria-pressed={ticker === benchmarkChoice}
+                onClick={() => setBenchmark(ticker)}
+              >
+                {ticker}
+              </button>
+            ))}
+          </div>
+        </div>
+        {/*
+          Active share (§1): one line, two numbers, and only the ones that exist. The
+          benchmark's is always computed when the release publishes the selected fund; the
+          style one only when the gate passed.
         */}
         {hasBenchmark ? (
           <p className="small muted" data-style-active-share>
             Active share vs {benchmark.ticker}:{" "}
-            <strong>{vtActiveShare === null ? "—" : formatPct1(vtActiveShare)}</strong>
+            <strong>
+              {benchmarkActiveShare === null ? "—" : formatPct1(benchmarkActiveShare)}
+            </strong>
             {style && !style.holdsBenchmark ? (
               <>
                 {" "}
@@ -643,19 +688,19 @@ export function CompaniesLens({ model }: LensProps) {
           `no-print`: a printed page has one table, not a choice of comparisons.
         */}
         {showStyleColumns && styleOptions.length > 1 ? (
-          <div className={`${styles.stylePicker} no-print`}>
-            <span className={styles.stylePickerLabel} id="style-picker-label">
+          <div className={`${styles.choicePicker} no-print`}>
+            <span className={styles.choiceLabel} id="style-picker-label">
               Style benchmark
             </span>
             <div
-              className={styles.styleOptions}
+              className={styles.choiceOptions}
               role="group"
               aria-labelledby="style-picker-label"
               data-style-choice
             >
               <button
                 type="button"
-                className={styles.styleOption}
+                className={styles.choiceOption}
                 aria-pressed={styleChoice === null}
                 onClick={() => setStyleChoice(null)}
               >
@@ -665,7 +710,7 @@ export function CompaniesLens({ model }: LensProps) {
                 <button
                   key={styleClass.id}
                   type="button"
-                  className={styles.styleOption}
+                  className={styles.choiceOption}
                   aria-pressed={styleChoice === styleClass.id}
                   onClick={() => setStyleChoice(styleClass.id)}
                 >
@@ -685,7 +730,7 @@ export function CompaniesLens({ model }: LensProps) {
         */}
         {showStyleColumns ? (
           <div className={`${styles.styleDefs} no-print`} data-style-definitions>
-            <span className={styles.stylePickerLabel}>Benchmark composition</span>
+            <span className={styles.choiceLabel}>Benchmark composition</span>
             <dl className={styles.styleDefList}>
               {styleOptions.map(({ styleClass, composite }) => {
                 const named = styleClass.members.filter(

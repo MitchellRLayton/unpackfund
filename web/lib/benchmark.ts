@@ -1,19 +1,30 @@
 /**
- * The benchmark every portfolio is compared against.
+ * The funds a portfolio can be compared against, and the default.
  *
- * `ADR-0015` fixes it: VT — the Vanguard Total World Stock ETF share class, filed
- * as "VANGUARD TOTAL WORLD STOCK INDEX FUND" — is the default and the only
- * benchmark. There is no picker, no fragment field, and no release descriptor
- * entry that could point the comparison somewhere else, because a comparison
- * against a benchmark the reader chose is a comparison that can be tuned to
- * flatter a portfolio. The ticker lives here once so "not configurable" stays a
- * product decision rather than a scattering of string literals.
+ * `ADR-0015` fixed VT as the *only* benchmark; its 2026-11-11 amendment keeps VT as the
+ * default but lets the reader pick one of five (operator, 2026-11-11). The list is a
+ * proxy suite rather than a menu: VT is the whole world, VTI the US total market, VOO the
+ * S&P 500, IDEV developed ex-US (MSCI World ex USA IMI) and IEMG emerging markets (MSCI
+ * Emerging Markets IMI), so a US-heavy book can be compared with the market it is
+ * actually in and an international sleeve with the convention its own funds follow.
  *
- * What the column means, and what it must never be confused with
- * (`lookthrough-math-and-qa` §1, `static-xray-frontend` §4a): the benchmark
- * weight is the company's **share of the benchmark fund's own NAV** — the fund's
- * weight in that company, not the visitor's. It is unrelated to how much of the
- * portfolio the visitor holds in the benchmark (usually zero).
+ * **One at a time.** The choice is a display preference — which comparison the reader is
+ * reading — so it lives in the query string (`?bench=voo`), never in the fragment, which
+ * is the portfolio's alone (invariant I3). The default writes nothing, so a visitor who
+ * never touches the picker keeps the URL they arrived with.
+ *
+ * **The comparison does not change meaning.** What the column measures is what it always
+ * was (`lookthrough-math-and-qa` §1, `static-xray-frontend` §4a): the benchmark weight is
+ * the company's **share of the benchmark fund's own NAV** — that fund's weight in the
+ * company, not the visitor's, and unrelated to how much of the portfolio is in the fund
+ * (usually none). Every surface names the fund it used — column headings, active-share
+ * line, table caption and the exported file — because a comparison that does not say
+ * what it is against is a number without provenance.
+ *
+ * The tickers live here once so the whitelist is a product decision rather than a
+ * scattering of string literals, and so `parseBenchmark` can refuse anything else: a
+ * free-text ticker would let a reader compare against a fund chosen after seeing the
+ * answer.
  */
 
 import {
@@ -23,8 +34,32 @@ import {
   type FundDocument,
 } from "./types";
 
-/** The one benchmark. Changing this is an ADR, not an edit. */
-export const BENCHMARK_TICKER = "VT";
+/** The five published funds a comparison may use, in the order the picker shows them. */
+export const BENCHMARK_CHOICES = ["VT", "VTI", "VOO", "IDEV", "IEMG"] as const;
+
+/** A fund the comparison may use. */
+export type BenchmarkTicker = (typeof BENCHMARK_CHOICES)[number];
+
+/** The default, and the one the original ADR pinned: Vanguard Total World Stock. */
+export const DEFAULT_BENCHMARK: BenchmarkTicker = "VT";
+
+/** Whether a string names one of the five choices (the comparison is case-insensitive). */
+export function isBenchmarkTicker(value: string): value is BenchmarkTicker {
+  return (BENCHMARK_CHOICES as readonly string[]).includes(value);
+}
+
+/** A query-string value as a benchmark, or `null` when it names none. */
+export function parseBenchmark(value: string | null | undefined): BenchmarkTicker | null {
+  if (!value) return null;
+  const wanted = value.trim().toUpperCase();
+  return isBenchmarkTicker(wanted) ? wanted : null;
+}
+
+/**
+ * The default under its historic name, for the retired builder and the tests that predate
+ * the picker. New code reads `DEFAULT_BENCHMARK`; one value, one definition.
+ */
+export const BENCHMARK_TICKER: BenchmarkTicker = DEFAULT_BENCHMARK;
 
 /**
  * Turn a published fund document into the comparison payload.

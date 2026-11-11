@@ -828,21 +828,30 @@ export default function MethodologyPage() {
         much of it could be read. It is not investment advice.
       </p>
 
-      <h2 id="benchmark">The benchmark: VT</h2>
+      <h2 id="benchmark">The benchmark: VT by default, five to choose from</h2>
       <p>
-        Every portfolio is compared against one fixed fund, VT — the Vanguard Total World
-        Stock ETF — and where the comparison is drawn, the column is the{" "}
+        Every portfolio is compared against one published fund at a time — VT, the
+        Vanguard Total World Stock ETF, unless the reader picks another — and where the
+        comparison is drawn, the column is the{" "}
         <Term name="benchmark-weight">benchmark weight</Term>: each company&rsquo;s share
-        of VT&rsquo;s own portfolio, read from its N-PORT filing. That weight has nothing
-        to do with how much of the reader&rsquo;s portfolio is in VT, which is usually
-        none of it.
+        of that fund&rsquo;s own portfolio, read from its N-PORT filing. That weight has
+        nothing to do with how much of the reader&rsquo;s portfolio is in the fund, which
+        is usually none of it.
       </p>
       <p>
-        VT is not configurable. A benchmark a reader could pick is a comparison that can
-        be made to flatter a portfolio, and the point of a fixed one is that it cannot be
-        chosen after the answer is known. When a release publishes no benchmark, the
-        column is absent rather than filled with zeros, because a zero would claim VT
-        holds none of these companies.
+        The picker offers five broad funds, one at a time: VT (the whole world), VTI (the
+        US total market), VOO (the S&amp;P 500), IDEV (developed markets ex-US) and IEMG
+        (emerging markets). The choice lives in the address, so it survives a reload and a
+        shared link, and the column heading, the table caption, the active-share line and
+        the exported file all name the fund the comparison is against. Switching it is a
+        choice of which comparison you are reading, not a change to your portfolio or to
+        what the number means.
+      </p>
+      <p>
+        VT remains the default, so a reader who never picks sees the whole world, and the
+        site does not say which of the five is the right comparison. When a release
+        publishes no document for the chosen fund, the column is absent rather than filled
+        with zeros, because a zero would claim that fund holds none of these companies.
       </p>
 
       <h2 id="corrections">Corrections</h2>

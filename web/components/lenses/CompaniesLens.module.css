@@ -110,7 +110,7 @@
    controls are the site's own chip shape — hairline border, 3px radius, note-sized
    text — and the selected one takes the ink fill the primary buttons use, so the
    control reads as part of the page rather than as a widget dropped onto it. */
-.stylePicker {
+.choicePicker {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -118,7 +118,7 @@
   margin-block: var(--space-2);
 }
 
-.stylePickerLabel {
+.choiceLabel {
   font-size: var(--text-12);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -126,13 +126,13 @@
   white-space: nowrap;
 }
 
-.styleOptions {
+.choiceOptions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
 }
 
-.styleOption {
+.choiceOption {
   padding: 0.15rem var(--space-2);
   border: 1px solid var(--rule-strong);
   border-radius: var(--radius);
@@ -144,18 +144,18 @@
   cursor: pointer;
 }
 
-.styleOption:hover {
+.choiceOption:hover {
   border-color: var(--graphite);
   color: var(--ink);
 }
 
-.styleOption[aria-pressed="true"] {
+.choiceOption[aria-pressed="true"] {
   background: var(--ink);
   border-color: var(--ink);
   color: var(--paper);
 }
 
-.styleOption:focus-visible {
+.choiceOption:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }

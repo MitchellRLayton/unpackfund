@@ -904,6 +904,13 @@ describe("companiesCsv with the style columns", () => {
     expect(csv).not.toContain("style");
   });
 
+  it("names the selected benchmark in the two headers, not VT", () => {
+    const csv = companiesCsv(ledger, "2026-11-09.1", null, "IEMG");
+    const header = csv.split("\n")[0];
+    expect(header).toContain("iemg_weight_pct,change_vs_iemg_pp");
+    expect(header).not.toContain("vt_weight_pct");
+  });
+
   it("adds the pair and names the benchmark it was measured against", () => {
     const csv = companiesCsv(ledger, "2026-11-09.1", {
       caption: "US Small Cap Value (index blend: VBR · IJS · IWN, as of 2026-06-30)",
