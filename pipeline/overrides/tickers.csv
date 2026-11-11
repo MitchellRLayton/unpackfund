@@ -8,3 +8,5 @@
 # the wrong trust. CUSIPs, ISINs, LEIs and class ids do not belong in this file.
 ticker,cik,series_id,registrant
 SPY,884394,,SPDR S&P 500 ETF TRUST
+DRAM,1976517,S000102337,Roundhill ETF Trust
+LOHA,1976517,S000104627,Roundhill ETF Trust

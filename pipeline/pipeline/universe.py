@@ -23,8 +23,12 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING, Mapping
 
 from . import sec
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle at runtime, types only
+    from .discovery import Discovered
 
 MF_TICKERS_URL = "https://www.sec.gov/files/company_tickers_mf.json"
 OVERRIDES = Path(__file__).resolve().parent.parent / "overrides" / "tickers.csv"
@@ -188,14 +192,26 @@ def _primary_symbol(symbols: list[str]) -> str | None:
     return sorted(usable, key=lambda symbol: (len(symbol), symbol))[0]
 
 
-def all_series() -> list[FundRef]:
+def all_series(discovered: Mapping[str, "Discovered"] | None = None) -> list[FundRef]:
     """Every N-PORT series the free SEC files can name, one ``FundRef`` each.
 
     This is the universe a widened run walks: the fund ticker file's distinct
-    ``(cik, seriesId)`` pairs plus the reviewed override rows (chiefly unit
-    investment trusts, which file with no series id). Dedupe is by ``fund_id``,
-    so a registrant with fifty share classes resolves to one row per series, and
-    the choice of display ticker is ``_primary_symbol``'s.
+    ``(cik, seriesId)`` pairs, the reviewed override rows (chiefly unit investment
+    trusts, which file with no series id), and — since 2026-11-11 — the series
+    ``discovery`` found in the registrants' own N-PORT filings. Dedupe is by
+    ``fund_id``, so a registrant with fifty share classes resolves to one row per
+    series, and the choice of display ticker is ``_primary_symbol``'s.
+
+    ``discovered`` is passed in rather than read from disk so this function stays
+    pure: the cache is the caller's business (``build`` loads it, tests pass a
+    literal), and a test that forgot to pass one cannot silently depend on whatever
+    the machine happened to scan last.
+
+    Why the third source exists: the ticker file is **incomplete**, not stale — on
+    2026-11-11 it carried 12,306 series and still had no row for Roundhill Memory
+    ETF, which had been filing N-PORT for two quarters. A fund the file omits was
+    never fetched and 404'd with no record that it existed. The file is a
+    *resolution* input; the filings are the universe.
     """
     grouped: dict[str, dict[str, object]] = {}
     for symbol, (cik, series, _class_id) in _mf_map().items():
@@ -211,6 +227,16 @@ def all_series() -> list[FundRef]:
         )
         entry["symbols"].append(symbol)  # type: ignore[union-attr]
         entry["registrant"] = registrant
+
+    for series_id, row in (discovered or {}).items():
+        if not getattr(row, "symbol", None) or series_id in grouped:
+            continue
+        grouped[series_id] = {
+            "cik": row.cik,
+            "series": series_id,
+            "symbols": [row.symbol],
+            "source": "discovery",
+        }
 
     refs: list[FundRef] = []
     unnamed = 0

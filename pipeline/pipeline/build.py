@@ -90,6 +90,32 @@ class GateError(RuntimeError):
     pass
 
 
+def _discovered_series(discover: bool) -> dict:
+    """The series cache the wide build unions in, refreshed when it is stale.
+
+    Discovery is a *data preparation* step, not part of the build's determinism: it
+    reads EDGAR's daily index and, for a series the ticker file omits, the fund's own
+    registration statement. It runs here rather than in the workflow so the universe
+    cannot silently fall back to the incomplete file — the failure mode this exists to
+    end. ``--no-discovery`` turns it off, and a build that is not ``--universe all``
+    never touches it.
+    """
+    from . import discovery
+
+    if not discover:
+        return discovery.load()
+    if discovery.is_stale():
+        ciks = {ref.cik for ref in universe.all_series()}
+        series = discovery.refresh_cache(universe_ciks=ciks, progress_every=500)
+        counts = discovery.summary(series)
+        _log(
+            f"discovery: {counts['series']} series in the cache, "
+            f"{counts['with_symbol']} with a symbol, {counts['without_symbol']} without"
+        )
+        return series
+    return discovery.load()
+
+
 def _log(message: str) -> None:
     print(message, flush=True)
 
@@ -611,16 +637,18 @@ def resolve_universe(
     limit: int | None = None,
     top: int | None = None,
     from_summary: Path | None = None,
+    discover: bool = True,
 ) -> list[universe.FundRef]:
     """Turn ``--universe`` / ``--tickers`` into a deterministic list of funds.
 
-    ``all`` is the SEC fund file's series, ``tickers:VOO,QQQ`` the reviewed list,
+    ``all`` is the SEC fund file's series plus the series ``discovery`` found in the
+    registrants' own filings, ``tickers:VOO,QQQ`` the reviewed list,
     and ``--top N --from-summary`` ranks a previous walk's funds by N-PORT net
     assets — which is how a publishable subset is chosen without a second
     universe sweep and without a hand-maintained list.
     """
     if spec == universe.UNIVERSE_ALL:
-        refs = universe.all_series()
+        refs = universe.all_series(_discovered_series(discover))
         if top is not None:
             if from_summary is None:
                 raise GateError("--top needs --from-summary from an earlier walk")
@@ -1523,6 +1551,13 @@ def main(argv: list[str] | None = None) -> int:
         "be built — the app then refuses a stock ticker with 'not in this release'",
     )
     parser.add_argument(
+        "--no-discovery",
+        action="store_true",
+        help="do not union the series found in the registrants' own N-PORT filings "
+        "into the wide universe; the SEC ticker file alone is then the universe, "
+        "which is the behaviour that lost DRAM and HALO",
+    )
+    parser.add_argument(
         "--progress-every",
         type=int,
         default=0,
@@ -1549,7 +1584,11 @@ def main(argv: list[str] | None = None) -> int:
             _log(f"securities: unavailable ({error}); the release will not carry a symbol object")
     try:
         refs = resolve_universe(
-            spec, limit=args.limit, top=args.top, from_summary=args.from_summary
+            spec,
+            limit=args.limit,
+            top=args.top,
+            from_summary=args.from_summary,
+            discover=not args.no_discovery,
         )
         build_release(
             refs,
