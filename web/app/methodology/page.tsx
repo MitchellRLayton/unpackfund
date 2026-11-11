@@ -54,7 +54,7 @@ const SECTIONS: readonly ReadingSection[] = [
   { id: "size-lanes", title: "Where the ranking comes from", depth: 3 },
   { id: "size-inferred", title: "One label, and what it is not", depth: 3 },
   { id: "limits", title: "What is not known" },
-  { id: "benchmark", title: "The benchmark: VT" },
+  { id: "benchmark", title: "The benchmark: VT by default, five to choose from" },
   { id: "corrections", title: "Corrections" },
   { id: "attribution", title: "Source attribution" },
 ];
@@ -849,9 +849,11 @@ export default function MethodologyPage() {
       </p>
       <p>
         VT remains the default, so a reader who never picks sees the whole world, and the
-        site does not say which of the five is the right comparison. When a release
-        publishes no document for the chosen fund, the column is absent rather than filled
-        with zeros, because a zero would claim that fund holds none of these companies.
+        site does not say which of the five is the right comparison. Any comparison can be
+        chosen to flatter a portfolio, which is why the fund is named beside every number
+        rather than left implicit. When a release publishes no document for the chosen
+        fund, the column is absent rather than filled with zeros, because a zero would
+        claim that fund holds none of these companies.
       </p>
 
       <h2 id="corrections">Corrections</h2>

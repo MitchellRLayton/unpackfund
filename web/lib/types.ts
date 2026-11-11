@@ -505,11 +505,12 @@ export const FULL_ALLOCATION_BP = 10_000;
 /**
  * The benchmark's per-company weights, and everything needed to label them.
  *
- * There is one benchmark and it is fixed ([ADR-0015](../../../docs/04-decisions/ADR-0015-vt-benchmark.md)):
- * VT is the reference every portfolio is read against, and no surface offers a
- * choice of it. The payload is built once per release by `benchmarkFor` and
- * travels to the worker in place of the fund document, because the aggregation
- * needs the weights and the caption needs the provenance — not 9,700 holdings.
+ * There is one benchmark at a time ([ADR-0015](../../../docs/04-decisions/ADR-0015-vt-benchmark.md),
+ * amended 2026-11-11): VT is the default and the reader may pick one of five published
+ * funds from the Companies lens, so the payload is whichever fund's weights the ledger
+ * was built with. It is built by `benchmarkFor` and travels to the worker in place of
+ * the fund document, because the aggregation needs the weights and the caption needs the
+ * provenance — not 9,700 holdings.
  *
  * `weights` is keyed by `company_id` and holds **fractions of the benchmark's own
  * NAV**: the fund's weight in that company, never the visitor's. A company absent
