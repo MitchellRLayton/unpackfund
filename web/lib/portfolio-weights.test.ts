@@ -7,6 +7,7 @@ import {
   convertMode,
   entryLabel,
   equalise,
+  followsEvenSplit,
   isEqualSplit,
   splitPortfolio,
   USD_NOTIONAL_CENTS,
@@ -257,5 +258,57 @@ describe("small helpers", () => {
         entry("fund", "CCC", 3_333),
       ]),
     ).toBe(false);
+  });
+});
+
+/**
+ * The predicate both list writers share: `add` and `remove` may only move a visitor's
+ * numbers when the app itself produced them. It is `isEqualSplit` guarded by the mode,
+ * so the one thing worth pinning beyond that function's own cases is the guard.
+ */
+describe("followsEvenSplit", () => {
+  it("follows the app's own even split in percent mode", () => {
+    expect(followsEvenSplit("bp", [entry("fund", "AAA", 10_000)])).toBe(true);
+    expect(
+      followsEvenSplit("bp", [
+        entry("fund", "AAA", 2_000),
+        entry("fund", "BBB", 2_000),
+        entry("fund", "CCC", 2_000),
+        entry("fund", "DDD", 2_000),
+        entry("fund", "EEE", 2_000),
+      ]),
+    ).toBe(true);
+    // The remainder leaves with the first rows: this is `equalise`'s own shape.
+    expect(
+      followsEvenSplit("bp", [
+        entry("fund", "AAA", 3_334),
+        entry("fund", "BBB", 3_333),
+        entry("fund", "CCC", 3_333),
+      ]),
+    ).toBe(true);
+  });
+
+  it("never follows a split in dollar mode, whatever the cents happen to look like", () => {
+    // 5,000 + 5,000 cents is an even *shape*, which is why the mode guard is the
+    // predicate's whole job: in dollars those amounts are the visitor's money, not
+    // shares of one whole, and equalising them would invent two $50 balances.
+    const evenShape = [entry("fund", "AAA", 5_000), entry("fund", "BBB", 5_000)];
+    expect(isEqualSplit(evenShape)).toBe(true);
+    expect(followsEvenSplit("usd", evenShape)).toBe(false);
+    expect(followsEvenSplit("usd", [entry("fund", "AAA", 500_000)])).toBe(false);
+  });
+
+  it("refuses a hand-weighted set, an even-but-short set, and an empty list", () => {
+    // Whole, but the visitor's: 60/40 must survive the next added row untouched.
+    expect(
+      followsEvenSplit("bp", [entry("fund", "AAA", 6_000), entry("fund", "BBB", 4_000)]),
+    ).toBe(false);
+    // Even, but short — 25/25 is not a share of a whole.
+    expect(
+      followsEvenSplit("bp", [entry("fund", "AAA", 2_500), entry("fund", "BBB", 2_500)]),
+    ).toBe(false);
+    // An empty list has no even split to be in: `add` special-cases it, `remove` has
+    // nothing to remove from one.
+    expect(followsEvenSplit("bp", [])).toBe(false);
   });
 });

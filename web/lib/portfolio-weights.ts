@@ -192,6 +192,21 @@ export function isEqualSplit(entries: PortfolioEntry[]): boolean {
   return entries.every((entry, index) => entry.amount === (even[index]?.amount ?? -1));
 }
 
+/**
+ * Whether this entry set still follows the app's own even split, in a mode that has one.
+ *
+ * The one predicate behind the builder's single automatic behaviour, so `add` and
+ * `remove` cannot disagree about when the app may move a number the visitor sees: a list
+ * the app itself spread keeps following its own count, and a list weighted by hand is
+ * never touched. Dollar mode has no even split to follow — those amounts are the
+ * visitor's money, each already its own share of the total, so nothing may re-spread
+ * them. `add` keeps its extra "empty list" case, because an empty portfolio has no
+ * predicate to satisfy; `remove` has nothing to remove from one.
+ */
+export function followsEvenSplit(mode: EntryMode, entries: PortfolioEntry[]): boolean {
+  return mode === "bp" && isEqualSplit(entries);
+}
+
 /** The label a key carries in the UI: cash is a word, not a symbol. */
 export function entryLabel(entry: { kind: PortfolioEntry["kind"]; key: string }): string {
   return entry.kind === "cash" || entry.key === CASH_KEY ? "Cash" : entry.key;
