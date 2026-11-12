@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 
 import { FUNDS, ORDER, type Fund, type Measure } from "./data";
 import s from "./panel.module.css";
@@ -29,10 +30,33 @@ const ROWS: { key: keyof Fund; name: string; note: string }[] = [
   { key: "lev", name: "Leverage", note: "Context for ROE: high ROE with high leverage is not high quality." },
 ];
 
+const VARIANTS_KEYS: Variant[] = ["a", "b", "c"];
+
 export function Panel() {
-  const [variant, setVariant] = useState<Variant>("a");
-  const [fundKey, setFundKey] = useState<string>("AVUV");
+  const params = useSearchParams();
+  const pathname = usePathname();
+
+  const paramVariant = params.get("variant")?.toLowerCase() as Variant | null;
+  const paramFund = params.get("fund")?.toUpperCase() ?? null;
+
+  const [variant, setVariant] = useState<Variant>(paramVariant && VARIANTS_KEYS.includes(paramVariant) ? paramVariant : "c");
+  const [fundKey, setFundKey] = useState<string>(paramFund && FUNDS[paramFund] ? paramFund : "AVUV");
   const fund = FUNDS[fundKey] ?? FUNDS.AVUV!;
+
+  /** Keep the URL shareable without navigating: replace, never push. */
+  const sync = useCallback(
+    (nextVariant: Variant, nextFund: string) => {
+      const q = new URLSearchParams();
+      q.set("variant", nextVariant);
+      q.set("fund", nextFund);
+      window.history.replaceState(null, "", `${pathname}?${q.toString()}`);
+    },
+    [pathname],
+  );
+
+  useEffect(() => {
+    sync(variant, fundKey);
+  }, [variant, fundKey, sync]);
 
   const peers = useMemo(() => Object.values(FUNDS).filter((f) => f.supported), []);
   const maxAll = useMemo(

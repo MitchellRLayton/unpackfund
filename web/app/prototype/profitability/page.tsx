@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { Suspense } from "react";
+
 import { Panel } from "./panel";
 
 /**
@@ -13,5 +15,9 @@ export const metadata: Metadata = {
 };
 
 export default function ProfitabilityPrototypePage() {
-  return <Panel />;
+  return (
+    <Suspense fallback={<p style={{ padding: "2rem" }}>Loading the panel…</p>}>
+      <Panel />
+    </Suspense>
+  );
 }
