@@ -259,7 +259,7 @@ function makeModel({ entries = [], ledger = null, lens = "companies" }: Options 
     countries: COUNTRIES,
     // The real model carries the same benchmark the ledger was built with; deriving it
     // here keeps the fixture from contradicting its own ledger.
-    benchmark: ledger?.benchmark ?? null,
+    benchmark: ledger?.benchmark ? benchmarkFor(fund("VT", 100, VT_HOLDINGS)) : null,
     ledger,
     ledgerError: null,
     ledgerMode: "main-thread" as const,

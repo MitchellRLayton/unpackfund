@@ -1,155 +1,107 @@
+"use client";
+
 /**
- * The Companies lens's "Effective holdings" block: the pair of counts, the ladder that
- * places them, and the arithmetic behind them.
+ * The Companies lens's "Effective holdings" block: one plain-English answer to "how
+ * diversified is this portfolio really, compared with what, and why".
  *
- * Three things this block is careful about:
+ * The block is a rendering of `lib/effective-holdings-view.ts`'s tested object. It prints,
+ * in order: the headline (owned companies vs the effective count), the verdict against the
+ * selected benchmark, three comparison bars on one linear scale, two key facts, and the
+ * arithmetic in a closed disclosure. The concentration curve is a lazy-loaded deeper view
+ * behind "See the curve" — its module and d3 imports are not in the first page bundle.
  *
- * 1. **The ladder is a position, not a value you read off an axis.** Core, Broad and the
- *    number of companies are all printed as text on their markers, so nobody has to
- *    interpolate between ticks. Positions are `log(value) / log(N)`: the counts span 1 to
- *    N and most of the portfolio's shape lives in the first tenth of that range, so a
- *    linear strip would draw Core and Broad on top of each other and a 500-company tail
- *    as a flat line at the right. Equal distances are equal ratios.
- *
- * 2. **The labels cannot collide or overflow.** Two markers closer than a label's width
- *    are put on different lanes (above each other), and a marker within one label-width of
- *    either end grows its label inward instead of centred. Both thresholds are set for the
- *    narrowest container the lens renders in — a 320 px window — where a label is about
- *    ​0.3 of the strip; on a wider screen they merely stagger earlier than they must.
- *
- * 3. **Core and Broad are told apart by their words and their places, never by colour.**
- *    The whole block uses the page's own ink, graphite and rule tokens; there is no hue
- *    here for a reader to decode, and nothing that survives only in colour.
- *
- * The evidence layer is the only place the arithmetic's own names (HHI, H) may appear —
- * the site's rule is that a reader meets "here is how it is worked out" deliberately, and
- * never in a label, a header or a summary sentence. Every number there is the unrounded
- * value printed through `lib/format.ts`; nothing is recomputed here.
- *
- * Withheld numbers: below 60% coverage every figure the maths produces is `null`, and this
- * block prints the explanation instead of a zero — the site's rule is that a metric over a
- * minority of the money would describe a different portfolio (`lookthrough-math-and-qa`
- * §5). No ladder, no sentences and no `<details>` in that state, because a disclosure that
- * opens onto nothing is worse than no disclosure.
+ * Rules the markup keeps:
+ * - **No jargon outside the disclosure.** The block says "effective number" and "lenient
+ *   count"; the arithmetic's own names (HHI, entropy) live only in the disclosure.
+ * - **Every bar is labelled and numbered.** Colour is reinforcement, never the carrier.
+ * - **A missing benchmark removes the comparison, not the block.** The You bar and the
+ *   headline stay; the verdict and the benchmark bar are absent rather than zero.
+ * - **Withheld numbers stay withheld.** Below 60% coverage the maths produces `null` and
+ *   the block prints the explanation instead of a figure.
  */
 
-import type { ReactNode } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 
 import type { EffectiveHoldings } from "@/lib/effective-holdings";
 import {
-  coverageLabel,
-  formatCount,
-  formatCoveragePct,
-  formatEffective,
-  formatPct1,
-  formatRatio,
-  formatShare,
-} from "@/lib/format";
+  buildEffectiveHoldingsView,
+  effectiveWords,
+} from "@/lib/effective-holdings-view";
+import { formatCount, formatPct1, formatShare } from "@/lib/format";
+import type { BenchmarkComparison, LedgerRow } from "@/lib/types";
 
+import type { CurveProps } from "./ConcentrationCurve";
 import styles from "./EffectiveHoldingsSummary.module.css";
 import { LensSection } from "./lens-chrome";
 
-/** Companies that fit in a top ten; the sentence below names ten only when there are. */
-const TOP = 10;
-
-/**
- * How far apart two markers must be, as a share of the strip, to share a lane.
- *
- * Set at a 320 px window: the strip is about 270 px there and the longest label
- * ("Owned 100,000") about 80 px, so two labels need roughly 0.3 of the width between their
- * centres. A wider strip only staggers labels that had room to sit side by side.
- */
-const LANE_GAP = 0.32;
-
-/** Inside this much of either end, a centred label would hang over the edge. */
-const EDGE = 0.18;
-
-/** One lane of label, and the room a label needs above the rail. */
-const LANE_STEP_REM = 1.5;
-const LABEL_ROOM_REM = 1.9;
-
-export interface LadderMarker {
-  /** Core, Broad or Owned. */
-  label: string;
-  /** The marker's own value, already formatted by `formatEffective`/`formatCount`. */
-  value: string;
-  /** 0 at one company, 1 at N: the share of the strip's width. */
-  position: number;
-  /** Which way the label grows from the tick, so an end marker cannot overflow. */
-  align: "start" | "middle" | "end";
-  /** 0 sits on the rail; a close neighbour takes the next lane instead of overlapping. */
-  lane: number;
-}
-
-/**
- * Place the three markers on the log scale, and give each a lane and an alignment.
- *
- * Pure and exported for the tests: the log rule and the lane rule are the two things a
- * reader cannot check by eye, so they are checked by assertion instead.
- *
- * `N = 1` is the case both rules exist for: `log(1) = 0` leaves no scale at all, so every
- * marker sits at 0 and the lane rule is the only thing keeping three labels apart.
- */
-export function ladderMarkers(
-  core: number,
-  broad: number,
-  companies: number,
-): LadderMarker[] {
-  const top = Math.max(1, companies);
-  const span = Math.log(top);
-  const place = (value: number): number => {
-    if (!(span > 0)) return 0;
-    // A count of 1 is the axis's own left end; nothing below it has a position.
-    const inside = Math.min(top, Math.max(1, value));
-    return Math.min(1, Math.max(0, Math.log(inside) / span));
-  };
-
-  const placed = [
-    { label: "Core", value: formatEffective(core), position: place(core) },
-    { label: "Broad", value: formatEffective(broad), position: place(broad) },
-    { label: "Owned", value: formatCount(top), position: place(top) },
-  ];
-
-  // The lanes in use, each holding the position of the last marker placed on it. A marker
-  // takes the first lane with room, so three markers that coincide take three lanes and
-  // two that do not share one.
-  const laneEnds: number[] = [];
-
-  return placed.map((marker) => {
-    const free = laneEnds.findIndex((end) => marker.position - end >= LANE_GAP);
-    let lane = free;
-    if (free === -1) {
-      laneEnds.push(marker.position);
-      lane = laneEnds.length - 1;
-    } else {
-      laneEnds[lane] = marker.position;
-    }
-
-    const align: LadderMarker["align"] =
-      marker.position <= EDGE ? "start" : marker.position >= 1 - EDGE ? "end" : "middle";
-
-    return { ...marker, align, lane };
-  });
-}
-
-/** `2.6 to 2.9` — a range printed through the one count formatter. */
-function rangeWords(range: readonly [number, number]): string {
-  return `${formatEffective(range[0])} to ${formatEffective(range[1])}`;
-}
-
 export function EffectiveHoldingsSummary({
   effective,
+  rows,
+  benchmark,
+  fundCount,
+  directCount,
+  onSeeOverlap,
 }: {
   effective: EffectiveHoldings;
+  rows: readonly LedgerRow[];
+  benchmark: BenchmarkComparison | null;
+  fundCount: number;
+  directCount: number;
+  onSeeOverlap: () => void;
 }) {
-  const core = effective.core;
-  const broad = effective.broad;
+  const view = useMemo(
+    () =>
+      buildEffectiveHoldingsView({ effective, rows, benchmark, fundCount, directCount }),
+    [effective, rows, benchmark, fundCount, directCount],
+  );
 
-  if (effective.band === "none" || core === null || broad === null) {
+  // The curve module is loaded only when the expander opens.
+  const [Curve, setCurve] = useState<ComponentType<CurveProps> | null>(null);
+  const [curveOpen, setCurveOpen] = useState(false);
+  useEffect(() => {
+    if (!curveOpen || Curve) return;
+    let cancelled = false;
+    import("./ConcentrationCurve").then((module) => {
+      if (!cancelled) setCurve(() => module.ConcentrationCurve);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [curveOpen, Curve]);
+
+  // Company-level weights normalised to 1 over the matched total, and the benchmark's own
+  // weights normalised to its traced total — the same rule the effective counts use.
+  const curveYou = useMemo<CurveProps["you"]>(() => {
+    const total = rows.reduce((sum, row) => sum + row.weight, 0);
+    if (total <= 0) return [];
+    return rows.map((row) => ({
+      name: row.name,
+      ticker: row.ticker,
+      weight: row.weight / total,
+    }));
+  }, [rows]);
+  const curveBenchmark = useMemo<CurveProps["benchmark"]>(() => {
+    if (!benchmark) return null;
+    const entries = Object.entries(benchmark.weights ?? {}).filter(
+      ([, weight]) => weight > 0,
+    );
+    const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
+    if (total <= 0) return null;
+    return {
+      ticker: benchmark.ticker,
+      weights: entries.map(([companyId, weight]) => ({
+        name: companyId,
+        ticker: null,
+        weight: weight / total,
+      })),
+    };
+  }, [benchmark]);
+
+  if (effective.band === "none" || view.effective === null) {
     return (
       <LensSection title="Effective holdings">
         <p className="small muted">
-          Coverage is below 60% of weight ({formatCoveragePct(effective.coveragePct)}), so
+          Coverage is below 60% of weight ({formatShare(effective.coveragePct / 100)}), so
           no effective-holdings figure is shown: one computed over the part that resolved
           would describe a different portfolio.
         </p>
@@ -157,164 +109,144 @@ export function EffectiveHoldingsSummary({
     );
   }
 
-  const markers = ladderMarkers(core, broad, effective.companies);
-  const lanes =
-    markers.reduce((deepest, marker) => Math.max(deepest, marker.lane), 0) + 1;
-  const stripHeight = `${lanes * LANE_STEP_REM + LABEL_ROOM_REM}rem`;
-
-  const topTen = effective.topTenConcentrationShare;
-  const hhi = effective.hhi;
-  const entropy = effective.entropy;
-
-  // Every row is pushed only when the maths produced the number, so a withheld figure is
-  // absent rather than zero and a missing one cannot render `NaN`.
-  const facts: Array<{ label: string; value: ReactNode }> = [
-    {
-      label: "Core",
-      value: (
-        <span className="mono">
-          1 / Σ s<sub>i</sub>²
-        </span>
-      ),
-    },
-    {
-      label: "Broad",
-      value: (
-        <span className="mono">
-          exp(Σ −s<sub>i</sub> ln s<sub>i</sub>)
-        </span>
-      ),
-    },
-  ];
-
-  if (hhi !== null) {
-    facts.push({
-      label: "HHI",
-      value: `${formatRatio(hhi)} · ${formatCount(Math.round(hhi * 10_000))} points`,
+  const bars: Array<{
+    key: string;
+    label: string;
+    value: number;
+    tone: "you" | "neutral";
+  }> = [{ key: "you", label: "You", value: view.effective, tone: "you" }];
+  if (view.benchmark) {
+    bars.push({
+      key: "benchmark",
+      label: view.benchmark.ticker,
+      value: view.benchmark.effective,
+      tone: "neutral",
     });
   }
-  if (entropy !== null) {
-    facts.push({ label: "H", value: `${formatRatio(entropy)} nats` });
-  }
-  facts.push({
-    label: "Broad / Core",
-    value: `${formatEffective(broad / core)} · top-heaviness`,
-  });
-  if (topTen !== null) {
-    facts.push({ label: "Top ten, concentration", value: formatPct1(topTen) });
-  }
-  if (effective.topTenBreadthShare !== null) {
-    facts.push({
-      label: "Top ten, breadth",
-      value: formatPct1(effective.topTenBreadthShare),
+  if (!view.singleFund && !view.noShared && view.noOverlapEffective !== null) {
+    bars.push({
+      key: "no-overlap",
+      label: "Your funds, if they didn't overlap",
+      value: view.noOverlapEffective,
+      tone: "neutral",
     });
   }
-  facts.push({ label: "Companies", value: formatCount(effective.companies) });
-  facts.push({
-    label: "Weight in companies",
-    value: formatShare(effective.matchedWeight),
-  });
-  facts.push({
-    label: "Not companies",
-    value: `${formatShare(effective.excludedNonCompanyWeight)} (cash and derivatives)`,
-  });
-  facts.push({
-    label: "Unmatched",
-    value: `${formatShare(effective.unmatchedWeight)} in ${formatCount(
-      effective.unmatchedPositions,
-    )} ${effective.unmatchedPositions === 1 ? "position" : "positions"}`,
-  });
-  facts.push({ label: "Coverage", value: coverageLabel(effective.coveragePct) });
-  if (effective.coreRange !== null) {
-    facts.push({
-      label: "Core, whole portfolio",
-      value: rangeWords(effective.coreRange),
-    });
-  }
-  if (effective.broadRange !== null) {
-    facts.push({
-      label: "Broad, whole portfolio",
-      value: rangeWords(effective.broadRange),
-    });
-  }
+  const max = Math.max(...bars.map((bar) => bar.value)) * 1.1;
 
   return (
     <LensSection title="Effective holdings">
-      <figure className={styles.ladder}>
-        {/*
-          The strip is the picture; the figcaption is the text. A screen reader gets the
-          three numbers once, as a sentence, instead of hearing a label repeated by a
-          decorative arrangement of spans.
-        */}
-        <div className={styles.strip} style={{ height: stripHeight }} aria-hidden="true">
-          <span className={styles.rail} />
-          {markers.map((marker) => (
-            <span
-              key={marker.label}
-              className={styles.marker}
-              data-lane={marker.lane}
-              data-align={marker.align}
-              style={{ left: `${(marker.position * 100).toFixed(2)}%` }}
+      <p className={styles.headline}>{view.headline}</p>
+      {view.verdict ? <p className={styles.verdict}>{view.verdict}</p> : null}
+
+      {!view.singleStock ? (
+        <ul className={styles.bars} aria-label="Effective number of companies, compared">
+          {bars.map((bar) => (
+            <li
+              key={bar.key}
+              className={styles.barRow}
+              aria-label={`${bar.label}: ${effectiveWords(bar.value)} effective companies`}
             >
-              <span className={styles.tick} />
-              <span className={styles.label}>
-                {marker.label} <strong>{marker.value}</strong>
+              <span className={styles.barLabel}>{bar.label}</span>
+              <span className={styles.track} aria-hidden="true">
+                <span
+                  className={`${styles.fill} ${bar.tone === "you" ? styles.you : styles.neutral}`}
+                  style={{ width: `${(bar.value / max) * 100}%` }}
+                />
               </span>
-            </span>
+              <span className={`${styles.barValue} mono`}>
+                {effectiveWords(bar.value)}
+              </span>
+            </li>
           ))}
-        </div>
-        <figcaption className="visually-hidden">
-          On a log scale from 1 to {formatCount(effective.companies)} companies: Core{" "}
-          {formatEffective(core)}, Broad {formatEffective(broad)}, and{" "}
-          {formatCount(effective.companies)} owned.
-        </figcaption>
-      </figure>
-
-      {effective.companies > TOP && topTen !== null ? (
-        <p>
-          The ten largest companies make up <strong>{formatPct1(topTen)}</strong> of the
-          concentration behind the core count.
-        </p>
+        </ul>
       ) : null}
 
-      {effective.coreDisjoint !== null && effective.broadDisjoint !== null ? (
-        <p className="small muted">
-          Without overlap between your funds: Core{" "}
-          <strong>{formatEffective(effective.coreDisjoint)}</strong>, Broad{" "}
-          <strong>{formatEffective(effective.broadDisjoint)}</strong>.
-        </p>
+      {!view.singleStock ? (
+        <ul className={styles.bullets}>
+          {view.top10WeightPct !== null && view.top1 ? (
+            <li>
+              Your 10 largest companies are {formatPct1(view.top10WeightPct / 100)} of
+              your money. {view.top1.name} alone is{" "}
+              {formatPct1(view.top1.weightPct / 100)}.
+            </li>
+          ) : null}
+          {view.singleFund ? null : view.noShared ? (
+            <li>
+              Your funds don&apos;t share any companies, so overlap isn&apos;t reducing
+              your diversification.
+            </li>
+          ) : view.worstOverlap && view.noOverlapEffective !== null ? (
+            <li>
+              Overlap is the biggest reason. Your {formatCount(view.fundCount)} funds
+              share their largest names ({view.worstOverlap.name} is in{" "}
+              {formatCount(view.worstOverlap.heldBy)} of {formatCount(view.fundCount)}).
+              Without that overlap you&apos;d have the diversification of{" "}
+              {effectiveWords(view.noOverlapEffective)} companies instead of{" "}
+              {effectiveWords(view.effective)}.{" "}
+              <button type="button" className={styles.inlineLink} onClick={onSeeOverlap}>
+                See Overlap →
+              </button>
+            </li>
+          ) : null}
+        </ul>
       ) : null}
 
-      <details className={styles.evidence}>
-        <summary>How these numbers are worked out</summary>
-        <p className="small muted">
-          s<sub>i</sub> is each company&apos;s share of your matched company weight.
-        </p>
-        <dl className={styles.facts}>
-          {facts.map((fact) => (
-            <div className={styles.fact} key={fact.label}>
-              <dt>{fact.label}</dt>
-              <dd>{fact.value}</dd>
-            </div>
-          ))}
-        </dl>
-        {/*
-          The three weight rows partition the portfolio, but they need not print as 100%:
-          a fund's filed positions can total a little over its own NAV, and each fund is
-          scaled by its weight in the portfolio, so the parts can run a little over the
-          whole. Said once, in words, rather than by nudging a number that is right.
-        */}
-        <p className={`small muted ${styles.note}`}>
-          Each fund&apos;s filed positions can add up to slightly more than its own NAV,
-          so these shares need not total 100%.
-        </p>
-        <p className="small">
-          <a href="/methodology/#effective-holdings">
-            How effective holdings are defined
-          </a>
-          . It measures how evenly your money is spread across companies; it ignores how
-          companies move together.
-        </p>
+      {!view.singleStock ? (
+        <details className={styles.details}>
+          <summary>How this is calculated</summary>
+          <p>
+            <strong>
+              Effective number of companies ({effectiveWords(view.effective)})
+            </strong>{" "}
+            = 1 ÷ Σ(weight²), using each company&apos;s combined weight across all your
+            funds. It&apos;s the number of equally weighted companies that would give the
+            same concentration. Example: two stocks at 50/50 → 2.0. At 90/10 → 1.2.
+          </p>
+          <p>
+            <strong>Lenient count ({effectiveWords(view.lenient ?? 0)})</strong> =
+            e^(entropy of your weights). It gives more credit to the long tail of small
+            positions, so it&apos;s always between the effective number and the number of
+            companies you own.
+          </p>
+          <p>
+            <strong>
+              Without overlap ({effectiveWords(view.noOverlapEffective ?? 0)}; lenient{" "}
+              {effectiveWords(view.noOverlapLenient ?? 0)})
+            </strong>
+            : the same calculations if every fund&apos;s positions were separate
+            companies. The gap from {effectiveWords(view.effective)} is how much
+            diversification overlap costs you ({view.overlapCostPct ?? 0}%).
+          </p>
+          <p>
+            <strong>Top-10 concentration</strong>: your 10 largest companies are{" "}
+            {view.top10WeightPct === null ? "—" : formatPct1(view.top10WeightPct / 100)}{" "}
+            of your money and account for{" "}
+            {view.top10HhiSharePct === null
+              ? "—"
+              : formatPct1(view.top10HhiSharePct / 100)}{" "}
+            of the effective-number calculation.
+          </p>
+          <p className={styles.note}>
+            Weights are normalized to the{" "}
+            {view.coveredPct === null ? "covered" : formatShare(view.coveredPct / 100)} of
+            your portfolio that filings can place. Holdings as of each fund&apos;s latest
+            public filing.
+          </p>
+        </details>
+      ) : null}
+
+      <details
+        className={styles.curve}
+        onToggle={(event) => setCurveOpen(event.currentTarget.open)}
+      >
+        <summary>See the curve</summary>
+        {curveOpen ? (
+          Curve ? (
+            <Curve you={curveYou} benchmark={curveBenchmark} />
+          ) : (
+            <p className="small muted">Loading the chart…</p>
+          )
+        ) : null}
       </details>
     </LensSection>
   );
