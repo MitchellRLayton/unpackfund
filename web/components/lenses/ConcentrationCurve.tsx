@@ -86,11 +86,17 @@ export function ConcentrationCurve({ you, benchmark }: CurveProps) {
   const plotH = Math.max(10, height - MARGIN.top - MARGIN.bottom);
 
   const x = useMemo(
-    () => scaleLog().domain([1, maxN]).range([MARGIN.left, MARGIN.left + plotW]),
+    () =>
+      scaleLog()
+        .domain([1, maxN])
+        .range([MARGIN.left, MARGIN.left + plotW]),
     [maxN, plotW],
   );
   const y = useMemo(
-    () => scaleLinear().domain([0, 1]).range([MARGIN.top + plotH, MARGIN.top]),
+    () =>
+      scaleLinear()
+        .domain([0, 1])
+        .range([MARGIN.top + plotH, MARGIN.top]),
     [plotH],
   );
 
@@ -251,7 +257,12 @@ export function ConcentrationCurve({ you, benchmark }: CurveProps) {
                 y2={y(tick)}
                 className={styles.grid}
               />
-              <text x={MARGIN.left - 8} y={y(tick) + 4} textAnchor="end" className={styles.tick}>
+              <text
+                x={MARGIN.left - 8}
+                y={y(tick) + 4}
+                textAnchor="end"
+                className={styles.tick}
+              >
                 {Math.round(tick * 100)}%
               </text>
             </g>
@@ -328,7 +339,12 @@ export function ConcentrationCurve({ you, benchmark }: CurveProps) {
             className={styles.halfLine}
           />
           <circle cx={x(kYou)} cy={y(0.5)} r={3.5} className={styles.dotYou} />
-          <text x={x(kYou)} y={y(0.5) - 8} textAnchor="middle" className={styles.annotation}>
+          <text
+            x={x(kYou)}
+            y={y(0.5) - 8}
+            textAnchor="middle"
+            className={styles.annotation}
+          >
             {kYou}
           </text>
           {benchmark && kBench !== null ? (
@@ -384,7 +400,12 @@ export function ConcentrationCurve({ you, benchmark }: CurveProps) {
                 y2={MARGIN.top + plotH}
                 className={styles.crosshair}
               />
-              <circle cx={x(hoverRank)} cy={y(hoverYou ?? 1)} r={3.5} className={styles.dotYou} />
+              <circle
+                cx={x(hoverRank)}
+                cy={y(hoverYou ?? 1)}
+                r={3.5}
+                className={styles.dotYou}
+              />
               {hoverBench !== null ? (
                 <circle
                   cx={x(hoverRank)}

@@ -50,7 +50,8 @@ export function EffectiveHoldingsSummary({
   onSeeOverlap: () => void;
 }) {
   const view = useMemo(
-    () => buildEffectiveHoldingsView({ effective, rows, benchmark, fundCount, directCount }),
+    () =>
+      buildEffectiveHoldingsView({ effective, rows, benchmark, fundCount, directCount }),
     [effective, rows, benchmark, fundCount, directCount],
   );
 
@@ -81,7 +82,9 @@ export function EffectiveHoldingsSummary({
   }, [rows]);
   const curveBenchmark = useMemo<CurveProps["benchmark"]>(() => {
     if (!benchmark) return null;
-    const entries = Object.entries(benchmark.weights ?? {}).filter(([, weight]) => weight > 0);
+    const entries = Object.entries(benchmark.weights ?? {}).filter(
+      ([, weight]) => weight > 0,
+    );
     const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
     if (total <= 0) return null;
     return {
@@ -106,9 +109,12 @@ export function EffectiveHoldingsSummary({
     );
   }
 
-  const bars: Array<{ key: string; label: string; value: number; tone: "you" | "neutral" }> = [
-    { key: "you", label: "You", value: view.effective, tone: "you" },
-  ];
+  const bars: Array<{
+    key: string;
+    label: string;
+    value: number;
+    tone: "you" | "neutral";
+  }> = [{ key: "you", label: "You", value: view.effective, tone: "you" }];
   if (view.benchmark) {
     bars.push({
       key: "benchmark",
@@ -147,7 +153,9 @@ export function EffectiveHoldingsSummary({
                   style={{ width: `${(bar.value / max) * 100}%` }}
                 />
               </span>
-              <span className={`${styles.barValue} mono`}>{effectiveWords(bar.value)}</span>
+              <span className={`${styles.barValue} mono`}>
+                {effectiveWords(bar.value)}
+              </span>
             </li>
           ))}
         </ul>
@@ -157,19 +165,20 @@ export function EffectiveHoldingsSummary({
         <ul className={styles.bullets}>
           {view.top10WeightPct !== null && view.top1 ? (
             <li>
-              Your 10 largest companies are {formatPct1(view.top10WeightPct / 100)} of your
-              money. {view.top1.name} alone is {formatPct1(view.top1.weightPct / 100)}.
+              Your 10 largest companies are {formatPct1(view.top10WeightPct / 100)} of
+              your money. {view.top1.name} alone is{" "}
+              {formatPct1(view.top1.weightPct / 100)}.
             </li>
           ) : null}
           {view.singleFund ? null : view.noShared ? (
             <li>
-              Your funds don&apos;t share any companies, so overlap isn&apos;t reducing your
-              diversification.
+              Your funds don&apos;t share any companies, so overlap isn&apos;t reducing
+              your diversification.
             </li>
           ) : view.worstOverlap && view.noOverlapEffective !== null ? (
             <li>
-              Overlap is the biggest reason. Your {formatCount(view.fundCount)} funds share
-              their largest names ({view.worstOverlap.name} is in{" "}
+              Overlap is the biggest reason. Your {formatCount(view.fundCount)} funds
+              share their largest names ({view.worstOverlap.name} is in{" "}
               {formatCount(view.worstOverlap.heldBy)} of {formatCount(view.fundCount)}).
               Without that overlap you&apos;d have the diversification of{" "}
               {effectiveWords(view.noOverlapEffective)} companies instead of{" "}
@@ -186,31 +195,35 @@ export function EffectiveHoldingsSummary({
         <details className={styles.details}>
           <summary>How this is calculated</summary>
           <p>
-            <strong>Effective number of companies ({effectiveWords(view.effective)})</strong>{" "}
+            <strong>
+              Effective number of companies ({effectiveWords(view.effective)})
+            </strong>{" "}
             = 1 ÷ Σ(weight²), using each company&apos;s combined weight across all your
             funds. It&apos;s the number of equally weighted companies that would give the
             same concentration. Example: two stocks at 50/50 → 2.0. At 90/10 → 1.2.
           </p>
           <p>
-            <strong>Lenient count ({effectiveWords(view.lenient ?? 0)})</strong> = e^(entropy
-            of your weights). It gives more credit to the long tail of small positions, so
-            it&apos;s always between the effective number and the number of companies you
-            own.
+            <strong>Lenient count ({effectiveWords(view.lenient ?? 0)})</strong> =
+            e^(entropy of your weights). It gives more credit to the long tail of small
+            positions, so it&apos;s always between the effective number and the number of
+            companies you own.
           </p>
           <p>
             <strong>
               Without overlap ({effectiveWords(view.noOverlapEffective ?? 0)}; lenient{" "}
               {effectiveWords(view.noOverlapLenient ?? 0)})
             </strong>
-            : the same calculations if every fund&apos;s positions were separate companies.
-            The gap from {effectiveWords(view.effective)} is how much diversification overlap
-            costs you ({view.overlapCostPct ?? 0}%).
+            : the same calculations if every fund&apos;s positions were separate
+            companies. The gap from {effectiveWords(view.effective)} is how much
+            diversification overlap costs you ({view.overlapCostPct ?? 0}%).
           </p>
           <p>
             <strong>Top-10 concentration</strong>: your 10 largest companies are{" "}
-            {view.top10WeightPct === null ? "—" : formatPct1(view.top10WeightPct / 100)} of
-            your money and account for{" "}
-            {view.top10HhiSharePct === null ? "—" : formatPct1(view.top10HhiSharePct / 100)}{" "}
+            {view.top10WeightPct === null ? "—" : formatPct1(view.top10WeightPct / 100)}{" "}
+            of your money and account for{" "}
+            {view.top10HhiSharePct === null
+              ? "—"
+              : formatPct1(view.top10HhiSharePct / 100)}{" "}
             of the effective-number calculation.
           </p>
           <p className={styles.note}>

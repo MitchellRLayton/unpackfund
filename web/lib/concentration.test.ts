@@ -35,7 +35,12 @@ describe("the cumulative curve", () => {
   });
 
   it("is [0.25, 0.5, 0.75, 1] for four equal weights, crossing half at the second", () => {
-    const curve = cumulativeCurve([w("A", 0.25), w("B", 0.25), w("C", 0.25), w("D", 0.25)]);
+    const curve = cumulativeCurve([
+      w("A", 0.25),
+      w("B", 0.25),
+      w("C", 0.25),
+      w("D", 0.25),
+    ]);
     expect(curve).toEqual([0.25, 0.5, 0.75, 1]);
     expect(k50(curve)).toBe(2);
   });
@@ -60,9 +65,9 @@ describe("the shared grid", () => {
   it("has every rank 1–100, is strictly increasing, ends at maxN and stays under 260 points", () => {
     const grid = logGrid(9800);
     for (let rank = 1; rank <= 100; rank += 1) expect(grid).toContain(rank);
-    expect(grid.every((value, index) => index === 0 || value > (grid[index - 1] ?? 0))).toBe(
-      true,
-    );
+    expect(
+      grid.every((value, index) => index === 0 || value > (grid[index - 1] ?? 0)),
+    ).toBe(true);
     expect(grid[grid.length - 1]).toBe(9800);
     expect(grid.length).toBeLessThanOrEqual(260);
   });
@@ -75,9 +80,11 @@ describe("the shared grid", () => {
       [3, 1],
       [10, 1],
     ]);
-    expect(points.every((point, index) => index === 0 || point[1] >= (points[index - 1]?.[1] ?? 0))).toBe(
-      true,
-    );
+    expect(
+      points.every(
+        (point, index) => index === 0 || point[1] >= (points[index - 1]?.[1] ?? 0),
+      ),
+    ).toBe(true);
   });
 });
 
@@ -100,11 +107,18 @@ describe("the words", () => {
     expect(summarySentence(19, { ticker: "VT", k50: 118 })).toBe(
       "Half your money is in your top 19 companies. For VT, it's the top 118.",
     );
-    expect(summarySentence(19, null)).toBe("Half your money is in your top 19 companies.");
+    expect(summarySentence(19, null)).toBe(
+      "Half your money is in your top 19 companies.",
+    );
   });
 
   it("puts the top-ten shares in the accessible name", () => {
-    expect(curveAriaLabel("Half your money is in your top 19 companies.", 0.374, { ticker: "VT", top10: 0.227 })).toBe(
+    expect(
+      curveAriaLabel("Half your money is in your top 19 companies.", 0.374, {
+        ticker: "VT",
+        top10: 0.227,
+      }),
+    ).toBe(
       "Half your money is in your top 19 companies. Your top 10 companies are 37.4% of your money; for VT, 22.7%.",
     );
   });

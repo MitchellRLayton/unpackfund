@@ -119,11 +119,7 @@ describe("the top-ten share of money", () => {
 
 describe("the worst overlap", () => {
   it("is the company held by the most funds, ties to the larger weight", () => {
-    const rows = [
-      row("A", 0.1, 3),
-      row("B", 0.2, 3),
-      row("C", 0.3, 2),
-    ];
+    const rows = [row("A", 0.1, 3), row("B", 0.2, 3), row("C", 0.3, 2)];
     expect(worstOverlap(rows)).toEqual({ name: "B", heldBy: 3 });
   });
 });

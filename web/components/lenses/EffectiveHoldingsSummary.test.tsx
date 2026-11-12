@@ -52,7 +52,9 @@ const BENCHMARK: BenchmarkComparison = {
   weights: { c_Alpha: 0.5, c_Beta: 0.5 },
 };
 
-function renderBlock(overrides: Partial<Parameters<typeof EffectiveHoldingsSummary>[0]> = {}) {
+function renderBlock(
+  overrides: Partial<Parameters<typeof EffectiveHoldingsSummary>[0]> = {},
+) {
   return render(
     <EffectiveHoldingsSummary
       effective={TWO}
@@ -78,10 +80,7 @@ describe("the redesigned block", () => {
     const bars = Array.from(container.querySelectorAll("ul[aria-label] li")).map((item) =>
       item.getAttribute("aria-label"),
     );
-    expect(bars).toEqual([
-      "You: 2 effective companies",
-      "VT: 2 effective companies",
-    ]);
+    expect(bars).toEqual(["You: 2 effective companies", "VT: 2 effective companies"]);
     // One fund: no no-overlap bar, and no overlap bullet.
     expect(screen.queryByText(/if they didn't overlap/)).toBeNull();
     expect(screen.queryByText(/Overlap is the biggest reason/)).toBeNull();

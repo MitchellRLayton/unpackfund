@@ -111,7 +111,9 @@ export function summarySentence(
   benchmark: { ticker: string; k50: number } | null,
 ): string {
   const you = `Half your money is in your top ${kYou} companies.`;
-  return benchmark ? `${you} For ${benchmark.ticker}, it's the top ${benchmark.k50}.` : you;
+  return benchmark
+    ? `${you} For ${benchmark.ticker}, it's the top ${benchmark.k50}.`
+    : you;
 }
 
 /** The chart's accessible name: the summary plus the top-ten shares. */

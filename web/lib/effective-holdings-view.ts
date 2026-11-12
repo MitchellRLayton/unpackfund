@@ -71,8 +71,10 @@ export function benchmarkEffective(
 /** The plan's three-way verdict, or `null` when there is no benchmark to compare with. */
 export function verdictLine(ratio: number | null, ticker: string): string | null {
   if (ratio === null || !Number.isFinite(ratio) || ratio <= 0) return null;
-  if (ratio >= 1.15) return `About ${ratio.toFixed(1)}× more concentrated than ${ticker}.`;
-  if (ratio <= 0.87) return `About ${(1 / ratio).toFixed(1)}× more diversified than ${ticker}.`;
+  if (ratio >= 1.15)
+    return `About ${ratio.toFixed(1)}× more concentrated than ${ticker}.`;
+  if (ratio <= 0.87)
+    return `About ${(1 / ratio).toFixed(1)}× more diversified than ${ticker}.`;
   return `About as diversified as ${ticker}.`;
 }
 
@@ -87,7 +89,9 @@ export function top10WeightPct(rows: readonly LedgerRow[]): number | null {
 }
 
 /** The company held by the most funds; ties go to the larger portfolio weight. */
-export function worstOverlap(rows: readonly LedgerRow[]): { name: string; heldBy: number } | null {
+export function worstOverlap(
+  rows: readonly LedgerRow[],
+): { name: string; heldBy: number } | null {
   if (rows.length === 0) return null;
   const worst = [...rows].sort(
     (a, b) => b.holder_count - a.holder_count || b.weight - a.weight,
@@ -106,9 +110,11 @@ export function buildEffectiveHoldingsView(input: {
   const core = effective.core;
   const noOverlap = effective.coreDisjoint;
   const benchmarkCount = benchmark ? benchmarkEffective(benchmark.weights) : null;
-  const ratio = benchmarkCount !== null && core !== null && core > 0 ? benchmarkCount / core : null;
+  const ratio =
+    benchmarkCount !== null && core !== null && core > 0 ? benchmarkCount / core : null;
   const worst = worstOverlap(rows);
-  const top1 = rows.length > 0 ? ([...rows].sort((a, b) => b.weight - a.weight)[0] ?? null) : null;
+  const top1 =
+    rows.length > 0 ? ([...rows].sort((a, b) => b.weight - a.weight)[0] ?? null) : null;
   const singleStock = rows.length === 1 && fundCount === 0 && directCount === 1;
 
   return {
