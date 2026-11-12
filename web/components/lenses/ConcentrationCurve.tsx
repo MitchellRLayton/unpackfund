@@ -256,7 +256,7 @@ export function ConcentrationCurve({
   const flip = tooltipLeft > width * 0.6;
 
   const references = showBands
-    ? REFERENCE_RANKS.filter((n) => n <= maxN * 2).map((n) => {
+    ? REFERENCE_RANKS.filter((n) => n <= maxN * 2).map((n, index) => {
         const points = equalWeightCurve(n, grid);
         const endpoint = Math.min(n, maxN);
         return {
@@ -264,7 +264,9 @@ export function ConcentrationCurve({
           token: bandFor(n).token,
           path: youLine(points) ?? "",
           labelX: x(endpoint),
-          labelY: y(Math.min(endpoint / n, 1)),
+          // Stagger the labels: 10/30/60 land close together on the log axis, and two
+          // centred labels on one baseline touch at a phone width.
+          labelY: y(Math.min(endpoint / n, 1)) + 12 + (index % 2) * 14,
         };
       })
     : [];
@@ -457,7 +459,7 @@ export function ConcentrationCurve({
               />
               <text
                 x={reference.labelX}
-                y={reference.labelY + 12}
+                y={reference.labelY}
                 textAnchor="middle"
                 className={styles.referenceLabel}
               >
