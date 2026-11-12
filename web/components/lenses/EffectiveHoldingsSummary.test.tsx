@@ -76,11 +76,17 @@ describe("the redesigned block", () => {
         "You own 2 companies, but your portfolio behaves like 2 equally weighted ones.",
       ),
     ).toBeTruthy();
-    expect(screen.getByText("About as diversified as VT.")).toBeTruthy();
+    expect(screen.getByText(/About as diversified as VT/)).toBeTruthy();
     const bars = Array.from(container.querySelectorAll("ul[aria-label] li")).map((item) =>
       item.getAttribute("aria-label"),
     );
     expect(bars).toEqual(["You: 2 effective companies", "VT: 2 effective companies"]);
+    // The risk band prints its colour word and its label beside the verdict, never the
+    // colour alone.
+    expect(screen.getByText(/Red · Very concentrated/)).toBeTruthy();
+    expect(screen.getAllByTitle(/Single-company risk measures/).length).toBeGreaterThan(
+      0,
+    );
     // One fund: no no-overlap bar, and no overlap bullet.
     expect(screen.queryByText(/if they didn't overlap/)).toBeNull();
     expect(screen.queryByText(/Overlap is the biggest reason/)).toBeNull();
@@ -92,6 +98,8 @@ describe("the redesigned block", () => {
     expect(text).not.toContain("Core");
     expect(text).not.toContain("Broad");
     expect(screen.getByText("How this is calculated")).toBeTruthy();
+    // The research the cutoffs lean on is cited in the disclosure.
+    expect(screen.getByText(/Evans & Archer/)).toBeTruthy();
     expect(screen.getByText("See the curve")).toBeTruthy();
   });
 

@@ -49,6 +49,10 @@ export function EffectiveHoldingsSummary({
   directCount: number;
   onSeeOverlap: () => void;
 }) {
+  /** The hover tooltip on the risk band: what the colour does and does not measure. */
+  const RISK_TOOLTIP =
+    "Single-company risk measures how evenly your money is spread across individual companies. It ignores correlation — 100 semiconductor stocks can score Diversified and still be one sector bet.";
+
   const view = useMemo(
     () =>
       buildEffectiveHoldingsView({ effective, rows, benchmark, fundCount, directCount }),
@@ -136,7 +140,26 @@ export function EffectiveHoldingsSummary({
   return (
     <LensSection title="Effective holdings">
       <p className={styles.headline}>{view.headline}</p>
-      {view.verdict ? <p className={styles.verdict}>{view.verdict}</p> : null}
+      {view.risk ? (
+        <p className={styles.riskLine}>
+          <span
+            className={styles.riskDot}
+            data-band={view.risk.key}
+            aria-hidden="true"
+            title={RISK_TOOLTIP}
+          />
+          <span className={styles.riskText}>
+            <span className={styles.riskTitle} title={RISK_TOOLTIP}>
+              Single-company risk
+            </span>
+            {" · "}
+            <strong>
+              {view.risk.colour} · {view.risk.label}
+            </strong>
+            {view.verdict ? <> — {view.verdict}</> : null}
+          </span>
+        </p>
+      ) : null}
 
       {!view.singleStock ? (
         <ul className={styles.bars} aria-label="Effective number of companies, compared">
@@ -225,6 +248,16 @@ export function EffectiveHoldingsSummary({
               ? "—"
               : formatPct1(view.top10HhiSharePct / 100)}{" "}
             of the effective-number calculation.
+          </p>
+          <p className={styles.note}>
+            It measures how evenly your money is spread across companies; it ignores how
+            companies move together, so 100 semiconductor stocks can score
+            &ldquo;diversified&rdquo; and still be one sector bet.
+          </p>
+          <p className={styles.note}>
+            The single-company-risk bands are a design choice informed by the research,
+            not a published standard: 16 equal-weighted securities (Evans &amp; Archer),
+            30–40 (Statman), and 164 (Domian, Louton &amp; Racine).
           </p>
           <p className={styles.note}>
             Weights are normalized to the{" "}

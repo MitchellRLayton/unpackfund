@@ -7,10 +7,51 @@
   max-width: 34ch;
 }
 
-.verdict {
+.riskLine {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  max-width: 72ch;
+}
+
+.riskDot {
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  align-self: center;
+}
+
+.riskDot[data-band="very-concentrated"] {
+  background: var(--risk-1);
+}
+
+.riskDot[data-band="concentrated"] {
+  background: var(--risk-2);
+}
+
+.riskDot[data-band="moderate"] {
+  background: var(--risk-3);
+}
+
+.riskDot[data-band="diversified"] {
+  background: var(--risk-4);
+}
+
+.riskDot[data-band="broadly-diversified"] {
+  background: var(--risk-5);
+}
+
+.riskTitle {
+  text-decoration: underline dotted;
+  text-underline-offset: 0.2em;
+  cursor: help;
+}
+
+.riskText {
   font-size: var(--text-16);
   color: var(--graphite);
-  margin: 0;
 }
 
 .bars {

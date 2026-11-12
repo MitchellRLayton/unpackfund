@@ -291,6 +291,14 @@ const UI_PAIRS: Array<[fg: string, bg: string, why: string]> = [
   ["band-mid", "paper", "the mid band's segment"],
   ["band-small", "paper", "the small band's segment"],
   ["band-micro", "paper", "the smallest band's segment"],
+  // The single-company-risk dots on the Effective holdings block: five graphics whose
+  // band is also always printed as a label, held to the same 3:1 floor as every other
+  // fill so the dot is findable before the label is read.
+  ["risk-1", "paper", "the very-concentrated risk dot"],
+  ["risk-2", "paper", "the concentrated risk dot"],
+  ["risk-3", "paper", "the moderate risk dot"],
+  ["risk-4", "paper", "the diversified risk dot"],
+  ["risk-5", "paper", "the broadly-diversified risk dot"],
   // The reachable scrollbar's thumb. A scrollbar is a graphic that carries a
   // distinction — how much of the table is off screen — so it answers to the same 3:1
   // floor as an edge, not to taste.
@@ -460,6 +468,58 @@ describe("automatic light/dark", () => {
         if (normal < MIN_NORMAL_SEPARATION) {
           failures.push(
             `${why}: uncorrected dE ${normal.toFixed(1)} (want >= ${MIN_NORMAL_SEPARATION})`,
+          );
+        }
+        for (const [kind, matrix] of Object.entries(CVD_MATRICES)) {
+          const separation = deltaE(simulate(left, matrix), simulate(right, matrix));
+          if (separation < MIN_SIMULATED_SEPARATION) {
+            failures.push(
+              `${why}: ${kind} dE ${separation.toFixed(1)} (want >= ${MIN_SIMULATED_SEPARATION})`,
+            );
+          }
+        }
+      }
+      expect(failures).toEqual([]);
+    });
+  }
+
+  for (const [theme, name] of [
+    [LIGHT, "light"],
+    [DARK, "dark"],
+  ] as const) {
+    it(`keeps the single-company-risk steps apart in ${name}`, () => {
+      // A sequential ramp: the pair a reader compares is each step with the one beside
+      // it, so adjacency is what the gate holds. The floors are deliberately lower than
+      // the geography inks' — red, orange and amber collapse toward one another for a
+      // protanope whatever values are chosen on a near-white page, and the operator's
+      // own rule is that the band label is always printed beside the dot, so the hue is
+      // reinforcement. What the gate still refuses is two adjacent bands reading as one
+      // colour, and a ramp whose lightness never moves (which is what makes a sequential
+      // palette readable without hue).
+      const ADJACENT: Array<[string, string, string]> = [
+        ["risk-1", "risk-2", "very concentrated against concentrated"],
+        ["risk-2", "risk-3", "concentrated against moderate"],
+        ["risk-3", "risk-4", "moderate against diversified"],
+        ["risk-4", "risk-5", "diversified against broadly diversified"],
+      ];
+      const MIN_NORMAL_SEPARATION = 18;
+      const MIN_SIMULATED_SEPARATION = 10;
+      const MIN_LIGHTNESS_STEP = 5;
+      const failures: string[] = [];
+      for (const [leftName, rightName, why] of ADJACENT) {
+        const left = theme[leftName];
+        const right = theme[rightName];
+        if (!left || !right) throw new Error(`missing ${leftName} or ${rightName}`);
+        const normal = deltaE(left, right);
+        if (normal < MIN_NORMAL_SEPARATION) {
+          failures.push(
+            `${why}: uncorrected dE ${normal.toFixed(1)} (want >= ${MIN_NORMAL_SEPARATION})`,
+          );
+        }
+        const lightnessStep = Math.abs(lab(left)[0] - lab(right)[0]);
+        if (lightnessStep < MIN_LIGHTNESS_STEP) {
+          failures.push(
+            `${why}: lightness step ${lightnessStep.toFixed(1)} (want >= ${MIN_LIGHTNESS_STEP})`,
           );
         }
         for (const [kind, matrix] of Object.entries(CVD_MATRICES)) {
