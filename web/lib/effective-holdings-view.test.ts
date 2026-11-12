@@ -5,6 +5,8 @@ import {
   benchmarkEffective,
   buildEffectiveHoldingsView,
   effectiveWords,
+  RISK_BANDS,
+  riskBand,
   top10WeightPct,
   verdictLine,
   worstOverlap,
@@ -186,5 +188,31 @@ describe("the view", () => {
     expect(effectiveWords(1.4)).toBe("1.4");
     expect(effectiveWords(1.5)).toBe("2");
     expect(effectiveWords(45.309)).toBe("45");
+  });
+});
+
+describe("the single-company-risk bands", () => {
+  it("uses the operator's cutoffs, with the top band open-ended", () => {
+    expect(RISK_BANDS.map((band) => band.label)).toEqual([
+      "Very concentrated",
+      "Concentrated",
+      "Moderate",
+      "Diversified",
+      "Broadly diversified",
+    ]);
+    expect(riskBand(9.99).label).toBe("Very concentrated");
+    expect(riskBand(10).label).toBe("Concentrated");
+    expect(riskBand(29.99).label).toBe("Concentrated");
+    expect(riskBand(30).label).toBe("Moderate");
+    expect(riskBand(59.99).label).toBe("Moderate");
+    expect(riskBand(60).label).toBe("Diversified");
+    expect(riskBand(149.99).label).toBe("Diversified");
+    expect(riskBand(150).label).toBe("Broadly diversified");
+    expect(riskBand(9800).label).toBe("Broadly diversified");
+  });
+
+  it("prints the colour word with the label, never the colour alone", () => {
+    expect(riskBand(45).colour).toBe("Yellow");
+    expect(riskBand(45).label).toBe("Moderate");
   });
 });
