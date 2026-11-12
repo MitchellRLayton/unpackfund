@@ -56,6 +56,13 @@ from . import nport, refresh, sec
 #: derived data, and a release must be reproducible from the filings, not from it.
 CACHE_RELPATH = Path("discovery") / "series.json"
 
+#: The cache's own shape. **Bump this whenever what the cache holds changes**, because a
+#: cache that outlives its meaning is worse than no cache: version 1 held the whole
+#: universe, version 2 holds only the series the ticker file omits, and a run that read a
+#: version-1 file would spend its resolution budget naming funds that already publish —
+#: which is exactly what happened on 2026-11-11 (88 named, 25 new tickers).
+CACHE_SCHEMA = 2
+
 #: The SEC's quarterly N-PORT data set: one zip per calendar quarter, published a few
 #: days after the quarter closes. It carries the mapping this module needs —
 #: ``FUND_REPORTED_INFO.tsv`` (accession → series id and name) joined to
@@ -172,6 +179,8 @@ def load(root: Path | None = None) -> dict[str, Discovered]:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except ValueError:
         return {}
+    if payload.get("schema_version") != CACHE_SCHEMA:
+        return {}  # an older shape: rebuild rather than read it as if it were this one
     out: dict[str, Discovered] = {}
     for series_id, row in (payload.get("series") or {}).items():
         try:
@@ -186,7 +195,7 @@ def save(series: Mapping[str, Discovered], root: Path | None = None) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "kind": "series_discovery",
-        "schema_version": 1,
+        "schema_version": CACHE_SCHEMA,
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "series": {key: asdict(value) for key, value in sorted(series.items())},
     }

@@ -243,6 +243,32 @@ def test_the_cache_round_trips(offline):
     assert loaded["S000102337"].publishable
 
 
+def test_a_cache_from_an_older_shape_is_rebuilt_not_read(offline):
+    """A cache that outlives its meaning spends the budget on funds we already have."""
+    path = discovery.cache_path(offline)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "kind": "series_discovery",
+                "schema_version": 1,
+                "series": {
+                    "S000000001": {
+                        "series_id": "S000000001",
+                        "cik": "1",
+                        "name": "Old Shape Fund",
+                        "accession": "acc",
+                        "filed_at": "2026-01-01",
+                        "symbol": "OLD",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert discovery.load(offline) == {}
+
+
 def test_a_corrupt_cache_is_empty_rather_than_fatal(offline):
     """A half-written cache must not take the build down with it."""
     path = discovery.cache_path(offline)
