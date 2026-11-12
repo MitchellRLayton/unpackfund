@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState, type ComponentType } from "react";
 
 import type { EffectiveHoldings } from "@/lib/effective-holdings";
 import {
+  bandFor,
   buildEffectiveHoldingsView,
   effectiveWords,
 } from "@/lib/effective-holdings-view";
@@ -140,11 +141,11 @@ export function EffectiveHoldingsSummary({
   return (
     <LensSection title="Effective holdings">
       <p className={styles.headline}>{view.headline}</p>
-      {view.risk ? (
+      {view.band ? (
         <p className={styles.riskLine}>
           <span
             className={styles.riskDot}
-            data-band={view.risk.key}
+            data-band={view.band.key}
             aria-hidden="true"
             title={RISK_TOOLTIP}
           />
@@ -154,7 +155,7 @@ export function EffectiveHoldingsSummary({
             </span>
             {" · "}
             <strong>
-              {view.risk.colour} · {view.risk.label}
+              {view.band.colour} · {view.band.label}
             </strong>
             {view.verdict ? <> — {view.verdict}</> : null}
           </span>
@@ -256,8 +257,9 @@ export function EffectiveHoldingsSummary({
           </p>
           <p className={styles.note}>
             The single-company-risk bands are a design choice informed by the research,
-            not a published standard: 16 equal-weighted securities (Evans &amp; Archer),
-            30–40 (Statman), and 164 (Domian, Louton &amp; Racine).
+            not a published standard: Evans &amp; Archer (1968) at 16 equal-weighted
+            securities, Statman (1987) at 30–40, and Domian, Louton &amp; Racine (2007) at
+            164.
           </p>
           <p className={styles.note}>
             Weights are normalized to the{" "}
@@ -275,7 +277,13 @@ export function EffectiveHoldingsSummary({
         <summary>See the curve</summary>
         {curveOpen ? (
           Curve ? (
-            <Curve you={curveYou} benchmark={curveBenchmark} />
+            <Curve
+              you={curveYou}
+              benchmark={curveBenchmark}
+              band={view.band ?? bandFor(view.effective)}
+              benchmarkBand={view.benchmark ? bandFor(view.benchmark.effective) : null}
+              effective={view.effective}
+            />
           ) : (
             <p className="small muted">Loading the chart…</p>
           )
