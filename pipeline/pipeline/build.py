@@ -105,8 +105,17 @@ def _discovered_series(discover: bool) -> dict:
     if not discover:
         return discovery.load()
     if discovery.is_stale():
-        ciks = {ref.cik for ref in universe.all_series()}
-        series = discovery.refresh_cache(universe_ciks=ciks, progress_every=500)
+        # Both sets come from the same walk: the CIKs bound the scan, and the series
+        # ids bound the *cache* — without the second, the cache holds the whole
+        # universe and the resolution budget is spent naming funds that already
+        # publish. Measured on 2026-11-11: 88 series named, 25 new tickers, because
+        # 63 of the 88 were already in the ticker file.
+        refs = universe.all_series()
+        series = discovery.refresh_cache(
+            universe_ciks={ref.cik for ref in refs},
+            known_series={ref.series_id for ref in refs if ref.series_id},
+            progress_every=500,
+        )
         counts = discovery.summary(series)
         _log(
             f"discovery: {counts['series']} series in the cache, "

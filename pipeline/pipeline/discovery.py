@@ -78,6 +78,13 @@ QUARTER_INDEX = "https://www.sec.gov/Archives/edgar/full-index/{year}/QTR{quarte
 #: first run pays for it — every later run reads the days since the last one.
 DEFAULT_WINDOW_DAYS = 90
 
+#: How many days of the current quarter the index path reads. The data set answers for
+#: closed quarters; this covers the days after it, and it is bounded because the cost is
+#: one document per filing. Measured 2026-11-11 with eight in flight: **7.6 documents a
+#: second** cold, so a 14-day window is about a thousand filings and roughly two minutes
+#: — cheap enough to run every night, which is what turns a quarter-long lag into days.
+DEFAULT_INDEX_DAYS = 14
+
 #: How many series a single run will try to name. Each attempt is a full-text query
 #: plus up to three documents, so this is the knob that bounds a run's cost; the rest
 #: of the queue waits for the next run, newest filing first.
@@ -299,7 +306,8 @@ def scan(
     known: Mapping[str, Discovered] | None = None,
     progress_every: int = 0,
     max_workers: int = 8,
-    use_index: bool = False,
+    use_index: bool = True,
+    index_days: int = DEFAULT_INDEX_DAYS,
 ) -> dict[str, Discovered]:
     """Every N-PORT series filed by ``universe_ciks`` in ``days``.
 
@@ -307,15 +315,14 @@ def scan(
     and it is the default source because it is the cheap one: 462 MB once a quarter,
     from which ~3 MB of table is kept, and **no document reads at all**.
 
-    ``use_index`` adds the days since the newest data set — the current quarter, which
-    no data set describes yet — by reading one N-PORT per filing from the daily index.
-    It is off by default because it is *slow* and the cost is not the bytes: measured
-    2026-11-11, serial reads ran at ~1.5 documents a second and eight in flight at
-    ~0.5–1.5, because each request is latency-bound and EDGAR throttles a shared egress,
-    so a 40-day catch-up is 30–60 minutes. Turn it on for a one-off catch-up, not for a
-    nightly job; the data set lags a quarter behind, which is the price of never reading
-    a document. ``known`` is the previous cache, so a filing already read is not read
-    again.
+    ``use_index`` adds the days since the newest data set — the current quarter, which no
+    data set describes yet — by reading one N-PORT per filing from the daily index. It is
+    **on by default and bounded to ``index_days``**: measured 2026-11-11 with eight in
+    flight, the reads run at **7.6 documents a second** cold, so a 14-day window is about
+    a thousand filings and roughly two minutes a night. That is what turns a quarter-long
+    lag into days. (An earlier reading of ~1.5 a second was taken while a 462 MB data-set
+    download shared the same process, and it was wrong.) ``known`` is the previous cache,
+    so a filing already read is not read again.
     """
     seen: dict[str, Discovered] = dict(known or {})
     wanted_ciks = {cik_key(value) for value in universe_ciks}
@@ -341,11 +348,14 @@ def scan(
     if not use_index:
         return seen
 
-    # The current quarter: filings the data set cannot describe yet.
+    # The current quarter: filings the data set cannot describe yet, and only the last
+    # ``index_days`` of them — the rest of the window is the data set's job.
+    newest = max(days)
+    floor = newest - timedelta(days=max(0, index_days) - 1)
     seen_accessions = {row.accession for row in seen.values()}
     pending: list[refresh.Filing] = []
     for day in sorted(days):
-        if day <= covered_until:
+        if day <= covered_until or day < floor:
             continue
         try:
             body = sec.fetch(refresh.index_url(day), max_age=sec.INDEX_MAX_AGE_S)
@@ -535,7 +545,8 @@ def refresh_cache(
     resolve: bool = True,
     resolve_limit: int = DEFAULT_RESOLVE_LIMIT,
     progress_every: int = 0,
-    use_index: bool = False,
+    use_index: bool = True,
+    index_days: int = DEFAULT_INDEX_DAYS,
 ) -> dict[str, Discovered]:
     """Scan, resolve symbols for what is new, and write the cache.
 
@@ -558,6 +569,7 @@ def refresh_cache(
         known=known,
         progress_every=progress_every,
         use_index=use_index,
+        index_days=index_days,
     )
     if known_series is not None:
         series = {
@@ -620,10 +632,16 @@ def main(argv: list[str] | None = None) -> int:
         help="how many series to try to name in this run (newest filing first)",
     )
     parser.add_argument(
-        "--index",
+        "--no-index",
         action="store_true",
-        help="also read the current quarter from the daily index (slow: one document "
-        "per filing, 30-60 min for a 40-day catch-up); off by default",
+        help="skip the current quarter (the daily-index path); the data set alone then "
+        "answers, which lags a quarter behind",
+    )
+    parser.add_argument(
+        "--index-days",
+        type=int,
+        default=DEFAULT_INDEX_DAYS,
+        help="how many days of the current quarter to read from the daily index",
     )
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args(argv)
@@ -638,7 +656,8 @@ def main(argv: list[str] | None = None) -> int:
         resolve=not args.no_resolve,
         resolve_limit=args.resolve_limit,
         progress_every=500,
-        use_index=args.index,
+        use_index=not args.no_index,
+        index_days=args.index_days,
     )
     result = summary(series)
     print(json.dumps(result, indent=1))
