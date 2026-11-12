@@ -269,6 +269,16 @@ def test_a_cache_from_an_older_shape_is_rebuilt_not_read(offline):
     assert discovery.load(offline) == {}
 
 
+def test_a_fresh_cache_of_the_wrong_shape_is_stale(offline):
+    """A cache that is new but wrong must be rebuilt, not read as empty and skipped."""
+    path = discovery.cache_path(offline)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"schema_version": 1, "series": {}}), encoding="utf-8")
+    assert discovery.is_stale(offline) is True
+    discovery.save({}, offline)
+    assert discovery.is_stale(offline) is False
+
+
 def test_a_corrupt_cache_is_empty_rather_than_fatal(offline):
     """A half-written cache must not take the build down with it."""
     path = discovery.cache_path(offline)

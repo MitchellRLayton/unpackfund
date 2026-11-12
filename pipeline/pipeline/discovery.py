@@ -206,10 +206,24 @@ def save(series: Mapping[str, Discovered], root: Path | None = None) -> Path:
 
 
 def is_stale(root: Path | None = None, max_age: float = CACHE_MAX_AGE_S) -> bool:
+    """Whether the cache must be rebuilt: absent, older than ``max_age``, or the wrong shape.
+
+    The shape matters as much as the age. ``load`` refuses an older schema, so a cache
+    that is fresh but stale in *meaning* made the build skip the rebuild and then read
+    nothing — the discovery pass silently did not run, with no log line to say so. Caught
+    by observing an unchanged fund count on 2026-11-12.2: the freshness check and the
+    reader have to agree on what a usable cache is.
+    """
     path = cache_path(root)
     if not path.is_file():
         return True
-    return (time.time() - path.stat().st_mtime) > max_age
+    if (time.time() - path.stat().st_mtime) > max_age:
+        return True
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError:
+        return True
+    return payload.get("schema_version") != CACHE_SCHEMA
 
 
 def cik_key(value: str | int) -> str:
