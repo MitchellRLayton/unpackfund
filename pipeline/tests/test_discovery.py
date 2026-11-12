@@ -19,7 +19,7 @@ from __future__ import annotations
 import io
 import json
 import zipfile
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -121,6 +121,23 @@ def test_the_index_covers_the_quarter_no_data_set_describes(offline, monkeypatch
     series = discovery.scan([date(2026, 11, 10)], {"1976517"}, use_index=True)
     assert set(series) == {"S000102337"}
     assert series["S000102337"].cik == "1976517"
+
+
+def test_the_index_window_is_bounded(offline, monkeypatch):
+    """Only the last ``index_days`` are read: the rest of the window is the data set's job."""
+    days_read: list[str] = []
+
+    def no_dataset(url, **kwargs):
+        if "form-n-port-data-sets" in url:
+            raise sec.SecError("not published yet")
+        if "daily-index" in url:
+            days_read.append(url)
+        return _edgar(url)
+
+    monkeypatch.setattr(sec, "fetch", no_dataset)
+    window = [date(2026, 11, 11) - timedelta(days=n) for n in range(30)]
+    discovery.scan(window, {"1976517"}, use_index=True, index_days=3)
+    assert len(days_read) == 3, f"read {len(days_read)} index days, expected 3"
 
 
 def test_the_scan_ignores_registrants_we_do_not_publish(offline):
