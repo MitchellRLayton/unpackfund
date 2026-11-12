@@ -112,11 +112,11 @@
    * by design, so adjacent steps are separated by hue *and* lightness; the CVD gate in
    * `lib/theme.test.ts` holds the adjacency apart rather than asking red to separate from
    * green, which a deuteranope cannot do. */
-  --risk-1: oklch(56% 0.18 27);
-  --risk-2: oklch(46% 0.16 55);
-  --risk-3: oklch(56% 0.14 85);
-  --risk-4: oklch(44% 0.1 195);
-  --risk-5: oklch(32% 0.09 150);
+  --band-1: oklch(56% 0.18 27);
+  --band-2: oklch(40% 0.15 55);
+  --band-3: oklch(52% 0.14 85);
+  --band-4: oklch(44% 0.1 195);
+  --band-5: oklch(32% 0.09 150);
 
   /* ---- State ----------------------------------------------------------- */
   /* Errors only, always with an icon and words. */
@@ -218,11 +218,11 @@
     --band-micro: oklch(72% 0.12 40);
     /* The risk ramp repainted bright enough to clear 3:1 on the dark page, in the same
      * order and the same five hues as the light ramp. */
-    --risk-1: oklch(58% 0.17 27);
-    --risk-2: oklch(70% 0.15 55);
-    --risk-3: oklch(84% 0.13 85);
-    --risk-4: oklch(66% 0.1 195);
-    --risk-5: oklch(56% 0.1 150);
+    --band-1: oklch(62% 0.17 27);
+    --band-2: oklch(70% 0.15 55);
+    --band-3: oklch(84% 0.13 85);
+    --band-4: oklch(66% 0.1 195);
+    --band-5: oklch(58% 0.1 150);
 
     --alert: oklch(68% 0.17 30);
     --alert-ink: oklch(78% 0.14 30);

@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   cumulativeCurve,
   curveAriaLabel,
+  equalWeightCurve,
   invertRank,
   k50,
   logGrid,
+  pngFooter,
   resample,
   summarySentence,
   topShare,
@@ -120,6 +122,30 @@ describe("the words", () => {
       }),
     ).toBe(
       "Half your money is in your top 19 companies. Your top 10 companies are 37.4% of your money; for VT, 22.7%.",
+    );
+  });
+});
+
+describe("the equal-weight reference curves", () => {
+  it("reaches 100% exactly at rank N and stays flat afterwards", () => {
+    const grid = logGrid(100);
+    const points = equalWeightCurve(30, grid);
+    expect(points[29]).toEqual([30, 1]);
+    expect(points.filter(([rank]) => rank > 30).every(([, value]) => value === 1)).toBe(
+      true,
+    );
+    // Before the elbow the line is k/N: rank 15 is half the money.
+    expect(points[14]).toEqual([15, 0.5]);
+  });
+});
+
+describe("the download footer", () => {
+  it("keeps the band and the effective count in the image", () => {
+    expect(pngFooter("Moderate", 45.309)).toBe(
+      "Moderate · 45 effective holdings · unpackfund.com · Source: SEC EDGAR",
+    );
+    expect(pngFooter("Very concentrated", 1.2)).toBe(
+      "Very concentrated · 1.2 effective holdings · unpackfund.com · Source: SEC EDGAR",
     );
   });
 });

@@ -40,7 +40,7 @@ export interface EffectiveHoldingsView {
   benchmark: { ticker: string; effective: number } | null;
   ratio: number | null;
   verdict: string | null;
-  risk: RiskBand | null;
+  band: DiversificationBand | null;
   headline: string;
   singleStock: boolean;
   singleFund: boolean;
@@ -55,32 +55,59 @@ export interface EffectiveHoldingsView {
  * literature reports. The band says how evenly the money is spread across companies —
  * never how good the portfolio is, and never anything about correlation.
  */
-export const RISK_BANDS = [
+export const DIVERSIFICATION_BANDS = [
   {
     key: "very-concentrated",
     label: "Very concentrated",
     colour: "Red",
+    token: 1,
     min: 0,
     max: 10,
   },
-  { key: "concentrated", label: "Concentrated", colour: "Orange", min: 10, max: 30 },
-  { key: "moderate", label: "Moderate", colour: "Yellow", min: 30, max: 60 },
-  { key: "diversified", label: "Diversified", colour: "Light green", min: 60, max: 150 },
+  {
+    key: "concentrated",
+    label: "Concentrated",
+    colour: "Orange",
+    token: 2,
+    min: 10,
+    max: 30,
+  },
+  { key: "moderate", label: "Moderate", colour: "Yellow", token: 3, min: 30, max: 60 },
+  {
+    key: "diversified",
+    label: "Diversified",
+    colour: "Light green",
+    token: 4,
+    min: 60,
+    max: 150,
+  },
   {
     key: "broadly-diversified",
     label: "Broadly diversified",
     colour: "Green",
+    token: 5,
     min: 150,
     max: Number.POSITIVE_INFINITY,
   },
 ] as const;
 
-export type RiskBand = (typeof RISK_BANDS)[number];
+export type DiversificationBand = (typeof DIVERSIFICATION_BANDS)[number];
 
-/** The band an effective count falls in; the top band is open-ended. */
-export function riskBand(effective: number): RiskBand {
-  const found = RISK_BANDS.find((band) => effective >= band.min && effective < band.max);
-  return found ?? RISK_BANDS[RISK_BANDS.length - 1] ?? RISK_BANDS[0];
+/**
+ * The band an effective count falls in; the top band is open-ended.
+ *
+ * One helper for the block and the curve: the headline's band and the line's colour are
+ * the same call on the same unrounded number, so they cannot disagree.
+ */
+export function bandFor(effective: number): DiversificationBand {
+  const found = DIVERSIFICATION_BANDS.find(
+    (band) => effective >= band.min && effective < band.max,
+  );
+  return (
+    found ??
+    DIVERSIFICATION_BANDS[DIVERSIFICATION_BANDS.length - 1] ??
+    DIVERSIFICATION_BANDS[0]
+  );
 }
 
 /** One decimal below 1.5 (two companies split almost evenly), an integer otherwise. */
@@ -182,7 +209,7 @@ export function buildEffectiveHoldingsView(input: {
         : null,
     ratio,
     verdict: benchmark ? verdictLine(ratio, benchmark.ticker) : null,
-    risk: core === null ? null : riskBand(core),
+    band: core === null ? null : bandFor(core),
     headline: singleStock
       ? "Your portfolio is one company."
       : core === null

@@ -7,14 +7,17 @@
  * loaded only when that expander opens — the module and its d3 imports are a lazy chunk,
  * so nothing here is in the first page bundle.
  *
- * d3 computes the scales, the path strings and the tick positions; React renders the SVG.
- * There is no d3-selection: the chart is a pure function of its props, which is what keeps
- * it testable and keeps the DOM out of the maths. The two series share one log-rank grid,
- * so the gap between them is a real area rather than two independently sampled lines.
+ * The diversification bands belong on the **line**, never on a region of the chart: the
+ * x-axis is company rank and the y-axis is cumulative weight, so no point on the plot is
+ * "the effective number" and a shaded zone would let the tail contradict the headline.
+ * The You line takes the band's token, the gap fill repeats it at 12%, and the benchmark
+ * stays neutral with its band printed in the legend. Optional equal-weight reference
+ * curves (10, 30, 60 and 150 stocks) show what a portfolio with that effective count would
+ * look like if its money were spread evenly.
  *
- * The chart is never the only carrier: the summary sentence above it states the half-way
- * ranks in words, the legend names both series, and a visually hidden table prints the
- * curve at the ranks a reader is most likely to want.
+ * d3 computes the scales, the path strings and the tick positions; React renders the SVG.
+ * The colour change is a CSS transition on stroke/fill (same 300 ms as a path tween, off
+ * under prefers-reduced-motion) rather than a per-frame JS animation.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -25,35 +28,63 @@ import { area, curveStepAfter, line } from "d3-shape";
 import {
   cumulativeCurve,
   curveAriaLabel,
+  equalWeightCurve,
   invertRank,
   k50,
   logGrid,
+  pngFooter,
   resample,
   sortWeights,
   summarySentence,
   topShare,
   type WeightedCompany,
 } from "@/lib/concentration";
+import { bandFor, type DiversificationBand } from "@/lib/effective-holdings-view";
 
 import styles from "./ConcentrationCurve.module.css";
 
 export interface CurveProps {
   you: WeightedCompany[];
   benchmark: { ticker: string; weights: WeightedCompany[] } | null;
+  /** The band the headline is showing — the same call on the same unrounded number. */
+  band: DiversificationBand;
+  benchmarkBand: DiversificationBand | null;
+  /** The unrounded effective count, for the download footer. */
+  effective: number;
 }
 
 const MARGIN = { top: 16, right: 24, bottom: 40, left: 48 };
 const Y_TICKS = [0, 0.25, 0.5, 0.75, 1];
 const TABLE_RANKS = [1, 5, 10, 25, 50, 100, 250, 500, 1000];
+const REFERENCE_RANKS = [10, 30, 60, 150];
 
 function pct(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
-export function ConcentrationCurve({ you, benchmark }: CurveProps) {
+function bandVar(token: number): string {
+  return `var(--band-${token})`;
+}
+
+function svgDataUrl(svg: string): string {
+  const bytes = new TextEncoder().encode(svg);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return `data:image/svg+xml;base64,${btoa(binary)}`;
+}
+
+export function ConcentrationCurve({
+  you,
+  benchmark,
+  band,
+  benchmarkBand,
+  effective,
+}: CurveProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const [width, setWidth] = useState(0);
   const [hover, setHover] = useState<{ rank: number; pinned: boolean } | null>(null);
+  const [showBands, setShowBands] = useState(false);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -224,21 +255,115 @@ export function ConcentrationCurve({ you, benchmark }: CurveProps) {
   const tooltipLeft = hoverRank === null ? 0 : x(hoverRank);
   const flip = tooltipLeft > width * 0.6;
 
+  const references = showBands
+    ? REFERENCE_RANKS.filter((n) => n <= maxN * 2).map((n) => {
+        const points = equalWeightCurve(n, grid);
+        const endpoint = Math.min(n, maxN);
+        return {
+          n,
+          token: bandFor(n).token,
+          path: youLine(points) ?? "",
+          labelX: x(endpoint),
+          labelY: y(Math.min(endpoint / n, 1)),
+        };
+      })
+    : [];
+
+  /** Serialise the chart with its computed styles and a footer carrying the band. */
+  const downloadPng = () => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const clone = svg.cloneNode(true) as SVGSVGElement;
+    const originals = [svg, ...Array.from(svg.querySelectorAll("*"))];
+    const copies = [clone, ...Array.from(clone.querySelectorAll("*"))];
+    originals.forEach((node, index) => {
+      const target = copies[index];
+      if (!(target instanceof SVGElement)) return;
+      const computed = window.getComputedStyle(node);
+      for (const property of [
+        "stroke",
+        "stroke-width",
+        "stroke-dasharray",
+        "stroke-opacity",
+        "fill",
+        "fill-opacity",
+        "opacity",
+        "font-family",
+        "font-size",
+        "font-weight",
+        "text-anchor",
+      ]) {
+        const value = computed.getPropertyValue(property);
+        if (value) target.style.setProperty(property, value);
+      }
+    });
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    const xml = new XMLSerializer().serializeToString(clone);
+    const footer = 28;
+    const scale = 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = width * scale;
+    canvas.height = (height + footer) * scale;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.scale(scale, scale);
+    context.fillStyle = window.getComputedStyle(document.body).backgroundColor || "#fff";
+    context.fillRect(0, 0, width, height + footer);
+    const image = new Image();
+    image.onload = () => {
+      context.drawImage(image, 0, 0, width, height);
+      context.fillStyle =
+        window
+          .getComputedStyle(document.documentElement)
+          .getPropertyValue("--graphite") || "#666";
+      context.font = "11px sans-serif";
+      context.fillText(pngFooter(band.label, effective), 12, height + 18);
+      const link = document.createElement("a");
+      link.download = `unpackfund-concentration-${benchmark?.ticker ?? "portfolio"}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    };
+    image.src = svgDataUrl(xml);
+  };
+
   return (
     <div ref={containerRef} className={styles.wrapper}>
       <p className={styles.summary}>{summary}</p>
       <p className={styles.legend}>
-        <span className={styles.swatchYou} aria-hidden="true" /> You
+        <span
+          className={styles.swatch}
+          style={{ background: bandVar(band.token) }}
+          aria-hidden="true"
+        />{" "}
+        You
         {benchmark ? (
           <>
             {" "}
             <span className={styles.swatchBench} aria-hidden="true" /> {benchmark.ticker}
+            {benchmarkBand
+              ? ` · ${benchmarkBand.label} (${benchmarkBand.colour.toLowerCase()})`
+              : ""}
           </>
         ) : null}
       </p>
 
+      <div className={styles.controls}>
+        <label className={styles.toggle}>
+          <input
+            type="checkbox"
+            checked={showBands}
+            onChange={(event) => setShowBands(event.currentTarget.checked)}
+          />{" "}
+          Show diversification bands
+        </label>
+        <button type="button" className="btn btn--sm btn--quiet" onClick={downloadPng}>
+          Download PNG
+        </button>
+      </div>
+
       <div className={styles.chartWrap}>
         <svg
+          ref={svgRef}
           width={width}
           height={height}
           viewBox={`0 0 ${width} ${height}`}
@@ -323,13 +448,39 @@ export function ConcentrationCurve({ you, benchmark }: CurveProps) {
             </>
           ) : null}
 
+          {references.map((reference) => (
+            <g key={`reference-${reference.n}`}>
+              <path
+                d={reference.path}
+                className={styles.referenceLine}
+                style={{ stroke: bandVar(reference.token) }}
+              />
+              <text
+                x={reference.labelX}
+                y={reference.labelY + 12}
+                textAnchor="middle"
+                className={styles.referenceLabel}
+              >
+                {reference.n} equal stocks
+              </text>
+            </g>
+          ))}
+
           {benchmark && benchPoints.length > 0 ? (
-            <path d={gapArea(gapPoints) ?? ""} className={styles.gap} />
+            <path
+              d={gapArea(gapPoints) ?? ""}
+              className={styles.gap}
+              style={{ fill: bandVar(band.token) }}
+            />
           ) : null}
           {benchmark && benchPoints.length > 0 ? (
             <path d={benchLine(benchPoints) ?? ""} className={styles.benchLine} />
           ) : null}
-          <path d={youLine(youPoints) ?? ""} className={styles.youLine} />
+          <path
+            d={youLine(youPoints) ?? ""}
+            className={styles.youLine}
+            style={{ stroke: bandVar(band.token) }}
+          />
 
           <line
             x1={MARGIN.left}

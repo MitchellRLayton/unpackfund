@@ -248,6 +248,14 @@ const TEXT_PAIRS: Array<[fg: string, bg: string, why: string]> = [
     "tint-direct-hover",
     "a bracket below the benchmark on a direct row under the pointer",
   ],
+  // The diversification bands as text. The curve's legend prints the benchmark's band
+  // label and the chart's footer prints the band, so the palette answers to AA, not only
+  // to the 3:1 a graphic would.
+  ["band-1", "paper", "the very-concentrated band as text"],
+  ["band-2", "paper", "the concentrated band as text"],
+  ["band-3", "paper", "the moderate band as text"],
+  ["band-4", "paper", "the diversified band as text"],
+  ["band-5", "paper", "the broadly-diversified band as text"],
 ];
 
 /**
@@ -294,11 +302,20 @@ const UI_PAIRS: Array<[fg: string, bg: string, why: string]> = [
   // The single-company-risk dots on the Effective holdings block: five graphics whose
   // band is also always printed as a label, held to the same 3:1 floor as every other
   // fill so the dot is findable before the label is read.
-  ["risk-1", "paper", "the very-concentrated risk dot"],
-  ["risk-2", "paper", "the concentrated risk dot"],
-  ["risk-3", "paper", "the moderate risk dot"],
-  ["risk-4", "paper", "the diversified risk dot"],
-  ["risk-5", "paper", "the broadly-diversified risk dot"],
+  ["band-1", "paper", "the very-concentrated band dot"],
+  ["band-2", "paper", "the concentrated band dot"],
+  ["band-3", "paper", "the moderate band dot"],
+  ["band-4", "paper", "the diversified band dot"],
+  ["band-5", "paper", "the broadly-diversified band dot"],
+  // The diversification bands may also carry text (the curve's legend prints the
+  // benchmark's band label), so each token answers to AA as text as well as 3:1 as a
+  // graphic. Four of the five clear it at the graphic value; the amber is one step
+  // darker so it does too.
+  ["band-1", "paper", "the very-concentrated band as text"],
+  ["band-2", "paper", "the concentrated band as text"],
+  ["band-3", "paper", "the moderate band as text"],
+  ["band-4", "paper", "the diversified band as text"],
+  ["band-5", "paper", "the broadly-diversified band as text"],
   // The reachable scrollbar's thumb. A scrollbar is a graphic that carries a
   // distinction — how much of the table is off screen — so it answers to the same 3:1
   // floor as an edge, not to taste.
@@ -487,7 +504,7 @@ describe("automatic light/dark", () => {
     [LIGHT, "light"],
     [DARK, "dark"],
   ] as const) {
-    it(`keeps the single-company-risk steps apart in ${name}`, () => {
+    it(`keeps the diversification-band steps apart in ${name}`, () => {
       // A sequential ramp: the pair a reader compares is each step with the one beside
       // it, so adjacency is what the gate holds. The floors are deliberately lower than
       // the geography inks' — red, orange and amber collapse toward one another for a
@@ -497,10 +514,10 @@ describe("automatic light/dark", () => {
       // colour, and a ramp whose lightness never moves (which is what makes a sequential
       // palette readable without hue).
       const ADJACENT: Array<[string, string, string]> = [
-        ["risk-1", "risk-2", "very concentrated against concentrated"],
-        ["risk-2", "risk-3", "concentrated against moderate"],
-        ["risk-3", "risk-4", "moderate against diversified"],
-        ["risk-4", "risk-5", "diversified against broadly diversified"],
+        ["band-1", "band-2", "very concentrated against concentrated"],
+        ["band-2", "band-3", "concentrated against moderate"],
+        ["band-3", "band-4", "moderate against diversified"],
+        ["band-4", "band-5", "diversified against broadly diversified"],
       ];
       const MIN_NORMAL_SEPARATION = 18;
       const MIN_SIMULATED_SEPARATION = 10;

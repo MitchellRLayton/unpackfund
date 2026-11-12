@@ -19,7 +19,7 @@
   margin: 0 0 var(--space-1);
 }
 
-.swatchYou,
+.swatch,
 .swatchBench {
   display: inline-block;
   width: 10px;
@@ -27,12 +27,26 @@
   border-radius: 2px;
 }
 
-.swatchYou {
-  background: var(--accent);
-}
-
 .swatchBench {
   background: var(--graphite);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-block: var(--space-1);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-12);
+  color: var(--graphite);
+  cursor: pointer;
 }
 
 .chartWrap {
@@ -79,8 +93,10 @@
 
 .youLine {
   fill: none;
-  stroke: var(--accent);
   stroke-width: 2.5;
+  /* The stroke is the band token, set inline; the colour change tweens over the same
+   * 300 ms a path tween would take, and not at all under reduced motion. */
+  transition: stroke 300ms ease;
 }
 
 .benchLine {
@@ -90,8 +106,27 @@
 }
 
 .gap {
-  fill: var(--accent);
   opacity: 0.12;
+  transition: fill 300ms ease;
+}
+
+.referenceLine {
+  fill: none;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  opacity: 0.35;
+}
+
+.referenceLabel {
+  fill: var(--graphite);
+  font-size: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .youLine,
+  .gap {
+    transition: none;
+  }
 }
 
 .halfLine {

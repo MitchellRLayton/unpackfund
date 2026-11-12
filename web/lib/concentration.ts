@@ -127,3 +127,28 @@ export function curveAriaLabel(
     ? `${summary} ${you}; for ${benchmark.ticker}, ${(benchmark.top10 * 100).toFixed(1)}%.`
     : `${summary} ${you}.`;
 }
+
+/**
+ * The equal-weight reference curve at a band boundary: N equal companies reach 100% at
+ * rank N and stay there. It is the honest reference for an effective count, because that
+ * count is literally "how many equally weighted stocks would concentrate the same way",
+ * so the N-stock line is the shape a portfolio with that effective count would have if
+ * its money were spread evenly.
+ */
+export function equalWeightCurve(
+  n: number,
+  grid: readonly number[],
+): Array<[number, number]> {
+  const size = Math.max(1, n);
+  return grid.map((rank) => [rank, Math.min(rank / size, 1)]);
+}
+
+/**
+ * The line a downloaded image carries under the chart, so a screenshot keeps the label
+ * the screen gave it: "{band} · {effective} effective holdings · unpackfund.com · Source:
+ * SEC EDGAR".
+ */
+export function pngFooter(bandLabel: string, effective: number): string {
+  const count = effective < 1.5 ? effective.toFixed(1) : String(Math.round(effective));
+  return `${bandLabel} · ${count} effective holdings · unpackfund.com · Source: SEC EDGAR`;
+}
