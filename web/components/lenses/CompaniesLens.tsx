@@ -578,7 +578,14 @@ export function CompaniesLens({ model }: LensProps) {
         this tab is asking "what do I own", and a summary that sits below the filter
         box — where it started — needs a scroll to find and reads as table chrome.
       */}
-      <EffectiveHoldingsSummary effective={ledger.effective} />
+      <EffectiveHoldingsSummary
+        effective={ledger.effective}
+        rows={ledger.rows}
+        benchmark={model.benchmark}
+        fundCount={Object.keys(model.split.fundWeights).length}
+        directCount={model.split.direct.length}
+        onSeeOverlap={() => model.setLens("overlap")}
+      />
 
       <LensLede>
         Every company you own a piece of, once, with its weight in your portfolio, the

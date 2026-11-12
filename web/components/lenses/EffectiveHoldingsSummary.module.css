@@ -1,119 +1,106 @@
-/**
- * The Companies lens's effective-holdings block: the ladder and the evidence list.
- *
- * Geometry only. Colour is the page's own ink, graphite and rule — Core and Broad are told
- * apart by the labels they print and the places they hold, so a hue here would be a second
- * channel for a fact that is already written down, and the one reader it would help is a
- * reader who cannot see the labels either.
- */
+/* The Effective holdings block. Tokens only, from globals.css. */
 
-.ladder {
+.headline {
+  font-size: var(--text-20);
+  line-height: 1.35;
+  margin: 0;
+  max-width: 34ch;
+}
+
+.verdict {
+  font-size: var(--text-16);
+  color: var(--graphite);
   margin: 0;
 }
 
-/* The rail and the markers are absolutely positioned, so the strip's height is the number
-   of lanes the data needed — set inline from `ladderMarkers`, never guessed here. */
-.strip {
-  position: relative;
+.bars {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-2) 0;
+  display: grid;
+  gap: var(--space-2);
 }
 
-.rail {
-  position: absolute;
-  inset-inline: 0;
-  bottom: 0;
-  height: 1px;
-  background: var(--rule-strong);
+.barRow {
+  display: grid;
+  grid-template-columns: minmax(9rem, 15rem) 1fr 3.5rem;
+  align-items: center;
+  gap: var(--space-2);
 }
 
-/* A marker is a point on the rail: zero-width, so its tick lands exactly on `left` and its
-   label can grow either way from it. */
-.marker {
-  position: absolute;
-  bottom: 0;
-  width: 0;
-  height: 0;
-}
-
-.marker[data-lane="1"] {
-  bottom: 1.5rem;
-}
-
-.marker[data-lane="2"] {
-  bottom: 3rem;
-}
-
-.tick {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 1px;
-  height: 0.45rem;
-  background: var(--graphite);
-}
-
-.label {
-  position: absolute;
-  bottom: 0.55rem;
-  left: 0;
-  white-space: nowrap;
-  color: var(--ink);
-  font-size: var(--text-12);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
-}
-
-.marker[data-align="middle"] .label {
-  transform: translateX(-50%);
-}
-
-.marker[data-align="end"] .label {
-  transform: translateX(-100%);
-}
-
-.evidence {
+.barLabel {
   font-size: var(--text-14);
-}
-
-.evidence summary {
   color: var(--graphite);
-  cursor: pointer;
-  font-size: var(--text-14);
 }
 
-.facts {
+.track {
+  display: block;
+  height: 0.75rem;
+  background: var(--wash);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius);
+}
+
+.you {
+  background: var(--accent);
+}
+
+.neutral {
+  background: var(--wash-strong);
+  border: 1px solid var(--rule-strong);
+  box-sizing: border-box;
+}
+
+.barValue {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.bullets {
+  margin: 0;
+  padding-left: 1.1rem;
   display: grid;
   gap: var(--space-1);
-  margin: var(--space-2) 0;
+  max-width: 72ch;
 }
 
-/* The one sentence that belongs to the facts above rather than to the link below, so the
-   gap goes under it and the two do not read as a single paragraph. */
-.note {
-  margin: 0 0 var(--space-2);
+.inlineLink {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
-.fact {
-  display: grid;
-  grid-template-columns: minmax(9rem, 15rem) minmax(0, 1fr);
-  gap: var(--space-2);
-  align-items: baseline;
+.inlineLink:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-.fact dt {
+.details,
+.curve {
+  border-top: 1px solid var(--rule);
+  padding-top: var(--space-2);
+}
+
+.details summary,
+.curve summary {
+  cursor: pointer;
   color: var(--graphite);
-  font-size: var(--text-12);
 }
 
-.fact dd {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
+.details p {
+  max-width: 62ch;
 }
 
-/* At a 320 px window a 15 rem label column leaves a value two words wide, so the pairs
-   stack — label above value — rather than wrap into a column of fragments. */
-@media (max-width: 34rem) {
-  .fact {
-    grid-template-columns: 1fr;
-    gap: 0;
-  }
+.note {
+  color: var(--graphite);
 }
