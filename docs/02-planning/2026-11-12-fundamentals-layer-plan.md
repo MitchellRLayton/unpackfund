@@ -1,7 +1,32 @@
 # Fundamentals layer on the fund page — build plan
 
-**Decided 2026-11-12** by the operator: variant C (table first), peer comparisons tiers 1 and 2, tier 3 as the
-style-grid cell. Prototype: `docs/01-research/2026-11-11-sec-xbrl-fundamentals/prototype/`.
+**Decided 2026-11-12**, revised **2026-11-13** by the operator. Prototype:
+`docs/01-research/2026-11-11-sec-xbrl-fundamentals/prototype/`.
+
+## Where it lives — one component, three surfaces, never its own page
+
+Profitability is one of the four Fama-French characteristics (value, profitability, investment, size), so it ships as a
+**Characteristics section** built once and reused, in this order:
+
+| Order | Surface | Variant | Why that variant |
+|---:|---|---|---|
+| 1 | **Fund detail page**, directly below the holdings summary | **A · headline + disclosure** | one fund, no cross-fund weighting, coverage easy to explain: one number with the breakdown behind an expander |
+| 2 | **Compare page** | **C · table first** | the page exists to compare across columns; a table is the comparison |
+| 3 | **Portfolio → new Characteristics tab**, after Funds and before Overlap | **A**, plus per-fund contribution against the benchmark (VT and the chips) and the style-peer column where the gate passes | needs cross-fund weighting and normalised coverage — hence last |
+
+**Not** Portfolio → Companies (concentration, already dense) and **not** a standalone Companies page — company figures
+appear only as raw inputs on a company's own detail page.
+
+## Which number leads
+
+**Cash operating return is the headline** (96.7 % coverage, least distorted, and the cash-based measure the mandate names);
+ROE stays in the table as context, with its limitation beside it. Operating profit is the second column, measured against
+the non-financial weight.
+
+**Two statistics, not a mean.** The simple mean of a profitability ratio is not publishable — AVUV's operating profit mean
+is 54.9 % against a 27.1 % median because companies with near-zero book equity produce enormous ratios. Each measure
+reports the **weighted median** and an **aggregate ratio** (`Σ numerator ÷ Σ book equity` over the fund's holdings), which
+is what a portfolio sort actually measures. The winsorised mean stays internal as a diagnostic and never on the page.
 
 ## Objective
 
