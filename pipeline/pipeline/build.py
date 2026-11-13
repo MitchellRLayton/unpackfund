@@ -519,6 +519,13 @@ def build_fund(
     is_etf = classify.looks_like_etf(fund_name, fund_issuer)
 
     document = artifact.build_fund_artifact(
+        profitability=fundamentals.fund_profitability(
+            [
+                {"company_id": row.company_id, "weight_bp": row.weight_bp, "asset_cat": row.asset_cat}
+                for row in vector.holdings
+            ],
+            fundamentals.company_metrics_cached(),
+        ),
         ticker=ref.ticker,
         fund_id=ref.fund_id,
         name=fund_name,

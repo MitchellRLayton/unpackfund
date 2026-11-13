@@ -157,6 +157,7 @@ def build_fund_artifact(
     holdings: list[dict[str, Any]],
     metrics: dict[str, float | None],
     warnings: list[str],
+    profitability: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble the artifact in contract order (``data-contract-and-release`` §1).
 
@@ -205,6 +206,10 @@ def build_fund_artifact(
             identified_pct=identified_pct,
             identified_by_cat=identified_by_cat,
         ),
+        # Characteristics: the profitability table, additive to schema 1 and absent when the
+        # build has no fundamentals artifact. Sits before ``holdings`` because it summarises
+        # them — the same reason ``category_fields`` does.
+        **({"profitability": profitability} if profitability is not None else {}),
         "holdings": holdings,
         "metrics": metrics,
         "warnings": warnings,

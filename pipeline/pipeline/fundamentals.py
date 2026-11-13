@@ -25,6 +25,7 @@ The module is pure: it reads already-extracted ``companyfacts`` documents and re
 from __future__ import annotations
 
 import json
+import os
 from datetime import date
 from pathlib import Path
 from typing import Any, Iterable
@@ -218,6 +219,22 @@ if __name__ == "__main__":  # pragma: no cover - operator check, not a gate
 
 MEASURES = ("roe", "op", "cbop", "leverage")
 
+#: Default location of the artifact the build publishes; overridable for tests.
+ARTIFACT_PATH = Path(os.environ.get("UNPACKFUND_FUNDAMENTALS", "artifacts/fundamentals/company_metrics.json"))
+_CACHE: dict[str, dict[str, Any]] | None = None
+
+
+def company_metrics_cached() -> dict[str, dict[str, Any]]:
+    """The company metrics for this build, loaded once. An absent artifact yields an empty map, so a build without
+    fundamentals publishes no block rather than failing — the release must not depend on a file that may not exist."""
+    global _CACHE
+    if _CACHE is None:
+        try:
+            _CACHE = json.loads(ARTIFACT_PATH.read_text())["companies"]
+        except (OSError, KeyError, json.JSONDecodeError):
+            _CACHE = {}
+    return _CACHE
+
 
 def _winsorised(values: list[tuple[float, float]]) -> list[tuple[float, float]]:
     """Clip each value to the 1st/99th percentile of the covered set, keeping weights.
@@ -296,10 +313,13 @@ def fund_profitability(
     equity weight, except operating profit, which is measured against the weight of companies it applies to — banks
     and insurers have no cost-of-revenue line, so counting them in the denominator understates it by up to 20 points.
     """
+    def field(row, name):
+        return row.get(name) if isinstance(row, dict) else getattr(row, name, None)
+
     rows = [
-        (row["company_id"][2:], float(row["weight_bp"]))
+        (str(field(row, "company_id"))[2:], float(field(row, "weight_bp") or 0))
         for row in holdings
-        if str(row.get("company_id", "")).startswith("c_") and str(row.get("asset_cat")) == "equity"
+        if str(field(row, "company_id") or "").startswith("c_") and str(field(row, "asset_cat")) == "equity"
     ]
     equity_weight = sum(w for _, w in rows)
     applicable_weight = sum(w for cik, w in rows if not (metrics.get(cik) or {}).get("is_financial"))
