@@ -166,6 +166,7 @@ export function FundsDirectory() {
                   autoComplete="off"
                   spellCheck={false}
                   placeholder="VTI, Vanguard, total stock"
+                  aria-describedby="funds-search-hint"
                   value={query}
                   onChange={(event) => {
                     const next = event.target.value;
@@ -178,7 +179,6 @@ export function FundsDirectory() {
                     }
                   }}
                 />
-                <p className="field__hint">{SEARCH_HINT}</p>
               </div>
 
               <div className="field">
@@ -251,6 +251,9 @@ export function FundsDirectory() {
                 </select>
               </div>
             </div>
+            <p className={`field__hint ${styles.controlsHint}`} id="funds-search-hint">
+              {SEARCH_HINT}
+            </p>
           </section>
 
           {filtered.length === 0 ? (
