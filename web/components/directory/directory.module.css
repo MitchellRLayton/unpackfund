@@ -13,7 +13,21 @@
     minmax(12rem, 2.2fr) minmax(7rem, 1.2fr) minmax(7rem, 1fr)
     minmax(8rem, 1.1fr);
   gap: var(--space-3);
-  align-items: end;
+  /* Labels and controls share one baseline: the search field used to be taller than the
+   * three selects (it carried a hint under the input), and bottom-aligning the row pushed
+   * its label and input above theirs. The hint now sits under the whole bar. */
+  align-items: start;
+}
+
+.controlsHint {
+  margin: var(--space-1) 0 0;
+}
+
+/* One control height across the bar: a search input's intrinsic height is a few pixels
+ * taller than a select's, so the row's bottoms did not line up even with the labels
+ * aligned. Scoped to this bar, not the global form rule. */
+.controls :is(input, select) {
+  height: 2.5rem;
 }
 
 @media (max-width: 52rem) {
