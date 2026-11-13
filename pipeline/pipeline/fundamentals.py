@@ -204,3 +204,76 @@ if __name__ == "__main__":  # pragma: no cover - operator check, not a gate
     out.write_text(json.dumps({"anchor_rule": "latest annual balance-sheet date", "companies": metrics}, separators=(",", ":")))
     have = {k: sum(1 for m in metrics.values() if m.get(k) is not None) for k in ("roe", "op", "cbop", "leverage")}
     print(json.dumps({"companies": len(metrics), "seconds": round(time.time() - started, 1), "with": have, "out_bytes": out.stat().st_size}))
+
+
+# --------------------------------------------------------------------------- fund level
+
+MEASURES = ("roe", "op", "cbop", "leverage")
+
+
+def _winsorised(values: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Clip each value to the 1st/99th percentile of the covered set, keeping weights.
+
+    The mean is not publishable without this: one company with a book equity near zero produces a ratio in the
+    thousands, and the weighted mean is dominated by it. The median is reported beside the mean for the same reason.
+    """
+    if not values:
+        return []
+    ordered = sorted(v for v, _ in values)
+    n = len(ordered)
+    lo, hi = ordered[max(0, int(0.01 * n))], ordered[min(n - 1, int(0.99 * n))]
+    return [(min(max(v, lo), hi), w) for v, w in values]
+
+
+def _weighted_median(values: list[tuple[float, float]]) -> float | None:
+    if not values:
+        return None
+    total = sum(w for _, w in values)
+    running = 0.0
+    for value, weight in sorted(values):
+        running += weight
+        if running >= total / 2:
+            return value
+    return sorted(values)[-1][0]
+
+
+def fund_profitability(
+    holdings: list[dict[str, Any]],
+    metrics: dict[str, dict[str, Any]],
+    *,
+    universe: dict[str, list[float]] | None = None,
+) -> dict[str, Any]:
+    """The variant-C table for one fund: median, mean, coverage and (optionally) a percentile per measure.
+
+    ``holdings`` are the fund's published rows (``company_id`` is ``c_<CIK>``, ``weight_bp`` is basis points).
+    ``metrics`` is this module's ``build()`` output keyed by 10-digit CIK. Coverage is measured against the fund's
+    equity weight, except operating profit, which is measured against the weight of companies it applies to — banks
+    and insurers have no cost-of-revenue line, so counting them in the denominator understates it by up to 20 points.
+    """
+    rows = [
+        (row["company_id"][2:], float(row["weight_bp"]))
+        for row in holdings
+        if str(row.get("company_id", "")).startswith("c_") and str(row.get("asset_cat")) == "equity"
+    ]
+    equity_weight = sum(w for _, w in rows)
+    applicable_weight = sum(w for cik, w in rows if not (metrics.get(cik) or {}).get("is_financial"))
+
+    block: dict[str, Any] = {"as_of_rule": "latest annual anchor per company", "measures": {}}
+    for measure in MEASURES:
+        pairs = [(metrics[cik][measure], w) for cik, w in rows if cik in metrics and metrics[cik].get(measure) is not None]
+        denominator = applicable_weight if measure == "op" else equity_weight
+        covered = sum(w for _, w in pairs)
+        clipped = _winsorised(pairs)
+        entry: dict[str, Any] = {
+            "median": _weighted_median(pairs),
+            "mean": (sum(v * w for v, w in clipped) / covered) if covered else None,
+            "coverage_pct": round(100 * covered / denominator, 2) if denominator else 0.0,
+            "companies": len(pairs),
+        }
+        if universe and measure in universe and entry["median"] is not None:
+            band = universe[measure]
+            below = sum(1 for v in band if v <= entry["median"])
+            entry["percentile"] = round(100 * below / len(band), 1) if band else None
+            entry["percentile_of"] = len(band)
+        block["measures"][measure] = entry
+    return block
