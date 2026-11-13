@@ -153,6 +153,14 @@ def company_metrics(document: dict[str, Any], *, sic: str | None = None) -> dict
         "filed": max(f.get("filed", "") for f in annual_assets),
         "is_financial": is_financial,
         "book_equity": book_equity,
+        "assets": assets["val"],
+        # Numerators are carried as well as ratios: a fund publishes an aggregate ratio (sum of numerators over sum
+        # of book equity), which cannot be recovered from per-company ratios.
+        "net_income": net_income["val"] if net_income else None,
+        "op_numerator": (revenue["val"] - (cogs["val"] if cogs else (revenue["val"] - gross_profit["val"] if gross_profit else 0.0))
+                         - sga["val"] - (interest["val"] if interest else 0.0))
+                        if (not is_financial and revenue is not None and sga is not None) else None,
+        "cbop_numerator": (cfo["val"] + (interest["val"] if interest else 0.0)) if cfo is not None else None,
         "roe": roe,
         "op": op,
         "cbop": cbop,
@@ -237,6 +245,44 @@ def _weighted_median(values: list[tuple[float, float]]) -> float | None:
     return sorted(values)[-1][0]
 
 
+def _aggregate(rows: list[tuple[str, float]], metrics: dict[str, dict[str, Any]], measure: str) -> float | None:
+    """``sum of numerators / sum of book equity`` over the holdings where the measure is defined."""
+    numerator_key = {"op": "op_numerator", "cbop": "cbop_numerator"}.get(measure)
+    ratios = [
+        (metrics[cik][numerator_key if numerator_key else "net_income"] / metrics[cik]["book_equity"])
+        for cik, _w in rows
+        if cik in metrics and metrics[cik]["book_equity"] > 0
+        and metrics[cik].get(numerator_key if numerator_key else "net_income") is not None
+    ]
+    lo = hi = None
+    if ratios:
+        ordered = sorted(ratios)
+        lo, hi = ordered[max(0, int(0.01 * len(ordered)))], ordered[min(len(ordered) - 1, int(0.99 * len(ordered)))]
+    numerator = 0.0
+    denominator = 0.0
+    for cik, _weight in rows:
+        company = metrics.get(cik)
+        if not company or company["book_equity"] <= 0:
+            continue
+        # A book equity under 1 % of assets makes the company's ratio unstable (``metrics_spec`` §4): its numerator is
+        # real but its denominator is noise, and in a sum of ratios it can dominate the fund. Excluded from the
+        # aggregate for the same reason it is excluded from a mean.
+        if company["book_equity"] / company["assets"] < 0.01:
+            continue
+        value = company.get(numerator_key) if numerator_key else company.get("net_income")
+        if value is None:
+            continue
+        ratio = value / company["book_equity"]
+        # Clip the company's ratio to the covered set's 1st/99th percentile before it enters the sum. Without this the
+        # aggregate is not robust either: one filer whose cost line we treated as zero can carry a numerator many times
+        # its book equity and swamp the fund. Clipping is published as part of the definition.
+        if lo is not None:
+            ratio = min(max(ratio, lo), hi)
+        numerator += ratio * company["book_equity"]
+        denominator += company["book_equity"]
+    return (numerator / denominator) if denominator else None
+
+
 def fund_profitability(
     holdings: list[dict[str, Any]],
     metrics: dict[str, dict[str, Any]],
@@ -266,7 +312,11 @@ def fund_profitability(
         clipped = _winsorised(pairs)
         entry: dict[str, Any] = {
             "median": _weighted_median(pairs),
-            "mean": (sum(v * w for v, w in clipped) / covered) if covered else None,
+            # The aggregate ratio is what a portfolio sort measures: sum of numerators over sum of book equity across
+            # the fund's holdings. Published beside the median; the winsorised mean stays internal (diagnostic only),
+            # because a single company with a book equity near zero dominates it.
+            "aggregate": _aggregate(rows, metrics, measure),
+            "mean_winsorised_internal": (sum(v * w for v, w in clipped) / covered) if covered else None,
             "coverage_pct": round(100 * covered / denominator, 2) if denominator else 0.0,
             "companies": len(pairs),
         }
