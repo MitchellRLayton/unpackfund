@@ -62,3 +62,32 @@ until the pipeline computes them: a panel on 9,015 fund pages built from a 12-fu
 - **Release size** — roughly 1–2 KB per fund for the table, more with peers; ~9,015 funds is ~15 MB, acceptable, but
   R2 is already over its free tier until retention is fixed.
 - **The panel's argument is the coverage** — a fund below 80 % shows the table with its coverage, never a bare number.
+
+
+## Cloudflare limits — what this adds, and what it must not
+
+Measured 2026-11-10 (`docs/08-operations/2026-11-10-cloudflare-free-tier-usage.md`): **16.33 GB stored against a 10 GB
+free tier**, 625,234 objects, and Class A at 553k of 1M by day 10 — the cause is 34 releases kept where the policy keeps
+three, not this feature.
+
+| This layer adds | Cost | Why |
+|---|---|---|
+| Company metrics artifact | **3.2 MB**, one object per fundamentals version | a single file, not per-company shards |
+| A profitability block inside each existing fund shard | ~1–2 KB × 9,015 ≈ **10–18 MB** per release, **0 new objects** | the block rides in a document the release already writes |
+| Fund pages | 0 new objects | the section is markup inside an existing page |
+
+So the feature adds **no Class A, no Class B and no objects** — only bytes in objects already being written. The two
+levers that keep the account inside the free tier are therefore unchanged and are **preconditions of the release**:
+retention down to the policy's three releases (≈15 GB returned), and the validator reading the manifest rather than
+listing the bucket (a full `ListObjects` sweep bills as Class A).
+
+## Keeping it current
+
+| Source | Changes | Rebuild |
+|---|---|---|
+| XBRL company facts | weekly bulk archive, facts effectively quarterly | **weekly** fundamentals artifact — 96 s, 3.2 MB, one object |
+| N-PORT holdings | quarterly-public, per-fund report dates | the existing **daily refresh** recomputes a fund's block when its holdings change; no separate job |
+
+The daily refresh already detects new filings and rebuilds only the touched funds, so the profitability block rides the
+existing cadence with no new schedule. The weekly artifact rebuild is the one new step, and it is cheap enough to run
+inside the Monday refresh.
