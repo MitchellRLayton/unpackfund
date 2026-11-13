@@ -327,3 +327,66 @@ def fund_profitability(
             entry["percentile_of"] = len(band)
         block["measures"][measure] = entry
     return block
+
+
+# --------------------------------------------------------------------------- render
+
+PCT = lambda v, digits=1: "—" if v is None else f"{v * 100:.{digits}f}%"  # noqa: E731
+
+
+def _gate(coverage: float) -> tuple[str, str]:
+    if coverage >= 80:
+        return "ok", f"{coverage:.1f}% covered · rankable"
+    if coverage >= 60:
+        return "warn", f"{coverage:.1f}% covered · unranked"
+    return "low", f"{coverage:.1f}% covered · suppressed"
+
+
+def render_section(block: dict[str, Any], *, fund: str, as_of: str) -> str:
+    """The Characteristics section for one fund — variant A: one headline, the table behind an expander.
+
+    Cash operating return leads: it has the highest coverage of the two operating measures and is the least easily
+    distorted. ROE is context in the table, beside its limitation. The aggregate ratio sits next to the median because
+    the simple mean is not publishable (one company with a book equity near zero dominates it).
+
+    Returns an HTML fragment. Styling lives in the fund page's stylesheet, not here; class names are the page's own.
+    """
+    measures = block["measures"]
+    headline = measures["cbop"]
+    tone, gate_text = _gate(headline["coverage_pct"])
+    rows = []
+    labels = {
+        "cbop": ("Cash operating return", "Operating cash flow plus interest, over book equity. Accruals stripped — the least distorted measure here.", "headline"),
+        "op": ("Operating profit", "Revenue less cost of revenue, selling and administrative costs, and interest, over book equity. Measured on operating companies only.", "next"),
+        "roe": ("Return on equity", "Profit over book value. Highest coverage, and the most distorted by buybacks and debt.", "next"),
+        "leverage": ("Leverage", "Of assets funded by debt and other liabilities. Read beside ROE: high ROE with high leverage is not high quality.", "context"),
+    }
+    for key, (label, meaning, role) in labels.items():
+        m = measures.get(key) or {}
+        aggregate = m.get("aggregate")
+        rows.append(
+            f'<tr class="pr-{role}"><th scope="row">{label}</th>'
+            f'<td class="n">{PCT(m.get("median"))}</td>'
+            f'<td class="n">{"—" if aggregate is None else PCT(aggregate)}</td>'
+            f'<td class="n">{m.get("coverage_pct", 0):.1f}%</td>'
+            f'<td>{meaning}</td></tr>'
+        )
+    return f"""<section class="characteristics" aria-labelledby="characteristics-h">
+  <h2 id="characteristics-h">Profitability</h2>
+  <p class="pr-lead"><strong>{PCT(headline["median"])}</strong> <span>cash operating return, weighted median across the fund's holdings</span></p>
+  <p class="pr-meta">Holdings as of {as_of} · <span class="pr-gate pr-gate-{tone}">{gate_text}</span></p>
+  <details>
+    <summary>All four measures, with what each one can and cannot tell you</summary>
+    <table class="pr-table">
+      <thead><tr><th scope="col">Measure</th><th scope="col">Median</th><th scope="col">Aggregate</th><th scope="col">Coverage</th><th scope="col">Read it as</th></tr></thead>
+      <tbody>
+{chr(10).join(rows)}
+      </tbody>
+    </table>
+    <p class="pr-note">The aggregate is the sum of each company's numerator over the sum of its book equity — what a
+    portfolio sort measures — with companies whose book equity is under 1 % of assets excluded and each ratio clipped at
+    the 1st/99th percentile. The plain mean is not shown: one company with a book equity near zero dominates it.
+    Source: SEC EDGAR. {fund}.</p>
+  </details>
+</section>
+"""
