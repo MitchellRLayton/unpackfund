@@ -1807,6 +1807,21 @@ def robots_txt() -> str:
     )
 
 
+def _characteristics(fund: dict) -> str:
+    """The Characteristics section, derived from the fund's own published rows.
+
+    Empty when the build has no company metrics: the artifact omits the block in that case too, and a fund page must
+    not fail because a fundamentals artifact was not built.
+    """
+    from . import fundamentals
+
+    metrics = fundamentals.company_metrics_cached()
+    if not metrics:
+        return ""
+    block = fundamentals.fund_profitability(fund.get("holdings") or [], metrics)
+    return fundamentals.render_section(block, fund=_esc(fund.get("ticker") or ""), as_of=_esc(fund.get("as_of") or ""))
+
+
 def build(
     release_dir: Path,
     out_dir: Path,
@@ -1879,6 +1894,9 @@ def build(
             countries=countries,
             contested=contested,
         )
+        section = _characteristics(fund)
+        if section:
+            page = page.replace("</main>", section + "</main>", 1)
         target = out_dir / "f" / ticker / "index.html"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(page, encoding="utf-8")
