@@ -39,7 +39,9 @@ set -euo pipefail
 
 # The workspace is a hard boundary (workspace AGENTS.md, "Filesystem scope").
 # Every path this script touches is derived from here and checked against it.
-BOUNDARY="/Users/mitchell.layton/Personal-AI-Sandbox"
+# Derived, not hardcoded (see session-provenance.sh): $HOME/Personal-AI-Sandbox on any
+# machine, overridable with UNPACKFUND_BOUNDARY.
+BOUNDARY="${UNPACKFUND_BOUNDARY:-${HOME:?HOME is not set}/Personal-AI-Sandbox}"
 
 SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # Derived from the *common* git dir, not from this script's own path: in a linked

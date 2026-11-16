@@ -30,7 +30,12 @@
 
 set -euo pipefail
 
-BOUNDARY="/Users/mitchell.layton/Personal-AI-Sandbox"
+# Derived, not hardcoded. The workspace root is $HOME/Personal-AI-Sandbox on whatever
+# machine this runs on, so a renamed home directory cannot silently break the boundary
+# check — the 2026-11-16 restore hit exactly that, when every one of these scripts
+# exited "not inside the workspace boundary" on a host whose home had no dot in it.
+# Override with UNPACKFUND_BOUNDARY when the workspace deliberately lives elsewhere.
+BOUNDARY="${UNPACKFUND_BOUNDARY:-${HOME:?HOME is not set}/Personal-AI-Sandbox}"
 
 SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # The repo root is derived from the *common* git dir, not from this script's location:

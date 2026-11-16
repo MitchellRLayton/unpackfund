@@ -29,7 +29,9 @@
 
 set -euo pipefail
 
-BOUNDARY="/Users/mitchell.layton/Personal-AI-Sandbox"
+# Derived, not hardcoded (see session-provenance.sh): $HOME/Personal-AI-Sandbox on any
+# machine, overridable with UNPACKFUND_BOUNDARY.
+BOUNDARY="${UNPACKFUND_BOUNDARY:-${HOME:?HOME is not set}/Personal-AI-Sandbox}"
 
 SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # The lock must be the same file for every session, and sessions run in
