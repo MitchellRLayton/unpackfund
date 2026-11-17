@@ -58,6 +58,10 @@
   width: 100%;
   height: auto;
   outline: none;
+  /* SVG text does not inherit a font from the page in every engine, and a chart
+   * that silently falls back to a system sans is the one place a reader would
+   * not notice the type system had broken. Name the role explicitly. */
+  font-family: var(--font-sans);
 }
 
 .svg:focus-visible {
@@ -83,7 +87,7 @@
 .tick {
   fill: var(--graphite);
   font-size: 11px;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .axisTitle {
@@ -152,7 +156,7 @@
 .annotation {
   fill: var(--ink);
   font-size: 11px;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .crosshair {

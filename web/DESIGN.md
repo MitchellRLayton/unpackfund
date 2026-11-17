@@ -218,11 +218,18 @@ a glance. Three constraints, each with a check behind it:
   pair is 4.89:1 (light hover, secondary text), above the 4.5:1 AA floor.
 
 Type is three self-hosted faces, subset to Latin and loaded with `font-display: swap`, with their OFL licences beside
-them in `public/fonts/`: **Inter** for the interface and every table, with tabular figures wherever two numbers are
-compared; **Newsreader** for page titles and the answer strip only, so the sentence a page exists to say is the one
-thing that looks like a headline; **IBM Plex Mono** for tickers and codes. The scale is six steps —
-`--text-12/14/16/20/28/40` — with the ledger at 12–14 px, body at 16 and a page title at 28. `--row: 2rem` fixes the row
-height for the day-4 windowing pass.
+them in `public/fonts/`: **Fraunces** for headings only — h1–h3, the answer strip, section titles, a fund's name on its
+own page — set with `font-variation-settings: "SOFT" 100, "WONK" 0` and optical sizing on, so the warmth is a number
+rather than a second typeface; **Plus Jakarta Sans** for everything else, including tickers and codes, with tabular
+figures wherever two numbers are compared; **Newsreader** for long-form reading only — methodology, explainers, legal,
+the glossary — at 18 px on a 1.65 leading and a 68ch measure. Each face is followed by a metric-adjusted fallback
+(`size-adjust` plus ascent/descent overrides measured in Chromium) so the swap does not move the page. The scale is
+seven steps — `--text-12/14/16/18/20/28/40` — with the ledger at 12–14 px, body at 16 and a page title at 28.
+`--row: 2rem` fixes the row height for the day-4 windowing pass.
+
+The 2026-11-17 direction replaced Inter and IBM Plex Mono. Tickers and codes moved from the mono face into Plus Jakarta
+Sans, so `--font-mono` is now an alias of `--font-sans`; the token name survives because the call sites did not need to
+move. Reversing that one decision is a one-line change to the token.
 
 ## Country edge (operator's instruction, 2026-11-02)
 

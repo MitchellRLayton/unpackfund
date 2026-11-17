@@ -76,6 +76,33 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        {/*
+          Preload exactly the two faces a first screen needs: the sans, which is
+          every word of the interface, and Fraunces, which is the page title above
+          the fold. Newsreader is reading text further down a page, so preloading
+          it would spend a request on a font most visits never render.
+          `crossOrigin` is required for a font preload even same-origin, or the
+          browser fetches the file twice.
+
+          React 19 hoists these into <head>; Next's static export also serialises
+          them, so the built HTML carries each one twice. The browser's preload
+          cache is keyed by URL and destination, so the second copy costs bytes
+          and no request — verified in the built page, not assumed.
+        */}
+        <link
+          rel="preload"
+          href="/fonts/plus-jakarta-sans.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin="anonymous"
+        />
+        <link
+          rel="preload"
+          href="/fonts/fraunces.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin="anonymous"
+        />
         <a className="skip-link" href="#main">
           Skip to content
         </a>

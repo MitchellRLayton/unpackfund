@@ -46,6 +46,7 @@ const TYPE_SCALE = [
   ["--text-40", "40", "page title"],
   ["--text-28", "28", "section title"],
   ["--text-20", "20", "panel title"],
+  ["--text-18", "18", "reading text"],
   ["--text-16", "16", "body"],
   ["--text-14", "14", "table, secondary"],
   ["--text-12", "12", "labels, captions"],
@@ -123,10 +124,10 @@ export default function DesignPage() {
       <section className="stack stack--loose">
         <h2 className="title--sm">Type</h2>
         <p className="muted small">
-          Inter for the interface (tabular figures), Newsreader for page titles and the
-          answer strip, IBM Plex Mono for tickers and codes. All three are self-hosted
-          from <span className="mono">/fonts</span> — no third-party font request anywhere
-          on the site.
+          Fraunces for headings (a variable serif with a SOFT axis), Plus Jakarta Sans for
+          the interface and every table (tabular figures), Newsreader for long-form
+          reading. All three are self-hosted from <span className="mono">/fonts</span> —
+          no third-party font request anywhere on the site.
         </p>
 
         <div className="panel">
