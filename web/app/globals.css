@@ -898,6 +898,23 @@ h3.subtitle {
   font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--ink);
+  /* The docked lens strip shares this row. The title gives up width before the tabs
+   * do, and truncates rather than wrapping — a two-line top bar would change the
+   * height that the holdings pane's sticky top is measured from. */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Where the workspace portals its docked lens strip. Always present, always the same
+ * height, so docking adds no height to the bar and nothing below it moves. */
+.app-topbar__slot {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* ---- Icon rail, 64-80rem ------------------------------------------------ */
@@ -1387,7 +1404,15 @@ h3.subtitle {
   gap: var(--space-1);
   border-bottom: 1px solid var(--rule);
   overflow-x: auto;
-  scrollbar-width: thin;
+  /* No native bar: at 1040 and 1440 the row overflowed by a few pixels and drew a
+   * scrollbar at its right end, which reads as a broken control rather than as "there
+   * is more". Hiding it changes what is drawn, never what the box does — wheel,
+   * trackpad, keyboard and scrollLeft are untouched. */
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 
 /* On a phone a five-tab strip scrolls sideways with nothing to say so, and the last

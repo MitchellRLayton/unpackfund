@@ -331,7 +331,15 @@ function HoldingRows({
   );
 }
 
-export function HoldingsPane({ model }: { model: WorkspaceModel }) {
+export function HoldingsPane({
+  model,
+  onCollapse,
+}: {
+  model: WorkspaceModel;
+  /** Present when the pane can shrink to the compact list. Absent on a phone, where
+   * the chip bar above it is already the compact list. */
+  onCollapse?: () => void;
+}) {
   const { portfolio } = model;
   const releaseData = model.release.status === "ready" ? model.release.data : null;
   const tickers = useTickers(releaseData);
@@ -631,6 +639,17 @@ export function HoldingsPane({ model }: { model: WorkspaceModel }) {
           <span className="small muted">
             {formatCount(entries.length)} of {formatCount(MAX_HOLDINGS)}
           </span>
+          {onCollapse ? (
+            <button
+              type="button"
+              className={`btn btn--sm ${styles.collapseControl}`}
+              aria-expanded={true}
+              aria-controls="holdings-pane-region"
+              onClick={onCollapse}
+            >
+              Collapse
+            </button>
+          ) : null}
           <div className={styles.mode} role="group" aria-label="How amounts are entered">
             <button
               type="button"
@@ -924,6 +943,55 @@ export function HoldingsPane({ model }: { model: WorkspaceModel }) {
  * would be a second source of truth, and the point of the bar is that the visitor can
  * see the portfolio without the pane taking the screen.
  */
+/**
+ * The holdings pane, shrunk to what a reader needs while reading a lens: the ticker and
+ * its weight, and one button back to the fields.
+ *
+ * It is the same data as the pane — `model.portfolio.entries`, in the visitor's order —
+ * so collapsing cannot change a number. The chip bar above it is the phone's version of
+ * the same idea; this one is the wide layout's, where the pane is a column rather than a
+ * disclosure.
+ */
+export function HoldingsCompact({
+  model,
+  onExpand,
+}: {
+  model: WorkspaceModel;
+  onExpand: () => void;
+}) {
+  const { entries, mode } = model.portfolio;
+  return (
+    <section className="panel" aria-labelledby="holdings-compact-heading">
+      <div className="panel__head">
+        <h2 id="holdings-compact-heading" className="panel__title">
+          Your holdings
+        </h2>
+        <button
+          type="button"
+          className={`btn btn--sm ${styles.collapseControl}`}
+          aria-expanded={false}
+          aria-controls="holdings-pane-region"
+          onClick={onExpand}
+        >
+          Edit
+        </button>
+      </div>
+      <div className="panel__body">
+        <ul className={styles.compactList}>
+          {entries.map((entry) => (
+            <li key={`${entry.kind}:${entry.key}`} className={styles.compactRow}>
+              <span className="mono">{entryLabel(entry.kind, entry.key)}</span>
+              <span className={styles.compactWeight}>
+                {mode === "bp" ? formatWeightBp(entry.amount) : formatCents(entry.amount)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
 export function HoldingsChips({
   model,
   open,

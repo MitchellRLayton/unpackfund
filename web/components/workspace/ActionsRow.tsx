@@ -26,59 +26,14 @@
  * and a second writer would be a second source of truth.
  */
 
-import { useEffect, useRef, useState } from "react";
-
-import { ledgerCsv, ledgerCsvName, saveCsv } from "@/lib/export";
-import { encodeComparison, fundWeights } from "@/lib/fragment";
 import { useWorkspace } from "@/lib/use-workspace";
 
-import { viewUrl } from "@/lib/view-fragment";
+import { useWorkspaceActions } from "./actions";
 import styles from "./Workspace.module.css";
 
 export function ActionsRow({ model }: { model: ReturnType<typeof useWorkspace> }) {
-  const [copied, setCopied] = useState(false);
-  const [shareLink, setShareLink] = useState<string | null>(null);
-  const [copyFailed, setCopyFailed] = useState(false);
-  const fallback = useRef<HTMLInputElement | null>(null);
-
-  // Focus and select the fallback the moment it appears: a visitor who pressed "Copy"
-  // wants the link selected, not a message about why they cannot have it.
-  useEffect(() => {
-    if (copyFailed) fallback.current?.select();
-  }, [copyFailed]);
-
-  const buildLink = (): string => {
-    const base = `${window.location.origin}${window.location.pathname}`;
-    return viewUrl(base, {
-      portfolio: model.portfolio,
-      lens: model.lens,
-      companyId: model.companyId,
-    });
-  };
-
-  const copy = async () => {
-    const link = buildLink();
-    setShareLink(link);
-    setCopied(false);
-    try {
-      if (!navigator.clipboard) throw new Error("no clipboard");
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-      setCopyFailed(false);
-      window.setTimeout(() => setCopied(false), 4000);
-    } catch {
-      setCopyFailed(true);
-    }
-  };
-
-  const exportCsv = () => {
-    const ledger = model.ledger;
-    if (!ledger) return;
-    const asOf = model.releaseAsOf ?? "unknown";
-    saveCsv(ledgerCsv(ledger, { as_of: asOf }), ledgerCsvName(new Date(), asOf));
-  };
-
-  const compareHref = `/compare/#${encodeComparison(fundWeights(model.portfolio), [])}`;
+  const { copied, shareLink, copyFailed, fallback, copy, exportCsv, print, compareHref } =
+    useWorkspaceActions(model);
 
   return (
     <div className="stack stack--tight no-print">
@@ -103,7 +58,7 @@ export function ActionsRow({ model }: { model: ReturnType<typeof useWorkspace> }
         >
           Export CSV
         </button>
-        <button type="button" className="btn btn--sm" onClick={() => window.print()}>
+        <button type="button" className="btn btn--sm" onClick={print}>
           Print summary
         </button>
       </div>

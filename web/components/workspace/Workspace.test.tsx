@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -6,7 +7,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildLedger } from "@/lib/aggregate";
 import { flagEmoji } from "@/lib/country-flag";
@@ -310,36 +311,41 @@ afterEach(() => {
 });
 
 describe("Workspace — the answer comes first", () => {
-  it("prints the answer as a box of rows rather than a paragraph", () => {
+  it("carries the answer as five numbers in the strip, not a paragraph", () => {
     const { container } = renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
 
-    const box = container.querySelector(".summary-box");
-    expect(box).not.toBeNull();
-    // The headline is still the one sentence the page exists to say.
-    expect(box?.querySelector(".summary-box__headline")?.textContent).toContain(
-      "You own 8 companies through 3 funds.",
-    );
-    // Eight companies is fewer than ten, so the row is not called "10 largest".
-    const labels = Array.from(box?.querySelectorAll(".summary-box__label") ?? []).map(
-      (label) => label.textContent,
-    );
-    expect(labels).toEqual(["Largest", "Markets (MSCI)", "Effective", "Coverage"]);
-    // The coverage note is a row in the box, not a footnote elsewhere.
-    expect(box?.textContent).toContain("covered");
+    const strip = screen.getByRole("tablist", { name: "Lenses" });
+    const tabs = within(strip).getAllByRole("tab");
+    expect(tabs).toHaveLength(5);
+
+    // The Companies tab is the count and what the portfolio behaves like.
+    expect(tabs[0]?.textContent).toContain("behaves like");
+    // The Markets tab is the US share and the two tiers under it.
+    expect(tabs[1]?.textContent).toContain("dev");
+    // The Data quality tab is coverage and the oldest period behind it.
+    expect(tabs[4]?.textContent).toContain("oldest");
+
+    // The card is gone: the strip is the answer now, and nothing above it repeats it.
+    expect(container.querySelector(".summary-box")).toBeNull();
   });
 
-  it("keeps the box short, and puts the tabs straight after it", () => {
-    const { container } = renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+  it("puts the strip at the top of the results column, above the panel", () => {
+    renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
 
-    const box = container.querySelector(".summary-box");
-    expect(box).not.toBeNull();
-    // Four facts, plus overlap when it is notable: the box may not grow back into prose.
-    const rows = box?.querySelectorAll(".summary-box__row") ?? [];
-    expect(rows.length).toBeLessThanOrEqual(5);
+    const strip = screen.getByRole("tablist", { name: "Lenses" });
+    const panel = screen.getByRole("tabpanel");
+    expect(
+      strip.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
 
-    const tabs = screen.getByRole("tablist");
-    const position = box?.compareDocumentPosition(tabs) ?? 0;
-    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  it("keeps the ten-largest fact at the top of the Companies lens", () => {
+    renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+
+    // The one fact the old card carried that no tab shows. It moved into the panel
+    // rather than being dropped.
+    const panel = screen.getByRole("tabpanel");
+    expect(panel.textContent).toContain("of the mix");
   });
 
   it("still prints the prose on paper, where there is no fold to get under", () => {
@@ -567,7 +573,7 @@ describe("Workspace — the holdings pane and the lenses", () => {
     const panel = screen.getByRole("tabpanel");
     expect(panel.getAttribute("aria-labelledby")).toBe("lens-tab-companies");
 
-    fireEvent.click(screen.getByRole("tab", { name: "Markets" }));
+    fireEvent.click(screen.getByRole("tab", { name: /^Markets/ }));
     expect(model.setLens).toHaveBeenCalledWith("markets");
   });
 
@@ -856,5 +862,146 @@ describe("Workspace — the holdings pane and the lenses", () => {
 
     expect(screen.queryByRole("heading", { name: "Worked example" })).toBeNull();
     expect(screen.queryByText(EXAMPLE_LABEL)).toBeNull();
+  });
+});
+
+/**
+ * The lens strip's two densities.
+ *
+ * jsdom has no IntersectionObserver and no layout, so the observer is a stub whose
+ * callback the test fires by hand, and the top bar's slot is a div the test adds to the
+ * document — the docked copy portals into it. Everything else is the real component.
+ */
+class FakeObserver {
+  static instances: FakeObserver[] = [];
+  readonly callback: IntersectionObserverCallback;
+  root = null;
+  rootMargin = "";
+  thresholds = [];
+  constructor(callback: IntersectionObserverCallback) {
+    this.callback = callback;
+    FakeObserver.instances.push(this);
+  }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
+  fire(isIntersecting: boolean, top: number) {
+    this.callback(
+      [
+        {
+          isIntersecting,
+          boundingClientRect: { top } as DOMRect,
+          target: document.createElement("div"),
+        } as unknown as IntersectionObserverEntry,
+      ],
+      this as unknown as IntersectionObserver,
+    );
+  }
+}
+
+describe("Workspace — the docked lens strip", () => {
+  const realScrollTo = window.scrollTo;
+
+  beforeEach(() => {
+    FakeObserver.instances = [];
+    vi.stubGlobal("IntersectionObserver", FakeObserver);
+    window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
+    const slot = document.createElement("div");
+    slot.id = "topbar-slot";
+    document.body.appendChild(slot);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.scrollTo = realScrollTo;
+    document.getElementById("topbar-slot")?.remove();
+  });
+
+  it("exposes one tablist at a time, and swaps them when the strip docks", () => {
+    renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+
+    const full = document.getElementById("lens-strip");
+    const docked = document.getElementById("lens-dock");
+
+    // In view: the full strip is the live tablist and the docked copy is hidden from
+    // the accessibility tree, so a keyboard user never meets two tab sequences.
+    expect(full?.getAttribute("aria-hidden")).toBeNull();
+    expect(docked?.getAttribute("aria-hidden")).toBe("true");
+    expect(docked?.hasAttribute("inert")).toBe(true);
+
+    act(() => {
+      FakeObserver.instances[0]?.fire(false, -100);
+    });
+
+    // Docked: the other way round, and the panel follows whichever is live.
+    expect(document.getElementById("lens-strip")?.getAttribute("aria-hidden")).toBe(
+      "true",
+    );
+    expect(document.getElementById("lens-strip")?.hasAttribute("inert")).toBe(true);
+    expect(document.getElementById("lens-dock")?.getAttribute("aria-hidden")).toBeNull();
+    expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe(
+      "lens-tab-dock-companies",
+    );
+  });
+
+  it("shows a number on the active docked tab only", () => {
+    renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+    act(() => {
+      FakeObserver.instances[0]?.fire(false, -100);
+    });
+
+    const docked = document.getElementById("lens-dock") as HTMLElement;
+    const tabs = within(docked).getAllByRole("tab", { hidden: true });
+    const selected = tabs.find((tab) => tab.getAttribute("aria-selected") === "true");
+    expect(selected?.textContent).toContain("Companies");
+    expect(selected?.textContent).toMatch(/\d/);
+    // The other four are text only.
+    for (const tab of tabs) {
+      if (tab.getAttribute("aria-selected") === "true") continue;
+      expect(tab.textContent).not.toMatch(/\d/);
+    }
+  });
+
+  it("switches the lens and scrolls to the top of the panel when a docked tab is clicked", () => {
+    const { model } = renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+    act(() => {
+      FakeObserver.instances[0]?.fire(false, -100);
+    });
+
+    const docked = document.getElementById("lens-dock") as HTMLElement;
+    fireEvent.click(within(docked).getByRole("tab", { name: /^Overlap/, hidden: true }));
+
+    expect(model.setLens).toHaveBeenCalledWith("overlap");
+    // The reader is put at the panel's top, offset by the top bar's height, rather than
+    // left in the middle of a table they have never seen.
+    expect(window.scrollTo).toHaveBeenCalled();
+  });
+
+  it("keeps arrow keys working in the docked density", () => {
+    const { model } = renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+    act(() => {
+      FakeObserver.instances[0]?.fire(false, -100);
+    });
+
+    const docked = document.getElementById("lens-dock") as HTMLElement;
+    const first = within(docked).getAllByRole("tab", { hidden: true })[0] as HTMLElement;
+    fireEvent.keyDown(first, { key: "ArrowRight" });
+    expect(model.setLens).toHaveBeenCalledWith("markets");
+  });
+
+  it("disables the tabs and says why when there is no portfolio", () => {
+    renderWorkspace({ entries: [], ledger: null });
+
+    const strip = screen.getByRole("tablist", { name: "Lenses" });
+    for (const tab of within(strip).getAllByRole("tab")) {
+      expect(tab.hasAttribute("disabled")).toBe(true);
+    }
+    expect(strip.getAttribute("aria-describedby")).toBe("lens-disabled-note");
+    expect(
+      screen.getByText("Add a fund, a stock or cash and the five lenses open."),
+    ).toBeTruthy();
   });
 });
