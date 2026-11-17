@@ -100,7 +100,7 @@
 
 .barValue {
   text-align: right;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .bullets {

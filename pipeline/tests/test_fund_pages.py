@@ -670,7 +670,19 @@ def test_a_fund_page_is_a_single_document_with_its_css_linked():
     page = render(fund())
     assert page.startswith("<!doctype html>")
     assert '<link rel="stylesheet" href="/fund-page.css">' in page
-    assert page.count("<link") == 2  # the stylesheet and the canonical URL
+    # Four links, and each one is named: the canonical URL, the two faces a first
+    # screen needs (preloaded, because a document that waits for its stylesheet to
+    # discover its fonts paints twice), and the stylesheet itself.
+    hrefs = re.findall(r'<link[^>]+href="([^"]+)"', page)
+    assert sorted(href for href in hrefs if href.startswith("/")) == [
+        "/fonts/fraunces.woff2",
+        "/fonts/plus-jakarta-sans.woff2",
+        "/fund-page.css",
+    ]
+    assert [href for href in hrefs if href.startswith("https://")] == [
+        f"https://unpackfund.com/f/{fund()['ticker']}/"
+    ]
+    assert page.count("<link") == 4
     assert "noindex" in page
     assert "noindex" not in render(fund(), indexable=True)
 
@@ -682,10 +694,16 @@ def test_the_page_requests_nothing_from_a_third_party():
         "unpackfund.com",
         "www.sec.gov",
     ]
-    # Nothing the browser would fetch from this document but the one stylesheet.
+    # Nothing the browser would fetch from this document but the one stylesheet and
+    # the two self-hosted faces it preloads. Both are first-party paths under
+    # `/fonts/`; a font CDN would appear in the host assertion above.
     fetched = set(re.findall(r'(?:src|srcset)="([^"]+)"', page))
     fetched |= set(re.findall(r'<link[^>]+href="([^"]+)"', page))
-    assert {value for value in fetched if value.startswith("/")} == {"/fund-page.css"}
+    assert {value for value in fetched if value.startswith("/")} == {
+        "/fund-page.css",
+        "/fonts/fraunces.woff2",
+        "/fonts/plus-jakarta-sans.woff2",
+    }
 
 
 def test_the_page_links_no_fund_route_that_is_not_a_generated_page():

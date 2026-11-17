@@ -318,7 +318,12 @@ export function ConcentrationCurve({
         window
           .getComputedStyle(document.documentElement)
           .getPropertyValue("--graphite") || "#666";
-      context.font = "11px sans-serif";
+      // The footer is drawn on the canvas, not in the SVG, so it does not inherit
+      // the chart's type. Read the family off the chart itself rather than
+      // hardcoding one: a PNG that leaves the site in a different face than the
+      // chart it came from is a small lie about the design system.
+      const chartFont = window.getComputedStyle(svg).fontFamily || "sans-serif";
+      context.font = `11px ${chartFont}`;
       context.fillText(pngFooter(band.label, effective), 12, height + 18);
       const link = document.createElement("a");
       link.download = `unpackfund-concentration-${benchmark?.ticker ?? "portfolio"}.png`;

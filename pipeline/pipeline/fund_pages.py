@@ -1507,7 +1507,9 @@ def render_page(
 <title>{page_title}</title>
 <meta name="description" content="{_esc(page_description)}">
 <link rel="canonical" href="{page_url}">
-{social}{robots}<link rel="stylesheet" href="/{CSS_NAME}">
+{social}{robots}<link rel="preload" href="/fonts/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/{CSS_NAME}">
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
@@ -1965,7 +1967,7 @@ CSS_RULES = """
 
 /* A figure that is compared rather than read: same digits, same width. */
 .doc-value {
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 /* A note beside a chart or under a table keeps the measure of the page rather

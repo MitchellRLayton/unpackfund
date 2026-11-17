@@ -79,5 +79,5 @@
 
 .fact__value {
   font-size: var(--text-16);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums lining-nums;
 }

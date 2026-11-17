@@ -62,12 +62,12 @@
 
 .sourceName {
   color: var(--ink);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .sourceWeight {
   color: var(--graphite);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 /* The method, under the table: the same disclosure `EffectiveHoldingsSummary` uses, so a
@@ -214,5 +214,5 @@
 .styleDefRow dd {
   margin: 0;
   color: var(--graphite);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums lining-nums;
 }
