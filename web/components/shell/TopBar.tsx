@@ -35,6 +35,10 @@ export function TopBar() {
           <Icon d={NAV.chrome.menu} />
         </button>
         {title ? <p className="app-topbar__title">{title}</p> : null}
+        {/* The docked lens strip renders here, through a portal from the workspace.
+         * The slot is always present and always the same height, so docking adds no
+         * height to the bar and nothing below it moves. */}
+        <div id="topbar-slot" className="app-topbar__slot" />
       </div>
     </header>
   );

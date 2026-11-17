@@ -40,11 +40,11 @@ import { useWorkspace } from "@/lib/use-workspace";
 import { useProvider } from "@/components/lenses/provider-preference";
 
 import { ActionsRow } from "./ActionsRow";
-import { Summary } from "./Summary";
 import { buildAnswer, type Answer, type AnswerInput } from "./answer";
+import { buildMetrics } from "./metrics";
 import { EmptyState, WorkedExample } from "./EmptyState";
 import { EXAMPLE_LABEL, isExamplePortfolio } from "./example";
-import { HoldingsChips, HoldingsPane } from "./HoldingsPane";
+import { HoldingsChips, HoldingsCompact, HoldingsPane } from "./HoldingsPane";
 import { LensTabs } from "./LensTabs";
 import { PrintSummary } from "./PrintSummary";
 import styles from "./Workspace.module.css";
@@ -55,6 +55,12 @@ export function Workspace() {
   // one the Markets lens is showing: one choice, read from the URL, in both places.
   const { provider } = useProvider();
   const [paneOpen, setPaneOpen] = useState(false);
+  /**
+   * The wide layout's collapse. Expanded on first load, in memory only — the brief's
+   * rule is that nothing is remembered between visits except the address bar, and a
+   * collapsed pane is a view preference, not portfolio state.
+   */
+  const [paneCollapsed, setPaneCollapsed] = useState(false);
 
   // One definition, on the model: cash is an entry even though it is not a holding.
   const hasEntries = model.hasEntries;
@@ -112,23 +118,30 @@ export function Workspace() {
     provider,
   ]);
 
+  const metrics = useMemo(() => buildMetrics(model, provider), [model, provider]);
+
   const isExample =
     hasEntries && isExamplePortfolio(model.portfolio.mode, model.portfolio.entries);
 
-  const head = (
+  /**
+   * The hero is for the empty state only.
+   *
+   * Once there is a portfolio the top bar already says "Portfolio", the metric strip
+   * says what is in it, and the hero was 200 px of preamble between the reader and the
+   * numbers. The `<h1>` stays, visually hidden, so the document still has one and the
+   * heading order is unchanged.
+   */
+  const head = hasEntries ? (
+    <h1 className="visually-hidden">See the companies behind your funds</h1>
+  ) : (
     <header className={styles.head}>
       <p className="eyebrow">X-Ray</p>
       <h1 className="title">See the companies behind your funds</h1>
-      {/* The explanation is for someone who has not entered anything yet. Once there
-       * are holdings, the answer strip is the explanation, and three lines of preamble
-       * would push the numbers below the fold on a phone. */}
-      {hasEntries ? null : (
-        <p className="subtitle">
-          Add the funds you own and UnpackFund adds their SEC filings up: the companies
-          you hold, the markets they are in, and how much of each fund could be traced to
-          a company at all.
-        </p>
-      )}
+      <p className="subtitle">
+        Add the funds you own and UnpackFund adds their SEC filings up: the companies you
+        hold, the markets they are in, and how much of each fund could be traced to a
+        company at all.
+      </p>
     </header>
   );
 
@@ -175,7 +188,10 @@ export function Workspace() {
             <HoldingsChips
               model={model}
               open={paneOpen}
-              onToggle={() => setPaneOpen((open) => !open)}
+              onToggle={() => {
+                setPaneCollapsed(false);
+                setPaneOpen((open) => !open);
+              }}
             />
           ) : null}
           <div
@@ -184,15 +200,18 @@ export function Workspace() {
               paneOpen || !hasEntries ? ` ${styles.paneOpen}` : ""
             }`}
           >
-            <HoldingsPane model={model} />
+            {paneCollapsed && hasEntries ? (
+              <HoldingsCompact model={model} onExpand={() => setPaneCollapsed(false)} />
+            ) : (
+              <HoldingsPane
+                model={model}
+                onCollapse={hasEntries ? () => setPaneCollapsed(true) : undefined}
+              />
+            )}
           </div>
         </div>
 
         <div className="stack stack--loose">
-          <Summary answer={answer} effective={model.ledger?.effective}>
-            {isExample ? <p className={styles.exampleLabel}>{EXAMPLE_LABEL}</p> : null}
-          </Summary>
-
           {model.fundsError ? (
             <div className="notice notice--alert" role="alert">
               <div>
@@ -219,7 +238,9 @@ export function Workspace() {
 
           {!hasEntries ? <EmptyState model={model} onReveal={revealPane} /> : null}
 
-          <LensTabs model={model} />
+          <LensTabs model={model} metrics={metrics} disabled={!hasEntries} />
+
+          {isExample ? <p className={styles.exampleLabel}>{EXAMPLE_LABEL}</p> : null}
 
           {!hasEntries ? <WorkedExample model={model} /> : null}
 

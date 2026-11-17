@@ -80,6 +80,7 @@ import {
 import type { LedgerRow, LedgerSource } from "@/lib/types";
 import type { LensProps } from "@/components/workspace/types";
 
+import { ConcentrationLine } from "./ConcentrationLine";
 import styles from "./CompaniesLens.module.css";
 import {
   CellNote,
@@ -572,6 +573,10 @@ export function CompaniesLens({ model }: LensProps) {
   return (
     <div className="stack">
       <LensProblem model={model} />
+      {/* The one fact the old "What you own" card carried that no metric tab shows:
+       * the ten largest share and the largest name. It belongs at the top of the lens
+       * it describes, not in a card above the tabs. */}
+      <ConcentrationLine ledger={ledger} />
       {/*
         First in the lens, above the lede and the filter, because it is the
         portfolio's answer rather than a note about the table: a reader who opens

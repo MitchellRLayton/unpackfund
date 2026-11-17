@@ -104,6 +104,19 @@ function ledgerOf(rows: LedgerRow[]): Ledger {
       as_of: "2026-09-30",
     },
     unmapped: [],
+    // The concentration line above the table reads `metrics.top10`; a fixture without
+    // it is a ledger the type says cannot exist.
+    metrics: {
+      hhi: null,
+      effective_n: null,
+      top10: null,
+      covered_weight_pct: 100,
+      resolved_weight: 1,
+      suppressed_weight: 0,
+      invested_weight: 1,
+      cash_weight: 0,
+      unallocated_weight: 0,
+    },
   } as unknown as Omit<Ledger, "effective">);
 }
 

@@ -357,3 +357,346 @@
     display: none !important;
   }
 }
+
+/* ------------------------------------------------------------------------- */
+/* The lens strip: five tabs that are also the five headline numbers          */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * The strip replaces the "What you own" card and the plain tab row. Each tab is a
+ * column — label, number, one line under it — so the answer and the way to the detail
+ * are the same control.
+ *
+ * The selected tab joins its panel: same `--surface`, and a 2px ink underline that
+ * sits on the strip's own rule. The panel keeps the page's `--paper`, so the join is
+ * the tab's surface meeting the panel's top edge rather than a card around the tables.
+ */
+
+.stripWrap {
+  position: relative;
+  min-width: 0;
+}
+
+.strip {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--rule);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  /* No native bar. The fade below is the only signal that there is more to the right,
+   * and it is measured, so it never lies about a strip that fits. */
+  scrollbar-width: none;
+}
+
+.strip::-webkit-scrollbar {
+  display: none;
+}
+
+/* The edge fade. `data-fade` is set from a measured overflow, so a strip whose tabs fit
+ * has no fade at all. */
+.stripWrap[data-fade="right"]::after,
+.stripWrap[data-fade="both"]::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  right: 0;
+  width: 2.5rem;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--paper));
+}
+
+.stripWrap[data-fade="left"]::before,
+.stripWrap[data-fade="both"]::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 2.5rem;
+  pointer-events: none;
+  background: linear-gradient(to left, transparent, var(--paper));
+}
+
+.stripTab {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex: 0 0 auto;
+  /* About 130px a tab: five of them fit a 704px column and overflow a 547px one, which
+   * is the behaviour the fade exists for. */
+  min-width: 8.125rem;
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  text-align: left;
+  color: var(--graphite);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.stripTab:hover {
+  color: var(--ink);
+  background: var(--wash);
+}
+
+.stripTab[aria-selected="true"] {
+  color: var(--ink);
+  background: var(--surface);
+  border-bottom-color: var(--ink);
+}
+
+.stripTab:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.stripTab:disabled:hover {
+  background: none;
+  color: var(--graphite);
+}
+
+.stripTab:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.stripLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-12);
+  letter-spacing: 0.01em;
+}
+
+.stripValue {
+  display: flex;
+  align-items: center;
+  min-height: 1.5rem;
+  font-size: var(--text-20);
+  font-weight: 500;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.stripSub {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--text-12);
+  color: var(--graphite);
+}
+
+/* A number that is still being read. The tab stays clickable; only the figure is
+ * absent, and the tab's accessible name says "reading the filings". */
+.skeleton {
+  display: inline-block;
+  width: 3.5rem;
+  height: 1rem;
+  border-radius: 2px;
+  background: var(--wash-strong);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+/* A status dot, only where the site already judges. The band keys are the ones
+ * `DIVERSIFICATION_BANDS` uses, so the strip and the Effective holdings block cannot
+ * disagree about which colour a band is. */
+.dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+}
+
+.dot[data-band="very-concentrated"] {
+  background: var(--band-1);
+}
+
+.dot[data-band="concentrated"] {
+  background: var(--band-2);
+}
+
+.dot[data-band="moderate"] {
+  background: var(--band-3);
+}
+
+.dot[data-band="diversified"] {
+  background: var(--band-4);
+}
+
+.dot[data-band="broadly-diversified"] {
+  background: var(--band-5);
+}
+
+/* Coverage below the 70% band. `--alert` is the existing warning ink; no new colour. */
+.dot[data-band="coverage"] {
+  background: var(--alert);
+}
+
+/* ------------------------------------------------------------------------- */
+/* The docked strip, inside the top bar                                       */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * The same five tabs, text only, in the top bar. It renders into a slot that is always
+ * present and always the bar's height, so docking adds no height and nothing below it
+ * moves. The fade is the transition between densities; it is off under
+ * prefers-reduced-motion.
+ */
+
+.dock {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1 1 auto;
+  min-width: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
+
+.dock[data-docked="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock {
+    transition: none;
+  }
+}
+
+.dockTabs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.dockTabs::-webkit-scrollbar {
+  display: none;
+}
+
+.dockTab {
+  appearance: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+  min-height: 2rem;
+  padding: 0.25rem 0.5rem;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  font-size: var(--text-12);
+  color: var(--graphite);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dockTab:hover {
+  color: var(--ink);
+  background: var(--wash);
+}
+
+.dockTab[aria-selected="true"] {
+  color: var(--ink);
+  background: var(--wash-strong);
+  font-weight: 500;
+}
+
+.dockTab:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.dockTab:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.dockValue {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.dockActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  flex: none;
+}
+
+/* Below the drawer breakpoint the bar is the menu button, the title and the tabs. The
+ * three actions are still at the bottom of the page, and there is no room for them
+ * here. */
+@media (max-width: 63.99rem) {
+  .dockActions {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------------- */
+/* The collapsed holdings pane                                               */
+/* ------------------------------------------------------------------------- */
+
+.compactList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.compactRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--text-14);
+}
+
+.compactRow:last-child {
+  border-bottom: 0;
+}
+
+.compactWeight {
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--graphite);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Print                                                                     */
+/* ------------------------------------------------------------------------- */
+
+@media print {
+  .stripWrap,
+  .dock,
+  .collapseControl {
+    display: none !important;
+  }
+}

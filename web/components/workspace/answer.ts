@@ -238,7 +238,11 @@ function largestRow(rows: readonly LedgerRow[]): LedgerRow | null {
  * `unmapped.securities_by_country`. Leaving them out made this sentence disagree with
  * the Markets lens on the same page by 2.3 points of developed ex-US.
  */
-function marketSplit(
+/**
+ * The market split, exported because the metric strip prints the same three numbers the
+ * answer strip does. One function, so the tab and the sentence cannot disagree.
+ */
+export function marketSplit(
   ledger: Ledger,
   contested: Record<string, string>,
   provider: Provider,
@@ -439,22 +443,21 @@ function readySentences(
  * traced to a company, and that is the complement of the share that is, so the row prints
  * the chip and the oldest reporting period and leaves the subtraction to the reader.
  */
-function readyHighlights(
-  ledger: Ledger,
-  funds: readonly FundDocument[],
-  contested: Record<string, string>,
-  provider: Provider,
-): AnswerHighlight[] {
-  const rows: AnswerHighlight[] = [];
-  if (ledger.rows.length === 0) return rows;
-
-  // 1. Concentration, withheld on the same rule the sentence uses.
+/**
+ * The concentration fact: the ten largest share and the largest name, or the reason it
+ * is withheld.
+ *
+ * Exported because the metric strip replaced the summary card, and this is the one fact
+ * the card carried that no tab shows — so the Companies lens prints it at the top of its
+ * panel. One function, so the panel and the printed answer cannot disagree.
+ */
+export function topTenFact(ledger: Ledger): AnswerHighlight | null {
   const suppressed = ledger.funds.filter(
     (fund) => coverageBand(fund.coverage_pct) === "none",
   );
   const largest = largestRow(ledger.rows);
   if (suppressed.length > 0) {
-    rows.push({
+    return {
       label: "10 largest",
       term: "top-10",
       parts: [
@@ -466,9 +469,10 @@ function readyHighlights(
             : " cover under 60% of their own weight",
         ),
       ],
-    });
-  } else if (largest !== null && ledger.metrics.top10 !== null) {
-    rows.push({
+    };
+  }
+  if (largest !== null && ledger.metrics.top10 !== null) {
+    return {
       label: ledger.rows.length >= 10 ? "10 largest" : "Largest",
       term: "top-10",
       parts: [
@@ -478,8 +482,23 @@ function readyHighlights(
         text(" "),
         strong(formatShare(largest.weight)),
       ],
-    });
+    };
   }
+  return null;
+}
+
+function readyHighlights(
+  ledger: Ledger,
+  funds: readonly FundDocument[],
+  contested: Record<string, string>,
+  provider: Provider,
+): AnswerHighlight[] {
+  const rows: AnswerHighlight[] = [];
+  if (ledger.rows.length === 0) return rows;
+
+  // 1. Concentration, withheld on the same rule the sentence uses.
+  const topTen = topTenFact(ledger);
+  if (topTen !== null) rows.push(topTen);
 
   // 2. The market split, on the same three-source cascade the sentence uses.
   const split = marketSplit(ledger, contested, provider);
