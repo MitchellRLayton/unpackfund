@@ -615,68 +615,404 @@ h3.subtitle {
 }
 
 /* ------------------------------------------------------------------------- */
-/* Header, nav, search                                                       */
+/* App shell: sidebar, top bar, drawer                                       */
 /* ------------------------------------------------------------------------- */
 
-.site-header {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  background: var(--paper);
-  border-bottom: 1px solid var(--rule);
+/*
+ * The shell is a two-column grid: a sidebar that owns the viewport's height, and a
+ * body column that scrolls. The top bar is sticky inside the body column, so the
+ * page scrolls under it while the sidebar stays put.
+ *
+ * Three states, one breakpoint pair:
+ *
+ *   >= 80rem (1280)   expanded sidebar, 15rem
+ *   64-80rem          icon rail, 4rem
+ *   < 64rem           off-canvas drawer, opened by the top bar's menu button
+ *
+ * The drawer is a native popover — `popovertarget` on the button, `popover` on the
+ * aside — so Escape and an outside click close it with no JavaScript. That is not a
+ * preference: 9,016 fund pages are static documents with no React, and the same
+ * markup is emitted by `pipeline/pipeline/fund_pages.py`.
+ */
+
+:root {
+  --sidebar-w: 15rem;
+  --sidebar-rail: 4rem;
+  --topbar-h: 3.5rem;
 }
 
-.site-header__inner {
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.app-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.app-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ---- Sidebar ------------------------------------------------------------ */
+
+.app-sidebar {
+  /* The UA stylesheet gives every `[popover]` `position: fixed; inset: 0; margin:
+   * auto; width: fit-content`. On a wide screen the sidebar is not a popover at
+   * all — it is a column — so each of those is reset here, and the drawer media
+   * query below puts them back. Without the reset the sidebar floats over the page
+   * at every width. */
+  position: sticky;
+  inset: auto;
+  top: 0;
+  width: auto;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0;
+  border: 0;
+  border-right: 1px solid var(--rule);
+  padding: var(--space-4) var(--space-3);
+  background: var(--surface);
+  color: var(--ink);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  align-self: start;
+}
+
+.app-sidebar__head {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  min-height: 3.5rem;
-  padding-block: var(--space-2);
-  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 2rem;
 }
 
-.wordmark {
+.app-sidebar__brand {
   font-family: var(--font-display);
   font-size: var(--text-20);
   font-weight: 600;
   letter-spacing: -0.02em;
   text-decoration: none;
   white-space: nowrap;
+  font-optical-sizing: auto;
+  font-variation-settings:
+    "SOFT" 100,
+    "WONK" 0;
 }
 
-.site-nav {
+/* The monogram is the rail's brand; the wordmark is everywhere else. Both are in
+ * the markup so the swap is CSS, and the monogram is `aria-hidden` so a screen
+ * reader hears "UnpackFund" once. */
+.app-sidebar__brand-mark {
+  display: none;
+}
+
+.app-sidebar__close {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--graphite);
+  cursor: pointer;
+}
+
+.app-sidebar__close:hover {
+  color: var(--ink);
+  border-color: var(--rule-strong);
+}
+
+.app-sidebar__search {
+  display: flex;
+}
+
+.app-sidebar__search .search-trigger {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.app-sidebar__search .search-trigger__label {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+/* ---- Nav ---------------------------------------------------------------- */
+
+.app-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.app-nav__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.app-nav__label {
+  font-size: var(--text-12);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--graphite);
+  padding-inline: var(--space-2);
+}
+
+.app-nav ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.app-nav__link {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  flex-wrap: wrap;
-}
-
-.site-nav a {
-  display: inline-block;
-  padding: var(--space-1) var(--space-2);
+  gap: var(--space-2);
+  min-height: 2.25rem;
+  padding: var(--space-2);
   border-radius: var(--radius);
   font-size: var(--text-14);
-  text-decoration: none;
   color: var(--graphite);
+  text-decoration: none;
 }
 
-.site-nav a:hover {
+.app-nav__link:hover {
   color: var(--ink);
   background: var(--wash);
 }
 
-.site-nav a[aria-current="page"] {
+.app-nav__link[aria-current="page"] {
   color: var(--ink);
   background: var(--wash-strong);
   font-weight: 500;
 }
 
-.header-tools {
-  margin-left: auto;
+.app-nav__icon {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* ---- Sidebar foot ------------------------------------------------------- */
+
+.app-sidebar__foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--rule);
+}
+
+.app-sidebar__release {
+  font-size: var(--text-12);
+  color: var(--graphite);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.app-sidebar__release-id {
+  color: var(--ink);
+}
+
+.app-nav--legal ul {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+}
+
+.app-nav--legal a {
+  font-size: var(--text-12);
+  color: var(--graphite);
+  text-decoration: none;
+}
+
+.app-nav--legal a:hover {
+  color: var(--ink);
+}
+
+.app-nav--legal a[aria-current="page"] {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/* ---- Top bar ------------------------------------------------------------ */
+
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+}
+
+/* The inner row is a `.shell` in all but name: same max width and same inline
+ * padding, so the page title sits on the same left edge as the page's own content
+ * at every width. */
+.app-topbar__inner {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
+  min-height: var(--topbar-h);
+  width: 100%;
+  max-width: var(--shell);
+  margin-inline: auto;
+  padding-inline: clamp(1rem, 3vw, 2.5rem);
 }
+
+.app-topbar__menu {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  /* 44px: the smallest target a thumb hits reliably. It fits the 56px bar. */
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--graphite);
+  cursor: pointer;
+}
+
+.app-topbar__menu:hover {
+  color: var(--ink);
+  border-color: var(--rule-strong);
+}
+
+.app-topbar__title {
+  font-size: var(--text-14);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+/* ---- Icon rail, 64-80rem ------------------------------------------------ */
+
+@media (min-width: 64rem) and (max-width: 79.99rem) {
+  /* The Portfolio is excluded: its results column needs more than a rail leaves it.
+   * It takes the drawer instead, below. */
+  .app-shell:not([data-page="portfolio"]) {
+    grid-template-columns: var(--sidebar-rail) minmax(0, 1fr);
+  }
+
+  .app-shell:not([data-page="portfolio"]) .app-sidebar {
+    padding-inline: var(--space-2);
+    align-items: center;
+  }
+
+  .app-shell:not([data-page="portfolio"]) .app-sidebar__brand-full,
+  .app-shell:not([data-page="portfolio"]) .app-nav__label,
+  .app-shell:not([data-page="portfolio"]) .app-nav__text,
+  .app-shell:not([data-page="portfolio"]) .app-sidebar__release,
+  .app-shell:not([data-page="portfolio"]) .app-nav--legal {
+    display: none;
+  }
+
+  .app-shell:not([data-page="portfolio"]) .app-sidebar__brand-mark {
+    display: inline;
+    font-size: var(--text-16);
+  }
+
+  .app-shell:not([data-page="portfolio"]) .app-nav__link {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .app-shell:not([data-page="portfolio"]) .app-sidebar__search .search-trigger {
+    justify-content: center;
+  }
+
+  .app-shell:not([data-page="portfolio"]) .app-sidebar__search .search-trigger__label,
+  .app-shell:not([data-page="portfolio"]) .app-sidebar__search .kbd {
+    display: none;
+  }
+
+  .app-shell:not([data-page="portfolio"]) .app-sidebar__foot {
+    align-items: center;
+  }
+}
+
+/* ---- Drawer, below 64rem ------------------------------------------------ */
+
+@media (max-width: 63.99rem) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(18rem, 85vw);
+    height: 100vh;
+    height: 100dvh;
+    z-index: 60;
+    border-right: 1px solid var(--rule-strong);
+  }
+
+  /* The UA hides a closed popover; this restates it because the base rule above
+   * sets `display: flex` for the wide-screen column. */
+  .app-sidebar:not(:popover-open) {
+    display: none;
+  }
+
+  .app-sidebar::backdrop {
+    background: rgb(0 0 0 / 0.4);
+  }
+
+  .app-sidebar__close,
+  .app-topbar__menu {
+    display: inline-flex;
+  }
+}
+
+/* The Portfolio's drawer, 64-80rem. The same declarations as the block above,
+ * repeated because CSS cannot OR two media conditions into one rule; the operator's
+ * fallback after the 52rem acceptance failed was "drawer instead of rail on the
+ * Portfolio below 1280", and this is that. */
+@media (min-width: 64rem) and (max-width: 79.99rem) {
+  .app-shell[data-page="portfolio"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-shell[data-page="portfolio"] .app-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(18rem, 85vw);
+    height: 100vh;
+    height: 100dvh;
+    z-index: 60;
+    border-right: 1px solid var(--rule-strong);
+  }
+
+  .app-shell[data-page="portfolio"] .app-sidebar:not(:popover-open) {
+    display: none;
+  }
+
+  .app-shell[data-page="portfolio"] .app-sidebar::backdrop {
+    background: rgb(0 0 0 / 0.4);
+  }
+
+  .app-shell[data-page="portfolio"] .app-sidebar__close,
+  .app-shell[data-page="portfolio"] .app-topbar__menu {
+    display: inline-flex;
+  }
+}
+
+/* ---- Search trigger ----------------------------------------------------- */
 
 .search-trigger {
   display: inline-flex;
@@ -684,7 +1020,7 @@ h3.subtitle {
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
   min-height: 2rem;
-  background: var(--surface);
+  background: var(--paper);
   border: 1px solid var(--rule);
   border-radius: var(--radius);
   color: var(--graphite);
@@ -695,60 +1031,6 @@ h3.subtitle {
 .search-trigger:hover {
   border-color: var(--rule-strong);
   color: var(--ink);
-}
-
-/* On a phone the header is two rows: the wordmark and the search button, then the
- * sections as one strip that scrolls sideways rather than wrapping into a block
- * that pushes the page down. The strip keeps its own scroll, so a 320 px screen
- * still reaches every section with a thumb. */
-@media (max-width: 48rem) {
-  .site-header__inner {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    grid-template-areas:
-      "brand tools"
-      "nav nav";
-    gap: var(--space-1) var(--space-3);
-    padding-block: var(--space-2) 0;
-  }
-
-  .wordmark {
-    grid-area: brand;
-  }
-
-  .header-tools {
-    grid-area: tools;
-    margin-left: 0;
-  }
-
-  .site-nav {
-    grid-area: nav;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
-    margin-inline: calc(var(--space-4) * -1);
-    padding-inline: var(--space-4);
-    padding-bottom: var(--space-2);
-  }
-
-  .site-nav::-webkit-scrollbar {
-    display: none;
-  }
-
-  .site-nav a {
-    white-space: nowrap;
-  }
-
-  .search-trigger__label,
-  .search-trigger .kbd {
-    display: none;
-  }
-
-  .search-trigger {
-    min-width: 2.25rem;
-    justify-content: center;
-  }
 }
 
 .kbd {
@@ -2020,6 +2302,13 @@ tr[data-direct="true"]:hover {
   align-items: start;
 }
 
+/* 58rem, unchanged. The shell was going to lower this to 52rem so the Portfolio
+ * could keep two columns beside the icon rail at 1024 — and the acceptance check
+ * failed: at a 483px results column the 8-column Companies table clips its numbers
+ * mid-value, and at 415px it shows four of eight columns. The operator's fallback
+ * was a drawer instead of a rail on the Portfolio below 80rem, which leaves this
+ * threshold with nothing to compensate for, so it stays where it was. Evidence:
+ * docs/nav-migration/01/. */
 @container workspace (min-width: 58rem) {
   .workspace__grid {
     grid-template-columns: minmax(20rem, 24rem) minmax(0, 1fr);
@@ -2028,8 +2317,11 @@ tr[data-direct="true"]:hover {
 
   .workspace__holdings {
     position: sticky;
-    top: 4.5rem;
-    max-height: calc(100vh - 6rem);
+    /* The top bar's height, not a literal: the pane used to pin at 4.5rem, which
+     * was the old header's height, and a top bar of a different height would have
+     * left it tucked under the bar. */
+    top: calc(var(--topbar-h) + var(--space-2));
+    max-height: calc(100vh - var(--topbar-h) - var(--space-6));
     overflow-y: auto;
     padding-right: var(--space-1);
   }
@@ -2053,7 +2345,8 @@ tr[data-direct="true"]:hover {
     font-size: 10pt;
   }
 
-  .site-header,
+  .app-sidebar,
+  .app-topbar,
   .site-footer,
   .no-print,
   .tabs,
@@ -2066,6 +2359,12 @@ tr[data-direct="true"]:hover {
 
   .print-only {
     display: block !important;
+  }
+
+  .app-shell,
+  .app-body,
+  .app-main {
+    display: block;
   }
 
   .workspace__grid {

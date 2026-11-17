@@ -1102,6 +1102,117 @@ def _size_gap_sentence(unplaced_bp: int, foreign_bp: int, unidentified_bp: int, 
     )
 
 
+#: The site's navigation, in one file, read by both renderers.
+#:
+#: The app shell is rendered twice: by React for the twelve Next routes, and by this
+#: module for the 9,016 generated fund pages, which ship no React at all. Before this
+#: file the two copies of the nav were maintained by hand and were already free to
+#: drift. Now both read `web/nav.json`, and `test_fund_pages.py` compares this
+#: module's nav block against the same committed contract the React test compares its
+#: own to — so a change to one renderer that the other does not follow fails a test.
+NAV_FILE = REPO_ROOT / "web" / "nav.json"
+
+
+def nav_model() -> dict:
+    """The nav model. Fails loudly: a page with no navigation is not a page."""
+    if not NAV_FILE.exists():
+        raise SystemExit(f"{NAV_FILE}: the navigation model is missing")
+    return json.loads(NAV_FILE.read_text(encoding="utf-8"))
+
+
+def _icon(d: str, cls: str | None) -> str:
+    """One stroked glyph, from the path in the nav model.
+
+    The same six paths the React shell draws, from the same bytes: a second copy of
+    them here would be six more chances to drift.
+    """
+    class_attr = f' class="{cls}"' if cls else ""
+    return (
+        f"<svg{class_attr} viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" "
+        'fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" '
+        'stroke-linejoin="round" aria-hidden="true" focusable="false">'
+        f'<path d="{_esc(d)}"></path></svg>'
+    )
+
+
+def nav_block(model: dict, current: str) -> str:
+    """The `<nav aria-label="Sections">` block, from the model.
+
+    `current` is the id of the entry to mark `aria-current="page"`. A fund page is
+    always Funds; the React shell derives it from the pathname.
+    """
+    groups = []
+    for group in model["groups"]:
+        items = []
+        for item in group["items"]:
+            mark = ' aria-current="page"' if item["id"] == current else ""
+            icon = _icon(item["icon"], "app-nav__icon") if item.get("icon") else ""
+            items.append(
+                f'<li><a class="app-nav__link" href="{_esc(item["href"])}"{mark}>'
+                f'{icon}<span class="app-nav__text">{_esc(item["label"])}</span></a></li>'
+            )
+        groups.append(
+            '<div class="app-nav__group">'
+            f'<p class="app-nav__label">{_esc(group["label"])}</p>'
+            f'<ul>{"".join(items)}</ul></div>'
+        )
+    return f'<nav class="app-nav" aria-label="Sections">{"".join(groups)}</nav>'
+
+
+def sidebar(model: dict, release_id: str | None) -> str:
+    """The sidebar, as a native popover so the drawer needs no JavaScript.
+
+    `popovertarget` on the top bar's menu button opens it; Escape and an outside
+    click close it. On a wide screen the stylesheet resets the popover positioning
+    and the element is an ordinary column — one element, three layouts, one `<nav>`
+    landmark.
+    """
+    chrome = model["chrome"]
+    legal = "".join(
+        f'<li><a href="{_esc(item["href"])}">{_esc(item["label"])}</a></li>'
+        for item in model["footer"]
+    )
+    release = (
+        '<p class="app-sidebar__release">Release '
+        f'<span class="app-sidebar__release-id">{_esc(release_id)}</span></p>'
+        if release_id
+        else ""
+    )
+    return (
+        '<aside class="app-sidebar" id="app-nav" popover="auto" aria-label="Site">'
+        '<div class="app-sidebar__head">'
+        '<a class="app-sidebar__brand" href="/">'
+        '<span class="app-sidebar__brand-full">UnpackFund</span>'
+        '<span class="app-sidebar__brand-mark" aria-hidden="true">UF</span></a>'
+        '<button type="button" class="app-sidebar__close" popovertarget="app-nav" '
+        f'popovertargetaction="hide" aria-label="Close menu">{_icon(chrome["close"], None)}'
+        "</button></div>"
+        # A fund page has no palette to open, so the search slot is a link to the
+        # directory that has one: same position, same job, no dead button.
+        '<div class="app-sidebar__search">'
+        '<a class="search-trigger" href="/funds/">'
+        f'{_icon(chrome["search"], None)}'
+        '<span class="search-trigger__label">Find a fund</span></a></div>'
+        f'{nav_block(model, "funds")}'
+        '<div class="app-sidebar__foot">'
+        f"{release}"
+        '<nav class="app-nav app-nav--legal" aria-label="About and legal">'
+        f"<ul>{legal}</ul></nav></div>"
+        "</aside>"
+    )
+
+
+def topbar(model: dict, title: str) -> str:
+    """The page-scoped top bar: the menu button and the page's own title."""
+    return (
+        '<header class="app-topbar"><div class="app-topbar__inner">'
+        '<button type="button" class="app-topbar__menu" popovertarget="app-nav" '
+        f'aria-label="Open menu">{_icon(model["chrome"]["menu"], None)}</button>'
+        f'<p class="app-topbar__title">{_esc(title)}</p>'
+        "</div></header>"
+    )
+
+
 def render_page(
     fund: dict,
     *,
@@ -1112,8 +1223,15 @@ def render_page(
     countries: dict[str, str] | None = None,
     contested: dict[str, str] | None = None,
     size_table: dict | None = None,
+    release_id: str | None = None,
 ) -> str:
-    """One fund document → one standalone HTML page."""
+    """One fund document → one standalone HTML page.
+
+    `release_id` is the release directory's name, printed in the sidebar's footer.
+    It is baked here rather than fetched because a fund page is regenerated with
+    every release, so the value cannot go stale between a data change and a deploy —
+    which is exactly why the React shell reads it at runtime instead.
+    """
     ticker = _esc(fund["ticker"])
     raw_name = fund["name"]
     name = _esc(raw_name)
@@ -1497,6 +1615,12 @@ def render_page(
         f"filed {fund['filed_at']}, from the fund's own SEC Form N-PORT."
     )
     page_url = f"{SITE}/f/{ticker}/"
+    # The shell, from the one nav model both renderers read. The top bar names the
+    # section, not the fund: the fund is the page's own <h1>, and printing it twice
+    # would put the same words in the chrome and the content.
+    model = nav_model()
+    shell_sidebar = sidebar(model, release_id)
+    shell_topbar = topbar(model, "Funds")
     social = _social_meta(page_title, page_description, page_url)
 
     return f"""<!doctype html>
@@ -1513,19 +1637,11 @@ def render_page(
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
-<header class="site-header">
-  <div class="shell site-header__inner">
-    <a class="wordmark" href="/">UnpackFund</a>
-    <nav class="site-nav" aria-label="Sections">
-      <a href="/">Portfolio</a>
-      <a href="/compare/">Compare</a>
-      <a href="/c/">Companies</a>
-      <a href="/funds/" aria-current="page">Funds</a>
-      <a href="/methodology/">How it works</a>
-    </nav>
-    <div class="header-tools"><a class="search-trigger" href="/funds/">Find a fund</a></div>
-  </div>
-</header>
+<div class="app-shell" data-page="funds">
+{shell_sidebar}
+<div class="app-body">
+{shell_topbar}
+<div class="app-main">
 <main id="main" class="shell page">
   <div class="stack stack--loose">
 
@@ -1645,6 +1761,9 @@ def render_page(
     </nav>
   </div>
 </footer>
+</div>
+</div>
+</div>
 {script}
 </body>
 </html>
@@ -1880,6 +1999,7 @@ def build(
             ),
             countries=countries,
             contested=contested,
+            release_id=release_dir.name,
         )
         target = out_dir / "f" / ticker / "index.html"
         target.parent.mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,25 @@
+{
+  // A preview Worker for the navigation migration, separate from `unpackfund-preview`.
+  //
+  // Why a second one: `unpackfund-preview` is shared. The nightly `refresh.yml` deploys
+  // it against the staging pointer, so a review URL on that Worker can revert to a
+  // different build overnight — which is exactly what happened to be the risk the
+  // operator named on 2026-11-17. This Worker is deployed only by hand, from a branch,
+  // and nothing else writes to it.
+  //
+  // It owns no domain and is deleted with
+  // `npx wrangler@4.155.0 delete --config wrangler.nav-preview.jsonc` when the
+  // migration lands.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "unpackfund-nav-preview",
+  "compatibility_date": "2026-10-28",
+  "assets": {
+    "directory": "./web/out",
+    "not_found_handling": "404-page"
+  },
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true
+  }
+}

@@ -730,22 +730,82 @@ def test_the_page_carries_the_not_advice_line_and_the_sec_attribution():
         assert f'href="{href}"' in page
 
 
-def test_the_nav_uses_the_apps_own_words():
+def _nav_structure(page: str) -> list[dict]:
+    """The nav's content, in the shape `web/components/shell/nav-contract.json` holds.
+
+    Deliberately not a markup comparison: the two renderers emit different attribute
+    order and different self-closing forms, and neither is the contract. What must not
+    drift is the groups, their order, the labels, the hrefs, which entry is current,
+    and whether each entry has an icon.
+    """
+    nav = re.search(r'<nav class="app-nav" aria-label="Sections">(.*?)</nav>', page, re.S)
+    assert nav, "the page has no Sections nav"
+    groups = []
+    for group in re.finditer(
+        r'<div class="app-nav__group"><p class="app-nav__label">(.*?)</p><ul>(.*?)</ul></div>',
+        nav.group(1),
+        re.S,
+    ):
+        items = []
+        for item in re.finditer(
+            r'<a class="app-nav__link" href="([^"]*)"( aria-current="page")?>(.*?)</a>',
+            group.group(2),
+            re.S,
+        ):
+            inner = item.group(3)
+            items.append(
+                {
+                    "label": re.sub(r"<[^>]+>", "", inner).strip(),
+                    "href": item.group(1),
+                    "current": bool(item.group(2)),
+                    "icon": "<svg" in inner,
+                }
+            )
+        groups.append({"group": group.group(1), "items": items})
+    return groups
+
+
+def test_the_nav_matches_the_contract_the_react_shell_is_held_to():
+    """The drift gate between the two renderers.
+
+    `web/components/shell/nav.test.tsx` extracts the same structure from the React
+    sidebar and compares it to the same file. A change to one renderer that the other
+    does not follow fails one of the two tests, which is what the hand-maintained
+    copies never did.
+    """
+    contract = json.loads(
+        (fund_pages.REPO_ROOT / "web" / "components" / "shell" / "nav-contract.json").read_text()
+    )
+    assert _nav_structure(render(fund())) == contract["nav"]
+
+
+def test_the_nav_comes_from_the_shared_model():
     """The fund pages are generated HTML, so they carry their own copy of the nav.
 
     The operator renamed the sections on 2026-11-02 ("Builder, Ledger" → "Portfolio",
     "X-Ray") and again on 2026-11-03, when the redesign made `/` and `/x/` one
     workspace and added "How it works". A generated page is the easiest place for a
-    rename to be missed: it is not a React component, so no shared nav renders it, and
-    the live site regenerates these pages from the release on every deploy. The list
-    here is `web/components/shell/SiteNav.tsx`'s, in its order.
+    rename to be missed: it is not a React component, so no shared nav renders it.
+
+    Since 2026-11-17 the nav is not a hand-written list here at all: it is
+    `web/nav.json`, which the React shell reads too. This test asserts the page
+    against that file rather than against a second copy of the words, so a rename in
+    the model reaches both renderers or fails here.
     """
+    model = fund_pages.nav_model()
     page = render(fund())
-    assert '<a href="/">Portfolio</a>' in page
-    assert '<a href="/compare/">Compare</a>' in page
-    assert '<a href="/c/">Companies</a>' in page
-    assert '<a href="/funds/" aria-current="page">Funds</a>' in page
-    assert '<a href="/methodology/">How it works</a>' in page
+
+    for group in model["groups"]:
+        assert f'<p class="app-nav__label">{group["label"]}</p>' in page
+        for item in group["items"]:
+            assert f'href="{item["href"]}"' in page
+            assert f'<span class="app-nav__text">{item["label"]}</span>' in page
+
+    # Exactly one entry is current, and on a fund page it is Funds.
+    assert page.count('aria-current="page"') == 1
+    assert 'href="/funds/" aria-current="page"' in page
+
+    # The words the operator retired stay retired.
     assert ">Builder<" not in page
     assert ">Ledger<" not in page
     assert ">X-Ray<" not in page
@@ -1021,8 +1081,21 @@ def test_build_is_deterministic(tmp_path: Path):
             assert (second / path.relative_to(first)).read_bytes() == path.read_bytes(), path
 
 
-def test_a_page_carries_no_release_wide_field(tmp_path: Path):
-    """A release identity in the page would rewrite 9,000 files on every release."""
+def test_a_page_carries_the_release_it_was_built_from(tmp_path: Path):
+    """The sidebar's footer names the release, and it is baked, not fetched.
+
+    This reverses the rule this test used to hold ("a release identity in the page
+    would rewrite 9,000 files on every release"). The operator's decision on
+    2026-11-17 was to bake it: a fund page is regenerated with each release, so the
+    value cannot go stale between a data change and a deploy, which is exactly why
+    the React shell reads it at runtime instead.
+
+    The cost is real and is recorded rather than hidden: on a release whose id
+    changes, every generated page's bytes change, so the deploy re-uploads all 9,016
+    documents instead of only the funds whose holdings moved. No workflow uses
+    `build(only=…)` today, so nothing regresses yet — but wiring the incremental
+    rebuild later would have to exclude the release id from the page.
+    """
     from tests.conftest import write_release
 
     release = write_release(
@@ -1032,7 +1105,7 @@ def test_a_page_carries_no_release_wide_field(tmp_path: Path):
     out = tmp_path / "out"
     fund_pages.build(release, out)
     page = (out / "f" / "AVUV" / "index.html").read_text()
-    assert "2026-10-30.77" not in page
+    assert '<span class="app-sidebar__release-id">2026-10-30.77</span>' in page
 
 
 # --- Sitemap, robots, and the indexable flag -----------------------------------
