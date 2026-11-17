@@ -9,7 +9,7 @@
  * (`static-xray-frontend` §5).
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import {
   DataError,
@@ -59,6 +59,46 @@ function toError(error: unknown): { message: string; detail: string; kind: strin
  * ticker list lived in it. The ticker list is now its own object (`useTickers`), so
  * the ledger's critical path is the pointer, one hash shard, and the funds it shows.
  */
+/**
+ * The release this page has already loaded, for chrome that must not fetch one.
+ *
+ * The sidebar's footer prints the release id and date. It must not *cause* a load:
+ * the pointer is small, but a shell that fetches on every page turns a static site
+ * into one that talks to the data host on `/methodology/`. So the shell reads what
+ * some other component already fetched, and prints nothing until there is one.
+ *
+ * `useRelease` publishes here on success. A page that loads no release — the
+ * reading pages — shows no badge rather than a stale or invented one, which is the
+ * operator's decision (2026-11-17): bake it into the generated fund pages, which
+ * are rebuilt with each release, and read it at runtime everywhere else.
+ */
+let knownRelease: ReleaseDescriptor | null = null;
+const knownListeners = new Set<() => void>();
+
+function publishRelease(release: ReleaseDescriptor): void {
+  knownRelease = release;
+  for (const listener of knownListeners) listener();
+}
+
+function subscribeKnown(listener: () => void): () => void {
+  knownListeners.add(listener);
+  return () => {
+    knownListeners.delete(listener);
+  };
+}
+
+function getKnown(): ReleaseDescriptor | null {
+  return knownRelease;
+}
+
+function getKnownServer(): ReleaseDescriptor | null {
+  return null;
+}
+
+export function useKnownRelease(): ReleaseDescriptor | null {
+  return useSyncExternalStore(subscribeKnown, getKnown, getKnownServer);
+}
+
 export function useRelease(): LoadState<ReleaseDescriptor> {
   const [state, setState] = useState<LoadState<ReleaseDescriptor>>({
     status: "loading",
@@ -71,6 +111,7 @@ export function useRelease(): LoadState<ReleaseDescriptor> {
     loadRelease()
       .then((release) => {
         if (cancelled) return;
+        publishRelease(release);
         setState({ status: "ready", data: release, error: null });
       })
       .catch((error: unknown) => {

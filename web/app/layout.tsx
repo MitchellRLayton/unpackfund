@@ -1,9 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import Link from "next/link";
 
-import { SearchPalette } from "@/components/shell/SearchPalette";
+import { AppShell } from "@/components/shell/AppShell";
 import { SiteFooter } from "@/components/shell/SiteFooter";
-import { SiteNav } from "@/components/shell/SiteNav";
 import {
   HOME_DESCRIPTION,
   HOME_TITLE,
@@ -106,19 +104,10 @@ export default function RootLayout({
         <a className="skip-link" href="#main">
           Skip to content
         </a>
-        <header className="site-header">
-          <div className="shell site-header__inner">
-            <Link className="wordmark" href="/">
-              UnpackFund
-            </Link>
-            <SiteNav />
-            <div className="header-tools">
-              <SearchPalette />
-            </div>
-          </div>
-        </header>
-        {children}
-        <SiteFooter />
+        <AppShell>
+          {children}
+          <SiteFooter />
+        </AppShell>
       </body>
     </html>
   );

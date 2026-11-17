@@ -1,0 +1,55 @@
+{
+  "nav": [
+    {
+      "group": "Analyze",
+      "items": [
+        {
+          "label": "Portfolio",
+          "href": "/",
+          "current": false,
+          "icon": true
+        },
+        {
+          "label": "Compare",
+          "href": "/compare/",
+          "current": false,
+          "icon": true
+        }
+      ]
+    },
+    {
+      "group": "Browse",
+      "items": [
+        {
+          "label": "Funds",
+          "href": "/funds/",
+          "current": true,
+          "icon": true
+        },
+        {
+          "label": "Companies",
+          "href": "/c/",
+          "current": false,
+          "icon": true
+        }
+      ]
+    },
+    {
+      "group": "Learn",
+      "items": [
+        {
+          "label": "How it works",
+          "href": "/methodology/",
+          "current": false,
+          "icon": true
+        },
+        {
+          "label": "Glossary",
+          "href": "/glossary/",
+          "current": false,
+          "icon": true
+        }
+      ]
+    }
+  ]
+}
