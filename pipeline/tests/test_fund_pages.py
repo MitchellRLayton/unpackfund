@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import json
+import shutil
 import re
 from pathlib import Path
 
@@ -1079,6 +1080,29 @@ def test_build_is_deterministic(tmp_path: Path):
     for path in sorted(first.rglob("*")):
         if path.is_file():
             assert (second / path.relative_to(first)).read_bytes() == path.read_bytes(), path
+
+
+def test_the_release_id_comes_from_the_catalogue_not_the_directory_name(tmp_path: Path):
+    """`deploy-site.yml` generates pages from a mirror directory called `live`.
+
+    Reading `release_dir.name` printed "Release live" in the sidebar on production —
+    found by looking at the deployed fund page, not by a test. The catalogue carries
+    the release's own `as_of`, so that is what the page prints, and the directory name
+    is only a fallback for a release directory with no catalogue.
+    """
+    from tests.conftest import write_release
+
+    release = write_release(
+        tmp_path, [fund()], release_id="2026-10-30.77", countries={"c_0001045810": "US"}
+    )
+    # Same bytes, a directory whose name is not a release id.
+    mirror = tmp_path / "mirror-live"
+    shutil.copytree(release, mirror)
+    out = tmp_path / "out"
+    fund_pages.build(mirror, out)
+    page = (out / "f" / "AVUV" / "index.html").read_text()
+    assert '<span class="app-sidebar__release-id">2026-10-30.77</span>' in page
+    assert ">live<" not in page
 
 
 def test_a_page_carries_the_release_it_was_built_from(tmp_path: Path):
