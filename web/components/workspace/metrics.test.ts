@@ -58,6 +58,14 @@ const VXUS = fund("VXUS", [
   ["c_nestle", 6_000],
 ]);
 
+function ledgerAt(share: number): Ledger {
+  const base = ledgerOf(99);
+  return {
+    ...base,
+    rows: base.rows.map((row) => ({ ...row, weight: row.weight * share })),
+  };
+}
+
 function ledgerOf(covered: number): Ledger {
   return {
     rows: [
@@ -133,6 +141,13 @@ function modelOf(overrides: Partial<WorkspaceModel> = {}): WorkspaceModel {
       mode: "bp",
       total: 10_000,
     },
+    split: {
+      fundWeights: { VTI: 0.6, VXUS: 0.4 },
+      direct: [],
+      cash: 0,
+      invested: 1,
+      unallocated: 0,
+    },
     ...overrides,
   } as unknown as WorkspaceModel;
 }
@@ -156,18 +171,64 @@ describe("the metric strip", () => {
     expect(companies?.sentence).toContain("Companies, 4, behaves like 3.2");
   });
 
-  it("puts the US share and the two tiers under it on Markets", () => {
+  it("names all three tiers on Markets, and draws them as a bar", () => {
     const markets = buildMetrics(modelOf(), "MSCI")[1];
-    expect(markets?.value).toBe("70.0%");
-    expect(markets?.sub).toContain("dev");
-    expect(markets?.sub).toContain("EM");
+    // No headline number: the bar is the headline, and the three shares are the label.
+    expect(markets?.value).toBeNull();
+    // Switzerland is developed, so the 30% is DM and EM is zero.
+    expect(markets?.sub).toBe("US 70.0% · DM 30.0% · EM 0.0%");
+    // "DM", not "dev": the only abbreviation in the app that did not match its pair.
+    expect(markets?.sub).not.toContain("dev");
+    // Float sums: 0.4 + 0.2 + 0.1 is 0.7000000000000001, which is what the bar draws.
+    expect(markets?.bar?.us).toBeCloseTo(0.7, 10);
+    expect(markets?.bar?.dm).toBeCloseTo(0.3, 10);
+    expect(markets?.bar?.em).toBe(0);
+    // The compact form drops the decimal rather than letting an ellipsis hide a tier.
+    expect(markets?.subCompact).toBe("US 70% · DM 30% · EM 0%");
+    expect(markets?.sentence).toBe(
+      "Markets: United States 70.0%, developed markets ex-US 30.0%, emerging markets 0.0%",
+    );
+    expect(markets?.tip).toBe(markets?.sentence);
   });
 
-  it("puts the fund count and the largest fund on Funds", () => {
+  it("shows the not-placed share only when it is worth a line", () => {
+    // Every row in the default fixture is placed, so nothing is unplaced.
+    expect(buildMetrics(modelOf(), "MSCI")[1]?.sub).not.toContain("not placed");
+
+    // A tenth of the portfolio in cash is a tenth the three tiers cannot account for.
+    const withCash = modelOf({ ledger: ledgerAt(0.9) });
+    const markets = buildMetrics(withCash, "MSCI")[1];
+    expect(markets?.sub).toContain("10.0% not placed");
+    // The compact form rounds it with everything else.
+    expect(markets?.subCompact).toContain("10% not placed");
+  });
+
+  it("puts the fund count and the effective number of funds on Funds", () => {
     const funds = buildMetrics(modelOf(), "MSCI")[2];
     expect(funds?.value).toBe("2");
-    // VTI is 60% of the portfolio against VXUS's 40%.
-    expect(funds?.sub).toBe("VTI");
+    // 1 / (0.6² + 0.4²) = 1 / 0.52 = 1.923…, to one decimal.
+    expect(funds?.sub).toBe("behaves like 1.9");
+    // The largest fund's ticker is gone: it told a reader nothing they could act on.
+    expect(funds?.sub).not.toContain("VTI");
+  });
+
+  it("names the stocks and cash the fund count leaves out", () => {
+    const model = modelOf();
+    const withExtras = {
+      ...model,
+      split: {
+        fundWeights: { VTI: 0.6, VXUS: 0.4 },
+        direct: [{ kind: "stock", key: "AMZN", weight: 0.1 }],
+        cash: 0.03,
+        invested: 0.97,
+        unallocated: 0,
+      },
+    } as unknown as WorkspaceModel;
+    const funds = buildMetrics(withExtras, "MSCI")[2];
+    expect(funds?.sub).toBe("behaves like 1.9 · +1 stock · cash 3.0%");
+    expect(funds?.sentence).toBe(
+      "Funds, 2, behaves like 1.9 effective funds, plus 1 stock and 3.0% cash",
+    );
   });
 
   it("puts the highest pairwise overlap and the pair on Overlap", () => {
