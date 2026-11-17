@@ -211,3 +211,30 @@ export function followsEvenSplit(mode: EntryMode, entries: PortfolioEntry[]): bo
 export function entryLabel(entry: { kind: PortfolioEntry["kind"]; key: string }): string {
   return entry.kind === "cash" || entry.key === CASH_KEY ? "Cash" : entry.key;
 }
+
+/**
+ * The effective number of funds: `1 / Σ wᵢ²`, over fund weights renormalised to the
+ * funds alone.
+ *
+ * The same arithmetic the ledger's effective-holdings pair uses on companies, applied
+ * one level up: a portfolio of twelve funds that are 90% one fund does not behave like
+ * twelve funds, and this is the number that says so. Renormalising over the funds is
+ * what makes it comparable between a funds-only portfolio and one that also holds a
+ * stock and some cash — otherwise adding cash would raise the figure by shrinking every
+ * fund's share, which is the opposite of what the reader is asking.
+ *
+ * Returns `null` when there is no fund weight to divide by, never a zero: "no funds" is
+ * not "zero effective funds".
+ */
+export function effectiveFundCount(fundWeights: Record<string, number>): number | null {
+  let sumSquares = 0;
+  let total = 0;
+  for (const weight of Object.values(fundWeights)) {
+    if (!(weight > 0)) continue;
+    total += weight;
+    sumSquares += weight * weight;
+  }
+  if (total <= 0 || sumSquares <= 0) return null;
+  // Renormalise: Σ (wᵢ/total)² = Σ wᵢ² / total².
+  return (total * total) / sumSquares;
+}

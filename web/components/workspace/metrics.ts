@@ -30,13 +30,18 @@ import {
   formatPct1,
   formatPct1Of,
 } from "@/lib/format";
-import { entryLabel } from "@/lib/holdings";
+import { effectiveFundCount } from "@/lib/portfolio-weights";
 import type { Provider } from "@/lib/country-tier";
 import type { WorkspaceModel } from "@/lib/use-workspace";
 import type { Lens } from "@/lib/view-fragment";
 
 import { highestOverlap, marketSplit } from "./answer";
 import { LENS_TABS } from "./types";
+
+/** `55.6%` → `56%`: the compact form, for a tab too narrow for a decimal. */
+function wholePct(share: number): string {
+  return `${Math.round(share * 100)}%`;
+}
 
 /** The coverage band boundary the Data quality dot answers to. */
 export const COVERAGE_DOT_BELOW = 70;
@@ -48,6 +53,21 @@ export interface LensMetric {
   value: string | null;
   /** The one line under the number, or `null`. */
   sub: string | null;
+  /**
+   * A shorter form of `sub` for a narrow tab, or `null` when the exact form always
+   * fits. Markets uses it to drop the decimal rather than let an ellipsis hide a tier.
+   */
+  subCompact?: string | null;
+  /**
+   * A three-segment bar in place of the headline number. Markets only: one percentage
+   * cannot say "55.6% US, 30.3% DM, 13.7% EM", and three numbers stacked would be a
+   * paragraph in a tab.
+   */
+  bar?: { us: number; dm: number; em: number } | null;
+  /** What the tab's tooltip says, when it has one. */
+  tip?: string | null;
+  /** The compact form the docked strip shows for the active tab. */
+  dockValue?: string | null;
   /** What a screen reader hears: a sentence, not a pile of fragments. */
   sentence: string;
   /**
@@ -56,20 +76,6 @@ export interface LensMetric {
    * to `sentence` so the dot is never the only carrier.
    */
   dot: { band: string; text: string } | null;
-}
-
-/** The fund with the largest share of the portfolio, by the amounts already entered. */
-function largestFund(model: WorkspaceModel): { label: string; share: number } | null {
-  const { entries, total } = model.portfolio;
-  if (total <= 0) return null;
-  let best: { label: string; amount: number } | null = null;
-  for (const entry of entries) {
-    if (entry.kind !== "fund") continue;
-    if (best === null || entry.amount > best.amount) {
-      best = { label: entryLabel(entry.kind, entry.key), amount: entry.amount };
-    }
-  }
-  return best === null ? null : { label: best.label, share: best.amount / total };
 }
 
 /**
@@ -141,31 +147,90 @@ export function buildMetrics(model: WorkspaceModel, provider: Provider): LensMet
     dot: riskDot,
   });
 
-  // 2. Markets — the US share, and the two tiers under it.
+  // 2. Markets — all three tiers, labelled, over a bar.
+  //
+  // The old sub-label said "1.5% dev · 0.2% EM" and left the US share to the headline,
+  // so a reader had to know that the big number was the United States. Every tier is
+  // now named, and "DM" matches "EM" — "dev" was the only abbreviation in the app that
+  // did not.
   const split = marketSplit(ledger, model.contested ?? {}, provider);
   if (split.placed > 0) {
     const us = formatPct1(split.us);
-    const sub = `${formatPct1(split.dm)} dev · ${formatPct1(split.em)} EM`;
+    const dm = formatPct1(split.dm);
+    const em = formatPct1(split.em);
+    const unplaced = Math.max(0, 1 - split.placed);
+    // A share under half a percent is noise in a one-line label; above it, the reader
+    // is owed the fact that the three tiers do not add to 100%.
+    const notPlaced = unplaced >= 0.005 ? ` · ${formatPct1(unplaced)} not placed` : "";
+    // The compact form drops the decimal everywhere, including the share that could not
+    // be placed: mixing "65%" and "10.2%" in one line reads as a typo.
+    const notPlacedCompact =
+      unplaced >= 0.005 ? ` · ${wholePct(unplaced)} not placed` : "";
+    const sub = `US ${us} · DM ${dm} · EM ${em}${notPlaced}`;
+    const subCompact = `US ${wholePct(split.us)} · DM ${wholePct(split.dm)} · EM ${wholePct(
+      split.em,
+    )}${notPlacedCompact}`;
+    const sentence =
+      `Markets: United States ${us}, developed markets ex-US ${dm}, ` +
+      `emerging markets ${em}${unplaced >= 0.005 ? `, ${formatPct1(unplaced)} not placed` : ""}`;
     metrics.set("markets", {
       id: "markets",
       label: "Markets",
-      value: us,
+      value: null,
       sub,
-      sentence: sentenceOf("Markets", `${us} US`, sub),
+      subCompact,
+      bar: { us: split.us, dm: split.dm, em: split.em },
+      tip: sentence,
+      dockValue: subCompact,
+      sentence,
       dot: null,
     });
   }
 
-  // 3. Funds — how many, and which one is the largest.
+  // 3. Funds — how many, and what they behave like.
+  //
+  // The sub-label used to name the largest fund, which told a reader nothing they could
+  // act on and read as a stray ticker. It now carries the effective number of funds —
+  // the same "behaves like" the Companies tab uses, one level up — and names the
+  // non-fund holdings that the fund count deliberately excludes.
   const fundCount = formatCount(ledger.funds.length);
-  const largest = largestFund(model);
-  const fundsSub = largest === null ? null : largest.label;
+  const effectiveFunds = effectiveFundCount(model.split.fundWeights);
+  const stocks = model.split.direct.length;
+  const cash = model.split.cash;
+  const extras: string[] = [];
+  if (stocks > 0)
+    extras.push(`+${formatCount(stocks)} ${stocks === 1 ? "stock" : "stocks"}`);
+  if (cash > 0) extras.push(`cash ${formatPct1(cash)}`);
+  const behaves =
+    effectiveFunds === null ? null : `behaves like ${formatEffective(effectiveFunds)}`;
+  const fundsSub = [behaves, ...extras].filter(Boolean).join(" · ") || null;
+  // One phrase for the non-fund holdings, so the sentence reads "plus 1 stock and 10.0%
+  // cash" rather than "... stock, and 10.0% cash".
+  const stockPhrase =
+    stocks > 0 ? `${formatCount(stocks)} ${stocks === 1 ? "stock" : "stocks"}` : null;
+  const cashPhrase = cash > 0 ? `${formatPct1(cash)} cash` : null;
+  const holdingsPhrase =
+    stockPhrase && cashPhrase
+      ? `plus ${stockPhrase} and ${cashPhrase}`
+      : stockPhrase
+        ? `plus ${stockPhrase}`
+        : cashPhrase
+          ? `plus ${cashPhrase}`
+          : null;
+  const fundsSentence = [
+    "Funds",
+    fundCount,
+    behaves === null ? null : `${behaves} effective funds`,
+    holdingsPhrase,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(", ");
   metrics.set("funds", {
     id: "funds",
     label: "Funds",
     value: fundCount,
     sub: fundsSub,
-    sentence: sentenceOf("Funds", fundCount, fundsSub),
+    sentence: fundsSentence,
     dot: null,
   });
 

@@ -320,8 +320,10 @@ describe("Workspace — the answer comes first", () => {
 
     // The Companies tab is the count and what the portfolio behaves like.
     expect(tabs[0]?.textContent).toContain("behaves like");
-    // The Markets tab is the US share and the two tiers under it.
-    expect(tabs[1]?.textContent).toContain("dev");
+    // The Markets tab names all three tiers, and "DM" matches "EM".
+    expect(tabs[1]?.textContent).toContain("US ");
+    expect(tabs[1]?.textContent).toContain("DM ");
+    expect(tabs[1]?.textContent).toContain("EM ");
     // The Data quality tab is coverage and the oldest period behind it.
     expect(tabs[4]?.textContent).toContain("oldest");
 

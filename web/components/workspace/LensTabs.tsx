@@ -144,6 +144,13 @@ export function LensTabs({
   const dockRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [docked, setDocked] = useState(false);
+  /**
+   * The Markets tooltip. It lives on the strip's wrapper rather than inside the tab
+   * because the strip is a horizontal scroll container, and an absolutely positioned
+   * child of a scroll container is clipped by it — the tooltip would be cut off at the
+   * tab's own edge. `left` is the tab's offset within the wrapper.
+   */
+  const [tip, setTip] = useState<{ left: number; text: string } | null>(null);
   const slot = useTopbarSlot();
   const actions = useWorkspaceActions(model);
 
@@ -178,6 +185,30 @@ export function LensTabs({
     observer.observe(strip);
     return () => observer.disconnect();
   }, []);
+
+  /**
+   * Keep the selected tab in view inside the strip.
+   *
+   * Five tabs carrying numbers and sub-labels are wider than the results column, so the
+   * strip scrolls. Without this, choosing "Data quality" from the docked bar and then
+   * scrolling back up leaves the strip showing Companies, with the selected tab off the
+   * right edge — a tablist whose selection you cannot see. It moves the strip's own
+   * `scrollLeft`, never the page's.
+   */
+  useEffect(() => {
+    const strip = stripRef.current;
+    if (!strip) return;
+    const tab = strip.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!tab) return;
+    const left = tab.offsetLeft;
+    const right = left + tab.offsetWidth;
+    if (left < strip.scrollLeft) strip.scrollLeft = left;
+    else if (right > strip.scrollLeft + strip.clientWidth) {
+      strip.scrollLeft = right - strip.clientWidth;
+    }
+    // `metrics` is a dependency because the tabs grow when the ledger arrives: run once
+    // on mount and the strip is still five 130px tabs with nothing to scroll.
+  }, [model.lens, metrics]);
 
   /**
    * A docked tab switches the lens and puts the reader at the top of the new panel.
@@ -278,8 +309,10 @@ export function LensTabs({
                     onKeyDown={move(index)}
                   >
                     {tab.label}
-                    {selected && metric?.value ? (
-                      <span className={styles.dockValue}>{metric.value}</span>
+                    {selected && (metric?.dockValue ?? metric?.value) ? (
+                      <span className={styles.dockValue}>
+                        {metric?.dockValue ?? metric?.value}
+                      </span>
                     ) : null}
                   </button>
                 );
@@ -339,6 +372,18 @@ export function LensTabs({
                 disabled={disabled}
                 onClick={() => model.setLens(tab.id)}
                 onKeyDown={move(index)}
+                onMouseEnter={(event) => {
+                  if (metric?.tip) {
+                    setTip({ left: event.currentTarget.offsetLeft, text: metric.tip });
+                  }
+                }}
+                onMouseLeave={() => setTip(null)}
+                onFocus={(event) => {
+                  if (metric?.tip) {
+                    setTip({ left: event.currentTarget.offsetLeft, text: metric.tip });
+                  }
+                }}
+                onBlur={() => setTip(null)}
               >
                 <span className={styles.stripLabel}>
                   {metric?.dot ? (
@@ -351,15 +396,51 @@ export function LensTabs({
                   {tab.label}
                 </span>
                 <span className={styles.stripValue}>
-                  {metric?.value ?? (
-                    <span className={styles.skeleton} aria-hidden="true" />
+                  {metric?.bar ? (
+                    // Three segments, widths exactly the shares. The numbers are in the
+                    // sub-label and the accessible name, so the bar is decoration.
+                    <span className={styles.stripBar} aria-hidden="true">
+                      <span
+                        className={styles.stripBarSeg}
+                        data-tier="us"
+                        style={{ flexGrow: metric.bar.us, flexBasis: 0 }}
+                      />
+                      <span
+                        className={styles.stripBarSeg}
+                        data-tier="dm"
+                        style={{ flexGrow: metric.bar.dm, flexBasis: 0 }}
+                      />
+                      <span
+                        className={styles.stripBarSeg}
+                        data-tier="em"
+                        style={{ flexGrow: metric.bar.em, flexBasis: 0 }}
+                      />
+                    </span>
+                  ) : (
+                    (metric?.value ?? (
+                      <span className={styles.skeleton} aria-hidden="true" />
+                    ))
                   )}
                 </span>
-                <span className={styles.stripSub}>{metric?.sub ?? ""}</span>
+                <span className={styles.stripSub}>
+                  {metric?.subCompact ? (
+                    <>
+                      <span className={styles.subExact}>{metric.sub}</span>
+                      <span className={styles.subCompact}>{metric.subCompact}</span>
+                    </>
+                  ) : (
+                    (metric?.sub ?? "")
+                  )}
+                </span>
               </button>
             );
           })}
         </div>
+        {tip ? (
+          <span className={styles.tip} style={{ left: tip.left }} aria-hidden="true">
+            {tip.text}
+          </span>
+        ) : null}
       </div>
 
       {disabled ? (

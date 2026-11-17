@@ -700,3 +700,91 @@
     display: none !important;
   }
 }
+
+/* ------------------------------------------------------------------------- */
+/* The Markets bar, and the two sub-label forms                              */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * Three segments whose widths are exactly the shares: `flex-grow` with a zero basis
+ * distributes the whole width in proportion, so a 55.6/30.3/13.7 split draws at
+ * 55.6/30.3/13.7 of the bar. The colours are the fund pages' tier tokens, so the strip
+ * and the Markets lens cannot disagree about which tier is which.
+ *
+ * The height is the headline's cap height: the value slot is `--text-20`, and a bar as
+ * tall as the digits' caps sits on the same optical line as the numbers in the other
+ * four tabs.
+ */
+.stripBar {
+  display: flex;
+  /* A fixed width, not `100%`: the value slot is a flex item sized by its content, so a
+   * percentage width resolves against zero. 7rem is wide enough for a 0.2% segment to
+   * still be a visible sliver and narrow enough to leave the tab's own width to the
+   * sub-label, which is what actually needs the room. */
+  width: 7rem;
+  height: 0.875rem;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.stripBarSeg {
+  min-width: 0;
+}
+
+.stripBarSeg[data-tier="us"] {
+  background: var(--tier-us);
+}
+
+.stripBarSeg[data-tier="dm"] {
+  background: var(--tier-dm);
+}
+
+.stripBarSeg[data-tier="em"] {
+  background: var(--tier-em);
+}
+
+/*
+ * The exact sub-label carries a decimal on three percentages, which needs about 176px;
+ * the compact one drops the decimal and fits the 130px tab. The swap is a media query
+ * rather than an ellipsis because an ellipsis would hide a whole tier — the one thing
+ * the label exists to prevent.
+ */
+.subCompact {
+  display: none;
+}
+
+@media (max-width: 63.99rem) {
+  .subExact {
+    display: none;
+  }
+
+  .subCompact {
+    display: inline;
+  }
+}
+
+/* ------------------------------------------------------------------------- */
+/* The Markets tooltip                                                       */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * Rendered on the strip's wrapper, not inside the tab: the strip scrolls horizontally,
+ * and a child of a scroll container is clipped by it. Shown on hover and on focus, so a
+ * keyboard reader gets the same sentence a mouse reader does; `aria-hidden` because the
+ * tab's accessible name already carries it.
+ */
+.tip {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  z-index: 30;
+  max-width: 22rem;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--text-12);
+  line-height: 1.4;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+  pointer-events: none;
+}

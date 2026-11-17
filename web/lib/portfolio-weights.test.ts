@@ -5,6 +5,7 @@ import {
   bpToCents,
   centsToBp,
   convertMode,
+  effectiveFundCount,
   entryLabel,
   equalise,
   followsEvenSplit,
@@ -310,5 +311,28 @@ describe("followsEvenSplit", () => {
     // An empty list has no even split to be in: `add` special-cases it, `remove` has
     // nothing to remove from one.
     expect(followsEvenSplit("bp", [])).toBe(false);
+  });
+});
+
+describe("the effective number of funds", () => {
+  it("is 1 / Σwᵢ², checked by hand", () => {
+    // Three funds at 50 / 30 / 20 of the portfolio.
+    //   Σwᵢ² = 0.25 + 0.09 + 0.04 = 0.38
+    //   1 / 0.38 = 2.6315789…
+    expect(effectiveFundCount({ A: 0.5, B: 0.3, C: 0.2 })).toBeCloseTo(2.6315789, 6);
+  });
+
+  it("renormalises over the funds, so a stock and cash do not change it", () => {
+    // The same 60 / 40 split of the fund sleeve, in a portfolio that also holds a
+    // stock and some cash. Renormalised: 0.6 / 0.4 → 1 / (0.36 + 0.16) = 1.9230769…
+    expect(effectiveFundCount({ A: 0.6, B: 0.4 })).toBeCloseTo(1.9230769, 6);
+    // And the same answer when the sleeve is only part of the whole.
+    expect(effectiveFundCount({ A: 0.3, B: 0.2 })).toBeCloseTo(1.9230769, 6);
+  });
+
+  it("is one for a single fund, and null when there is no fund weight", () => {
+    expect(effectiveFundCount({ A: 1 })).toBe(1);
+    expect(effectiveFundCount({})).toBeNull();
+    expect(effectiveFundCount({ A: 0 })).toBeNull();
   });
 });
