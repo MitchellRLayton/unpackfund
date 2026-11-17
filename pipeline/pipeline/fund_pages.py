@@ -1950,6 +1950,13 @@ def build(
         size_table = json.loads(size_path.read_text())
     catalogue_doc = json.loads((release_dir / CATALOGUE_FILE).read_text())
     catalogue: dict[str, list] = catalogue_doc["funds"]
+    # The release id, from the catalogue's own `as_of` rather than the directory name.
+    # `deploy-site.yml` generates pages from a mirror directory called `live`, so the
+    # directory name printed "Release live" in the sidebar; the catalogue is the object
+    # that actually knows which release it is. The directory name stays as the fallback
+    # for a hand-built release that has no catalogue (the tests write one, so this is
+    # the local-`artifacts/` path only).
+    release_id = catalogue_doc.get("as_of") or release_dir.name
     by_issuer = _issuer_index(catalogue)
     by_style = _style_index(catalogue)
     countries = load_countries(release_dir)
@@ -1999,7 +2006,7 @@ def build(
             ),
             countries=countries,
             contested=contested,
-            release_id=release_dir.name,
+            release_id=release_id,
         )
         target = out_dir / "f" / ticker / "index.html"
         target.parent.mkdir(parents=True, exist_ok=True)
