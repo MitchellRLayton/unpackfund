@@ -10,6 +10,6 @@ everything. Two hard boundaries worth restating for a harness that opens this fo
   cross the storage or Class A line before the first `PutObject`. Report a refusal with both figures;
   never add an override, raise a number, or upgrade a plan. Policy and sources:
   `../docs/04-decisions/ADR-0028-free-tier-cost-ceilings.md`. Measure with
-  `pnpm check:budget -- --release <dir>` or `--site web/out`.
+  `pnpm check:budget --release <dir>` or `pnpm check:budget --site web/out` (from the repo root).
 - **Filesystem.** Everything stays inside `/Users/mitchelllayton/Personal-AI-Sandbox`. Nothing
   outside it, ever — see `../AGENTS.md` §*Filesystem scope*.

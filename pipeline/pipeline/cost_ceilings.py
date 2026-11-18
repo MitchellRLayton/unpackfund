@@ -23,13 +23,26 @@ Why the per-release ceiling is what it is: the prune policy keeps the live relea
 staged candidate in full, plus four quarterly archive stubs (ADR-0011 §4). `MAX_RESIDENT_RELEASES`
 is 3, one more than the policy can hold, so a release that passes this gate leaves headroom
 even if a rollback parent is kept by hand. The byte ceiling is therefore
-`R2_FREE_BYTES * HEADROOM / MAX_RESIDENT_RELEASES`; the object ceiling is a month's Class A
-budget divided by 30, which is the one-release-a-day cadence the arithmetic in ADR-0028
-assumes.
+`R2_STORAGE_BUDGET / MAX_RESIDENT_RELEASES` (75 % of the allowance, split three ways); the object
+ceiling is a month's Class A budget divided by 30, which is the one-release-a-day cadence the
+arithmetic in ADR-0028 assumes.
 
-    python -m pipeline.cost_ceilings                          # the ceilings, as encoded
-    python -m pipeline.cost_ceilings --release artifacts/releases/2026-11-10.1
-    python -m pipeline.cost_ceilings --site web/out
+**What this gate cannot see, stated here so no reader assumes otherwise.** It judges one
+release at a time from the bytes it is about to publish; it does not read the bucket. A bucket
+already over the line — the 2026-11-10 incident — would accept a normal release, because the
+cause was a prune that deferred for ten days. Bucket state is guarded where it is known: the
+prune workflow (`prune.yml`, whose refusal is now a red run) and `pipeline.retention`'s plan,
+which prints and warns on the post-plan total. The two together are the enforcement; this
+module is the half that stops the growth. For the same reason the 33,333 figure is a
+30-day division: a 31-day month at one release a day is 1,033,323 objects, so the object line
+leaves the pointer puts, `next-id`'s listings and re-tries no room in a long month — see
+ADR-0028 §Residual gaps.
+
+Run from the repository root, so every path resolves as written:
+
+    pnpm check:budget                                    # the ceilings, as encoded
+    pnpm check:budget --release artifacts/releases/2026-11-10.1
+    pnpm check:budget --site web/out
 """
 
 from __future__ import annotations
@@ -168,9 +181,12 @@ def format_report(ceilings: list[Ceiling], *, heading: str = "free-tier ceiling"
 def guard_release(*, objects: int, bytes: int, release_id: str = "") -> list[Ceiling]:
     """Raise before the first `PutObject` when a release would cross a ceiling.
 
-    Called from `release.upload_release`, which is the only code that spends R2 Class A
-    operations. It refuses rather than warns for the same reason the 60% mass-delete
-    guard refuses: a warning inside a green job is how the bucket reached 16.33 GB.
+    Called from `release.upload_release` — the only place a *release* becomes Class A
+    operations. The repository has other writers (`promote_release`'s pointer put, retention's
+    batched deletes, triage, telemetry); they are not releases and are not this gate's
+    business, which is why the claim is narrow on purpose. It refuses rather than warns for the
+    same reason the 60% mass-delete guard refuses: a warning inside a green job is how the
+    bucket reached 16.33 GB.
     """
     ceilings = assess_release(objects=objects, bytes=bytes)
     over = over_budget(ceilings)

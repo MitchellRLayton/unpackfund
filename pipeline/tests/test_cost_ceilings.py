@@ -9,6 +9,8 @@ one definition — `retention` imports them, it does not restate them.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from pipeline import cost_ceilings as cc
@@ -43,15 +45,25 @@ def test_a_release_that_would_not_fit_the_steady_state_is_refused():
         cc.guard_release(objects=WIDE_OBJECTS, bytes=cc.MAX_RELEASE_BYTES + 1)
 
 
-def test_steady_state_fits_the_storage_allowance_by_construction():
-    assert cc.MAX_RESIDENT_RELEASES * cc.MAX_RELEASE_BYTES <= cc.R2_FREE_BYTES
+def test_steady_state_fits_the_headroom_budget_by_construction():
+    # Against the *budget*, not the raw allowance: this test failed the independent review
+    # because `3 x MAX_RELEASE_BYTES <= R2_FREE_BYTES` still held with HEADROOM = 1.0, so the
+    # 75 % policy could have been deleted and the suite stayed green.
+    assert cc.R2_STORAGE_BUDGET == int(cc.R2_FREE_BYTES * cc.HEADROOM)
+    assert cc.MAX_RESIDENT_RELEASES * cc.MAX_RELEASE_BYTES <= cc.R2_STORAGE_BUDGET
+    assert cc.HEADROOM < 1.0
     # The policy's own steady state (live + staged full, four stubs) is ~1.0 GB, well inside.
     assert cc.MAX_RELEASE_BYTES >= GB
 
 
 def test_retention_shares_the_definition_rather_than_restating_it():
-    assert retention.FREE_TIER_BYTES == cc.R2_FREE_BYTES
-    assert retention.GB == cc.GB
+    # `is`, not `==`: an imported name is the same object, while a local
+    # `FREE_TIER_BYTES = 10 * GB` recomputes equal but distinct — the previous `==` test
+    # passed on the restating code the commit claimed to have removed.
+    assert retention.FREE_TIER_BYTES is cc.R2_FREE_BYTES
+    assert retention.GB is cc.GB
+    source = Path(retention.__file__).read_text()
+    assert "FREE_TIER_BYTES = 10 * GB" not in source
 
 
 def test_measured_site_is_inside_the_workers_asset_cap():
@@ -114,6 +126,26 @@ def test_upload_refuses_before_a_single_put(tmp_path, monkeypatch):
 
     release_dir = write_release(tmp_path, [fund_document()], release_id="2026-11-18.1")
     monkeypatch.setattr(cc, "MAX_RELEASE_OBJECTS", 0)
+    _assert_upload_refused(release_dir)
+
+
+def test_upload_refuses_on_the_byte_line_too(tmp_path, monkeypatch):
+    """The byte ceiling has to be wired into the spending path as well as the object count.
+
+    The independent review of PR #128 found the upload test drove only the object line, so a
+    release could have been refused for its count and silently accepted for its size.
+    """
+    from tests.conftest import fund_document, write_release
+
+    release_dir = write_release(tmp_path, [fund_document()], release_id="2026-11-18.4")
+    published = sum(path.stat().st_size for path in release_dir.rglob("*") if path.is_file())
+    monkeypatch.setattr(cc, "R2_STORAGE_BUDGET", published * cc.MAX_RESIDENT_RELEASES - 1)
+    _assert_upload_refused(release_dir)
+
+
+def _assert_upload_refused(release_dir):
+    """An upload through the real `upload_release` that must refuse before touching a client."""
+    from pipeline import release
 
     calls: list[str] = []
 
@@ -127,7 +159,19 @@ def test_upload_refuses_before_a_single_put(tmp_path, monkeypatch):
             release_dir,
             client=Unreachable(),
             public=Unreachable(),
-            prefix="releases/2026-11-18.1",
+            prefix=f"releases/{release_dir.name}",
             pointer_prefix="staging/latest",
         )
     assert calls == []
+
+
+def test_cli_refuses_a_release_over_the_byte_line(tmp_path, monkeypatch):
+    """The byte path through `main` was untested; only the object line was driven."""
+    release_dir = tmp_path / "2026-11-18.2"
+    release_dir.mkdir()
+    (release_dir / "manifest.json").write_bytes(b"x" * 3)
+    # 3 bytes x 3 resident releases = 9: exactly on the line passes, one byte under refuses.
+    monkeypatch.setattr(cc, "R2_STORAGE_BUDGET", 9)
+    assert cc.main(["--release", str(release_dir)]) == 0
+    monkeypatch.setattr(cc, "R2_STORAGE_BUDGET", 8)
+    assert cc.main(["--release", str(release_dir)]) == 1
