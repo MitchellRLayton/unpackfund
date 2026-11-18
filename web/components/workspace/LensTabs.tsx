@@ -49,6 +49,7 @@ import type { WorkspaceModel } from "@/lib/use-workspace";
 import type { Lens } from "@/lib/view-fragment";
 
 import { useWorkspaceActions } from "./actions";
+import { NotesStrip } from "./NotesStrip";
 import type { LensMetric } from "./metrics";
 import { LENS_TABS } from "./types";
 import styles from "./Workspace.module.css";
@@ -442,6 +443,10 @@ export function LensTabs({
           </span>
         ) : null}
       </div>
+
+      {/* Directly under the metric strip, on every lens. Renders nothing when no
+       * condition fires. */}
+      <NotesStrip model={model} />
 
       {disabled ? (
         <p id={DISABLED_NOTE_ID} className="small muted">

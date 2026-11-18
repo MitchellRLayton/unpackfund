@@ -788,3 +788,55 @@
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
   pointer-events: none;
 }
+
+/* ------------------------------------------------------------------------- */
+/* The notes strip                                                           */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * One line per note, directly under the metric strip, on every lens. It is not dismissible:
+ * a caveat that can be dismissed is a caveat the reader dismisses once and then reads the
+ * figures without. Nothing renders when no condition fires.
+ */
+.notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-12);
+  color: var(--graphite);
+}
+
+.note {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  line-height: 1.45;
+}
+
+.noteIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 0.95rem;
+  height: 0.95rem;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 0.6rem;
+  font-style: italic;
+  font-weight: 600;
+  line-height: 1;
+  transform: translateY(0.1rem);
+}
+
+/* A warning is the alert ink; an informational note is the muted one. No new colour. */
+.note[data-tone="warning"] .noteIcon {
+  color: var(--alert);
+}
+
+.note[data-tone="info"] .noteIcon {
+  color: var(--graphite);
+}

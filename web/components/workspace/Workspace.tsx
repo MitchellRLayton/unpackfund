@@ -135,7 +135,6 @@ export function Workspace() {
     <h1 className="visually-hidden">See the companies behind your funds</h1>
   ) : (
     <header className={styles.head}>
-      <p className="eyebrow">X-Ray</p>
       <h1 className="title">See the companies behind your funds</h1>
       <p className="subtitle">
         Add the funds you own and UnpackFund adds their SEC filings up: the companies you
