@@ -266,7 +266,7 @@ export function buildMetrics(model: WorkspaceModel, provider: Provider): LensMet
       : null;
     metrics.set("quality", {
       id: "quality",
-      label: "Data quality",
+      label: "Data Quality",
       value,
       sub,
       sentence: sentenceOf("Data quality", value, sub, coverageDot),

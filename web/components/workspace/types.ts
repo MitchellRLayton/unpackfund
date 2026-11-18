@@ -30,5 +30,5 @@ export const LENS_TABS: LensDefinition[] = [
   { id: "markets", label: "Markets" },
   { id: "funds", label: "Funds" },
   { id: "overlap", label: "Overlap" },
-  { id: "quality", label: "Data quality" },
+  { id: "quality", label: "Data Quality" },
 ];

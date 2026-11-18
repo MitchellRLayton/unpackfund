@@ -420,7 +420,12 @@ describe("the four lenses render a worked portfolio", () => {
     expect(html).not.toContain("In the partial band");
     // Both captions survive as sr-only `<caption>`s (H9), and the band rule is the
     // coverage header's tip rather than a paragraph.
-    expect(html).toContain("Coverage by fund, least covered first.");
+    // The table opens in the order the reader added the funds, and every column except
+    // the dates sorts, so the caption says so rather than claiming a fixed order.
+    expect(html).toContain("Opens in the order you added the funds");
+    expect(html).toContain("every column");
+    // The four sortable headers carry a button; the dates column does not.
+    expect(html.match(/table__sort/g) ?? []).toHaveLength(4);
     expect(html).toContain("Every part of your portfolio, adding to 100%.");
     expect(html).toContain('aria-label="About Coverage"');
     // The Count header carries the zero-basis-point rule now (P-Q-05). A tip's text is
