@@ -342,3 +342,150 @@ def test_the_command_line_refuses_without_a_pepper(tmp_path, monkeypatch, capsys
     (tmp_path / "isins.json").write_text(json.dumps([ISIN_A]))
     code = figi.main(["refresh", "--isins", str(tmp_path / "isins.json"), "--cache", str(tmp_path / "c")])
     assert code == 2 and "no unkeyed fallback" in capsys.readouterr().err
+
+
+# --- the nightly's three steps: collect, pull, push ------------------------------------------
+
+
+class _Body:
+    def __init__(self, body: bytes):
+        self._body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self) -> bytes:
+        return self._body
+
+
+def _written_cache(tmp_path):
+    run([ISIN_A, ISIN_B], tmp_path, FakeOpenFigi({ISIN_A: record(), ISIN_B: record(FIGI_B)}))
+    return tmp_path / "figi_cache_v1.jsonl"
+
+
+def test_a_real_cache_passes_the_shape_check(tmp_path):
+    assert figi.verify_cache_shape(_written_cache(tmp_path)) == 2
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        {"key": "a" * 32, "status": "OK", "fetched_at": TODAY, "isin": ISIN_A},  # an ISIN field
+        {"key": ISIN_A, "status": "OK", "fetched_at": TODAY},                       # an ISIN as the key
+        {"key": "A" * 32, "status": "OK", "fetched_at": TODAY},                     # not lower-case hex
+        {"key": "a" * 31, "status": "OK", "fetched_at": TODAY},                     # wrong length
+        {"key": "a" * 32, "status": "OK", "fetched_at": TODAY, "name": "Kakao Corp"},  # a description
+    ],
+)
+def test_a_file_that_could_carry_an_identifier_is_refused(tmp_path, line):
+    path = tmp_path / "c.jsonl"
+    path.write_text(json.dumps(line) + "\n")
+    with pytest.raises(figi.FigiError):
+        figi.verify_cache_shape(path)
+
+
+def test_pull_fetches_with_a_cache_buster_and_a_first_night_is_not_an_error(tmp_path):
+    cache = _written_cache(tmp_path)
+    seen = []
+
+    def opener(request, timeout):
+        seen.append(request.full_url)
+        return _Body(cache.read_bytes())
+
+    out = tmp_path / "pulled.jsonl"
+    assert figi.pull(out, opener=opener) is True
+    assert out.read_bytes() == cache.read_bytes()
+    assert seen[0].startswith("https://data.unpackfund.com/inputs/figi_cache_v1.jsonl?v=")
+
+    import urllib.error
+
+    def not_found(request, timeout):
+        raise urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, None)
+
+    missing = tmp_path / "missing.jsonl"
+    assert figi.pull(missing, opener=not_found) is False and not missing.exists()
+
+    def broken(request, timeout):
+        raise urllib.error.HTTPError(request.full_url, 500, "Server Error", {}, None)
+
+    with pytest.raises(figi.FigiError):
+        figi.pull(tmp_path / "x.jsonl", opener=broken)
+
+
+def test_pull_refuses_and_removes_an_unsafe_file(tmp_path):
+    out = tmp_path / "pulled.jsonl"
+    bad = (json.dumps({"key": "a" * 32, "status": "OK", "fetched_at": TODAY, "isin": ISIN_A}) + "\n").encode()
+    with pytest.raises(figi.FigiError):
+        figi.pull(out, opener=lambda request, timeout: _Body(bad))
+    assert not out.exists()
+
+
+class _FakeR2:
+    def __init__(self):
+        self.puts = []
+
+    def put(self, key, body, **kwargs):
+        self.puts.append((key, body, kwargs))
+        return "etag"
+
+
+def test_push_writes_one_mutable_object_outside_every_release_prefix(tmp_path):
+    cache = _written_cache(tmp_path)
+    client = _FakeR2()
+    assert figi.push(cache, client=client) == 2
+    ((key, body, kwargs),) = client.puts
+    assert key == "inputs/figi_cache_v1.jsonl" and not key.startswith(("releases/", "latest/", "staging"))
+    assert body == cache.read_bytes()
+    assert kwargs["cache_control"] == "no-cache", "rewritten nightly: it must not be cached as immutable"
+
+
+def test_push_refuses_an_unsafe_file_before_any_upload(tmp_path):
+    path = tmp_path / "c.jsonl"
+    path.write_text(json.dumps({"key": ISIN_A, "status": "OK", "fetched_at": TODAY}) + "\n")
+    client = _FakeR2()
+    with pytest.raises(figi.FigiError):
+        figi.push(path, client=client)
+    assert client.puts == []
+
+
+def test_collect_lists_valid_long_equity_isins_only(monkeypatch):
+    from types import SimpleNamespace
+
+    from pipeline import build, filings
+    from pipeline.nport import Holding
+
+    def row(isin, **over):
+        fields = dict(name="X", title="", cusip=None, isin=isin, ticker=None, lei=None, balance=1.0,
+                      units="NS", cur_cd="USD", val_usd=10.0, pct_val=None, asset_cat="EC",
+                      issuer_cat="CORP", inv_country="KR", payoff_profile="Long", is_derivative=False)
+        fields.update(over)
+        return Holding(**fields)
+
+    wrong_check_digit = ISIN_A[:-1] + str((int(ISIN_A[-1]) + 1) % 10)
+    rows = {
+        "one": [row(ISIN_A), row(ISIN_B, balance=-1.0, val_usd=-5.0),  # long kept, short dropped
+                row(ISIN_C, asset_cat="DBT"), row(wrong_check_digit), row(None)],
+        "two": [row(ISIN_A.lower()), row(synthetic_isin(5))],
+    }
+
+    def latest(ref):
+        if ref == "broken":
+            raise RuntimeError("unreadable filing")
+        return SimpleNamespace(filing=SimpleNamespace(holdings=rows[ref]))
+
+    monkeypatch.setattr(build, "resolve_universe", lambda spec: ["one", "two", "broken"])
+    monkeypatch.setattr(filings, "prefetch", lambda refs, **kw: {})
+    monkeypatch.setattr(filings, "latest", latest)
+
+    got = figi.collect_isins("all", workers=2)
+    assert got == sorted({ISIN_A, synthetic_isin(5)}), "deduplicated, sorted, only long valid equity"
+
+
+def test_the_three_steps_need_neither_the_key_nor_the_pepper(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv(figi.PEPPER_ENV, raising=False)
+    monkeypatch.delenv(identifiers.KEY_ENV, raising=False)
+    code = figi.main(["push", "--cache", str(tmp_path / "absent.jsonl")])
+    assert code == 0 and json.loads(capsys.readouterr().out)["pushed"] == 0

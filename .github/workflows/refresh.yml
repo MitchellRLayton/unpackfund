@@ -26,6 +26,10 @@ on:
         description: "build even when detection finds no new filings"
         type: boolean
         default: false
+      shadow:
+        description: "comparison build for the coverage uplift: use the OpenFIGI rung (R7) and the direct-ISIN join (R3x), stage to staging-shadow/latest only so promote.yml can never pick it up, and skip the site and the preview. Implies force. docs/platform/coverage-uplift.md section 5.1"
+        type: boolean
+        default: false
   schedule:
     # 06:30 UTC = 02:30 ET, about 4.5 hours after EDGAR writes the previous day's
     # index (observed 22:01 ET). GitHub's cron is best-effort and can start hours
@@ -145,7 +149,7 @@ jobs:
   stage:
     name: build, gate, stage, preview
     needs: detect
-    if: needs.detect.outputs.new_filings != '0' || inputs.force
+    if: needs.detect.outputs.new_filings != '0' || inputs.force || inputs.shadow
     runs-on: ubuntu-latest
     timeout-minutes: 300
     outputs:
@@ -222,16 +226,66 @@ jobs:
           echo "no GLEIF golden copy in the last four days — the build cannot claim the issuer namespace" >&2
           exit 1
 
+      # The OpenFIGI cache (docs/platform/coverage-uplift.md section 5.1). Every night, and it can
+      # never make a night red: `continue-on-error`, and the nightly build below does not read the
+      # cache, so a failure here costs nothing but a colder cache tomorrow. The build never calls
+      # the network (H-CV5), so the asking happens here, before it: last night's cache from R2,
+      # every long equity ISIN in the latest filings, ask OpenFIGI only about the ones the cache
+      # does not already answer, keep the result. The cache is keyed by HMAC(pepper, ISIN), so it
+      # holds no ISIN and may sit in the public bucket (`inputs/`, outside every release prefix).
+      - name: Refresh the OpenFIGI cache
+        id: figi
+        continue-on-error: true
+        timeout-minutes: 90
+        working-directory: pipeline
+        env:
+          OPENFIGI_API_KEY: ${{ secrets.OPENFIGI_API_KEY }}
+          FIGI_CACHE_PEPPER: ${{ secrets.FIGI_CACHE_PEPPER }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          CACHE="$RUNNER_TEMP/figi_cache_v1.jsonl"
+          python -m pipeline.figi pull --out "$CACHE"
+          python -m pipeline.figi collect --universe all --out "$RUNNER_TEMP/isins.json" --workers 8
+          python -m pipeline.figi refresh --isins "$RUNNER_TEMP/isins.json" --cache "$CACHE"
+          python -m pipeline.figi stats --cache "$CACHE"
+
+      # `always()`: a refresh that died halfway still checkpointed what it had, and tomorrow
+      # should not start from nothing. A missing file is not an error.
+      - name: Keep the OpenFIGI cache for tomorrow
+        if: always()
+        continue-on-error: true
+        working-directory: pipeline
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: python -m pipeline.figi push --cache "$RUNNER_TEMP/figi_cache_v1.jsonl"
+
       - name: Build the wide release
         working-directory: pipeline
+        env:
+          FIGI_CACHE_PEPPER: ${{ secrets.FIGI_CACHE_PEPPER }}
         run: |
           # The cache makes this incremental in the CDC sense: an accession-addressed
           # document is immutable, so a hit is final and only new filings hit EDGAR.
           # Index documents are re-read on their own max_age, so a cached copy can never
           # answer "nothing changed" for yesterday.
+          #
+          # A shadow run is the only one that uses the OpenFIGI rungs. They map rows that are
+          # unmapped today, so they change published numbers; those ship as a staged release the
+          # owner compares first (H-CV7), never as a side effect of the nightly. If the cache is
+          # missing the build refuses (a coverage drop must not be published quietly).
+          EXTRA=()
+          if [ "${{ inputs.shadow }}" = "true" ]; then
+            EXTRA+=(--figi-cache "$RUNNER_TEMP/figi_cache_v1.jsonl" --isin-direct-join)
+          fi
           python -m pipeline.build --universe all \
             --out ../artifacts --workers 8 --progress-every 1000 \
-            --release-id ${{ steps.allocate.outputs.id }}
+            --release-id ${{ steps.allocate.outputs.id }} \
+            ${EXTRA[@]+"${EXTRA[@]}"}
 
       - name: Keep the documents for tomorrow
         if: always()
@@ -288,17 +342,28 @@ jobs:
         run: |
           # No --allow-live: `release upload` refuses to touch latest/ without it, and
           # this workflow does not pass it. Promotion is promote.yml's job, tomorrow.
+          #
+          # A shadow run writes its own pointer. promote.yml promotes whatever staging/latest
+          # names, so a comparison build must never move that pointer.
+          POINTER=()
+          if [ "${{ inputs.shadow }}" = "true" ]; then
+            POINTER+=(--pointer-prefix staging-shadow/latest)
+          fi
           python -m pipeline.release upload \
-            --release "../artifacts/releases/${{ steps.release.outputs.id }}"
+            --release "../artifacts/releases/${{ steps.release.outputs.id }}" \
+            ${POINTER[@]+"${POINTER[@]}"}
 
       - uses: pnpm/action-setup@v4
+        if: ${{ !inputs.shadow }}
 
       - uses: actions/setup-node@v4
+        if: ${{ !inputs.shadow }}
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install the site
+        if: ${{ !inputs.shadow }}
         run: pnpm install --frozen-lockfile
 
       # Two builds, and the difference is one baked-in string: the pointer the browser
@@ -316,6 +381,7 @@ jobs:
       # interpreter and appends arguments inside `pipeline/`, neither of which is true
       # on a runner. `pip install ./pipeline` puts the same module on the path here.
       - name: Build the production site with the fund pages for this release
+        if: ${{ !inputs.shadow }}
         run: |
           pnpm build
           python -m pipeline.fund_pages \
@@ -325,6 +391,7 @@ jobs:
       # The exact bytes that ship tomorrow. `promote.yml` deploys this artifact rather
       # than rebuilding, so a promotion cannot publish pages nobody looked at.
       - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.shadow }}
         with:
           name: site
           path: web/out
@@ -332,6 +399,7 @@ jobs:
           if-no-files-found: error
 
       - name: Build the preview site against the staged pointer
+        if: ${{ !inputs.shadow }}
         env:
           NEXT_PUBLIC_POINTER_PATH: staging/latest/release.json
         run: |
@@ -345,6 +413,7 @@ jobs:
 
       # The one human-reviewable surface: a Worker with no domain of its own.
       - name: Publish the preview
+        if: ${{ !inputs.shadow }}
         env:
           # wrangler's env var name is CLOUDFLARE_API_TOKEN; the repository secret is
           # CLOUDFLARE_ACCOUNT_API_TOKEN (set 2026-10-28), so map one onto the other rather
@@ -354,6 +423,7 @@ jobs:
         run: npx --yes ${{ env.WRANGLER }} deploy --config wrangler.preview.jsonc
 
       - name: Smoke the preview
+        if: ${{ !inputs.shadow }}
         run: |
           set -euo pipefail
           BASE="https://unpackfund-preview.mitchell-layton.workers.dev"
