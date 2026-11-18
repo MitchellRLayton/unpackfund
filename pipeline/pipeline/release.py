@@ -27,6 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from . import paths
+from .cost_ceilings import CostCeilingError, guard_release
 from .r2 import IMMUTABLE, NO_CACHE, Credentials, PublicReader, R2Client, R2Error
 from .sigv4 import EMPTY_PAYLOAD_SHA256  # noqa: F401  (re-exported for tests that stub signing)
 
@@ -347,6 +348,17 @@ def upload_release(
 ) -> UploadReport:
     manifest, objects, release_descriptor = read_release(release)
     guard_prefixes(prefix, pointer_prefix, allow_live)
+
+    # Spend gate, before the first PutObject (ADR-0028). The bytes are the ones in
+    # memory, not an estimate from the directory: crossing 10 GB-month or a million
+    # Class A operations bills a whole extra unit, so a release that would cross the
+    # line has to be refused here rather than discovered on an invoice. Dry runs pass
+    # through the same gate so `--dry-run` reports what a real upload would do.
+    guard_release(
+        objects=len(objects),
+        bytes=sum(len(body) for _relative, body, _digest in objects),
+        release_id=str(manifest.get("as_of") or prefix),
+    )
 
     prefix = prefix.strip("/")
     # The pointer's *name* carries its schema. Day 4's pointer was
@@ -980,7 +992,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  credentials from .env: {', '.join(loaded)}")
         _print_report(report)
         return 1 if report.failures else 0
-    except ReleaseError as error:
+    except (ReleaseError, CostCeilingError) as error:
         print(f"FAIL: {error}")
         return 1
 

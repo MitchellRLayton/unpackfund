@@ -11,6 +11,7 @@ import re
 
 from . import weights
 from .identifiers import UNNAMED_HOLDING, is_licensed, public_name
+from .namespaces import is_security_id
 from .classify import CATEGORY_ORDER
 
 import hashlib
@@ -141,6 +142,30 @@ def identified_fields(
     return {"identified_pct": identified_pct, "identified_by_cat": by_cat}
 
 
+def security_matched_fields(holdings: list[dict[str, Any]]) -> dict[str, Any]:
+    """``security_matched_pct``: the share of the fund that is an ``f_`` company, or nothing.
+
+    ``coverage_pct`` counts the weight on any company, and an ``f_`` company is one the ladder
+    could not name beyond its share line — OpenFIGI says *which security*, not *which company* —
+    so it has no size, sector or industry (owner decision OD-CV1, 2026-11-18: counted, and
+    disclosed). This is the disclosure: the part of ``coverage_pct`` that is security-matched
+    only, so no surface can show the attributed figure without the means to say so.
+
+    **Optional by presence.** A document with no ``f_`` row publishes no key, so a release built
+    without an OpenFIGI cache is byte-identical to one built before the field existed, and a
+    consumer that ignores it reads the document it read before. Same derivation as coverage: the
+    published rows, the gross denominator (both sides of a short), one decimal. Derived here and
+    checked by the validator, never passed in.
+    """
+    gross = sum(abs(row["weight_bp"]) for row in holdings)
+    matched = sum(
+        abs(row["weight_bp"]) for row in holdings if is_security_id(row.get("company_id"))
+    )
+    if not gross or not matched:
+        return {}
+    return {"security_matched_pct": round(100 * matched / gross, 1)}
+
+
 def build_fund_artifact(
     *,
     ticker: str,
@@ -205,6 +230,8 @@ def build_fund_artifact(
             identified_pct=identified_pct,
             identified_by_cat=identified_by_cat,
         ),
+        # Additive, optional by presence: how much of ``coverage_pct`` is security-matched only.
+        **security_matched_fields(holdings),
         "holdings": holdings,
         "metrics": metrics,
         "warnings": warnings,
@@ -320,6 +347,7 @@ def attach_fund_of_funds(
         # rows, so the old ratio would describe a vector this document no longer
         # publishes.
         **identified_fields(holdings),
+        **security_matched_fields(holdings),
         "holdings": [published_row(row) for row in holdings],
         "metrics": metrics,
     }

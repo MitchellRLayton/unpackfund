@@ -14,7 +14,7 @@
  *
  * **A dot only where the site already judges.** The Companies tab carries the
  * single-company risk band (`DIVERSIFICATION_BANDS`, the same five bands the Effective
- * holdings block prints). The Data quality tab carries a dot only below the 70% band
+ * holdings block prints). The Data Quality tab carries a dot only below the 70% band
  * boundary `coverageBand` already defines. Overlap carries none: the methodology page
  * defines what overlap *is* (`web/app/methodology/page.tsx`, the `#overlap` section) and
  * sets no threshold on it, and `OVERLAP_NOTABLE` in `answer.ts` is a "worth a sentence"
@@ -43,7 +43,7 @@ function wholePct(share: number): string {
   return `${Math.round(share * 100)}%`;
 }
 
-/** The coverage band boundary the Data quality dot answers to. */
+/** The coverage band boundary the Data Quality dot answers to. */
 export const COVERAGE_DOT_BELOW = 70;
 
 export interface LensMetric {
@@ -252,7 +252,7 @@ export function buildMetrics(model: WorkspaceModel, provider: Provider): LensMet
     });
   }
 
-  // 5. Data quality — coverage, and the oldest period behind it.
+  // 5. Data Quality — coverage, and the oldest period behind it.
   if (ledger.funds.length > 0) {
     const covered = Math.max(0, Math.min(100, ledger.metrics.covered_weight_pct));
     const value = formatPct1Of(covered);
@@ -266,10 +266,10 @@ export function buildMetrics(model: WorkspaceModel, provider: Provider): LensMet
       : null;
     metrics.set("quality", {
       id: "quality",
-      label: "Data quality",
+      label: "Data Quality",
       value,
       sub,
-      sentence: sentenceOf("Data quality", value, sub, coverageDot),
+      sentence: sentenceOf("Data Quality", value, sub, coverageDot),
       dot: coverageDot,
     });
   }

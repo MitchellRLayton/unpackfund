@@ -24,6 +24,7 @@ from typing import Any
 
 from .identifiers import LICENSED_ID_RE, is_licensed
 from .gleif import is_issuer_id, is_sec_company_id, LEI_RE
+from .namespaces import COMPANY_ID_RE, is_security_id
 
 from . import paths
 from . import sizes
@@ -41,7 +42,7 @@ REPO_ROOT = paths.REPO_ROOT
 TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,9}$")
 
 #: A published company id: ``c_`` + 10-digit CIK, or ``l_`` + 16 hex (companies.py).
-COMPANY_ID_RE = re.compile(r"^(?:c_\d{10}|l_[0-9a-f]{16})$")
+# ``COMPANY_ID_RE`` (all three namespaces) is declared once, in ``namespaces``.
 #: ``YYYY-MM-DD``, the shape every date in a release carries. The size table is the
 #: one object where a date is an argument rather than a filing artefact (ADR-0022).
 _DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -82,9 +83,14 @@ WARNING_ENUM = {
 }
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RELEASE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(\.\d+)?$")
+#: An N-MFP series id, and the two forms that make a series a money-market fund.
+MMFP_SERIES_RE = re.compile(r"^S\d{9}$")
+MMF_FORMS = ("N-MFP2", "N-MFP3")
 # A CUSIP is 3-digit issuer prefix + 5 alphanumeric + 1 check digit. Bounded so it
 # cannot match inside a 10-digit CIK or a series id. Non-US issuers may use letters
-# in the prefix, which this misses — hence the belt-and-braces key check.
+# in the prefix, which this misses — hence the belt-and-braces key check. An ISIN
+# (two letters + 9 alphanumeric + a check digit; a US or Canadian one contains a CUSIP)
+# is tested by ``identifiers.is_licensed``, which is what ``_check_cusip`` calls.
 # Imported rather than restated: the pattern that redacts in ``artifact`` and the
 # pattern that fails the release here must be the same rule.
 CUSIP_RE = LICENSED_ID_RE
@@ -615,7 +621,56 @@ def _check_fund(document: dict, report: Report) -> None:
 
     _check_categories(document, report)
     _check_identified(document, report)
+    _check_security_matched(document, report)
     _check_fund_of_funds(document, report)
+
+
+def _check_security_matched(document: dict, report: Report) -> None:
+    """``security_matched_pct`` is the weight on ``f_`` rows, present exactly when there is any.
+
+    An ``f_`` company counts toward ``coverage_pct`` but is only a named share line (owner
+    decision OD-CV1), so the part of the coverage figure that is security-matched is published
+    beside it. Held here: the field appears if and only if the document's own rows carry an ``f_``
+    id (a field with no row behind it, or rows with no field, is the defect); it equals the
+    weight those rows carry over the gross weight, to one decimal; and it can never exceed
+    ``coverage_pct``, of which it is a part. Optional by presence, so a document that predates it
+    still validates.
+    """
+    ticker = document.get("ticker", "?")
+    rows = [row for row in document.get("holdings") or [] if isinstance(row, dict)]
+    gross = sum(abs(int(row.get("weight_bp") or 0)) for row in rows)
+    matched = sum(
+        abs(int(row.get("weight_bp") or 0)) for row in rows if is_security_id(row.get("company_id"))
+    )
+    published = "security_matched_pct" in document
+    if not matched:
+        if published:
+            report.fail(
+                f"{ticker}.security_matched_pct", "published, but no holding carries an f_ id"
+            )
+        return
+    if not published:
+        report.fail(
+            f"{ticker}.security_matched_pct",
+            f"missing: {matched:,} bp of holdings carry an f_ id",
+        )
+        return
+    pct = document["security_matched_pct"]
+    if isinstance(pct, bool) or not isinstance(pct, (int, float)) or not 0 <= pct <= 100:
+        report.fail(f"{ticker}.security_matched_pct", f"{pct!r} is not a percentage")
+        return
+    exact = 100 * matched / gross if gross else 0.0
+    if abs(pct - exact) > IDENTIFIED_PERCENT_SLACK:
+        report.fail(
+            f"{ticker}.security_matched_pct", f"{pct!r} != recomputed {exact:.4f} from the rows"
+        )
+    coverage = document.get("coverage_pct")
+    if isinstance(coverage, (int, float)) and not isinstance(coverage, bool):
+        if pct > coverage + IDENTIFIED_PERCENT_SLACK:
+            report.fail(
+                f"{ticker}.security_matched_pct",
+                f"{pct!r} exceeds coverage_pct {coverage!r}, of which it is a part",
+            )
 
 
 #: A fund publishing at least this much in funds must name the sleeves it holds.
@@ -1539,7 +1594,7 @@ def _check_cusip(release_dir: Path, manifest: dict, report: Report) -> None:
                 break
         for value in _strings(document):
             if is_licensed(value):
-                offenders.append(f"{path.name}: CUSIP-shaped token {value!r}")
+                offenders.append(f"{path.name}: CUSIP- or ISIN-shaped token {value!r}")
                 break
     if offenders:
         report.fail("cusip", "; ".join(offenders))
@@ -1569,9 +1624,9 @@ def _check_lei(release_dir: Path, manifest: dict, report: Report) -> None:
                 offenders.append(f"{path.name}: LEI-shaped token")
                 break
         for value in _strings(document):
-            if is_sec_company_id(value) or is_issuer_id(value):
+            if is_sec_company_id(value) or is_issuer_id(value) or is_security_id(value):
                 continue
-            if value.startswith(("c_", "l_")) and len(value) > 2:
+            if value.startswith(("c_", "l_", "f_")) and len(value) > 2:
                 bad_ids.append(f"{path.name}: malformed company id {value!r}")
                 break
     if offenders:
@@ -1581,7 +1636,7 @@ def _check_lei(release_dir: Path, manifest: dict, report: Report) -> None:
     if bad_ids:
         report.fail("company_id", "; ".join(bad_ids))
     else:
-        report.ok("company_id", "every c_/l_ id matches its namespace's shape")
+        report.ok("company_id", "every c_/l_/f_ id matches its namespace's shape")
 
 
 def _check_budget(release_dir: Path, report: Report) -> None:
@@ -1605,6 +1660,60 @@ def _check_budget(release_dir: Path, report: Report) -> None:
 #: `release.json` is the document the pointer publishes; its shape is versioned
 #: separately from the fund documents it describes.
 RELEASE_SCHEMA_VERSION = 2
+
+
+
+def _check_mmf_aliases(release_dir: Path, funds: list[dict], report: Report) -> None:
+    """AU-2: the money-market alias list, and the one rule that keeps it honest.
+
+    A ticker in this list is a fund the release does **not** publish. The moment one also
+    appears as an N-PORT fund, the product has two answers for one ticker — a money
+    market row with no stocks and a real holdings document — so the release fails rather
+    than letting a consumer pick one.
+    """
+    path = release_dir / "mmf_aliases.json"
+    if not path.exists():
+        report.ok("mmf_aliases", "absent (no money-market aliases in this release)")
+        return
+    try:
+        document = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        report.fail("mmf_aliases", f"unreadable: {error}")
+        return
+    aliases = document.get("aliases")
+    if not isinstance(aliases, list) or not aliases:
+        report.fail("mmf_aliases.aliases", "missing or empty")
+        return
+
+    published = {fund["ticker"].upper() for fund in funds}
+    seen: set[str] = set()
+    for position, entry in enumerate(aliases):
+        label = f"mmf_aliases[{position}]"
+        if not isinstance(entry, dict):
+            report.fail(label, "not an object")
+            return
+        missing = [key for key in ("ticker", "series_id", "name", "latest_form") if key not in entry]
+        if missing:
+            report.fail(label, f"missing {missing}")
+            return
+        ticker = str(entry["ticker"])
+        if not TICKER_RE.match(ticker):
+            report.fail(f"{label}.ticker", ticker)
+        if ticker in seen:
+            report.fail(f"{label}.ticker", f"{ticker} appears twice")
+        seen.add(ticker)
+        if ticker.upper() in published:
+            report.fail(f"{label}.ticker", f"{ticker} is also a published N-PORT fund")
+        if not MMFP_SERIES_RE.match(str(entry["series_id"])):
+            report.fail(f"{label}.series_id", str(entry["series_id"]))
+        if entry["latest_form"] not in MMF_FORMS:
+            report.fail(f"{label}.latest_form", str(entry["latest_form"]))
+        if not isinstance(entry["name"], str) or not entry["name"].strip():
+            report.fail(f"{label}.name", repr(entry["name"]))
+        if "class_id" in entry and not isinstance(entry["class_id"], str):
+            report.fail(f"{label}.class_id", repr(entry["class_id"]))
+    if not report.failures:
+        report.ok("mmf_aliases", f"{len(aliases)} money-market ticker(s), none published")
 
 
 def _check_catalogue(release_dir: Path, manifest: dict, funds: list[dict], report: Report) -> None:
@@ -1993,6 +2102,7 @@ def validate(release_dir: Path) -> int:
     _check_fund_of_funds_release(funds, report)
     _check_identified_release(manifest, funds, report)
     _check_catalogue(release_dir, manifest, funds, report)
+    _check_mmf_aliases(release_dir, funds, report)
     _check_benchmarks(release_dir, funds, report)
     _check_company_countries(release_dir, report)
     _check_sizes(release_dir, report)

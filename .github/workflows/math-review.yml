@@ -1,0 +1,126 @@
+name: math-review
+
+# Runs on GitHub's machines whenever a dsh branch changes calculation code or adds an
+# owner report. No always-on computer needed.
+
+on:
+  pull_request:
+    paths:
+      # The calculation files T-AU-1.1 identified (docs/platform/au1-computation-inventory.md §2).
+      - "pipeline/pipeline/weights.py"
+      - "pipeline/pipeline/fund_lookthrough.py"
+      - "pipeline/pipeline/artifact.py"
+      - "pipeline/pipeline/validate.py"
+      - "pipeline/pipeline/fund_pages.py"
+      - "pipeline/pipeline/benchmarks.py"
+      - "pipeline/pipeline/catalogue.py"
+      - "pipeline/pipeline/sizes.py"
+      - "pipeline/pipeline/size_zones.py"
+      - "web/lib/aggregate.ts"
+      - "web/lib/overlap.ts"
+      - "web/lib/effective-holdings.ts"
+      - "web/lib/effective-holdings-view.ts"
+      - "web/lib/concentration.ts"
+      - "web/lib/format.ts"
+      - "web/lib/export.ts"
+      - "web/lib/benchmark.ts"
+      - "web/lib/holdings.ts"
+      - "web/lib/portfolio-weights.ts"
+      - "web/components/lenses/lens-math.ts"
+      - "web/workers/ledger.worker.ts"
+      # Owner reports that need approval
+      - "docs/platform/**/report*.md"
+      - "docs/copy-audit/**/report*.md"
+  push:
+    branches: ["ws*", "copy-*"]
+    paths:
+      - "pipeline/pipeline/weights.py"
+      - "pipeline/pipeline/fund_lookthrough.py"
+      - "pipeline/pipeline/artifact.py"
+      - "pipeline/pipeline/validate.py"
+      - "pipeline/pipeline/fund_pages.py"
+      - "pipeline/pipeline/benchmarks.py"
+      - "pipeline/pipeline/catalogue.py"
+      - "pipeline/pipeline/sizes.py"
+      - "pipeline/pipeline/size_zones.py"
+      - "web/lib/aggregate.ts"
+      - "web/lib/overlap.ts"
+      - "web/lib/effective-holdings.ts"
+      - "web/lib/effective-holdings-view.ts"
+      - "web/lib/concentration.ts"
+      - "web/lib/format.ts"
+      - "web/lib/export.ts"
+      - "web/lib/benchmark.ts"
+      - "web/lib/holdings.ts"
+      - "web/lib/portfolio-weights.ts"
+      - "web/components/lenses/lens-math.ts"
+      - "web/workers/ledger.worker.ts"
+      # Owner reports that need approval
+      - "docs/platform/**/report*.md"
+      - "docs/copy-audit/**/report*.md"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: math-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      # 1. Deterministic checks first. These are the real verification.
+      - name: Invariant tests
+        id: invariants
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          pnpm install --frozen-lockfile
+          pnpm test:invariants 2>&1 | tee review-invariants.txt
+
+      # 2. Independent reference implementation (written by the reviewer model once, then committed).
+      - name: Reference oracle
+        id: oracle
+        continue-on-error: true
+        run: |
+          if [ -f scripts/review/oracle.py ]; then
+            python -I scripts/review/oracle.py --fixtures docs/platform/fixtures.json 2>&1 | tee review-oracle.txt
+          else
+            echo "oracle.py not committed yet" | tee review-oracle.txt
+          fi
+
+      # 3. Second-model review of the diff against the spec.
+      - name: Model review
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # Either location: a repository *variable* is what the spec names, and the
+          # first run here proved a *secret* is just as easy to create by mistake.
+          # `style-enrich.yml` accepts either spelling of its key for the same reason.
+          REVIEW_MODEL: ${{ vars.REVIEW_MODEL || secrets.REVIEW_MODEL }}
+          BASE_REF: ${{ github.event.pull_request.base.sha || 'origin/main' }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python -I scripts/review/review.py
+
+      - name: Fail if deterministic checks failed
+        if: steps.invariants.outcome == 'failure' || steps.oracle.outcome == 'failure'
+        run: exit 1

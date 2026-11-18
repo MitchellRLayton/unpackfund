@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-from . import sec, universe
+from . import mmf, sec, universe
 
 #: One index file per filing day; the path carries the year and the fiscal quarter.
 DAILY_INDEX = "https://www.sec.gov/Archives/edgar/daily-index/{year}/QTR{quarter}/form.{stamp}.idx"
@@ -170,6 +170,16 @@ def detect(
         filings.extend(parse_index(body.decode("latin-1")))
 
     nport = nport_filings(filings)
+    # Money market funds file N-MFP and never N-PORT, so they can never publish as a
+    # fund. AU-2 (docs/platform/automation-spec.yaml) publishes their tickers instead:
+    # the rows are already in this index file, so queueing them costs no request, and
+    # `pipeline.mmf.resolve` spends one only on a filing the cache has not seen.
+    mmf_rows = [
+        {"cik": filing.cik, "accession": filing.accession, "form": filing.form, "filed": filing.filed}
+        for filing in filings
+        if mmf.is_mmf_form(filing.form)
+    ]
+    mmf_queued = mmf.queue_pending(mmf_rows) if mmf_rows else 0
     summary: dict = {
         "generated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "days": [day.isoformat() for day in days],
@@ -177,6 +187,10 @@ def detect(
         "filings": len(filings),
         "nport_filings": len(nport),
         "nport_forms": {form: sum(1 for f in nport if f.form == form) for form in NPORT_FORMS},
+        # Not filtered by the published universe: a money market fund's registrant is
+        # often absent from it, and the list is about the series, not about publication.
+        "mmf_filings": len(mmf_rows),
+        "mmf_queued": mmf_queued,
     }
 
     in_universe = nport
@@ -229,6 +243,14 @@ def detect(
         "new_filings": len(in_universe) if universe_ciks is not None else len(nport),
         "build": bool(in_universe if universe_ciks is not None else nport),
     }
+    if mmf_rows:
+        # One request per filing the alias cache has not seen. Steady state is zero: an
+        # N-MFP is filed monthly, and the accession is the cache key.
+        try:
+            mmf.resolve(network=True)
+        except Exception as error:  # the alias list must never fail the night
+            summary["mmf_error"] = f"{type(error).__name__}: {error}"
+
     summary["elapsed_seconds"] = round(time.monotonic() - started, 1)
     return summary
 

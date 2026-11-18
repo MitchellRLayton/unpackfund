@@ -21,7 +21,7 @@
  * header, so no concept is explained twice (R4).
  */
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { InfoTip } from "@/components/feedback/InfoTip";
 import { saveCsv } from "@/lib/export";
@@ -47,14 +47,88 @@ import {
 } from "./lens-chrome";
 import { lensCsvName, qualityCsv, type QualityCsvFund } from "./lens-csv";
 import { lensGateState } from "./lens-gate";
-import { fundMixRows, untracedTotals, type FundMixRow } from "./lens-math";
+import {
+  fundMixRows,
+  nextSort,
+  sortBy,
+  untracedTotals,
+  type FundMixRow,
+  type SortDirection,
+  type SortState,
+} from "./lens-math";
 
-/** The band order the table is sorted by: the least covered fund first. */
-const BAND_RANK: Record<string, number> = { none: 0, partial: 1, full: 2 };
+/**
+ * The columns a reader can sort this table by.
+ *
+ * `"entered"` is not a column: it is the state the table opens in, where the rows read
+ * top to bottom in the same order the holdings pane lists them, because that is the order
+ * the reader built. It is a sentinel rather than a default column so that "sort by weight"
+ * and "no sort at all" cannot be confused for one another in `aria-sort`.
+ */
+type CoverageSortKey = "fund" | "weight" | "untraced" | "coverage";
 
-function coverageSortValue(row: FundMixRow): number {
-  if (row.coveragePct === null) return Number.POSITIVE_INFINITY;
-  return BAND_RANK[coverageBand(row.coveragePct)] ?? 3;
+type CoverageSort =
+  SortState<CoverageSortKey> | { key: "entered"; direction: SortDirection };
+
+/** The first click on each column sorts it the way its numbers are most useful. */
+const COVERAGE_FIRST: Record<CoverageSortKey, SortDirection> = {
+  fund: "ascending",
+  weight: "descending",
+  untraced: "descending",
+  coverage: "ascending",
+};
+
+/** Ascending coverage is worst-first, which is the question this table answers. */
+function coverageOf(row: FundMixRow): number {
+  return row.coveragePct ?? Number.POSITIVE_INFINITY;
+}
+
+/** One sortable column header: a real button, with `aria-sort` where ARIA puts it. */
+function SortHeader({
+  label,
+  keyName,
+  sort,
+  onSort,
+  tip,
+  numeric = false,
+}: {
+  label: string;
+  keyName: CoverageSortKey;
+  sort: CoverageSort;
+  onSort: (next: CoverageSort) => void;
+  tip: string | null;
+  numeric?: boolean;
+}) {
+  const active = sort.key === keyName;
+  return (
+    <th
+      scope="col"
+      className={numeric ? "num" : undefined}
+      aria-sort={active ? sort.direction : "none"}
+    >
+      <button
+        type="button"
+        className="table__sort"
+        onClick={() =>
+          onSort(nextSort(asColumnSort(sort), keyName, COVERAGE_FIRST[keyName]))
+        }
+      >
+        {label}
+      </button>
+      {tip ? (
+        <InfoTip label={label} inline>
+          {tip}
+        </InfoTip>
+      ) : null}
+    </th>
+  );
+}
+
+/** `nextSort` compares keys; the "entered" sentinel is spelled out so it cannot match. */
+function asColumnSort(sort: CoverageSort): SortState<CoverageSortKey> {
+  return sort.key === "entered"
+    ? { key: "fund", direction: "ascending" }
+    : { key: sort.key, direction: sort.direction };
 }
 
 export function QualityLens({ model }: LensProps) {
@@ -77,16 +151,10 @@ export function QualityLens({ model }: LensProps) {
       // than printed as a row of zeroes.
       .filter((row) => row.weight > 0 && row.coveragePct !== null);
 
-    const rows = built
-      .slice()
-      .sort(
-        (left, right) =>
-          coverageSortValue(left) - coverageSortValue(right) ||
-          (left.coveragePct ?? 0) - (right.coveragePct ?? 0) ||
-          right.weight - left.weight ||
-          left.ticker.localeCompare(right.ticker),
-      );
-
+    // No sort here: `fundMixRows` already returns the rows in the order the portfolio
+    // lists them, and that is where the table opens. The reader's own order is the most
+    // useful default — they built the list, so they know which row is which — and a
+    // weight ordering would reshuffle it under them for no gain.
     const totals = untracedTotals({
       metrics: ledger.metrics,
       unmapped: ledger.unmapped,
@@ -95,8 +163,30 @@ export function QualityLens({ model }: LensProps) {
     });
 
     const noCompanyTotal = totals.unmatchedSecurities + totals.unmatchedCashDerivatives;
-    return { rows, totals, noCompanyTotal };
+    return { rows: built, totals, noCompanyTotal };
   }, [ledger, docs, fundWeights, funds]);
+
+  const [sort, setSort] = useState<CoverageSort>({
+    key: "entered",
+    direction: "ascending",
+  });
+
+  // Every comparator ends on the ticker, so two funds with equal numbers keep a stable
+  // place across renders instead of swapping because the input order came from a Map.
+  const rows = useMemo(() => {
+    if (!analysis) return [];
+    if (sort.key === "entered") return analysis.rows;
+    const compare: Record<CoverageSortKey, (a: FundMixRow, b: FundMixRow) => number> = {
+      fund: (a, b) => a.ticker.localeCompare(b.ticker),
+      weight: (a, b) => a.weight - b.weight || a.ticker.localeCompare(b.ticker),
+      untraced: (a, b) =>
+        (a.unmatchedWeight ?? 0) - (b.unmatchedWeight ?? 0) ||
+        a.ticker.localeCompare(b.ticker),
+      coverage: (a, b) =>
+        coverageOf(a) - coverageOf(b) || a.ticker.localeCompare(b.ticker),
+    };
+    return sortBy(analysis.rows, sort, compare);
+  }, [analysis, sort]);
 
   if (gate.kind === "blocked") {
     return <LensState title={gate.title} body={gate.body} />;
@@ -111,7 +201,7 @@ export function QualityLens({ model }: LensProps) {
     );
   }
 
-  const { rows, totals, noCompanyTotal } = analysis;
+  const { totals, noCompanyTotal } = analysis;
   const releaseAsOf = model.releaseAsOf ?? "unknown";
   const metrics = gate.ledger.metrics;
   const unmapped = gate.ledger.unmapped;
@@ -179,29 +269,46 @@ export function QualityLens({ model }: LensProps) {
                 each column's meaning is a one-line tip, and the band rule itself is on
                 `/methodology/#coverage` (R4). */}
             <caption className="visually-hidden">
-              Coverage by fund, least covered first.
+              Coverage by fund. Opens in the order you added the funds; every column
+              except Holdings as of sorts.
             </caption>
             <thead>
               <tr>
-                <th scope="col">Fund</th>
-                <th scope="col" className="num">
-                  Weight
-                  <InfoTip label="Weight">Share of your whole portfolio.</InfoTip>
-                </th>
-                <th scope="col" className="num">
-                  Weight with no company
-                  <InfoTip label="Weight with no company">
-                    {
-                      "Part of this fund's weight with no company behind it: unmatched securities, cash and derivatives."
-                    }
-                  </InfoTip>
-                </th>
-                <th scope="col" className="num">
-                  Coverage
-                  {/* `concepts.coverage.popover` (copy-spec.yaml:58): the same sentence
-                      the coverage chip carries, so the band rule has one wording. */}
-                  <InfoTip label="Coverage">{COVERAGE_POPOVER}</InfoTip>
-                </th>
+                <SortHeader
+                  label="Fund"
+                  keyName="fund"
+                  sort={sort}
+                  onSort={setSort}
+                  tip={null}
+                />
+                <SortHeader
+                  label="Weight"
+                  keyName="weight"
+                  sort={sort}
+                  onSort={setSort}
+                  numeric
+                  tip="Share of your whole portfolio."
+                />
+                <SortHeader
+                  label="Weight with no company"
+                  keyName="untraced"
+                  sort={sort}
+                  onSort={setSort}
+                  numeric
+                  tip={
+                    "Part of this fund's weight with no company behind it: unmatched securities, cash and derivatives."
+                  }
+                />
+                <SortHeader
+                  label="Coverage"
+                  keyName="coverage"
+                  sort={sort}
+                  onSort={setSort}
+                  numeric
+                  tip={COVERAGE_POPOVER}
+                />
+                {/* Not sortable: three dates in one cell, and a reader who wants them in
+                    time order wants the filing lag, not the period. */}
                 <th scope="col">Holdings as of</th>
               </tr>
             </thead>

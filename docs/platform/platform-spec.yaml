@@ -1,0 +1,326 @@
+# platform-spec.yaml — scoped UnpackFund work (types in PROMPT.md §2)
+# Scope: WS-A stock-only basis · WS-B accounts · WS-C expense ratios · WS-D holdings dates.
+
+meta:
+  spec_version: 2
+  site: https://unpackfund.com
+  release_inspected: "2026-11-17.1"
+  methodology_version_now: "1.5.0"
+  methodology_version_after_ws_a_switch: "1.6.0"
+  product_stance: "Built for equity-only or equity-heavy portfolios. Bonds and cash, inside funds and as holdings, are left out of every number."
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OWNER DECISIONS — never implement before a written answer
+# ─────────────────────────────────────────────────────────────────────────────
+owner_decisions:
+  OD-1: { title: "Company weights are a share of…", decide_after: T-A.4, options: { A: "your stocks: weights sum to 100% across companies (recommended)", B: "your whole portfolio: weights sum to the stock share" } }
+  OD-2: { title: "Switch every number to the stock-only basis", decide_after: T-A.4, options: { A: "Switch", B: "Don't switch" } }
+  OD-3: { title: "Holding limit", decide_after: T-B.1, options: { A: "Raise 40 → 60 (recommended with accounts)", B: "Keep 40" } }
+  OD-4: { title: "Read prospectus and shareholder-report XBRL for expense ratios (reverses 'deliberately not read')", decide_after: T-C.1, options: { A: "Yes (recommended)", B: "No" } }
+  OD-5: { title: "Expense ratios for funds with no tagged filing (e.g. unit-trust ETFs)", decide_after: T-C.1, options: { A: "Show none (recommended unless a widely held fund is missing)", B: "Small manual table, each row citing its prospectus URL and date" } }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# INVESTIGATIONS — Phase 0, read-only; answer with file:line
+# ─────────────────────────────────────────────────────────────────────────────
+investigations:
+  INV-1: "Does the N-PORT parser keep assetCat (and its 'conditional' variant) per position after fund-of-funds flattening? Give the field names and the code list it recognises."
+  INV-2: "Where are coverage, Core/Broad/Top 10, the Markets split and the companies table computed (backend, frontend, or both)? List every place that divides by the fund's gross weight."
+  INV-3: "How does ticker lookup work: which EDGAR ticker file? For each of VMFXX, SPAXX, FDLXX, SWVXX, VUSXX, FZFXX: in the file Y/N, series_id, latest holdings form."
+  INV-4: "Document the exact v1/v2/v3 URL grammars (element kinds, units, encoder) and the lens suffix. Where is the 40-holding limit enforced? Does the list reject a duplicate ticker?"
+  INV-5: "Expense-ratio sources: (a) the risk/return XBRL element for the net expense ratio per class in 485BPOS/497 filings (expected in the rr taxonomy, e.g. rr:NetExpensesOverAssets; confirm the real name); (b) oef:ExpenseRatioPct in N-CSR/N-CSRS inline XBRL; (c) how a ticker maps to the class axis in each; (d) request-count estimate for the latest filing per class; (e) which tickers in the release have neither source, with the 20 largest by net assets listed."
+  INV-6: "Where are the per-fund date chip and the copy-spec CN_DATES note rendered? Which date do they use (period end or filed date)?"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FIXTURES
+# ─────────────────────────────────────────────────────────────────────────────
+fixtures:
+  FX-1: { what: "VTI 60 / BND 40", url: "https://unpackfund.com/#v3.WyJicCIsW1siZiIsIlZUSSIsNjAwMF0sWyJmIiwiQk5EIiw0MDAwXV1d" }
+  FX-2: { what: "Site example portfolio (all equity)", url: "https://unpackfund.com/#v3.WyJicCIsW1siZiIsIlFRUSIsMTQyOV0sWyJmIiwiVk9PIiwxNDI5XSxbImYiLCJTTUgiLDE0MjldLFsiZiIsIlZHVCIsMTQyOV0sWyJmIiwiUlNQVCIsMTQyOF0sWyJmIiwiQVJLSyIsMTQyOF0sWyJmIiwiQUxBSSIsMTQyOF1dXQ" }
+  FX-3: { what: "VTI 90 / VMFXX 10 (fails today)", url: "https://unpackfund.com/#v3.WyJicCIsW1siZiIsIlZUSSIsOTAwMF0sWyJmIiwiVk1GWFgiLDEwMDBdXV0" }
+  FX-4: { what: "10-fund factor portfolio", url: "https://unpackfund.com/#v3.WyJicCIsW1siZiIsIkFWTFYiLDIwMDBdLFsiZiIsIkFWVVYiLDEyNTBdLFsiZiIsIkJTVk8iLDEyNTBdLFsiZiIsIlNQTU8iLDUwMF0sWyJmIiwiRk1UTSIsNTAwXSxbImYiLCJBVklWIiw4MDBdLFsiZiIsIkFWRFYiLDE1MDBdLFsiZiIsIklETU8iLDUwMF0sWyJmIiwiWFVTTSIsNTAwXSxbImYiLCJBVkVNIiwxMjAwXV1d" }
+  FX-5: { what: "VFIFX 100 (target-date fund)", url: "https://unpackfund.com/#v3.WyJicCIsW1siZiIsIlZGSUZYIiwxMDAwMF1dXQ" }
+  FX-6: { what: "Household with accounts (build after WS-B)", spec: "Dollars mode. '# 401(k)' FXAIX $380,000, VBTLX $120,000 · '# Roth IRA' AVUV $40,000, AVDV $35,000, VMFXX $20,000 · '# Taxable' VTI $150,000, AAPL $25,000" }
+  golden_funds: [VTI, BND, VFIFX, AVGE, VWO, SPMO, FXAIX, AVUV, SPY]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DATA CONTRACTS — additive only (H1)
+# ─────────────────────────────────────────────────────────────────────────────
+data_contracts:
+  equity_rule: "A position is a stock when assetCat == EC (common equity), after fund-of-funds flattening. Everything else is left out: EP (preferred), debt, ABS, STIV/RA (short-term and repo), cash, derivatives and 'other'. Confirm the codes in INV-1."
+  fund_fields_new:
+    equity_share: "number  // stock weight ÷ gross weight, 0..1"
+    coverage_eq: "number | null  // traced stock weight ÷ stock weight; null when equity_share < 0.01"
+    coverage_eq_band: "'full' | 'partial' | 'withheld' | 'no_stocks'  // same 70/60 cut-offs; no_stocks when equity_share < 0.01"
+  portfolio_math: |-
+    h_f = holding weight of fund f; e_f = equity_share (direct stock = 1; cash and money market = 0).
+    w_if = company i's stock weight inside f ÷ e_f   (renormalized to the fund's stocks).
+    OD-1 A: portfolio weight_i = Σ_f h_f·e_f·w_if ÷ Σ_f h_f·e_f
+    OD-1 B: portfolio weight_i = Σ_f h_f·e_f·w_if
+    Core, Broad, Top 10, Markets and the companies table all use weight_i. The coverage bands use coverage_eq_band.
+  release_files_new:
+    mmf_aliases: "Array<{ ticker; series_id; class_id?; name; latest_form: 'N-MFP2'|'N-MFP3' }>  // series filing N-MFP and no N-PORT"
+    expenses: "Record<ticker, { expense_ratio: number /* decimal, net, annual */; source: 'prospectus'|'shareholder_report'|'manual'; as_of: string; form: string; accession?: string; url?: string }>"
+  url_v4:
+    shape: '["v4", mode: "bp"|"usd", accounts: string[], rows: Array<[kind, ticker_or_null, amount, account_index /* -1 = none */]>]'
+    encoding: "base64url JSON, no padding, prefix '#v4.'; same units as v3 (confirm in INV-4)"
+    write_rule: "Write v4 only when accounts.length > 0; otherwise write v3"
+    kinds_added: { m: "money market fund (ticker kept for display; left out of stock math)" }
+    filter_suffix: "'~acct:{index}' after the lens suffix; absent = all accounts"
+
+concepts_new:
+  stock_basis:  { label: "Stocks only", glossary_anchor: "stocks-only", methodology_anchor: "coverage", popover: "Every number here uses only the stocks inside your funds. Bonds and cash are left out." }
+  money_market: { label: "Money market fund", glossary_anchor: "money-market-fund", methodology_anchor: "holdings", popover: "A fund holding short-term government debt and cash. It holds no stocks, so it's left out of the numbers." }
+  expense_ratio: { label: "Expense ratio", glossary_anchor: "expense-ratio", methodology_anchor: "sources", popover: "The fund's yearly costs as a share of your investment, from its prospectus or latest shareholder report." }
+  account:      { label: "Account", glossary_anchor: "account", methodology_anchor: "look-through", popover: "A label for where a holding sits. Pick one account to see only what it holds." }
+
+methodology_additions:
+  M-A: { with: T-A.5, anchor: coverage, text: "Since version 1.6.0, every figure uses only common stocks. Bonds, cash, preferred shares and derivatives inside a fund are left out, and each fund's stocks are scaled to 100%." }
+  M-A2: { with: T-A.6, anchor: holdings, text: "Money market funds file Form N-MFP rather than N-PORT. You can add one, but it holds no stocks, so it's left out of the figures." }
+  M-B: { with: T-B.2, anchor: look-through, text: "Accounts only group holdings. A company's weight is the same whether its funds sit in one account or several." }
+  M-C: { with: T-C.3, anchor: sources, text: "Expense ratios come from each share class's prospectus fee table. If none is tagged, we use the latest annual or semi-annual shareholder report (Form N-CSR or N-CSRS)." }
+  M-D: { with: T-D.1, anchor: dates, text: "Funds publish holdings for different quarter-ends, so dates within a portfolio can differ by up to about three months. We flag a fund whose filing is more than 95 days older than your newest one." }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WORKSTREAMS
+# ─────────────────────────────────────────────────────────────────────────────
+workstreams:
+
+# ═══ WS-A Stock-only basis ═══════════════════════════════════════════════════
+- ws: WS-A
+  title: "Compute everything on the stocks inside funds"
+  tasks:
+  - id: T-A.1
+    phase: A
+    kind: INVESTIGATE
+    title: "Parser fields and calculation sites"
+    approval: PRE_APPROVED
+    number_impact: NONE
+    spec: "Answer INV-1, INV-2 and INV-3. If assetCat is not kept and adding it needs a full re-ingest, STOP (PROMPT.md §8)."
+    acceptance: ["Every answer cites file:line"]
+  - id: T-A.2
+    phase: A
+    kind: BACKEND
+    title: "Shadow fields equity_share, coverage_eq, coverage_eq_band"
+    approval: PRE_APPROVED
+    number_impact: NEW_NUMBERS_ONLY
+    depends_on: [T-A.1]
+    spec: "Implement data_contracts.equity_rule and fund_fields_new for every fund. Leave the UI unchanged."
+    acceptance: ["Unit test: EC → stock; EP, DBT, ABS-*, STIV, RA, derivatives, unknown → left out", "Existing CSVs byte-identical for FX-1…FX-5"]
+  - id: T-A.3
+    phase: A
+    kind: TEST
+    title: "Golden values"
+    approval: PRE_APPROVED
+    number_impact: NONE
+    depends_on: [T-A.2]
+    spec: "For each fund in golden_funds, record equity_share, coverage v1 and band, and coverage_eq and band. Commit them as golden tests."
+    acceptance: ["BND coverage_eq_band = no_stocks", "VTI equity_share ≥ 0.99", "VFIFX equity_share reported"]
+  - id: T-A.4
+    phase: A
+    kind: INVESTIGATE
+    title: "Decision pack"
+    approval: OWNER_REQUIRED
+    number_impact: NONE
+    depends_on: [T-A.3]
+    prepare: |-
+      1. For FX-1, FX-2, FX-4 and FX-5: Core, Broad, Top 10, the Markets split and the top 10 companies under today's math vs portfolio_math with OD-1 A and with OD-1 B.
+      2. Band counts across all funds: v1 vs stock-only.
+      3. The 50 largest funds whose band changes.
+      4. Preview screenshots (dev-only flag) of FX-1 and FX-5 under the stock-only basis.
+    spec: "Wait for OD-1 and OD-2."
+    acceptance: ["OD-1 and OD-2 answered"]
+  - id: T-A.5
+    phase: B
+    kind: FRONTEND
+    title: "Switch to the stock-only basis"
+    approval: OWNER_REQUIRED
+    number_impact: CHANGES_EXISTING_NUMBERS
+    depends_on: [T-A.4]
+    spec: |-
+      After OD-2 = A, every figure uses portfolio_math (OD-1 picks the formula): Core/Broad/Top 10, Markets, companies table, Overlap, Compare, fund pages and CSV exports.
+      Bands and withholding read coverage_eq_band.
+      A fund with no_stocks gets the chip below instead of a coverage chip, and it never triggers withholding.
+      Show the left-out line under the holdings summary only when the left-out share is > 0, with ConceptPopover(stock_basis).
+      Fund pages: the coverage tile reads coverage_eq; add the sub-line below when equity_share < 0.995.
+      Apply M-A and bump the methodology to 1.6.0.
+    ui_strings:
+      no_stocks_chip: "No stocks"
+      no_stocks_tip: "This fund holds no stocks, so it's left out of the numbers."
+      left_out_line: "{PCT} of your portfolio isn't stocks and is left out."
+      fund_page_subline: "Stocks are {PCT} of this fund. The rest is left out."
+    acceptance:
+      - "FX-1: '10 largest' is no longer withheld; the left-out line shows about 40% (report the exact value)"
+      - "FX-2: every number within 0.5 pt of before (report the diffs)"
+      - "/f/BND/ shows 'No stocks'"
+  - id: T-A.6
+    phase: B
+    kind: FRONTEND
+    title: "Accept money market funds"
+    approval: PRE_APPROVED
+    number_impact: NEW_NUMBERS_ONLY
+    depends_on: [T-A.5]
+    spec: |-
+      Backend: publish release_files_new.mmf_aliases from existing EDGAR indexes (H9).
+      Frontend: search suggestions include alias tickers with the sub-label below. Choosing one adds a kind 'm' row with e_f = 0, and the row chip with ConceptPopover(money_market).
+      Leave the existing unknown-ticker message unchanged.
+      Apply M-A2.
+    ui_strings:
+      suggestion_sublabel: "Money market fund · no stocks"
+      row_chip: "Money market"
+    acceptance: ["FX-3 loads; VTI is 100% of the stocks; the left-out line shows 10.00%", "All six INV-3 tickers resolve, or each absence is explained"]
+
+# ═══ WS-D Holdings dates ═════════════════════════════════════════════════════
+- ws: WS-D
+  title: "Date range and old-filing warning"
+  tasks:
+  - id: T-D.0
+    phase: A
+    kind: INVESTIGATE
+    title: "Date sources"
+    approval: PRE_APPROVED
+    number_impact: NONE
+    spec: "Answer INV-6."
+    acceptance: ["Cites file:line"]
+  - id: T-D.1
+    phase: B
+    kind: FRONTEND
+    title: "Range line and old-filing chip"
+    approval: PRE_APPROVED
+    number_impact: NONE
+    depends_on: [T-D.0]
+    spec: |-
+      Use each fund's period-end date. Direct stocks, cash and money market rows have no date and are ignored.
+      Portfolio: one line under the holdings summary. It replaces the copy-spec CN_DATES note; mark that block DONE_ELSEWHERE.
+      A fund whose date is more than 95 days before the newest fund's date gets the chip after its date chip.
+      Do not adjust any weights for dates. Apply M-D.
+    ui_strings:
+      range_line: "Holdings dated {OLDEST} – {NEWEST}"
+      single_date_line: "Holdings dated {DATE}"
+      old_chip: "Older filing"
+      old_chip_tip: "This fund's holdings are {DAYS} days older than your newest fund's. Its next filing may be late."
+    acceptance: ["FX-4 shows the range line", "A test portfolio with one fund > 95 days older shows the chip on that fund only", "FX-1…FX-5 CSVs byte-identical"]
+
+# ═══ WS-B Accounts ═══════════════════════════════════════════════════════════
+- ws: WS-B
+  title: "Optional accounts with a filter"
+  tasks:
+  - id: T-B.1
+    phase: A
+    kind: INVESTIGATE
+    title: "URL grammar and limits"
+    approval: PRE_APPROVED
+    number_impact: NONE
+    prepare: "Measured URL length for 60 rows across 5 accounts (input for OD-3)."
+    spec: "Answer INV-4. Write docs/platform/url-grammar.md."
+    acceptance: ["Exact v3 grammar documented"]
+  - id: T-B.2
+    phase: B
+    kind: FRONTEND
+    title: "Accounts in the holdings list"
+    approval: PRE_APPROVED
+    number_impact: NONE
+    depends_on: [T-B.1]
+    spec: |-
+      'Add account' under the holdings list. An account is a name only (free text, ≤ 40 chars); there is no type list.
+      Rows are grouped under account headers showing the name and subtotal. Rows with no account sit under 'No account', shown only when accounts exist.
+      The same ticker may appear once per account. Each row has a select to move it to another account.
+      Weights and look-through math are unchanged (weights = row amount ÷ total). Works in Percent and Dollars mode.
+      Encode with url_v4 when accounts exist; otherwise v3 (H2).
+      Apply OD-3 (the limit constant changes in one place). Apply M-B and ConceptPopover(account).
+    ui_strings:
+      add_account: "Add account"
+      name_placeholder: "Account name"
+      unassigned: "No account"
+      subtotal: "{AMOUNT} · {PCT} of total"
+      move_label: "Account"
+    acceptance:
+      - "FX-6 can be built, shared and reloaded with identical state"
+      - "The FX-6 companies CSV equals the same holdings entered without accounts (byte-identical)"
+      - "Every v3 fixture link opens unchanged"
+  - id: T-B.3
+    phase: B
+    kind: FRONTEND
+    title: "Account filter"
+    approval: PRE_APPROVED
+    number_impact: NONE
+    depends_on: [T-B.2]
+    spec: |-
+      When ≥ 1 account exists, the page top bar shows a select: 'All accounts' plus each account name.
+      Picking one recomputes every lens from that account's rows only (same math on a subset).
+      Store it as url_v4.filter_suffix. Hide the select when there are no accounts.
+    ui_strings:
+      filter_all: "All accounts"
+      filter_label: "Show"
+    acceptance: ["FX-6 filtered to 'Roth IRA' equals a portfolio of AVUV $40,000, AVDV $35,000, VMFXX $20,000 entered alone (CSV byte-identical)", "The filter survives share and reload"]
+  - id: T-B.4
+    phase: B
+    kind: FRONTEND
+    title: "Paste accounts"
+    approval: PRE_APPROVED
+    number_impact: NONE
+    depends_on: [T-B.2]
+    spec: "In 'Paste a list', a line starting with '#' starts an account named by the rest of the line (trimmed). The following lines belong to it until the next '#'."
+    ui_strings:
+      paste_hint_addition: "Start a line with # to name an account, like # Roth IRA."
+    acceptance: ["Pasting the FX-6 spec text reproduces FX-6", "Unit test for names, blank lines and lines before the first '#'"]
+
+# ═══ WS-C Expense ratios ═════════════════════════════════════════════════════
+- ws: WS-C
+  title: "Expense ratios, prospectus first"
+  tasks:
+  - id: T-C.1
+    phase: A
+    kind: INVESTIGATE
+    title: "Sources and gaps"
+    approval: PRE_APPROVED
+    number_impact: NONE
+    spec: "Answer INV-5. Download at most 10 sample filings to confirm element names."
+    acceptance: ["Element names confirmed from real filings", "The list of tickers with no source, plus the 20 largest"]
+  - id: T-C.2
+    phase: A
+    kind: INVESTIGATE
+    title: "Decision gate"
+    approval: OWNER_REQUIRED
+    number_impact: NONE
+    prepare: "OD-4 and OD-5, with the T-C.1 results."
+    spec: "Wait for OD-4 and OD-5."
+    acceptance: ["OD-4 and OD-5 answered"]
+  - id: T-C.3
+    phase: A
+    kind: BACKEND
+    title: "Ingest expense ratios"
+    approval: PRE_APPROVED
+    number_impact: NEW_NUMBERS_ONLY
+    depends_on: [T-C.2]
+    spec: |-
+      Per share class, use this source order and stop at the first hit:
+        1. the latest prospectus fee table (net expense ratio)
+        2. the latest N-CSR/N-CSRS oef:ExpenseRatioPct
+        3. the manual table, only if OD-5 = B
+      Publish release_files_new.expenses. Follow H9.
+      Apply M-C, and add 'and fund prospectuses and shareholder reports' to the footer source line.
+    acceptance:
+      - "Coverage: % of release tickers with a value, split by source"
+      - "Spot checks (report mismatches; do not change data): VTI 0.03%, VOO 0.03%, FXAIX 0.015%, QQQ 0.18%, AVUV 0.25%"
+  - id: T-C.4
+    phase: B
+    kind: FRONTEND
+    title: "Show expense ratios"
+    approval: PRE_APPROVED
+    number_impact: NEW_NUMBERS_ONLY
+    depends_on: [T-C.3]
+    spec: |-
+      Holdings row: an ER chip after the date chip, with a tooltip.
+      Fund pages: an 'Expense ratio' StatTile.
+      Funds lens: a summary line above 'Your funds'.
+      Blended = Σ(h·ER) ÷ Σh over holdings with a known cost. Direct stocks and cash count as 0; money market funds use their ER if known; funds with no ER are excluded and counted in {N}−{K}.
+      The dollar line shows in Dollars mode only. No 'fee waste' figure.
+    ui_strings:
+      chip: "{ER} ER"
+      chip_tip: "Expense ratio from the fund's {SOURCE} ({DATE})."
+      source_prospectus: "prospectus"
+      source_report: "latest shareholder report"
+      tile_label: "Expense ratio"
+      blended: "Blended expense ratio {ER} · known for {K} of {N} funds"
+      blended_dollars: "About {AMT}/yr on {TOTAL}"
+    acceptance: ["FX-2 blended line shows K and names any fund without an ER", "FX-6 shows the dollar line"]

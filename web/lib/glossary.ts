@@ -102,7 +102,7 @@ export const GLOSSARY_TERMS = [
     definition:
       "A fund's N-PORT can carry cash and cash-equivalent rows. That money is part of the fund, and part of yours, so it dilutes concentration rather than being dropped; but it is not a company, so it is never reported as a mapping failure either. Because a fund's coverage is measured over every row it files, its cash line lowers its coverage, and the freshness strip's “Not traced” note names cash and derivatives for that reason. Cash you hold yourself is a different thing: it is not inside any fund, so it sits outside the coverage ratio altogether and the strip gives it a cell of its own.",
     appears:
-      "The “What is not traced” section of the X-Ray, the coverage chips and the Data quality lens.",
+      "The “What is not traced” section of the X-Ray, the coverage chips and the Data Quality lens.",
   },
   {
     id: "company",
@@ -133,7 +133,7 @@ export const GLOSSARY_TERMS = [
     definition:
       "Coverage is measured by weight, never by counting rows: 100 × (weight with a company) ÷ (gross weight of every position the fund files). Gross, not net: both sides of a short count, so a fund that holds 100% long and 50% short is measured against 150% of its net assets and the ratio cannot exceed 100%. The fund's own cash line counts against it. The headline figure blends asset classes with different ceilings — a debt row only resolves when its issuer is a corporate issuer, and cash never does — so coverage is also measured inside each class, which is the only version that can be compared between two funds. For a whole portfolio the same ratio is applied to each fund's share of it and to any stock you hold directly, with cash you hold yourself outside both numerator and denominator. Coverage is printed beside every fund and beside every figure it qualifies, and concentration metrics are withheld below 60%.",
     appears:
-      "The coverage chip beside each fund in the portfolio, the freshness strip, fund pages and the Data quality lens.",
+      "The coverage chip beside each fund in the portfolio, the freshness strip, fund pages and the Data Quality lens.",
   },
   {
     id: "direct-holding",
@@ -275,7 +275,7 @@ export const GLOSSARY_TERMS = [
     definition:
       "Unmapped weight is the part of a fund's weight whose positions have no company identity: a foreign issuer with no SEC ticker and no usable legal-entity identifier, a trust or partnership name that cannot be corroborated, or cash and derivatives, which have no company by definition. It is counted, split by cause and printed — never dropped, never back-filled from another source, and never divided across the companies that did resolve, because that is exactly how a fund with 40% of its weight explained comes to look average. The X-Ray separates the two causes, because a holding that could not be identified and a cash line are different facts about a fund.",
     appears:
-      "The “What is not traced” section of the X-Ray, the coverage chips and the Data quality lens.",
+      "The “What is not traced” section of the X-Ray, the coverage chips and the Data Quality lens.",
   },
 ] as const satisfies readonly GlossaryTerm[];
 

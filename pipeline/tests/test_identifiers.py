@@ -1061,3 +1061,80 @@ def test_the_whole_320k_corpus_projection_matches_the_measurement_note():
     line = identifiers._projection(310_386)
     assert "31,039 requests unauthenticated ≈ 20.7 h" in line
     assert "3,104 requests keyed ≈ 12.4 min" in line
+
+
+# --- ISINs in published names (the 2026-11-18 leak) ------------------------
+#
+# 85 real ISINs reached the live release inside swap and bond row names
+# (``CDS US… 05.000 SP …``): the 9-character CUSIP rule cannot see a CUSIP glued
+# inside a 12-character ISIN. Every identifier below is synthetic.
+
+
+@pytest.mark.parametrize("prefix", ["US", "XS", "CA", "FR"])
+def test_public_name_removes_an_isin_and_keeps_the_rest_of_the_name(prefix):
+    isin = synthetic_isin(7, prefix)
+    swap = f"CDS {isin} 05.000 SP 06/20/2027 BARCGB5GXXX LONG"
+
+    published = identifiers.public_name(swap)
+
+    assert isin not in published
+    assert not ISIN_TEXT_RE.search(published)
+    # Only the identifier is gone; the counterparty and the terms are still the name.
+    assert "05.000 SP 06/20/2027 BARCGB5GXXX LONG" in published
+    assert published.startswith("CDS")
+
+
+def test_public_name_removes_a_trailing_isin():
+    assert identifiers.public_name(f"CS AT1 CLAIMS {synthetic_isin(8, 'US')}") == "CS AT1 CLAIMS"
+
+
+def test_a_name_that_is_only_an_isin_becomes_the_unnamed_label():
+    assert identifiers.public_name(synthetic_isin(9)) == identifiers.UNNAMED_HOLDING
+
+
+def test_is_licensed_sees_an_isin_but_not_a_twelve_character_name():
+    isin = synthetic_isin(10, "US")
+    assert identifiers.is_licensed(f"New Issuer {isin} Bond")
+    assert identifiers.is_licensed(isin)
+
+    # ``BELLSYSTEM24`` is a company's name: twelve characters, a digit at the end, and
+    # not an ISIN. Redacting it would publish "HOLDINGS INC".
+    assert not identifiers.valid_isin("BELLSYSTEM24")
+    assert not identifiers.is_licensed("BELLSYSTEM24 HOLDINGS INC")
+    assert identifiers.public_name("BELLSYSTEM24 HOLDINGS INC") == "BELLSYSTEM24 HOLDINGS INC"
+
+
+def test_an_isin_followed_by_a_decimal_is_a_number_not_an_isin():
+    """The CUSIP rule's boundary: ``…11.253`` is a rate, so the token is not glued-off."""
+    body = "XS000000001"
+    token = body + identifiers.isin_check_digit(body)
+    assert not identifiers.is_licensed(f"IRS {token}.253 01/04/27")
+    assert identifiers.is_licensed(f"IRS {token} 01/04/27")
+
+
+def test_an_isin_glued_to_a_longer_token_is_not_matched():
+    isin = synthetic_isin(11)
+    assert not identifiers.is_licensed(f"A{isin}")
+    assert not identifiers.is_licensed(f"{isin}B")
+
+
+def test_the_cusip_rule_is_unchanged():
+    """Nine zeros are still redacted exactly as before; the ISIN branch adds, never replaces."""
+    assert identifiers.is_licensed(CUSIP_SHAPED)
+    assert identifiers.public_name(f"Apple Inc {CUSIP_SHAPED}") == "Apple Inc"
+    assert not identifiers.is_licensed("100000000.0")
+
+
+def test_the_artifact_row_carries_no_isin():
+    from pipeline import artifact
+
+    isin = synthetic_isin(12, "US")
+    row = artifact.holding_row(
+        company_id=None,
+        name=f"CDS {isin} 05.000 SP 06/20/2027 CITIUS33XXX LONG",
+        ticker=None,
+        asset_cat="derivative",
+        weight_bp=10,
+    )
+    assert isin not in json.dumps(row)
+    assert not ISIN_TEXT_RE.search(row["name"])

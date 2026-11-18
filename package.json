@@ -27,6 +27,7 @@
     "data:review": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.review",
     "data:triage": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.triage",
     "data:retention": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.retention",
+    "check:budget": "bash scripts/check-budget.sh",
     "verify:live": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.live",
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm pipeline:test && pnpm data:validate --fixtures && pnpm build",
     "pages:funds": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.fund_pages --out ../web/out",

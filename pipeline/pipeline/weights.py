@@ -22,10 +22,11 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
-from . import classify, gleif, identifiers
+from . import classify, figi, gleif, identifiers
 from .classify import CATEGORY_ORDER, Classification
 from .companies import (
     MATCH_WEAK,
+    RUNG_FIGI,
     RUNG_UNMAPPED,
     CompanyIndex,
     IdentityEvidence,
@@ -405,6 +406,12 @@ def _stronger_identity(
     return None
 
 
+def _isin_key(value: str | None) -> str | None:
+    """An ISIN as the identity tables key it: stripped, upper-case, or ``None``."""
+    text = (value or "").strip().upper()
+    return text or None
+
+
 def build_vector(
     holdings: list[Holding],
     index: CompanyIndex,
@@ -416,6 +423,7 @@ def build_vector(
     issuers: "gleif.IssuerIndex | None" = None,
     fund_leis: "Mapping[str, str] | None" = None,
     security_map: "identifiers.SecurityMap | None" = None,
+    share_map: "figi.ShareClassMap | None" = None,
 ) -> WeightVector:
     if not holdings:
         raise WeightError("filing reports no holdings")
@@ -492,6 +500,35 @@ def build_vector(
                     if sec_id is not None:
                         company_id = sec_id
                         issuers.note_bridge(rung)
+            # The two rungs below run only for a row **every rung above declined**, so a row that
+            # maps today keeps exactly the company it has (H-CV1), and neither writes to the
+            # evidence table (H-CV4: ``evidence.observe`` is gated on ``ladder_answer``).
+            #
+            # R3x — this row's ISIN already resolved to exactly one company on another row's own
+            # filed LEI. An exact identifier join, not a name match: the other fund's filing carried
+            # the LEI this one lacks. The company keeps its real identity (``c_``/``l_``).
+            if (
+                company_id is None
+                and identity is not None
+                and classification.category == classify.EQUITY
+            ):
+                company_id, rung = identity.resolve_direct(_isin_key(holding.isin))
+            # R7 — OpenFIGI names the ISIN as an equity share line (``figi.ShareClassMap``): the row
+            # gets an ``f_`` id, which merges across funds by the same ISIN and counts toward
+            # coverage with its share disclosed (``security_matched_pct``). Longs only.
+            if (
+                company_id is None
+                and share_map is not None
+                and classification.category == classify.EQUITY
+                and fraction > 0
+                and (holding.balance or 0) > 0
+            ):
+                security = share_map.security_for(holding.isin)
+                if security is not None:
+                    company_id, rung = security, RUNG_FIGI
+                    # Its filed ticker is a *local* listing code, the same misreading the issuer
+                    # namespace already refuses to print beside a name.
+                    issuer_row = True
         rungs[rung] += 1
         # Observed only for the ladder's own, well-corroborated answer: the table may
         # never learn from its own inferences, and a weak match repeated across two
@@ -503,6 +540,15 @@ def build_vector(
             and (company_id, rung) == ladder_answer
         ):
             evidence.observe(holding.isin, holding.lei, company_id)
+        # R3x's own evidence: a row that resolved through its **own filed LEI** (the direct rung,
+        # not the ISIN-inferred one) teaches its ISIN to the other funds that hold it without one.
+        if (
+            evidence is not None
+            and company_id is not None
+            and not weak
+            and rung == gleif.RUNG_LEI
+        ):
+            evidence.observe_direct(_isin_key(holding.isin), company_id)
 
         # Unmapped rows merge on identity of their own, so a fund with 500 distinct
         # unknown issuers does not collapse into one line called "unmapped".

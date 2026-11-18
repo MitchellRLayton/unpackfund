@@ -195,7 +195,7 @@ export function LensTabs({
    * Keep the selected tab in view inside the strip.
    *
    * Five tabs carrying numbers and sub-labels are wider than the results column, so the
-   * strip scrolls. Without this, choosing "Data quality" from the docked bar and then
+   * strip scrolls. Without this, choosing "Data Quality" from the docked bar and then
    * scrolling back up leaves the strip showing Companies, with the selected tab off the
    * right edge — a tablist whose selection you cannot see. It moves the strip's own
    * `scrollLeft`, never the page's.

@@ -16,6 +16,7 @@ echo "invariants: I-2 symmetry        -> web/lib/overlap.test.ts"
 echo "invariants: I-3 overlap identity-> web/lib/overlap.test.ts"
 echo "invariants: I-4 Core <= Broad   -> web/lib/effective-holdings.property.test.ts"
 echo "invariants: I-6 row order       -> web/lib/effective-holdings.property.test.ts"
+echo "invariants: I-5 percent=dollars  -> web/lib/invariants.test.ts"
 echo "invariants: I-6 determinism     -> web/lib/aggregate.test.ts"
 echo "invariants: I-7 flatten weight  -> pipeline/tests/test_fund_of_funds_gates.py"
 echo "invariants: I-7 composed sum    -> pipeline/tests/test_fund_lookthrough.py"
@@ -28,8 +29,14 @@ pnpm --filter @unpackfund/web exec vitest run \
   lib/aggregate.test.ts
 
 cd pipeline
-../.venv/pipeline/bin/python -m pytest -q \
+# Local runs use the workspace venv; CI installs the pipeline with pip and has no
+# venv, so fall back to the interpreter on PATH (`pr-checks` does the same).
+PYTHON_BIN="${PYTHON:-}"
+if [ -z "$PYTHON_BIN" ]; then
+  if [ -x ../.venv/pipeline/bin/python ]; then PYTHON_BIN=../.venv/pipeline/bin/python; else PYTHON_BIN=python; fi
+fi
+"$PYTHON_BIN" -m pytest -q \
   tests/test_fund_of_funds_gates.py \
   tests/test_fund_lookthrough.py
 
-echo "invariants: passed — I-2, I-3, I-4, I-6, I-7 covered; I-1 and I-8 skipped by task id"
+echo "invariants: passed — I-2, I-3, I-4, I-5, I-6, I-7 covered; I-1 and I-8 skipped by task id"
