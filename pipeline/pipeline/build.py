@@ -56,6 +56,7 @@ from . import (
     fund_lookthrough,
     identifiers,
     manifest as manifest_mod,
+    mmf,
     sec,
     securities,
     size_zones,
@@ -1342,6 +1343,10 @@ def build_release(
         header=document,
         manifest_payload=payload,
         aliases=new_aliases,
+        # AU-2: money-market tickers, from the committed seed plus whatever the nightly
+        # index pass resolved. Offline by construction, so two builds of one tree still
+        # hash identically (the determinism gate builds twice in a checkout).
+        mmf_aliases=mmf.for_release(document["ticker"] for document in documents),
         etf_classifier=classify.ETF_CLASSIFIER,
         securities_source=securities_source,
         countries=countries,

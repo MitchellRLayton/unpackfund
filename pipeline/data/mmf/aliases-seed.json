@@ -1,0 +1,6496 @@
+{
+ "aliases": [
+  {
+   "class_id": "C000240469",
+   "latest_form": "N-MFP3",
+   "name": "SDIT GOVERNMENT",
+   "series_id": "S000006773",
+   "ticker": "AABXX"
+  },
+  {
+   "class_id": "C000075898",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "AAFXX"
+  },
+  {
+   "class_id": "C000003607",
+   "latest_form": "N-MFP3",
+   "name": "Thrivent Money Market Fund",
+   "series_id": "S000001349",
+   "ticker": "AALXX"
+  },
+  {
+   "class_id": "C000004819",
+   "latest_form": "N-MFP3",
+   "name": "American Beacon U.S. Government Money Market Select Fund",
+   "series_id": "S000001845",
+   "ticker": "AAOXX"
+  },
+  {
+   "class_id": "C000202065",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "AAZXX"
+  },
+  {
+   "class_id": "C000224794",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "ABZXX"
+  },
+  {
+   "class_id": "C000017977",
+   "latest_form": "N-MFP3",
+   "name": "Prime Money Market Fund",
+   "series_id": "S000006583",
+   "ticker": "ACAXX"
+  },
+  {
+   "class_id": "C000083514",
+   "latest_form": "N-MFP3",
+   "name": "Janus Henderson Government Money Market Fund",
+   "series_id": "S000010466",
+   "ticker": "ACDXX"
+  },
+  {
+   "class_id": "C000254996",
+   "latest_form": "N-MFP3",
+   "name": "Janus Henderson Government Money Market Fund",
+   "series_id": "S000010466",
+   "ticker": "ACJXX"
+  },
+  {
+   "class_id": "C000254997",
+   "latest_form": "N-MFP3",
+   "name": "Janus Henderson Government Money Market Fund",
+   "series_id": "S000010466",
+   "ticker": "ACOXX"
+  },
+  {
+   "class_id": "C000028921",
+   "latest_form": "N-MFP3",
+   "name": "Janus Henderson Government Money Market Fund",
+   "series_id": "S000010466",
+   "ticker": "ACTXX"
+  },
+  {
+   "class_id": "C000085154",
+   "latest_form": "N-MFP3",
+   "name": "Invesco Government Money Market Fund",
+   "series_id": "S000000253",
+   "ticker": "ACXXX"
+  },
+  {
+   "class_id": "C000085152",
+   "latest_form": "N-MFP3",
+   "name": "Invesco Government Money Market Fund",
+   "series_id": "S000000253",
+   "ticker": "ACZXX"
+  },
+  {
+   "class_id": "C000172514",
+   "latest_form": "N-MFP3",
+   "name": "AB Fixed-Income Shares, Inc. - AB Government Money Market Portfolio",
+   "series_id": "S000011990",
+   "ticker": "AEAXX"
+  },
+  {
+   "class_id": "C000193052",
+   "latest_form": "N-MFP3",
+   "name": "AB Fixed-Income Shares, Inc. - AB Government Money Market Portfolio",
+   "series_id": "S000011990",
+   "ticker": "AEBXX"
+  },
+  {
+   "class_id": "C000172515",
+   "latest_form": "N-MFP3",
+   "name": "AB Fixed-Income Shares, Inc. - AB Government Money Market Portfolio",
+   "series_id": "S000011990",
+   "ticker": "AECXX"
+  },
+  {
+   "class_id": "C000172512",
+   "latest_form": "N-MFP3",
+   "name": "AB Fixed-Income Shares, Inc. - AB Government Money Market Portfolio",
+   "series_id": "S000011990",
+   "ticker": "AEYXX"
+  },
+  {
+   "class_id": "C000075886",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "AFAXX"
+  },
+  {
+   "class_id": "C000075895",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "AFCXX"
+  },
+  {
+   "class_id": "C000075896",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "AFFXX"
+  },
+  {
+   "class_id": "C000075897",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "AFGXX"
+  },
+  {
+   "class_id": "C000251884",
+   "latest_form": "N-MFP3",
+   "name": "State Street Federal Treasury Money Market Fund",
+   "series_id": "S000086381",
+   "ticker": "AFTXX"
+  },
+  {
+   "class_id": "C000251886",
+   "latest_form": "N-MFP3",
+   "name": "State Street Federal Government Money Market Fund",
+   "series_id": "S000086383",
+   "ticker": "AGFXX"
+  },
+  {
+   "class_id": "C000162989",
+   "latest_form": "N-MFP3",
+   "name": "U.S. Government Money Market Fund",
+   "series_id": "S000006582",
+   "ticker": "AGHXX"
+  },
+  {
+   "class_id": "C000270187",
+   "latest_form": "N-MFP3",
+   "name": "U.S. Government Money Market Fund",
+   "series_id": "S000006582",
+   "ticker": "AGJXX"
+  },
+  {
+   "class_id": "C000162988",
+   "latest_form": "N-MFP3",
+   "name": "U.S. Government Money Market Fund",
+   "series_id": "S000006582",
+   "ticker": "AGQXX"
+  },
+  {
+   "class_id": "C000172513",
+   "latest_form": "N-MFP3",
+   "name": "AB Fixed-Income Shares, Inc. - AB Government Money Market Portfolio",
+   "series_id": "S000011990",
+   "ticker": "AGRXX"
+  },
+  {
+   "class_id": "C000240629",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Government Money Market Fund",
+   "series_id": "S000007421",
+   "ticker": "AGTXX"
+  },
+  {
+   "class_id": "C000278021",
+   "latest_form": "N-MFP3",
+   "name": "Allspring 100% Treasury Money Market Fund",
+   "series_id": "S000007432",
+   "ticker": "AHAXX"
+  },
+  {
+   "class_id": "C000275149",
+   "latest_form": "N-MFP3",
+   "name": "Allspring 100% Treasury Money Market Fund",
+   "series_id": "S000007432",
+   "ticker": "AHCXX"
+  },
+  {
+   "class_id": "C000172516",
+   "latest_form": "N-MFP3",
+   "name": "AB Fixed-Income Shares, Inc. - AB Government Money Market Portfolio",
+   "series_id": "S000011990",
+   "ticker": "AIEXX"
+  },
+  {
+   "class_id": "C000000611",
+   "latest_form": "N-MFP3",
+   "name": "Invesco Government Money Market Fund",
+   "series_id": "S000000253",
+   "ticker": "AIMXX"
+  },
+  {
+   "class_id": "C000010926",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Liquid Assets Money Market Fund",
+   "series_id": "S000003905",
+   "ticker": "AJLXX"
+  },
+  {
+   "class_id": "C000010953",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Treasury Plus Money Market Fund",
+   "series_id": "S000003910",
+   "ticker": "AJTXX"
+  },
+  {
+   "class_id": "C000275148",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Government Money Market Fund",
+   "series_id": "S000007421",
+   "ticker": "ALGXX"
+  },
+  {
+   "class_id": "C000075263",
+   "latest_form": "N-MFP3",
+   "name": "PIMCO Government Money Market Fund",
+   "series_id": "S000024337",
+   "ticker": "AMAXX"
+  },
+  {
+   "class_id": "C000075264",
+   "latest_form": "N-MFP3",
+   "name": "PIMCO Government Money Market Fund",
+   "series_id": "S000024337",
+   "ticker": "AMGXX"
+  },
+  {
+   "class_id": "C000003605",
+   "latest_form": "N-MFP3",
+   "name": "Thrivent Money Market Fund",
+   "series_id": "S000001349",
+   "ticker": "AMMXX"
+  },
+  {
+   "class_id": "C000041650",
+   "latest_form": "N-MFP3",
+   "name": "Government Securities Money Market",
+   "series_id": "S000008943",
+   "ticker": "APCXX"
+  },
+  {
+   "class_id": "C000041646",
+   "latest_form": "N-MFP3",
+   "name": "U.S. Treasury Fund",
+   "series_id": "S000008941",
+   "ticker": "APGXX"
+  },
+  {
+   "class_id": "C000041649",
+   "latest_form": "N-MFP3",
+   "name": "Government Securities Money Market",
+   "series_id": "S000008943",
+   "ticker": "APHXX"
+  },
+  {
+   "class_id": "C000041645",
+   "latest_form": "N-MFP3",
+   "name": "U.S. Treasury Fund",
+   "series_id": "S000008941",
+   "ticker": "APKXX"
+  },
+  {
+   "class_id": "C000041648",
+   "latest_form": "N-MFP3",
+   "name": "U.S. Treasury Fund",
+   "series_id": "S000008941",
+   "ticker": "APNXX"
+  },
+  {
+   "class_id": "C000073542",
+   "latest_form": "N-MFP3",
+   "name": "Government Securities Money Market",
+   "series_id": "S000008943",
+   "ticker": "APPXX"
+  },
+  {
+   "class_id": "C000041652",
+   "latest_form": "N-MFP3",
+   "name": "Government Securities Money Market",
+   "series_id": "S000008943",
+   "ticker": "APSXX"
+  },
+  {
+   "class_id": "C000017980",
+   "latest_form": "N-MFP3",
+   "name": "Prime Money Market Fund",
+   "series_id": "S000006583",
+   "ticker": "ARCXX"
+  },
+  {
+   "class_id": "C000281853",
+   "latest_form": "N-MFP3",
+   "name": "Allspring 100% Treasury Money Market Fund",
+   "series_id": "S000007432",
+   "ticker": "ATKXX"
+  },
+  {
+   "class_id": "C000251885",
+   "latest_form": "N-MFP3",
+   "name": "State Street Federal Treasury Plus Money Market Fund",
+   "series_id": "S000086382",
+   "ticker": "ATPXX"
+  },
+  {
+   "class_id": "C000041210",
+   "latest_form": "N-MFP3",
+   "name": "BBH U.S. Government Money Market Fund",
+   "series_id": "S000015108",
+   "ticker": "BBMXX"
+  },
+  {
+   "class_id": "C000041211",
+   "latest_form": "N-MFP3",
+   "name": "BBH U.S. Government Money Market Fund",
+   "series_id": "S000015108",
+   "ticker": "BBSXX"
+  },
+  {
+   "class_id": "C000003936",
+   "latest_form": "N-MFP3",
+   "name": "T-FUND",
+   "series_id": "S000001476",
+   "ticker": "BCHXX"
+  },
+  {
+   "class_id": "C000276796",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus On-Chain Liquidity Fund",
+   "series_id": "S000105981",
+   "ticker": "BCLXX"
+  },
+  {
+   "class_id": "C000280489",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Institutional Preferred Government Money Market",
+   "series_id": "S000021488",
+   "ticker": "BCSXX"
+  },
+  {
+   "class_id": "C000015528",
+   "latest_form": "N-MFP3",
+   "name": "California Tax-Free Money Market Fund",
+   "series_id": "S000005671",
+   "ticker": "BCTXX"
+  },
+  {
+   "class_id": "C000060669",
+   "latest_form": "N-MFP3",
+   "name": "BlackRock Cash Funds: Treasury",
+   "series_id": "S000004273",
+   "ticker": "BCYXX"
+  },
+  {
+   "class_id": "C000003946",
+   "latest_form": "N-MFP3",
+   "name": "BlackRock Select Treasury Based Liquidity Fund",
+   "series_id": "S000001477",
+   "ticker": "BECXX"
+  },
+  {
+   "class_id": "C000003932",
+   "latest_form": "N-MFP3",
+   "name": "FEDFUND",
+   "series_id": "S000001475",
+   "ticker": "BFBXX"
+  },
+  {
+   "class_id": "C000003927",
+   "latest_form": "N-MFP3",
+   "name": "FEDFUND",
+   "series_id": "S000001475",
+   "ticker": "BFCXX"
+  },
+  {
+   "class_id": "C000003931",
+   "latest_form": "N-MFP3",
+   "name": "FEDFUND",
+   "series_id": "S000001475",
+   "ticker": "BFRXX"
+  },
+  {
+   "class_id": "C000003450",
+   "latest_form": "N-MFP3",
+   "name": "U.S. GOVERNMENT PORTFOLIO",
+   "series_id": "S000001286",
+   "ticker": "BGCXX"
+  },
+  {
+   "class_id": "C000003451",
+   "latest_form": "N-MFP3",
+   "name": "U.S. GOVERNMENT PORTFOLIO",
+   "series_id": "S000001286",
+   "ticker": "BGDXX"
+  },
+  {
+   "class_id": "C000003421",
+   "latest_form": "N-MFP3",
+   "name": "U.S. GOVERNMENT SELECT PORTFOLIO",
+   "series_id": "S000001275",
+   "ticker": "BGSXX"
+  },
+  {
+   "class_id": "C000003956",
+   "latest_form": "N-MFP3",
+   "name": "TREASURY TRUST FUND",
+   "series_id": "S000001478",
+   "ticker": "BITXX"
+  },
+  {
+   "class_id": "C000003923",
+   "latest_form": "N-MFP3",
+   "name": "FEDFUND",
+   "series_id": "S000001475",
+   "ticker": "BLFXX"
+  },
+  {
+   "class_id": "C000004029",
+   "latest_form": "N-MFP3",
+   "name": "BLACKROCK WEALTH LIQUID ENVIRONMENTALLY AWARE FUND",
+   "series_id": "S000001503",
+   "ticker": "BMCXX"
+  },
+  {
+   "class_id": "C000003449",
+   "latest_form": "N-MFP3",
+   "name": "U.S. GOVERNMENT PORTFOLIO",
+   "series_id": "S000001286",
+   "ticker": "BNGXX"
+  },
+  {
+   "class_id": "C000017692",
+   "latest_form": "N-MFP3",
+   "name": "Tax-Free Money Market Fund",
+   "series_id": "S000006473",
+   "ticker": "BNTXX"
+  },
+  {
+   "class_id": "C000017976",
+   "latest_form": "N-MFP3",
+   "name": "Prime Money Market Fund",
+   "series_id": "S000006583",
+   "ticker": "BPRXX"
+  },
+  {
+   "class_id": "C000003941",
+   "latest_form": "N-MFP3",
+   "name": "T-FUND",
+   "series_id": "S000001476",
+   "ticker": "BPTXX"
+  },
+  {
+   "class_id": "C000003976",
+   "latest_form": "N-MFP3",
+   "name": "MUNICASH",
+   "series_id": "S000001480",
+   "ticker": "BRCXX"
+  },
+  {
+   "class_id": "C000011980",
+   "latest_form": "N-MFP3",
+   "name": "BlackRock Cash Funds: Treasury",
+   "series_id": "S000004273",
+   "ticker": "BRIXX"
+  },
+  {
+   "class_id": "C000003929",
+   "latest_form": "N-MFP3",
+   "name": "FEDFUND",
+   "series_id": "S000001475",
+   "ticker": "BRPXX"
+  },
+  {
+   "class_id": "C000011982",
+   "latest_form": "N-MFP3",
+   "name": "BlackRock Cash Funds: Treasury",
+   "series_id": "S000004273",
+   "ticker": "BRSXX"
+  },
+  {
+   "class_id": "C000003422",
+   "latest_form": "N-MFP3",
+   "name": "U.S. GOVERNMENT SELECT PORTFOLIO",
+   "series_id": "S000001275",
+   "ticker": "BSCXX"
+  },
+  {
+   "class_id": "C000003423",
+   "latest_form": "N-MFP3",
+   "name": "U.S. GOVERNMENT SELECT PORTFOLIO",
+   "series_id": "S000001275",
+   "ticker": "BSDXX"
+  },
+  {
+   "class_id": "C000011981",
+   "latest_form": "N-MFP3",
+   "name": "BlackRock Cash Funds: Treasury",
+   "series_id": "S000004273",
+   "ticker": "BSPXX"
+  },
+  {
+   "class_id": "C000265299",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Stablecoin Reserves Fund",
+   "series_id": "S000096464",
+   "ticker": "BSRXX"
+  },
+  {
+   "class_id": "C000003940",
+   "latest_form": "N-MFP3",
+   "name": "T-FUND",
+   "series_id": "S000001476",
+   "ticker": "BTAXX"
+  },
+  {
+   "class_id": "C000003957",
+   "latest_form": "N-MFP3",
+   "name": "TREASURY TRUST FUND",
+   "series_id": "S000001478",
+   "ticker": "BTCXX"
+  },
+  {
+   "class_id": "C000003952",
+   "latest_form": "N-MFP3",
+   "name": "TREASURY TRUST FUND",
+   "series_id": "S000001478",
+   "ticker": "BUCXX"
+  },
+  {
+   "class_id": "C000003926",
+   "latest_form": "N-MFP3",
+   "name": "FEDFUND",
+   "series_id": "S000001475",
+   "ticker": "BUPXX"
+  },
+  {
+   "class_id": "C000231443",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional U.S. Government Money Market Fund",
+   "series_id": "S000010701",
+   "ticker": "BUYXX"
+  },
+  {
+   "class_id": "C000231448",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Plus Money Market Fund",
+   "series_id": "S000019118",
+   "ticker": "BVYXX"
+  },
+  {
+   "class_id": "C000011983",
+   "latest_form": "N-MFP3",
+   "name": "BlackRock Cash Funds: Treasury",
+   "series_id": "S000004273",
+   "ticker": "BYTXX"
+  },
+  {
+   "class_id": "C000026078",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES CALIFORNIA MUNICIPAL CASH TRUST",
+   "series_id": "S000009544",
+   "ticker": "CACXX"
+  },
+  {
+   "class_id": "C000017334",
+   "latest_form": "N-MFP3",
+   "name": "DWS Government & Agency Securities Portfolio",
+   "series_id": "S000006301",
+   "ticker": "CAGXX"
+  },
+  {
+   "class_id": "C000231444",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional U.S. Government Money Market Fund",
+   "series_id": "S000010701",
+   "ticker": "CAHXX"
+  },
+  {
+   "class_id": "C000026079",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES CALIFORNIA MUNICIPAL CASH TRUST",
+   "series_id": "S000009544",
+   "ticker": "CAIXX"
+  },
+  {
+   "class_id": "C000231447",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Plus Money Market Fund",
+   "series_id": "S000019118",
+   "ticker": "CAJXX"
+  },
+  {
+   "class_id": "C000026075",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES CALIFORNIA MUNICIPAL CASH TRUST",
+   "series_id": "S000009544",
+   "ticker": "CALXX"
+  },
+  {
+   "class_id": "C000238341",
+   "latest_form": "N-MFP3",
+   "name": "Prime Portfolio",
+   "series_id": "S000004151",
+   "ticker": "CASXX"
+  },
+  {
+   "class_id": "C000026077",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES CALIFORNIA MUNICIPAL CASH TRUST",
+   "series_id": "S000009544",
+   "ticker": "CCCXX"
+  },
+  {
+   "class_id": "C000075900",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "CCFXX"
+  },
+  {
+   "class_id": "C000026076",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES CALIFORNIA MUNICIPAL CASH TRUST",
+   "series_id": "S000009544",
+   "ticker": "CCSXX"
+  },
+  {
+   "class_id": "C000000975",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Institutional Preferred Treasury Securities Money Market Fund",
+   "series_id": "S000000378",
+   "ticker": "CEAXX"
+  },
+  {
+   "class_id": "C000167188",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Institutional Preferred Treasury Securities Money Market Fund",
+   "series_id": "S000000378",
+   "ticker": "CEIXX"
+  },
+  {
+   "class_id": "C000246985",
+   "latest_form": "N-MFP3",
+   "name": "Cantor Fitzgerald Government Money Market  Fund",
+   "series_id": "S000083382",
+   "ticker": "CFGXX"
+  },
+  {
+   "class_id": "C000248938",
+   "latest_form": "N-MFP3",
+   "name": "Cantor Fitzgerald Government Money Market  Fund",
+   "series_id": "S000083382",
+   "ticker": "CFYXX"
+  },
+  {
+   "class_id": "C000173885",
+   "latest_form": "N-MFP3",
+   "name": "Columbia Government Money Market Fund",
+   "series_id": "S000031364",
+   "ticker": "CGMXX"
+  },
+  {
+   "class_id": "C000017349",
+   "latest_form": "N-MFP3",
+   "name": "DWS Tax-Exempt Portfolio",
+   "series_id": "S000006303",
+   "ticker": "CHSXX"
+  },
+  {
+   "class_id": "C000024238",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Select Tax Free Reserves",
+   "series_id": "S000008909",
+   "ticker": "CIFXX"
+  },
+  {
+   "class_id": "C000024239",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Institutional U.S. Treasury Reserves",
+   "series_id": "S000008910",
+   "ticker": "CIIXX"
+  },
+  {
+   "class_id": "C000024235",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Institutional Liquid Reserves",
+   "series_id": "S000008908",
+   "ticker": "CILXX"
+  },
+  {
+   "class_id": "C000010922",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Liquid Assets Money Market Fund",
+   "series_id": "S000003905",
+   "ticker": "CJLXX"
+  },
+  {
+   "class_id": "C000008134",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Prime Money Market Fund",
+   "series_id": "S000002969",
+   "ticker": "CJPXX"
+  },
+  {
+   "class_id": "C000008117",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan 100% U.S. Treasury Securities Money Market Fund",
+   "series_id": "S000002965",
+   "ticker": "CJTXX"
+  },
+  {
+   "class_id": "C000209656",
+   "latest_form": "N-MFP3",
+   "name": "Capital Group Central Fund Series - Capital Group Central Cash Fund",
+   "series_id": "S000064714",
+   "ticker": "CMQXX"
+  },
+  {
+   "class_id": "C000097509",
+   "latest_form": "N-MFP3",
+   "name": "Columbia Government Money Market Fund",
+   "series_id": "S000031364",
+   "ticker": "CMRXX"
+  },
+  {
+   "class_id": "C000016001",
+   "latest_form": "N-MFP3",
+   "name": "CNR GOVERNMENT MM",
+   "series_id": "S000005833",
+   "ticker": "CNFXX"
+  },
+  {
+   "class_id": "C000015999",
+   "latest_form": "N-MFP3",
+   "name": "CNR GOVERNMENT MM",
+   "series_id": "S000005833",
+   "ticker": "CNGXX"
+  },
+  {
+   "class_id": "C000016000",
+   "latest_form": "N-MFP3",
+   "name": "CNR GOVERNMENT MM",
+   "series_id": "S000005833",
+   "ticker": "CNIXX"
+  },
+  {
+   "class_id": "C000227505",
+   "latest_form": "N-MFP3",
+   "name": "Government Portfolio",
+   "series_id": "S000004148",
+   "ticker": "COSXX"
+  },
+  {
+   "class_id": "C000016429",
+   "latest_form": "N-MFP3",
+   "name": "Capital Preservation Fund",
+   "series_id": "S000005965",
+   "ticker": "CPFXX"
+  },
+  {
+   "class_id": "C000206005",
+   "latest_form": "N-MFP3",
+   "name": "MFS U.S. Government Cash Reserve Fund",
+   "series_id": "S000000762",
+   "ticker": "CRHXX"
+  },
+  {
+   "class_id": "C000002187",
+   "latest_form": "N-MFP3",
+   "name": "MFS U.S. Government Cash Reserve Fund",
+   "series_id": "S000000762",
+   "ticker": "CRJXX"
+  },
+  {
+   "class_id": "C000002188",
+   "latest_form": "N-MFP3",
+   "name": "MFS U.S. Government Cash Reserve Fund",
+   "series_id": "S000000762",
+   "ticker": "CRKXX"
+  },
+  {
+   "class_id": "C000002186",
+   "latest_form": "N-MFP3",
+   "name": "MFS U.S. Government Cash Reserve Fund",
+   "series_id": "S000000762",
+   "ticker": "CRMXX"
+  },
+  {
+   "class_id": "C000206004",
+   "latest_form": "N-MFP3",
+   "name": "MFS U.S. Government Cash Reserve Fund",
+   "series_id": "S000000762",
+   "ticker": "CRRXX"
+  },
+  {
+   "class_id": "C000002184",
+   "latest_form": "N-MFP3",
+   "name": "MFS U.S. Government Cash Reserve Fund",
+   "series_id": "S000000762",
+   "ticker": "CRVXX"
+  },
+  {
+   "class_id": "C000231445",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Money Market Fund",
+   "series_id": "S000019117",
+   "ticker": "CSJXX"
+  },
+  {
+   "class_id": "C000000288",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Government Cash Management",
+   "series_id": "S000000128",
+   "ticker": "DAGXX"
+  },
+  {
+   "class_id": "C000000292",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Government Securities Cash Management",
+   "series_id": "S000000129",
+   "ticker": "DAPXX"
+  },
+  {
+   "class_id": "C000000257",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Treasury Securities Cash Management",
+   "series_id": "S000000113",
+   "ticker": "DARXX"
+  },
+  {
+   "class_id": "C000035156",
+   "latest_form": "N-MFP3",
+   "name": "DWS Government & Agency Securities Portfolio",
+   "series_id": "S000006301",
+   "ticker": "DBBXX"
+  },
+  {
+   "class_id": "C000250287",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Government Cash Management",
+   "series_id": "S000000128",
+   "ticker": "DBFXX"
+  },
+  {
+   "class_id": "C000233952",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Government Cash Management",
+   "series_id": "S000000128",
+   "ticker": "DBLXX"
+  },
+  {
+   "class_id": "C000035157",
+   "latest_form": "N-MFP3",
+   "name": "DWS Government & Agency Securities Portfolio",
+   "series_id": "S000006301",
+   "ticker": "DCMXX"
+  },
+  {
+   "class_id": "C000000287",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Government Cash Management",
+   "series_id": "S000000128",
+   "ticker": "DGCXX"
+  },
+  {
+   "class_id": "C000171230",
+   "latest_form": "N-MFP3",
+   "name": "Morgan Stanley U.S. Government Money Market Trust",
+   "series_id": "S000004054",
+   "ticker": "DGEXX"
+  },
+  {
+   "class_id": "C000000293",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Government Securities Cash Management",
+   "series_id": "S000000129",
+   "ticker": "DGPXX"
+  },
+  {
+   "class_id": "C000223302",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Government Cash Management",
+   "series_id": "S000000128",
+   "ticker": "DGQXX"
+  },
+  {
+   "class_id": "C000223301",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Government Cash Management",
+   "series_id": "S000000128",
+   "ticker": "DGUXX"
+  },
+  {
+   "class_id": "C000000286",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Government Cash Management",
+   "series_id": "S000000128",
+   "ticker": "DGVXX"
+  },
+  {
+   "class_id": "C000061463",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Institutional Preferred Treasury Obligations",
+   "series_id": "S000021490",
+   "ticker": "DHLXX"
+  },
+  {
+   "class_id": "C000266548",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Institutional U.S. Treasury Reserves",
+   "series_id": "S000008910",
+   "ticker": "DIGXX"
+  },
+  {
+   "class_id": "C000000291",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Government Securities Cash Management",
+   "series_id": "S000000129",
+   "ticker": "DIPXX"
+  },
+  {
+   "class_id": "C000000255",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Treasury Securities Cash Management",
+   "series_id": "S000000113",
+   "ticker": "DIRXX"
+  },
+  {
+   "class_id": "C000061462",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Institutional Preferred Treasury Obligations",
+   "series_id": "S000021490",
+   "ticker": "DNSXX"
+  },
+  {
+   "class_id": "C000035161",
+   "latest_form": "N-MFP3",
+   "name": "DWS Money Market Prime Series",
+   "series_id": "S000006073",
+   "ticker": "DOAXX"
+  },
+  {
+   "class_id": "C000035163",
+   "latest_form": "N-MFP3",
+   "name": "DWS Money Market Prime Series",
+   "series_id": "S000006073",
+   "ticker": "DOCXX"
+  },
+  {
+   "class_id": "C000035164",
+   "latest_form": "N-MFP3",
+   "name": "DWS Money Market Prime Series",
+   "series_id": "S000006073",
+   "ticker": "DOSXX"
+  },
+  {
+   "class_id": "C000000289",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Government Cash Management",
+   "series_id": "S000000128",
+   "ticker": "DPGXX"
+  },
+  {
+   "class_id": "C000000258",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Treasury Securities Cash Management",
+   "series_id": "S000000113",
+   "ticker": "DPRXX"
+  },
+  {
+   "class_id": "C000061454",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Institutional Preferred Government Money Market",
+   "series_id": "S000021488",
+   "ticker": "DSHXX"
+  },
+  {
+   "class_id": "C000061453",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Institutional Preferred Government Money Market",
+   "series_id": "S000021488",
+   "ticker": "DSVXX"
+  },
+  {
+   "class_id": "C000000253",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Treasury Obligations Cash Management",
+   "series_id": "S000000112",
+   "ticker": "DTAXX"
+  },
+  {
+   "class_id": "C000035158",
+   "latest_form": "N-MFP3",
+   "name": "DWS Tax-Exempt Portfolio",
+   "series_id": "S000006303",
+   "ticker": "DTBXX"
+  },
+  {
+   "class_id": "C000035159",
+   "latest_form": "N-MFP3",
+   "name": "DWS Tax-Exempt Portfolio",
+   "series_id": "S000006303",
+   "ticker": "DTCXX"
+  },
+  {
+   "class_id": "C000035160",
+   "latest_form": "N-MFP3",
+   "name": "DWS Tax-Exempt Portfolio",
+   "series_id": "S000006303",
+   "ticker": "DTDXX"
+  },
+  {
+   "class_id": "C000035155",
+   "latest_form": "N-MFP3",
+   "name": "DWS Government & Agency Securities Portfolio",
+   "series_id": "S000006301",
+   "ticker": "DTGXX"
+  },
+  {
+   "class_id": "C000223305",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Treasury Securities Cash Management",
+   "series_id": "S000000113",
+   "ticker": "DTHXX"
+  },
+  {
+   "class_id": "C000223306",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Treasury Securities Cash Management",
+   "series_id": "S000000113",
+   "ticker": "DTJXX"
+  },
+  {
+   "class_id": "C000223304",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Treasury Obligations Cash Management",
+   "series_id": "S000000112",
+   "ticker": "DTKXX"
+  },
+  {
+   "class_id": "C000195671",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Treasury; Agency Liquidity Money Market Fund",
+   "series_id": "S000059809",
+   "ticker": "DTLXX"
+  },
+  {
+   "class_id": "C000223303",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Treasury Obligations Cash Management",
+   "series_id": "S000000112",
+   "ticker": "DTNXX"
+  },
+  {
+   "class_id": "C000000254",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Treasury Obligations Cash Management",
+   "series_id": "S000000112",
+   "ticker": "DTPXX"
+  },
+  {
+   "class_id": "C000000251",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Treasury Obligations Cash Management",
+   "series_id": "S000000112",
+   "ticker": "DTRXX"
+  },
+  {
+   "class_id": "C000000252",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Treasury Obligations Cash Management",
+   "series_id": "S000000112",
+   "ticker": "DTVXX"
+  },
+  {
+   "class_id": "C000000290",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Government Securities Cash Management",
+   "series_id": "S000000129",
+   "ticker": "DVPXX"
+  },
+  {
+   "class_id": "C000000256",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Treasury Securities Cash Management",
+   "series_id": "S000000113",
+   "ticker": "DVRXX"
+  },
+  {
+   "class_id": "C000011343",
+   "latest_form": "N-MFP3",
+   "name": "Morgan Stanley U.S. Government Money Market Trust",
+   "series_id": "S000004054",
+   "ticker": "DWGXX"
+  },
+  {
+   "class_id": "C000075901",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "EAFXX"
+  },
+  {
+   "class_id": "C000225258",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Government Money Market Fund",
+   "series_id": "S000003909",
+   "ticker": "EJGXX"
+  },
+  {
+   "class_id": "C000225257",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Prime Money Market Fund",
+   "series_id": "S000002969",
+   "ticker": "EJPXX"
+  },
+  {
+   "class_id": "C000225256",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan 100% U.S. Treasury Securities Money Market Fund",
+   "series_id": "S000002965",
+   "ticker": "EJTXX"
+  },
+  {
+   "class_id": "C000225259",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Treasury Plus Money Market Fund",
+   "series_id": "S000003910",
+   "ticker": "EJUXX"
+  },
+  {
+   "class_id": "C000032336",
+   "latest_form": "N-MFP3",
+   "name": "Elfun Government Money Market Fund",
+   "series_id": "S000011834",
+   "ticker": "ELMXX"
+  },
+  {
+   "class_id": "C000233534",
+   "latest_form": "N-MFP3",
+   "name": "Government Obligations Fund",
+   "series_id": "S000074975",
+   "ticker": "FAAXX"
+  },
+  {
+   "class_id": "C000238263",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity California Municipal Money Market Fund",
+   "series_id": "S000005493",
+   "ticker": "FABXX"
+  },
+  {
+   "class_id": "C000233542",
+   "latest_form": "N-MFP3",
+   "name": "Institutional Prime Obligations Fund",
+   "series_id": "S000074976",
+   "ticker": "FAIXX"
+  },
+  {
+   "class_id": "C000233550",
+   "latest_form": "N-MFP3",
+   "name": "Retail Prime Obligations Fund",
+   "series_id": "S000074977",
+   "ticker": "FAPXX"
+  },
+  {
+   "class_id": "C000075887",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "FARXX"
+  },
+  {
+   "class_id": "C000233562",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Obligations Fund",
+   "series_id": "S000074979",
+   "ticker": "FATXX"
+  },
+  {
+   "class_id": "C000238262",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Massachusetts Municipal Money Market Fund",
+   "series_id": "S000007113",
+   "ticker": "FAUXX"
+  },
+  {
+   "class_id": "C000238264",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity New York Municipal Money Market Fund",
+   "series_id": "S000007146",
+   "ticker": "FAWXX"
+  },
+  {
+   "class_id": "C000238265",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity New Jersey Municipal Money Market Fund",
+   "series_id": "S000006052",
+   "ticker": "FAYXX"
+  },
+  {
+   "class_id": "C000013077",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Treasury Portfolio",
+   "series_id": "S000004819",
+   "ticker": "FCEXX"
+  },
+  {
+   "class_id": "C000013081",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Government Portfolio",
+   "series_id": "S000004820",
+   "ticker": "FCGXX"
+  },
+  {
+   "class_id": "C000013086",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Money Market Portfolio",
+   "series_id": "S000004822",
+   "ticker": "FCIXX"
+  },
+  {
+   "class_id": "C000013087",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Money Market Portfolio",
+   "series_id": "S000004822",
+   "ticker": "FCOXX"
+  },
+  {
+   "class_id": "C000013078",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Treasury Portfolio",
+   "series_id": "S000004819",
+   "ticker": "FCSXX"
+  },
+  {
+   "class_id": "C000013080",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Government Portfolio",
+   "series_id": "S000004820",
+   "ticker": "FCVXX"
+  },
+  {
+   "class_id": "C000166885",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Fund - Tax-Exempt Money Market",
+   "series_id": "S000009244",
+   "ticker": "FCYXX"
+  },
+  {
+   "class_id": "C000020483",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Treasury Money Market Fund",
+   "series_id": "S000007505",
+   "ticker": "FDCXX"
+  },
+  {
+   "class_id": "C000020480",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Tax-Exempt Money Market Fund",
+   "series_id": "S000007504",
+   "ticker": "FDEXX"
+  },
+  {
+   "class_id": "C000019232",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Treasury Only Money Market Fund",
+   "series_id": "S000007053",
+   "ticker": "FDLXX"
+  },
+  {
+   "class_id": "C000019553",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Government Cash Reserves",
+   "series_id": "S000007149",
+   "ticker": "FDRXX"
+  },
+  {
+   "class_id": "C000020485",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Treasury Money Market Fund",
+   "series_id": "S000007505",
+   "ticker": "FDUXX"
+  },
+  {
+   "class_id": "C000025211",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Fund - Tax-Exempt Money Market",
+   "series_id": "S000009244",
+   "ticker": "FEAXX"
+  },
+  {
+   "class_id": "C000025203",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Solutions",
+   "series_id": "S000009243",
+   "ticker": "FEDXX"
+  },
+  {
+   "class_id": "C000233545",
+   "latest_form": "N-MFP3",
+   "name": "Retail Prime Obligations Fund",
+   "series_id": "S000074977",
+   "ticker": "FEIXX"
+  },
+  {
+   "class_id": "C000020479",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Tax-Exempt Money Market Fund",
+   "series_id": "S000007504",
+   "ticker": "FERXX"
+  },
+  {
+   "class_id": "C000025212",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Fund - Tax-Exempt Money Market",
+   "series_id": "S000009244",
+   "ticker": "FESXX"
+  },
+  {
+   "class_id": "C000013090",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Tax-Exempt Portfolio",
+   "series_id": "S000004823",
+   "ticker": "FETXX"
+  },
+  {
+   "class_id": "C000013089",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Tax-Exempt Portfolio",
+   "series_id": "S000004823",
+   "ticker": "FEXXX"
+  },
+  {
+   "class_id": "C000233553",
+   "latest_form": "N-MFP3",
+   "name": "Retail Tax Free Obligations Fund",
+   "series_id": "S000074978",
+   "ticker": "FFCXX"
+  },
+  {
+   "class_id": "C000224559",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "FFFXX"
+  },
+  {
+   "class_id": "C000167073",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES INSTITUTIONAL TAX-FREE CASH TRUST",
+   "series_id": "S000009533",
+   "ticker": "FFTXX"
+  },
+  {
+   "class_id": "C000025303",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Obligations",
+   "series_id": "S000009260",
+   "ticker": "FGAXX"
+  },
+  {
+   "class_id": "C000233535",
+   "latest_form": "N-MFP3",
+   "name": "Government Obligations Fund",
+   "series_id": "S000074975",
+   "ticker": "FGDXX"
+  },
+  {
+   "class_id": "C000013082",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Government Portfolio",
+   "series_id": "S000004820",
+   "ticker": "FGEXX"
+  },
+  {
+   "class_id": "C000167141",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Government",
+   "series_id": "S000009242",
+   "ticker": "FGGXX"
+  },
+  {
+   "class_id": "C000168450",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Series Government Money Market Fund",
+   "series_id": "S000053607",
+   "ticker": "FGNXX"
+  },
+  {
+   "class_id": "C000025196",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Government",
+   "series_id": "S000009242",
+   "ticker": "FGTXX"
+  },
+  {
+   "class_id": "C000233536",
+   "latest_form": "N-MFP3",
+   "name": "Government Obligations Fund",
+   "series_id": "S000074975",
+   "ticker": "FGUXX"
+  },
+  {
+   "class_id": "C000233538",
+   "latest_form": "N-MFP3",
+   "name": "Government Obligations Fund",
+   "series_id": "S000074975",
+   "ticker": "FGVXX"
+  },
+  {
+   "class_id": "C000233537",
+   "latest_form": "N-MFP3",
+   "name": "Government Obligations Fund",
+   "series_id": "S000074975",
+   "ticker": "FGXXX"
+  },
+  {
+   "class_id": "C000233539",
+   "latest_form": "N-MFP3",
+   "name": "Government Obligations Fund",
+   "series_id": "S000074975",
+   "ticker": "FGZXX"
+  },
+  {
+   "class_id": "C000233552",
+   "latest_form": "N-MFP3",
+   "name": "Retail Tax Free Obligations Fund",
+   "series_id": "S000074978",
+   "ticker": "FHIXX"
+  },
+  {
+   "class_id": "C000172501",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Fund - Money Market",
+   "series_id": "S000051191",
+   "ticker": "FHMXX"
+  },
+  {
+   "class_id": "C000172503",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Fund - Money Market",
+   "series_id": "S000051191",
+   "ticker": "FHSXX"
+  },
+  {
+   "class_id": "C000240872",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Federal Instruments",
+   "series_id": "S000051190",
+   "ticker": "FIDXX"
+  },
+  {
+   "class_id": "C000013039",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Government Portfolio",
+   "series_id": "S000004820",
+   "ticker": "FIGXX"
+  },
+  {
+   "class_id": "C000161178",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Federal Instruments",
+   "series_id": "S000051190",
+   "ticker": "FIHXX"
+  },
+  {
+   "class_id": "C000161180",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Federal Instruments",
+   "series_id": "S000051190",
+   "ticker": "FIKXX"
+  },
+  {
+   "class_id": "C000161177",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Federal Instruments",
+   "series_id": "S000051190",
+   "ticker": "FILXX"
+  },
+  {
+   "class_id": "C000161176",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Federal Instruments",
+   "series_id": "S000051190",
+   "ticker": "FIOXX"
+  },
+  {
+   "class_id": "C000161175",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Federal Instruments",
+   "series_id": "S000051190",
+   "ticker": "FIRXX"
+  },
+  {
+   "class_id": "C000013038",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Treasury Portfolio",
+   "series_id": "S000004819",
+   "ticker": "FISXX"
+  },
+  {
+   "class_id": "C000233543",
+   "latest_form": "N-MFP3",
+   "name": "Institutional Prime Obligations Fund",
+   "series_id": "S000074976",
+   "ticker": "FIUXX"
+  },
+  {
+   "class_id": "C000161786",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Federal Instruments",
+   "series_id": "S000051190",
+   "ticker": "FIWXX"
+  },
+  {
+   "class_id": "C000166884",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Fund - Tax-Exempt Money Market",
+   "series_id": "S000009244",
+   "ticker": "FKIXX"
+  },
+  {
+   "class_id": "C000177594",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Flex Government Money Market Fund",
+   "series_id": "S000056367",
+   "ticker": "FLGXX"
+  },
+  {
+   "class_id": "C000233559",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Obligations Fund",
+   "series_id": "S000074979",
+   "ticker": "FLIXX"
+  },
+  {
+   "class_id": "C000173654",
+   "latest_form": "N-MFP3",
+   "name": "Meeder Government Money Market Fund",
+   "series_id": "S000055222",
+   "ticker": "FLPXX"
+  },
+  {
+   "class_id": "C000047913",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Massachusetts Municipal Money Market Fund",
+   "series_id": "S000007113",
+   "ticker": "FMAXX"
+  },
+  {
+   "class_id": "C000240873",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Fund - Money Market",
+   "series_id": "S000051191",
+   "ticker": "FMDXX"
+  },
+  {
+   "class_id": "C000166000",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Fund - Money Market",
+   "series_id": "S000051191",
+   "ticker": "FMEXX"
+  },
+  {
+   "class_id": "C000018536",
+   "latest_form": "N-MFP3",
+   "name": "Franklin U.S. Government Money Fund",
+   "series_id": "S000006859",
+   "ticker": "FMFXX"
+  },
+  {
+   "class_id": "C000166001",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Fund - Money Market",
+   "series_id": "S000051191",
+   "ticker": "FMGXX"
+  },
+  {
+   "class_id": "C000161182",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Fund - Money Market",
+   "series_id": "S000051191",
+   "ticker": "FMJXX"
+  },
+  {
+   "class_id": "C000166002",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Fund - Money Market",
+   "series_id": "S000051191",
+   "ticker": "FMKXX"
+  },
+  {
+   "class_id": "C000020481",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Tax-Exempt Money Market Fund",
+   "series_id": "S000007504",
+   "ticker": "FMOXX"
+  },
+  {
+   "class_id": "C000013041",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Money Market Portfolio",
+   "series_id": "S000004822",
+   "ticker": "FMPXX"
+  },
+  {
+   "class_id": "C000195869",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity SAI Municipal Money Market Fund",
+   "series_id": "S000059873",
+   "ticker": "FMQXX"
+  },
+  {
+   "class_id": "C000019442",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Massachusetts Municipal Money Market Fund",
+   "series_id": "S000007113",
+   "ticker": "FMSXX"
+  },
+  {
+   "class_id": "C000224560",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "FMUXX"
+  },
+  {
+   "class_id": "C000013088",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Money Market Portfolio",
+   "series_id": "S000004822",
+   "ticker": "FMYXX"
+  },
+  {
+   "class_id": "C000198393",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Government Money Market Fund",
+   "series_id": "S000007051",
+   "ticker": "FNBXX"
+  },
+  {
+   "class_id": "C000026115",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES NEW YORK MUNICIPAL CASH TRUST",
+   "series_id": "S000009560",
+   "ticker": "FNCXX"
+  },
+  {
+   "class_id": "C000047915",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity New York Municipal Money Market Fund",
+   "series_id": "S000007146",
+   "ticker": "FNKXX"
+  },
+  {
+   "class_id": "C000056571",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Money Market Portfolio",
+   "series_id": "S000004822",
+   "ticker": "FNSXX"
+  },
+  {
+   "class_id": "C000026116",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES NEW YORK MUNICIPAL CASH TRUST",
+   "series_id": "S000009560",
+   "ticker": "FNTXX"
+  },
+  {
+   "class_id": "C000025197",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Government",
+   "series_id": "S000009242",
+   "ticker": "FOAXX"
+  },
+  {
+   "class_id": "C000215714",
+   "latest_form": "N-MFP3",
+   "name": "Franklin OnChain U.S. Government Money Fund",
+   "series_id": "S000067043",
+   "ticker": "FOBXX"
+  },
+  {
+   "class_id": "C000233561",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Obligations Fund",
+   "series_id": "S000074979",
+   "ticker": "FOCXX"
+  },
+  {
+   "class_id": "C000233564",
+   "latest_form": "N-MFP3",
+   "name": "U.S. Treasury Money Market Fund",
+   "series_id": "S000074980",
+   "ticker": "FODXX"
+  },
+  {
+   "class_id": "C000233569",
+   "latest_form": "N-MFP3",
+   "name": "U.S. Treasury Money Market Fund",
+   "series_id": "S000074980",
+   "ticker": "FOEXX"
+  },
+  {
+   "class_id": "C000013075",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Treasury Only Portfolio",
+   "series_id": "S000004818",
+   "ticker": "FOIXX"
+  },
+  {
+   "class_id": "C000056567",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Treasury Only Portfolio",
+   "series_id": "S000004818",
+   "ticker": "FOPXX"
+  },
+  {
+   "class_id": "C000259220",
+   "latest_form": "N-MFP3",
+   "name": "U.S. Treasury Money Market Fund",
+   "series_id": "S000074980",
+   "ticker": "FORXX"
+  },
+  {
+   "class_id": "C000025198",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Government",
+   "series_id": "S000009242",
+   "ticker": "FOSXX"
+  },
+  {
+   "class_id": "C000013074",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Treasury Only Portfolio",
+   "series_id": "S000004818",
+   "ticker": "FOXXX"
+  },
+  {
+   "class_id": "C000233567",
+   "latest_form": "N-MFP3",
+   "name": "U.S. Treasury Money Market Fund",
+   "series_id": "S000074980",
+   "ticker": "FOYXX"
+  },
+  {
+   "class_id": "C000233568",
+   "latest_form": "N-MFP3",
+   "name": "U.S. Treasury Money Market Fund",
+   "series_id": "S000074980",
+   "ticker": "FOZXX"
+  },
+  {
+   "class_id": "C000233544",
+   "latest_form": "N-MFP3",
+   "name": "Institutional Prime Obligations Fund",
+   "series_id": "S000074976",
+   "ticker": "FPIXX"
+  },
+  {
+   "class_id": "C000233532",
+   "latest_form": "N-MFP3",
+   "name": "Government Obligations Fund",
+   "series_id": "S000074975",
+   "ticker": "FPPXX"
+  },
+  {
+   "class_id": "C000233549",
+   "latest_form": "N-MFP3",
+   "name": "Retail Prime Obligations Fund",
+   "series_id": "S000074977",
+   "ticker": "FPUXX"
+  },
+  {
+   "class_id": "C000233541",
+   "latest_form": "N-MFP3",
+   "name": "Institutional Prime Obligations Fund",
+   "series_id": "S000074976",
+   "ticker": "FPZXX"
+  },
+  {
+   "class_id": "C000025310",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Instruments",
+   "series_id": "S000009261",
+   "ticker": "FRAXX"
+  },
+  {
+   "class_id": "C000141703",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Treasury Portfolio",
+   "series_id": "S000004819",
+   "ticker": "FRBXX"
+  },
+  {
+   "class_id": "C000240871",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Instruments",
+   "series_id": "S000009261",
+   "ticker": "FRDXX"
+  },
+  {
+   "class_id": "C000026082",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES CAPITAL RESERVES FUND",
+   "series_id": "S000009546",
+   "ticker": "FRFXX"
+  },
+  {
+   "class_id": "C000141704",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Government Portfolio",
+   "series_id": "S000004820",
+   "ticker": "FRGXX"
+  },
+  {
+   "class_id": "C000213873",
+   "latest_form": "N-MFP3",
+   "name": "Franklin U.S. Government Money Fund",
+   "series_id": "S000006859",
+   "ticker": "FRQXX"
+  },
+  {
+   "class_id": "C000128781",
+   "latest_form": "N-MFP3",
+   "name": "Franklin U.S. Government Money Fund",
+   "series_id": "S000006859",
+   "ticker": "FRRXX"
+  },
+  {
+   "class_id": "C000141702",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Treasury Only Portfolio",
+   "series_id": "S000004818",
+   "ticker": "FRSXX"
+  },
+  {
+   "class_id": "C000047918",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity California Municipal Money Market Fund",
+   "series_id": "S000005493",
+   "ticker": "FSBXX"
+  },
+  {
+   "class_id": "C000166883",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Government",
+   "series_id": "S000009242",
+   "ticker": "FSGXX"
+  },
+  {
+   "class_id": "C000013037",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Treasury Only Portfolio",
+   "series_id": "S000004818",
+   "ticker": "FSIXX"
+  },
+  {
+   "class_id": "C000016621",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity New Jersey Municipal Money Market Fund",
+   "series_id": "S000006052",
+   "ticker": "FSJXX"
+  },
+  {
+   "class_id": "C000047920",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity New Jersey Municipal Money Market Fund",
+   "series_id": "S000006052",
+   "ticker": "FSKXX"
+  },
+  {
+   "class_id": "C000019550",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity New York Municipal Money Market Fund",
+   "series_id": "S000007146",
+   "ticker": "FSNXX"
+  },
+  {
+   "class_id": "C000166882",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Government",
+   "series_id": "S000009242",
+   "ticker": "FSOXX"
+  },
+  {
+   "class_id": "C000014951",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity California Municipal Money Market Fund",
+   "series_id": "S000005493",
+   "ticker": "FSPXX"
+  },
+  {
+   "class_id": "C000020484",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Treasury Money Market Fund",
+   "series_id": "S000007505",
+   "ticker": "FSRXX"
+  },
+  {
+   "class_id": "C000013091",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Tax-Exempt Portfolio",
+   "series_id": "S000004823",
+   "ticker": "FSXXX"
+  },
+  {
+   "class_id": "C000233555",
+   "latest_form": "N-MFP3",
+   "name": "Retail Tax Free Obligations Fund",
+   "series_id": "S000074978",
+   "ticker": "FTAXX"
+  },
+  {
+   "class_id": "C000013042",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Tax-Exempt Portfolio",
+   "series_id": "S000004823",
+   "ticker": "FTCXX"
+  },
+  {
+   "class_id": "C000233556",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Obligations Fund",
+   "series_id": "S000074979",
+   "ticker": "FTDXX"
+  },
+  {
+   "class_id": "C000020476",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Municipal Money Market Fund",
+   "series_id": "S000007502",
+   "ticker": "FTEXX"
+  },
+  {
+   "class_id": "C000026054",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES INSTITUTIONAL TAX-FREE CASH TRUST",
+   "series_id": "S000009533",
+   "ticker": "FTFXX"
+  },
+  {
+   "class_id": "C000233533",
+   "latest_form": "N-MFP3",
+   "name": "Government Obligations Fund",
+   "series_id": "S000074975",
+   "ticker": "FTGXX"
+  },
+  {
+   "class_id": "C000025309",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Instruments",
+   "series_id": "S000009261",
+   "ticker": "FTIXX"
+  },
+  {
+   "class_id": "C000233551",
+   "latest_form": "N-MFP3",
+   "name": "Retail Tax Free Obligations Fund",
+   "series_id": "S000074978",
+   "ticker": "FTJXX"
+  },
+  {
+   "class_id": "C000233565",
+   "latest_form": "N-MFP3",
+   "name": "U.S. Treasury Money Market Fund",
+   "series_id": "S000074980",
+   "ticker": "FTKXX"
+  },
+  {
+   "class_id": "C000025302",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Obligations",
+   "series_id": "S000009260",
+   "ticker": "FTOXX"
+  },
+  {
+   "class_id": "C000213872",
+   "latest_form": "N-MFP3",
+   "name": "Franklin U.S. Government Money Fund",
+   "series_id": "S000006859",
+   "ticker": "FTQXX"
+  },
+  {
+   "class_id": "C000013783",
+   "latest_form": "N-MFP3",
+   "name": "HSBC U.S. Government Money Market Fund",
+   "series_id": "S000005047",
+   "ticker": "FTRXX"
+  },
+  {
+   "class_id": "C000233558",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Obligations Fund",
+   "series_id": "S000074979",
+   "ticker": "FTTXX"
+  },
+  {
+   "class_id": "C000013079",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Treasury Portfolio",
+   "series_id": "S000004819",
+   "ticker": "FTUXX"
+  },
+  {
+   "class_id": "C000056568",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Treasury Portfolio",
+   "series_id": "S000004819",
+   "ticker": "FTVXX"
+  },
+  {
+   "class_id": "C000025210",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Fund - Tax-Exempt Money Market",
+   "series_id": "S000009244",
+   "ticker": "FTXXX"
+  },
+  {
+   "class_id": "C000013076",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Investments Money Market Treasury Only Portfolio",
+   "series_id": "S000004818",
+   "ticker": "FTYXX"
+  },
+  {
+   "class_id": "C000233554",
+   "latest_form": "N-MFP3",
+   "name": "Retail Tax Free Obligations Fund",
+   "series_id": "S000074978",
+   "ticker": "FTZXX"
+  },
+  {
+   "class_id": "C000000400",
+   "latest_form": "N-MFP3",
+   "name": "Invesco Premier U.S. Government Money Portfolio",
+   "series_id": "S000000176",
+   "ticker": "FUGXX"
+  },
+  {
+   "class_id": "C000233566",
+   "latest_form": "N-MFP3",
+   "name": "U.S. Treasury Money Market Fund",
+   "series_id": "S000074980",
+   "ticker": "FUIXX"
+  },
+  {
+   "class_id": "C000233557",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Obligations Fund",
+   "series_id": "S000074979",
+   "ticker": "FUPXX"
+  },
+  {
+   "class_id": "C000233563",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Obligations Fund",
+   "series_id": "S000074979",
+   "ticker": "FUZXX"
+  },
+  {
+   "class_id": "C000025204",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Solutions",
+   "series_id": "S000009243",
+   "ticker": "FVAXX"
+  },
+  {
+   "class_id": "C000233540",
+   "latest_form": "N-MFP3",
+   "name": "Government Obligations Fund",
+   "series_id": "S000074975",
+   "ticker": "FVIXX"
+  },
+  {
+   "class_id": "C000025205",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Solutions",
+   "series_id": "S000009243",
+   "ticker": "FVSXX"
+  },
+  {
+   "class_id": "C000233560",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Obligations Fund",
+   "series_id": "S000074979",
+   "ticker": "FXFXX"
+  },
+  {
+   "class_id": "C000233548",
+   "latest_form": "N-MFP3",
+   "name": "Retail Prime Obligations Fund",
+   "series_id": "S000074977",
+   "ticker": "FXRXX"
+  },
+  {
+   "class_id": "C000025304",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Obligations",
+   "series_id": "S000009260",
+   "ticker": "FYAXX"
+  },
+  {
+   "class_id": "C000255665",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Treasury Digital Fund",
+   "series_id": "S000089156",
+   "ticker": "FYHXX"
+  },
+  {
+   "class_id": "C000257340",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Treasury Only Money Market Fund",
+   "series_id": "S000007053",
+   "ticker": "FYIXX"
+  },
+  {
+   "class_id": "C000276119",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Reserves Digital Fund",
+   "series_id": "S000105361",
+   "ticker": "FYMXX"
+  },
+  {
+   "class_id": "C000261149",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Treasury Digital Fund",
+   "series_id": "S000089156",
+   "ticker": "FYOXX"
+  },
+  {
+   "class_id": "C000233547",
+   "latest_form": "N-MFP3",
+   "name": "Retail Prime Obligations Fund",
+   "series_id": "S000074977",
+   "ticker": "FYRXX"
+  },
+  {
+   "class_id": "C000025311",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Instruments",
+   "series_id": "S000009261",
+   "ticker": "FYSXX"
+  },
+  {
+   "class_id": "C000154303",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Government Money Market Fund",
+   "series_id": "S000007051",
+   "ticker": "FZAXX"
+  },
+  {
+   "class_id": "C000154304",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Government Money Market Fund",
+   "series_id": "S000007051",
+   "ticker": "FZBXX"
+  },
+  {
+   "class_id": "C000154305",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Government Money Market Fund",
+   "series_id": "S000007051",
+   "ticker": "FZCXX"
+  },
+  {
+   "class_id": "C000154306",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Money Market Fund",
+   "series_id": "S000007052",
+   "ticker": "FZDXX"
+  },
+  {
+   "class_id": "C000154297",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Tax-Exempt Money Market Fund",
+   "series_id": "S000007504",
+   "ticker": "FZEXX"
+  },
+  {
+   "class_id": "C000154298",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Treasury Money Market Fund",
+   "series_id": "S000007505",
+   "ticker": "FZFXX"
+  },
+  {
+   "class_id": "C000190683",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Government Money Market Fund",
+   "series_id": "S000007051",
+   "ticker": "FZGXX"
+  },
+  {
+   "class_id": "C000233546",
+   "latest_form": "N-MFP3",
+   "name": "Retail Prime Obligations Fund",
+   "series_id": "S000074977",
+   "ticker": "FZRXX"
+  },
+  {
+   "class_id": "C000232685",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Government Money Market Fund",
+   "series_id": "S000007051",
+   "ticker": "FZSXX"
+  },
+  {
+   "class_id": "C000002897",
+   "latest_form": "N-MFP3",
+   "name": "Gabelli U.S Treasury Money Market Fund",
+   "series_id": "S000001074",
+   "ticker": "GABXX"
+  },
+  {
+   "class_id": "C000279968",
+   "latest_form": "N-MFP3",
+   "name": "State Street Federal Government Money Market Fund",
+   "series_id": "S000086383",
+   "ticker": "GADXX"
+  },
+  {
+   "class_id": "C000072954",
+   "latest_form": "N-MFP3",
+   "name": "Gabelli U.S Treasury Money Market Fund",
+   "series_id": "S000001074",
+   "ticker": "GBAXX"
+  },
+  {
+   "class_id": "C000072955",
+   "latest_form": "N-MFP3",
+   "name": "Gabelli U.S Treasury Money Market Fund",
+   "series_id": "S000001074",
+   "ticker": "GBCXX"
+  },
+  {
+   "class_id": "C000273514",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Central Government Fund",
+   "series_id": "S000102982",
+   "ticker": "GCCXX"
+  },
+  {
+   "class_id": "C000025208",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Solutions",
+   "series_id": "S000009243",
+   "ticker": "GCFXX"
+  },
+  {
+   "class_id": "C000025201",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Government",
+   "series_id": "S000009242",
+   "ticker": "GCGXX"
+  },
+  {
+   "class_id": "C000025314",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Instruments",
+   "series_id": "S000009261",
+   "ticker": "GCIXX"
+  },
+  {
+   "class_id": "C000279967",
+   "latest_form": "N-MFP3",
+   "name": "State Street Federal Government Money Market Fund",
+   "series_id": "S000086383",
+   "ticker": "GCLXX"
+  },
+  {
+   "class_id": "C000025307",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Obligations",
+   "series_id": "S000009260",
+   "ticker": "GCTXX"
+  },
+  {
+   "class_id": "C000260398",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Instruments",
+   "series_id": "S000009261",
+   "ticker": "GDTXX"
+  },
+  {
+   "class_id": "C000162326",
+   "latest_form": "N-MFP3",
+   "name": "SDIT GOVERNMENT",
+   "series_id": "S000006773",
+   "ticker": "GFAXX"
+  },
+  {
+   "class_id": "C000088805",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Solutions",
+   "series_id": "S000009243",
+   "ticker": "GFCXX"
+  },
+  {
+   "class_id": "C000273515",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Government Fund Series II",
+   "series_id": "S000102983",
+   "ticker": "GFGXX"
+  },
+  {
+   "class_id": "C000088806",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Solutions",
+   "series_id": "S000009243",
+   "ticker": "GFPXX"
+  },
+  {
+   "class_id": "C000157039",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT OBLIGATIONS FUND",
+   "series_id": "S000009536",
+   "ticker": "GFSXX"
+  },
+  {
+   "class_id": "C000157038",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT OBLIGATIONS FUND",
+   "series_id": "S000009536",
+   "ticker": "GFYXX"
+  },
+  {
+   "class_id": "C000088803",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Government",
+   "series_id": "S000009242",
+   "ticker": "GGPXX"
+  },
+  {
+   "class_id": "C000088822",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Instruments",
+   "series_id": "S000009261",
+   "ticker": "GICXX"
+  },
+  {
+   "class_id": "C000088823",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Instruments",
+   "series_id": "S000009261",
+   "ticker": "GIPXX"
+  },
+  {
+   "class_id": "C000000266",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Money Market Fund",
+   "series_id": "S000000119",
+   "ticker": "GMBXX"
+  },
+  {
+   "class_id": "C000157127",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Money Market Fund",
+   "series_id": "S000000119",
+   "ticker": "GMGXX"
+  },
+  {
+   "class_id": "C000013648",
+   "latest_form": "N-MFP3",
+   "name": "Nationwide Government Money Market Fund",
+   "series_id": "S000005013",
+   "ticker": "GMIXX"
+  },
+  {
+   "class_id": "C000000265",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Money Market Fund",
+   "series_id": "S000000119",
+   "ticker": "GMMXX"
+  },
+  {
+   "class_id": "C000172520",
+   "latest_form": "N-MFP3",
+   "name": "AB Fixed-Income Shares, Inc. - AB Government Money Market Portfolio",
+   "series_id": "S000011990",
+   "ticker": "GMOXX"
+  },
+  {
+   "class_id": "C000003124",
+   "latest_form": "N-MFP3",
+   "name": "MONEY MARKET FUND",
+   "series_id": "S000001169",
+   "ticker": "GMYXX"
+  },
+  {
+   "class_id": "C000003125",
+   "latest_form": "N-MFP3",
+   "name": "MONEY MARKET FUND",
+   "series_id": "S000001169",
+   "ticker": "GMZXX"
+  },
+  {
+   "class_id": "C000158663",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT OBLIGATIONS TAX-MANAGED FUND",
+   "series_id": "S000009537",
+   "ticker": "GOAXX"
+  },
+  {
+   "class_id": "C000026059",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT OBLIGATIONS FUND",
+   "series_id": "S000009536",
+   "ticker": "GOCXX"
+  },
+  {
+   "class_id": "C000194027",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT OBLIGATIONS FUND",
+   "series_id": "S000009536",
+   "ticker": "GOEXX"
+  },
+  {
+   "class_id": "C000151096",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT OBLIGATIONS FUND",
+   "series_id": "S000009536",
+   "ticker": "GOFXX"
+  },
+  {
+   "class_id": "C000026060",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT OBLIGATIONS FUND",
+   "series_id": "S000009536",
+   "ticker": "GOIXX"
+  },
+  {
+   "class_id": "C000026062",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT OBLIGATIONS FUND",
+   "series_id": "S000009536",
+   "ticker": "GORXX"
+  },
+  {
+   "class_id": "C000026061",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT OBLIGATIONS FUND",
+   "series_id": "S000009536",
+   "ticker": "GOSXX"
+  },
+  {
+   "class_id": "C000026063",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT OBLIGATIONS TAX-MANAGED FUND",
+   "series_id": "S000009537",
+   "ticker": "GOTXX"
+  },
+  {
+   "class_id": "C000190786",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT OBLIGATIONS FUND",
+   "series_id": "S000009536",
+   "ticker": "GOVXX"
+  },
+  {
+   "class_id": "C000279970",
+   "latest_form": "N-MFP3",
+   "name": "State Street Federal Government Money Market Fund",
+   "series_id": "S000086383",
+   "ticker": "GPDXX"
+  },
+  {
+   "class_id": "C000025206",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Solutions",
+   "series_id": "S000009243",
+   "ticker": "GPFXX"
+  },
+  {
+   "class_id": "C000025199",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Government",
+   "series_id": "S000009242",
+   "ticker": "GPGXX"
+  },
+  {
+   "class_id": "C000235065",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT OBLIGATIONS FUND",
+   "series_id": "S000009536",
+   "ticker": "GPHXX"
+  },
+  {
+   "class_id": "C000025312",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Instruments",
+   "series_id": "S000009261",
+   "ticker": "GPIXX"
+  },
+  {
+   "class_id": "C000025305",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Obligations",
+   "series_id": "S000009260",
+   "ticker": "GPOXX"
+  },
+  {
+   "class_id": "C000025213",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Fund - Tax-Exempt Money Market",
+   "series_id": "S000009244",
+   "ticker": "GPTXX"
+  },
+  {
+   "class_id": "C000158659",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT RESERVES FUND",
+   "series_id": "S000009529",
+   "ticker": "GRAXX"
+  },
+  {
+   "class_id": "C000158661",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT RESERVES FUND",
+   "series_id": "S000009529",
+   "ticker": "GRCXX"
+  },
+  {
+   "class_id": "C000026050",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT RESERVES FUND",
+   "series_id": "S000009529",
+   "ticker": "GRFXX"
+  },
+  {
+   "class_id": "C000158662",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT RESERVES FUND",
+   "series_id": "S000009529",
+   "ticker": "GRGXX"
+  },
+  {
+   "class_id": "C000168188",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT OBLIGATIONS FUND",
+   "series_id": "S000009536",
+   "ticker": "GRTXX"
+  },
+  {
+   "class_id": "C000237844",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Government",
+   "series_id": "S000009242",
+   "ticker": "GSAXX"
+  },
+  {
+   "class_id": "C000025207",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Solutions",
+   "series_id": "S000009243",
+   "ticker": "GSFXX"
+  },
+  {
+   "class_id": "C000025200",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Government",
+   "series_id": "S000009242",
+   "ticker": "GSGXX"
+  },
+  {
+   "class_id": "C000025313",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Instruments",
+   "series_id": "S000009261",
+   "ticker": "GSIXX"
+  },
+  {
+   "class_id": "C000025306",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Obligations",
+   "series_id": "S000009260",
+   "ticker": "GSOXX"
+  },
+  {
+   "class_id": "C000088821",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Obligations",
+   "series_id": "S000009260",
+   "ticker": "GTOXX"
+  },
+  {
+   "class_id": "C000088819",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Obligations",
+   "series_id": "S000009260",
+   "ticker": "GTPXX"
+  },
+  {
+   "class_id": "C000088820",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Obligations",
+   "series_id": "S000009260",
+   "ticker": "GTRXX"
+  },
+  {
+   "class_id": "C000026064",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES GOVERNMENT OBLIGATIONS TAX-MANAGED FUND",
+   "series_id": "S000009537",
+   "ticker": "GTSXX"
+  },
+  {
+   "class_id": "C000279969",
+   "latest_form": "N-MFP3",
+   "name": "State Street Federal Government Money Market Fund",
+   "series_id": "S000086383",
+   "ticker": "GVAXX"
+  },
+  {
+   "class_id": "C000261738",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional U.S. Government Money Market Fund",
+   "series_id": "S000010701",
+   "ticker": "GVBXX"
+  },
+  {
+   "class_id": "C000088802",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Government",
+   "series_id": "S000009242",
+   "ticker": "GVCXX"
+  },
+  {
+   "class_id": "C000020371",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Government Money Market Fund",
+   "series_id": "S000007421",
+   "ticker": "GVIXX"
+  },
+  {
+   "class_id": "C000052883",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional U.S. Government Money Market Fund",
+   "series_id": "S000010701",
+   "ticker": "GVMXX"
+  },
+  {
+   "class_id": "C000088804",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Government",
+   "series_id": "S000009242",
+   "ticker": "GVRXX"
+  },
+  {
+   "class_id": "C000069459",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional U.S. Government Money Market Fund",
+   "series_id": "S000010701",
+   "ticker": "GVSXX"
+  },
+  {
+   "class_id": "C000052884",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional U.S. Government Money Market Fund",
+   "series_id": "S000010701",
+   "ticker": "GVVXX"
+  },
+  {
+   "class_id": "C000013813",
+   "latest_form": "N-MFP3",
+   "name": "HSBC U.S. Treasury Money Market Fund",
+   "series_id": "S000005052",
+   "ticker": "HBIXX"
+  },
+  {
+   "class_id": "C000029057",
+   "latest_form": "N-MFP3",
+   "name": "Daily Income Fund",
+   "series_id": "S000010524",
+   "ticker": "HDIXX"
+  },
+  {
+   "class_id": "C000013787",
+   "latest_form": "N-MFP3",
+   "name": "HSBC U.S. Government Money Market Fund",
+   "series_id": "S000005047",
+   "ticker": "HGDXX"
+  },
+  {
+   "class_id": "C000167215",
+   "latest_form": "N-MFP3",
+   "name": "HSBC U.S. Government Money Market Fund",
+   "series_id": "S000005047",
+   "ticker": "HGFXX"
+  },
+  {
+   "class_id": "C000167214",
+   "latest_form": "N-MFP3",
+   "name": "HSBC U.S. Government Money Market Fund",
+   "series_id": "S000005047",
+   "ticker": "HGGXX"
+  },
+  {
+   "class_id": "C000013788",
+   "latest_form": "N-MFP3",
+   "name": "HSBC U.S. Government Money Market Fund",
+   "series_id": "S000005047",
+   "ticker": "HGIXX"
+  },
+  {
+   "class_id": "C000010954",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Treasury Plus Money Market Fund",
+   "series_id": "S000003910",
+   "ticker": "HGOXX"
+  },
+  {
+   "class_id": "C000238466",
+   "latest_form": "N-MFP3",
+   "name": "HSBC U.S. Government Money Market Fund",
+   "series_id": "S000005047",
+   "ticker": "HGPXX"
+  },
+  {
+   "class_id": "C000010927",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Liquid Assets Money Market Fund",
+   "series_id": "S000003905",
+   "ticker": "HLPXX"
+  },
+  {
+   "class_id": "C000010925",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Liquid Assets Money Market Fund",
+   "series_id": "S000003905",
+   "ticker": "HPIXX"
+  },
+  {
+   "class_id": "C000013812",
+   "latest_form": "N-MFP3",
+   "name": "HSBC U.S. Treasury Money Market Fund",
+   "series_id": "S000005052",
+   "ticker": "HTDXX"
+  },
+  {
+   "class_id": "C000167219",
+   "latest_form": "N-MFP3",
+   "name": "HSBC U.S. Treasury Money Market Fund",
+   "series_id": "S000005052",
+   "ticker": "HTFXX"
+  },
+  {
+   "class_id": "C000167218",
+   "latest_form": "N-MFP3",
+   "name": "HSBC U.S. Treasury Money Market Fund",
+   "series_id": "S000005052",
+   "ticker": "HTGXX"
+  },
+  {
+   "class_id": "C000010952",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Treasury Plus Money Market Fund",
+   "series_id": "S000003910",
+   "ticker": "HTIXX"
+  },
+  {
+   "class_id": "C000010930",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Municipal Money Market Fund",
+   "series_id": "S000003906",
+   "ticker": "HTOXX"
+  },
+  {
+   "class_id": "C000238467",
+   "latest_form": "N-MFP3",
+   "name": "HSBC U.S. Treasury Money Market Fund",
+   "series_id": "S000005052",
+   "ticker": "HTPXX"
+  },
+  {
+   "class_id": "C000008118",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan 100% U.S. Treasury Securities Money Market Fund",
+   "series_id": "S000002965",
+   "ticker": "HTSXX"
+  },
+  {
+   "class_id": "C000013809",
+   "latest_form": "N-MFP3",
+   "name": "HSBC U.S. Treasury Money Market Fund",
+   "series_id": "S000005052",
+   "ticker": "HTYXX"
+  },
+  {
+   "class_id": "C000013808",
+   "latest_form": "N-MFP3",
+   "name": "HSBC U.S. Treasury Money Market Fund",
+   "series_id": "S000005052",
+   "ticker": "HWAXX"
+  },
+  {
+   "class_id": "C000021252",
+   "latest_form": "N-MFP3",
+   "name": "Transamerica Government Money Market",
+   "series_id": "S000007798",
+   "ticker": "IATXX"
+  },
+  {
+   "class_id": "C000016694",
+   "latest_form": "N-MFP3",
+   "name": "DWS Government Money Market Series",
+   "series_id": "S000006076",
+   "ticker": "ICAXX"
+  },
+  {
+   "class_id": "C000251955",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Tax-Exempt California Money Market Fund",
+   "series_id": "S000086404",
+   "ticker": "ICBXX"
+  },
+  {
+   "class_id": "C000166151",
+   "latest_form": "N-MFP3",
+   "name": "DWS Treasury Portfolio",
+   "series_id": "S000006308",
+   "ticker": "ICGXX"
+  },
+  {
+   "class_id": "C000251959",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Tax-Exempt California Money Market Fund",
+   "series_id": "S000086404",
+   "ticker": "ICIXX"
+  },
+  {
+   "class_id": "C000251957",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Tax-Exempt California Money Market Fund",
+   "series_id": "S000086404",
+   "ticker": "ICPXX"
+  },
+  {
+   "class_id": "C000251958",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Tax-Exempt California Money Market Fund",
+   "series_id": "S000086404",
+   "ticker": "ICSXX"
+  },
+  {
+   "class_id": "C000017365",
+   "latest_form": "N-MFP3",
+   "name": "DWS Treasury Portfolio",
+   "series_id": "S000006308",
+   "ticker": "ICTXX"
+  },
+  {
+   "class_id": "C000097504",
+   "latest_form": "N-MFP3",
+   "name": "Columbia Government Money Market Fund",
+   "series_id": "S000031364",
+   "ticker": "IDSXX"
+  },
+  {
+   "class_id": "C000097511",
+   "latest_form": "N-MFP3",
+   "name": "Columbia Government Money Market Fund",
+   "series_id": "S000031364",
+   "ticker": "IDYXX"
+  },
+  {
+   "class_id": "C000010940",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Government Money Market Fund",
+   "series_id": "S000003909",
+   "ticker": "IJGXX"
+  },
+  {
+   "class_id": "C000010918",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Liquid Assets Money Market Fund",
+   "series_id": "S000003905",
+   "ticker": "IJLXX"
+  },
+  {
+   "class_id": "C000010928",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Municipal Money Market Fund",
+   "series_id": "S000003906",
+   "ticker": "IJMXX"
+  },
+  {
+   "class_id": "C000010947",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Treasury Plus Money Market Fund",
+   "series_id": "S000003910",
+   "ticker": "IJTXX"
+  },
+  {
+   "class_id": "C000021254",
+   "latest_form": "N-MFP3",
+   "name": "Transamerica Government Money Market",
+   "series_id": "S000007798",
+   "ticker": "IMLXX"
+  },
+  {
+   "class_id": "C000234745",
+   "latest_form": "N-MFP3",
+   "name": "Government Portfolio",
+   "series_id": "S000004148",
+   "ticker": "IMPXX"
+  },
+  {
+   "class_id": "C000000397",
+   "latest_form": "N-MFP3",
+   "name": "Invesco Premier Portfolio",
+   "series_id": "S000000173",
+   "ticker": "IMRXX"
+  },
+  {
+   "class_id": "C000234746",
+   "latest_form": "N-MFP3",
+   "name": "Prime Portfolio",
+   "series_id": "S000004151",
+   "ticker": "IMTXX"
+  },
+  {
+   "class_id": "C000248675",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Securities Portfolio",
+   "series_id": "S000004154",
+   "ticker": "IMXXX"
+  },
+  {
+   "class_id": "C000023120",
+   "latest_form": "N-MFP3",
+   "name": "Invesco Government Money Market Fund",
+   "series_id": "S000000253",
+   "ticker": "INAXX"
+  },
+  {
+   "class_id": "C000251961",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Tax-Exempt New York Money Market Fund",
+   "series_id": "S000086405",
+   "ticker": "INBXX"
+  },
+  {
+   "class_id": "C000251956",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Tax-Exempt California Money Market Fund",
+   "series_id": "S000086404",
+   "ticker": "INCXX"
+  },
+  {
+   "class_id": "C000251960",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Tax-Exempt New York Money Market Fund",
+   "series_id": "S000086405",
+   "ticker": "INDXX"
+  },
+  {
+   "class_id": "C000020209",
+   "latest_form": "N-MFP3",
+   "name": "Franklin Institutional U.S. Government Money Market Fund",
+   "series_id": "S000007358",
+   "ticker": "INFXX"
+  },
+  {
+   "class_id": "C000046975",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Institutional Government Reserves",
+   "series_id": "S000016858",
+   "ticker": "INGXX"
+  },
+  {
+   "class_id": "C000251962",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Tax-Exempt New York Money Market Fund",
+   "series_id": "S000086405",
+   "ticker": "INPXX"
+  },
+  {
+   "class_id": "C000251963",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Tax-Exempt New York Money Market Fund",
+   "series_id": "S000086405",
+   "ticker": "INSXX"
+  },
+  {
+   "class_id": "C000251964",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Investor Tax-Exempt New York Money Market Fund",
+   "series_id": "S000086405",
+   "ticker": "INYXX"
+  },
+  {
+   "class_id": "C000248681",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Portfolio",
+   "series_id": "S000004150",
+   "ticker": "IPFXX"
+  },
+  {
+   "class_id": "C000248673",
+   "latest_form": "N-MFP3",
+   "name": "Government Portfolio",
+   "series_id": "S000004148",
+   "ticker": "IPGXX"
+  },
+  {
+   "class_id": "C000015353",
+   "latest_form": "N-MFP3",
+   "name": "Voya Government Liquid Assets Portfolio",
+   "series_id": "S000005630",
+   "ticker": "IPLXX"
+  },
+  {
+   "class_id": "C000029748",
+   "latest_form": "N-MFP3",
+   "name": "Invesco Premier Portfolio",
+   "series_id": "S000000173",
+   "ticker": "IPPXX"
+  },
+  {
+   "class_id": "C000275993",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Government Cash Management",
+   "series_id": "S000000128",
+   "ticker": "IPSXX"
+  },
+  {
+   "class_id": "C000173346",
+   "latest_form": "N-MFP3",
+   "name": "Invesco Premier Portfolio",
+   "series_id": "S000000173",
+   "ticker": "IPTXX"
+  },
+  {
+   "class_id": "C000248676",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Securities Portfolio",
+   "series_id": "S000004154",
+   "ticker": "IPUXX"
+  },
+  {
+   "class_id": "C000173345",
+   "latest_form": "N-MFP3",
+   "name": "Invesco Premier Portfolio",
+   "series_id": "S000000173",
+   "ticker": "IPVXX"
+  },
+  {
+   "class_id": "C000248674",
+   "latest_form": "N-MFP3",
+   "name": "Prime Portfolio",
+   "series_id": "S000004151",
+   "ticker": "IPYXX"
+  },
+  {
+   "class_id": "C000269755",
+   "latest_form": "N-MFP3",
+   "name": "ProShares GENIUS Money Market ETF",
+   "series_id": "S000099945",
+   "ticker": "IQMM"
+  },
+  {
+   "class_id": "C000173348",
+   "latest_form": "N-MFP3",
+   "name": "Invesco Premier Portfolio",
+   "series_id": "S000000173",
+   "ticker": "IRCXX"
+  },
+  {
+   "class_id": "C000173347",
+   "latest_form": "N-MFP3",
+   "name": "Invesco Premier Portfolio",
+   "series_id": "S000000173",
+   "ticker": "IRVXX"
+  },
+  {
+   "class_id": "C000015354",
+   "latest_form": "N-MFP3",
+   "name": "Voya Government Liquid Assets Portfolio",
+   "series_id": "S000005630",
+   "ticker": "ISPXX"
+  },
+  {
+   "class_id": "C000015355",
+   "latest_form": "N-MFP3",
+   "name": "Voya Government Liquid Assets Portfolio",
+   "series_id": "S000005630",
+   "ticker": "ITLXX"
+  },
+  {
+   "class_id": "C000035154",
+   "latest_form": "N-MFP3",
+   "name": "DWS Treasury Portfolio",
+   "series_id": "S000006308",
+   "ticker": "ITVXX"
+  },
+  {
+   "class_id": "C000029750",
+   "latest_form": "N-MFP3",
+   "name": "Invesco Premier U.S. Government Money Portfolio",
+   "series_id": "S000000176",
+   "ticker": "IUGXX"
+  },
+  {
+   "class_id": "C000035153",
+   "latest_form": "N-MFP3",
+   "name": "DWS Treasury Portfolio",
+   "series_id": "S000006308",
+   "ticker": "IUSXX"
+  },
+  {
+   "class_id": "C000023718",
+   "latest_form": "N-MFP3",
+   "name": "Voya Government Money Market Portfolio",
+   "series_id": "S000008702",
+   "ticker": "IVMXX"
+  },
+  {
+   "class_id": "C000247806",
+   "latest_form": "N-MFP3",
+   "name": "XD Treasury Money Market Fund",
+   "series_id": "S000083789",
+   "ticker": "IXDXX"
+  },
+  {
+   "class_id": "C000022642",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Trust",
+   "series_id": "S000008290",
+   "ticker": "JAAXX"
+  },
+  {
+   "class_id": "C000022640",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Trust",
+   "series_id": "S000008290",
+   "ticker": "JABXX"
+  },
+  {
+   "class_id": "C000222400",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan 100% U.S. Treasury Securities Money Market Fund",
+   "series_id": "S000002965",
+   "ticker": "JACXX"
+  },
+  {
+   "class_id": "C000028930",
+   "latest_form": "N-MFP3",
+   "name": "Janus Henderson Money Market Fund",
+   "series_id": "S000010472",
+   "ticker": "JAMXX"
+  },
+  {
+   "class_id": "C000165403",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan California Municipal Money Market Fund",
+   "series_id": "S000002966",
+   "ticker": "JCRXX"
+  },
+  {
+   "class_id": "C000073382",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan California Municipal Money Market Fund",
+   "series_id": "S000002966",
+   "ticker": "JCVXX"
+  },
+  {
+   "class_id": "C000165405",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Federal Money Market Fund",
+   "series_id": "S000002967",
+   "ticker": "JFCXX"
+  },
+  {
+   "class_id": "C000008123",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Federal Money Market Fund",
+   "series_id": "S000002967",
+   "ticker": "JFMXX"
+  },
+  {
+   "class_id": "C000212348",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Government Money Market Fund",
+   "series_id": "S000003909",
+   "ticker": "JGAXX"
+  },
+  {
+   "class_id": "C000210338",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan California Municipal Money Market Fund",
+   "series_id": "S000002966",
+   "ticker": "JGCXX"
+  },
+  {
+   "class_id": "C000078417",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Government Money Market Fund",
+   "series_id": "S000003909",
+   "ticker": "JGMXX"
+  },
+  {
+   "class_id": "C000210340",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan New York Municipal Money Market Fund",
+   "series_id": "S000002968",
+   "ticker": "JGNXX"
+  },
+  {
+   "class_id": "C000001772",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Fund",
+   "series_id": "S000000623",
+   "ticker": "JHMXX"
+  },
+  {
+   "class_id": "C000022641",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Trust",
+   "series_id": "S000008290",
+   "ticker": "JHOXX"
+  },
+  {
+   "class_id": "C000115390",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Prime Money Market Fund",
+   "series_id": "S000002969",
+   "ticker": "JIMXX"
+  },
+  {
+   "class_id": "C000008130",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Prime Money Market Fund",
+   "series_id": "S000002969",
+   "ticker": "JINXX"
+  },
+  {
+   "class_id": "C000272118",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan OnChain Liquidity-Token Money Market Fund",
+   "series_id": "S000101820",
+   "ticker": "JLTXX"
+  },
+  {
+   "class_id": "C000010932",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Municipal Money Market Fund",
+   "series_id": "S000003906",
+   "ticker": "JMAXX"
+  },
+  {
+   "class_id": "C000001774",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Fund",
+   "series_id": "S000000623",
+   "ticker": "JMCXX"
+  },
+  {
+   "class_id": "C000263971",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan 100% U.S. Treasury Securities Money Market ETF",
+   "series_id": "S000095264",
+   "ticker": "JMMF"
+  },
+  {
+   "class_id": "C000083519",
+   "latest_form": "N-MFP3",
+   "name": "Janus Henderson Money Market Fund",
+   "series_id": "S000010472",
+   "ticker": "JNMXX"
+  },
+  {
+   "class_id": "C000165406",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan New York Municipal Money Market Fund",
+   "series_id": "S000002968",
+   "ticker": "JNPXX"
+  },
+  {
+   "class_id": "C000024632",
+   "latest_form": "N-MFP3",
+   "name": "Edward Jones Money Market Fund",
+   "series_id": "S000009066",
+   "ticker": "JNSXX"
+  },
+  {
+   "class_id": "C000073383",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan New York Municipal Money Market Fund",
+   "series_id": "S000002968",
+   "ticker": "JNVXX"
+  },
+  {
+   "class_id": "C000008129",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan New York Municipal Money Market Fund",
+   "series_id": "S000002968",
+   "ticker": "JNYXX"
+  },
+  {
+   "class_id": "C000198351",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Institutional Tax Free Money Market Fund",
+   "series_id": "S000061245",
+   "ticker": "JOAXX"
+  },
+  {
+   "class_id": "C000198352",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Institutional Tax Free Money Market Fund",
+   "series_id": "S000061245",
+   "ticker": "JOCXX"
+  },
+  {
+   "class_id": "C000198354",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Institutional Tax Free Money Market Fund",
+   "series_id": "S000061245",
+   "ticker": "JOFXX"
+  },
+  {
+   "class_id": "C000198353",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Institutional Tax Free Money Market Fund",
+   "series_id": "S000061245",
+   "ticker": "JOIXX"
+  },
+  {
+   "class_id": "C000210341",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan New York Municipal Money Market Fund",
+   "series_id": "S000002968",
+   "ticker": "JONXX"
+  },
+  {
+   "class_id": "C000210339",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan California Municipal Money Market Fund",
+   "series_id": "S000002966",
+   "ticker": "JOYXX"
+  },
+  {
+   "class_id": "C000212345",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Prime Money Market Fund",
+   "series_id": "S000002969",
+   "ticker": "JPAXX"
+  },
+  {
+   "class_id": "C000222399",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Treasury Plus Money Market Fund",
+   "series_id": "S000003910",
+   "ticker": "JPCXX"
+  },
+  {
+   "class_id": "C000024633",
+   "latest_form": "N-MFP3",
+   "name": "Edward Jones Money Market Fund",
+   "series_id": "S000009066",
+   "ticker": "JRSXX"
+  },
+  {
+   "class_id": "C000008137",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Prime Money Market Fund",
+   "series_id": "S000002969",
+   "ticker": "JRVXX"
+  },
+  {
+   "class_id": "C000217004",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan 100% U.S. Treasury Securities Money Market Fund",
+   "series_id": "S000002965",
+   "ticker": "JSMXX"
+  },
+  {
+   "class_id": "C000165408",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Treasury Plus Money Market Fund",
+   "series_id": "S000003910",
+   "ticker": "JTCXX"
+  },
+  {
+   "class_id": "C000008139",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Tax Free Money Market Fund",
+   "series_id": "S000002970",
+   "ticker": "JTFXX"
+  },
+  {
+   "class_id": "C000008116",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan 100% U.S. Treasury Securities Money Market Fund",
+   "series_id": "S000002965",
+   "ticker": "JTSXX"
+  },
+  {
+   "class_id": "C000016691",
+   "latest_form": "N-MFP3",
+   "name": "DWS Money Market Prime Series",
+   "series_id": "S000006073",
+   "ticker": "KMMXX"
+  },
+  {
+   "class_id": "C000018565",
+   "latest_form": "N-MFP3",
+   "name": "Lord Abbett US Government & Government Sponsored Enterprises Money Market Fund",
+   "series_id": "S000006869",
+   "ticker": "LACXX"
+  },
+  {
+   "class_id": "C000130076",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Institutional U.S. Treasury Obligations Money Market Fund",
+   "series_id": "S000041891",
+   "ticker": "LAIXX"
+  },
+  {
+   "class_id": "C000130075",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Institutional U.S. Treasury Obligations Money Market Fund",
+   "series_id": "S000041891",
+   "ticker": "LAOXX"
+  },
+  {
+   "class_id": "C000018564",
+   "latest_form": "N-MFP3",
+   "name": "Lord Abbett US Government & Government Sponsored Enterprises Money Market Fund",
+   "series_id": "S000006869",
+   "ticker": "LAYXX"
+  },
+  {
+   "class_id": "C000018567",
+   "latest_form": "N-MFP3",
+   "name": "Lord Abbett US Government & Government Sponsored Enterprises Money Market Fund",
+   "series_id": "S000006869",
+   "ticker": "LCCXX"
+  },
+  {
+   "class_id": "C000229775",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Government",
+   "series_id": "S000009242",
+   "ticker": "LDIXX"
+  },
+  {
+   "class_id": "C000229777",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Instruments",
+   "series_id": "S000009261",
+   "ticker": "LEIXX"
+  },
+  {
+   "class_id": "C000091744",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Select Tax Free Reserves",
+   "series_id": "S000008909",
+   "ticker": "LFAXX"
+  },
+  {
+   "class_id": "C000091746",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Institutional Government Reserves",
+   "series_id": "S000016858",
+   "ticker": "LGAXX"
+  },
+  {
+   "class_id": "C000089729",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Government Money Market Fund",
+   "series_id": "S000016623",
+   "ticker": "LGMXX"
+  },
+  {
+   "class_id": "C000089734",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Institutional Government Reserves",
+   "series_id": "S000016858",
+   "ticker": "LGRXX"
+  },
+  {
+   "class_id": "C000089731",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Institutional Liquid Reserves",
+   "series_id": "S000008908",
+   "ticker": "LLRXX"
+  },
+  {
+   "class_id": "C000091743",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Institutional Liquid Reserves",
+   "series_id": "S000008908",
+   "ticker": "LRAXX"
+  },
+  {
+   "class_id": "C000091745",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Institutional U.S. Treasury Reserves",
+   "series_id": "S000008910",
+   "ticker": "LTAXX"
+  },
+  {
+   "class_id": "C000089732",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Select Tax Free Reserves",
+   "series_id": "S000008909",
+   "ticker": "LTFXX"
+  },
+  {
+   "class_id": "C000089733",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Institutional U.S. Treasury Reserves",
+   "series_id": "S000008910",
+   "ticker": "LTRXX"
+  },
+  {
+   "class_id": "C000130074",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Institutional U.S. Treasury Obligations Money Market Fund",
+   "series_id": "S000041891",
+   "ticker": "LUIXX"
+  },
+  {
+   "class_id": "C000046976",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Institutional Government Reserves",
+   "series_id": "S000016858",
+   "ticker": "LWPXX"
+  },
+  {
+   "class_id": "C000263902",
+   "latest_form": "N-MFP3",
+   "name": "Lazard Government Money Market Portfolio",
+   "series_id": "S000095204",
+   "ticker": "LZIXX"
+  },
+  {
+   "class_id": "C000263903",
+   "latest_form": "N-MFP3",
+   "name": "Lazard Government Money Market Portfolio",
+   "series_id": "S000095204",
+   "ticker": "LZOXX"
+  },
+  {
+   "class_id": "C000263901",
+   "latest_form": "N-MFP3",
+   "name": "Lazard Government Money Market Portfolio",
+   "series_id": "S000095204",
+   "ticker": "LZRXX"
+  },
+  {
+   "class_id": "C000248991",
+   "latest_form": "N-MFP3",
+   "name": "Government Portfolio",
+   "series_id": "S000004148",
+   "ticker": "MALXX"
+  },
+  {
+   "class_id": "C000011690",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Securities Portfolio",
+   "series_id": "S000004154",
+   "ticker": "MAMXX"
+  },
+  {
+   "class_id": "C000011685",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Portfolio",
+   "series_id": "S000004153",
+   "ticker": "MAOXX"
+  },
+  {
+   "class_id": "C000248992",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Portfolio",
+   "series_id": "S000004150",
+   "ticker": "MAPXX"
+  },
+  {
+   "class_id": "C000248994",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Portfolio",
+   "series_id": "S000004153",
+   "ticker": "MATXX"
+  },
+  {
+   "class_id": "C000011673",
+   "latest_form": "N-MFP3",
+   "name": "Prime Portfolio",
+   "series_id": "S000004151",
+   "ticker": "MAVXX"
+  },
+  {
+   "class_id": "C000248993",
+   "latest_form": "N-MFP3",
+   "name": "Tax Exempt Portfolio",
+   "series_id": "S000004152",
+   "ticker": "MAXXX"
+  },
+  {
+   "class_id": "C000011655",
+   "latest_form": "N-MFP3",
+   "name": "Government Portfolio",
+   "series_id": "S000004148",
+   "ticker": "MAYXX"
+  },
+  {
+   "class_id": "C000251131",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Securities Portfolio",
+   "series_id": "S000004154",
+   "ticker": "MAZXX"
+  },
+  {
+   "class_id": "C000011667",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Portfolio",
+   "series_id": "S000004150",
+   "ticker": "MBDXX"
+  },
+  {
+   "class_id": "C000002183",
+   "latest_form": "N-MFP3",
+   "name": "MFS U.S. Government Cash Reserve Fund",
+   "series_id": "S000000762",
+   "ticker": "MCCXX"
+  },
+  {
+   "class_id": "C000003975",
+   "latest_form": "N-MFP3",
+   "name": "MUNICASH",
+   "series_id": "S000001480",
+   "ticker": "MCDXX"
+  },
+  {
+   "class_id": "C000248887",
+   "latest_form": "N-MFP3",
+   "name": "M3Sixty Onchain U.S. Government Money Market Fund",
+   "series_id": "S000084495",
+   "ticker": "MCGXX"
+  },
+  {
+   "class_id": "C000017908",
+   "latest_form": "N-MFP3",
+   "name": "Government Securities Portfolio",
+   "series_id": "S000004149",
+   "ticker": "MCHXX"
+  },
+  {
+   "class_id": "C000006517",
+   "latest_form": "N-MFP3",
+   "name": "MFS U.S. Government Money Market Fund",
+   "series_id": "S000002435",
+   "ticker": "MCMXX"
+  },
+  {
+   "class_id": "C000003973",
+   "latest_form": "N-MFP3",
+   "name": "MUNICASH",
+   "series_id": "S000001480",
+   "ticker": "MCPXX"
+  },
+  {
+   "class_id": "C000002182",
+   "latest_form": "N-MFP3",
+   "name": "MFS U.S. Government Cash Reserve Fund",
+   "series_id": "S000000762",
+   "ticker": "MCRXX"
+  },
+  {
+   "class_id": "C000003974",
+   "latest_form": "N-MFP3",
+   "name": "MUNICASH",
+   "series_id": "S000001480",
+   "ticker": "MCSXX"
+  },
+  {
+   "class_id": "C000011666",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Portfolio",
+   "series_id": "S000004150",
+   "ticker": "MDDXX"
+  },
+  {
+   "class_id": "C000271635",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Securities Portfolio",
+   "series_id": "S000004154",
+   "ticker": "MDPXX"
+  },
+  {
+   "class_id": "C000011670",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Portfolio",
+   "series_id": "S000004150",
+   "ticker": "MEPXX"
+  },
+  {
+   "class_id": "C000026110",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES MUNICIPAL OBLIGATIONS FUND",
+   "series_id": "S000009558",
+   "ticker": "MFCXX"
+  },
+  {
+   "class_id": "C000157042",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES MUNICIPAL OBLIGATIONS FUND",
+   "series_id": "S000009558",
+   "ticker": "MFSXX"
+  },
+  {
+   "class_id": "C000011660",
+   "latest_form": "N-MFP3",
+   "name": "Government Securities Portfolio",
+   "series_id": "S000004149",
+   "ticker": "MGAXX"
+  },
+  {
+   "class_id": "C000265237",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Government Money Market Fund",
+   "series_id": "S000003909",
+   "ticker": "MGDXX"
+  },
+  {
+   "class_id": "C000115393",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Government Money Market Fund",
+   "series_id": "S000003909",
+   "ticker": "MGMXX"
+  },
+  {
+   "class_id": "C000011654",
+   "latest_form": "N-MFP3",
+   "name": "Government Portfolio",
+   "series_id": "S000004148",
+   "ticker": "MGOXX"
+  },
+  {
+   "class_id": "C000011664",
+   "latest_form": "N-MFP3",
+   "name": "Government Securities Portfolio",
+   "series_id": "S000004149",
+   "ticker": "MGPXX"
+  },
+  {
+   "class_id": "C000011659",
+   "latest_form": "N-MFP3",
+   "name": "Government Portfolio",
+   "series_id": "S000004148",
+   "ticker": "MGSXX"
+  },
+  {
+   "class_id": "C000017913",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Securities Portfolio",
+   "series_id": "S000004154",
+   "ticker": "MHSXX"
+  },
+  {
+   "class_id": "C000013649",
+   "latest_form": "N-MFP3",
+   "name": "Nationwide Government Money Market Fund",
+   "series_id": "S000005013",
+   "ticker": "MIFXX"
+  },
+  {
+   "class_id": "C000221692",
+   "latest_form": "N-MFP3",
+   "name": "NYLIM Money Market Fund",
+   "series_id": "S000006897",
+   "ticker": "MIPXX"
+  },
+  {
+   "class_id": "C000011686",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Portfolio",
+   "series_id": "S000004153",
+   "ticker": "MISXX"
+  },
+  {
+   "class_id": "C000012410",
+   "latest_form": "N-MFP3",
+   "name": "PGIM Government Money Market Fund",
+   "series_id": "S000004517",
+   "ticker": "MJCXX"
+  },
+  {
+   "class_id": "C000010942",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Government Money Market Fund",
+   "series_id": "S000003909",
+   "ticker": "MJGXX"
+  },
+  {
+   "class_id": "C000010923",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Liquid Assets Money Market Fund",
+   "series_id": "S000003905",
+   "ticker": "MJLXX"
+  },
+  {
+   "class_id": "C000010929",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Municipal Money Market Fund",
+   "series_id": "S000003906",
+   "ticker": "MJMXX"
+  },
+  {
+   "class_id": "C000115394",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Treasury Plus Money Market Fund",
+   "series_id": "S000003910",
+   "ticker": "MJPXX"
+  },
+  {
+   "class_id": "C000010950",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Treasury Plus Money Market Fund",
+   "series_id": "S000003910",
+   "ticker": "MJTXX"
+  },
+  {
+   "class_id": "C000018698",
+   "latest_form": "N-MFP3",
+   "name": "NYLIM Money Market Fund",
+   "series_id": "S000006897",
+   "ticker": "MKMXX"
+  },
+  {
+   "class_id": "C000060793",
+   "latest_form": "N-MFP3",
+   "name": "NYLIM Money Market Fund",
+   "series_id": "S000006897",
+   "ticker": "MKTXX"
+  },
+  {
+   "class_id": "C000017909",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Portfolio",
+   "series_id": "S000004150",
+   "ticker": "MLKXX"
+  },
+  {
+   "class_id": "C000018697",
+   "latest_form": "N-MFP3",
+   "name": "NYLIM Money Market Fund",
+   "series_id": "S000006897",
+   "ticker": "MMAXX"
+  },
+  {
+   "class_id": "C000243300",
+   "latest_form": "N-MFP3",
+   "name": "Popular U.S. Government Money Market Fund, LLC",
+   "series_id": "S000080765",
+   "ticker": "MMFXX"
+  },
+  {
+   "class_id": "C000248259",
+   "latest_form": "N-MFP3",
+   "name": "Popular U.S. Government Money Market Fund, LLC",
+   "series_id": "S000080765",
+   "ticker": "MMGXX"
+  },
+  {
+   "class_id": "C000020407",
+   "latest_form": "N-MFP3",
+   "name": "Allspring National Tax-Free Money Market Fund",
+   "series_id": "S000007436",
+   "ticker": "MMIXX"
+  },
+  {
+   "class_id": "C000269915",
+   "latest_form": "N-MFP3",
+   "name": "State Street Prime Money Market ETF",
+   "series_id": "S000100105",
+   "ticker": "MMK"
+  },
+  {
+   "class_id": "C000252068",
+   "latest_form": "N-MFP3",
+   "name": "Texas Capital Government Money Market ETF",
+   "series_id": "S000086506",
+   "ticker": "MMKT"
+  },
+  {
+   "class_id": "C000248258",
+   "latest_form": "N-MFP3",
+   "name": "Popular U.S. Government Money Market Fund, LLC",
+   "series_id": "S000080765",
+   "ticker": "MMTXX"
+  },
+  {
+   "class_id": "C000243299",
+   "latest_form": "N-MFP3",
+   "name": "Popular U.S. Government Money Market Fund, LLC",
+   "series_id": "S000080765",
+   "ticker": "MMYXX"
+  },
+  {
+   "class_id": "C000011669",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Portfolio",
+   "series_id": "S000004150",
+   "ticker": "MNFXX"
+  },
+  {
+   "class_id": "C000011693",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Securities Portfolio",
+   "series_id": "S000004154",
+   "ticker": "MNVXX"
+  },
+  {
+   "class_id": "C000157041",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES MUNICIPAL OBLIGATIONS FUND",
+   "series_id": "S000009558",
+   "ticker": "MODXX"
+  },
+  {
+   "class_id": "C000026108",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES MUNICIPAL OBLIGATIONS FUND",
+   "series_id": "S000009558",
+   "ticker": "MOFXX"
+  },
+  {
+   "class_id": "C000157043",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES MUNICIPAL OBLIGATIONS FUND",
+   "series_id": "S000009558",
+   "ticker": "MOIXX"
+  },
+  {
+   "class_id": "C000026109",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES MUNICIPAL OBLIGATIONS FUND",
+   "series_id": "S000009558",
+   "ticker": "MOSXX"
+  },
+  {
+   "class_id": "C000157044",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES MUNICIPAL OBLIGATIONS FUND",
+   "series_id": "S000009558",
+   "ticker": "MOTXX"
+  },
+  {
+   "class_id": "C000011658",
+   "latest_form": "N-MFP3",
+   "name": "Government Portfolio",
+   "series_id": "S000004148",
+   "ticker": "MPCXX"
+  },
+  {
+   "class_id": "C000011677",
+   "latest_form": "N-MFP3",
+   "name": "Prime Portfolio",
+   "series_id": "S000004151",
+   "ticker": "MPEXX"
+  },
+  {
+   "class_id": "C000011674",
+   "latest_form": "N-MFP3",
+   "name": "Prime Portfolio",
+   "series_id": "S000004151",
+   "ticker": "MPFXX"
+  },
+  {
+   "class_id": "C000011076",
+   "latest_form": "N-MFP3",
+   "name": "Government Money Market ProFund",
+   "series_id": "S000003950",
+   "ticker": "MPIXX"
+  },
+  {
+   "class_id": "C000011672",
+   "latest_form": "N-MFP3",
+   "name": "Prime Portfolio",
+   "series_id": "S000004151",
+   "ticker": "MPMXX"
+  },
+  {
+   "class_id": "C000011675",
+   "latest_form": "N-MFP3",
+   "name": "Prime Portfolio",
+   "series_id": "S000004151",
+   "ticker": "MPNXX"
+  },
+  {
+   "class_id": "C000011694",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Securities Portfolio",
+   "series_id": "S000004154",
+   "ticker": "MPRXX"
+  },
+  {
+   "class_id": "C000011077",
+   "latest_form": "N-MFP3",
+   "name": "Government Money Market ProFund",
+   "series_id": "S000003950",
+   "ticker": "MPSXX"
+  },
+  {
+   "class_id": "C000011676",
+   "latest_form": "N-MFP3",
+   "name": "Prime Portfolio",
+   "series_id": "S000004151",
+   "ticker": "MPVXX"
+  },
+  {
+   "class_id": "C000263898",
+   "latest_form": "N-MFP3",
+   "name": "Government Portfolio",
+   "series_id": "S000004148",
+   "ticker": "MPXXX"
+  },
+  {
+   "class_id": "C000017912",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Portfolio",
+   "series_id": "S000004153",
+   "ticker": "MREXX"
+  },
+  {
+   "class_id": "C000276761",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional U.S. Government Money Market Fund",
+   "series_id": "S000010701",
+   "ticker": "MRGXX"
+  },
+  {
+   "class_id": "C000276763",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Plus Money Market Fund",
+   "series_id": "S000019118",
+   "ticker": "MRPXX"
+  },
+  {
+   "class_id": "C000276762",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Money Market Fund",
+   "series_id": "S000019117",
+   "ticker": "MRTXX"
+  },
+  {
+   "class_id": "C000263899",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Portfolio",
+   "series_id": "S000004153",
+   "ticker": "MRXXX"
+  },
+  {
+   "class_id": "C000018699",
+   "latest_form": "N-MFP3",
+   "name": "NYLIM Money Market Fund",
+   "series_id": "S000006897",
+   "ticker": "MSCXX"
+  },
+  {
+   "class_id": "C000167931",
+   "latest_form": "N-MFP3",
+   "name": "Government Portfolio",
+   "series_id": "S000004148",
+   "ticker": "MSDXX"
+  },
+  {
+   "class_id": "C000167933",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Securities Portfolio",
+   "series_id": "S000004154",
+   "ticker": "MSEXX"
+  },
+  {
+   "class_id": "C000017907",
+   "latest_form": "N-MFP3",
+   "name": "Government Portfolio",
+   "series_id": "S000004148",
+   "ticker": "MSGXX"
+  },
+  {
+   "class_id": "C000240958",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Portfolio",
+   "series_id": "S000004150",
+   "ticker": "MSKXX"
+  },
+  {
+   "class_id": "C000017910",
+   "latest_form": "N-MFP3",
+   "name": "Prime Portfolio",
+   "series_id": "S000004151",
+   "ticker": "MSPXX"
+  },
+  {
+   "class_id": "C000002179",
+   "latest_form": "N-MFP3",
+   "name": "MFS U.S. Government Cash Reserve Fund",
+   "series_id": "S000000762",
+   "ticker": "MSRXX"
+  },
+  {
+   "class_id": "C000011695",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Securities Portfolio",
+   "series_id": "S000004154",
+   "ticker": "MSSXX"
+  },
+  {
+   "class_id": "C000167932",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Portfolio",
+   "series_id": "S000004153",
+   "ticker": "MSTXX"
+  },
+  {
+   "class_id": "C000011692",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Securities Portfolio",
+   "series_id": "S000004154",
+   "ticker": "MSUXX"
+  },
+  {
+   "class_id": "C000011665",
+   "latest_form": "N-MFP3",
+   "name": "Government Securities Portfolio",
+   "series_id": "S000004149",
+   "ticker": "MSVXX"
+  },
+  {
+   "class_id": "C000263900",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Securities Portfolio",
+   "series_id": "S000004154",
+   "ticker": "MSXXX"
+  },
+  {
+   "class_id": "C000011688",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Portfolio",
+   "series_id": "S000004153",
+   "ticker": "MTCXX"
+  },
+  {
+   "class_id": "C000011687",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Portfolio",
+   "series_id": "S000004153",
+   "ticker": "MTNXX"
+  },
+  {
+   "class_id": "C000011689",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Portfolio",
+   "series_id": "S000004153",
+   "ticker": "MTSXX"
+  },
+  {
+   "class_id": "C000011684",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Portfolio",
+   "series_id": "S000004153",
+   "ticker": "MTTXX"
+  },
+  {
+   "class_id": "C000011662",
+   "latest_form": "N-MFP3",
+   "name": "Government Securities Portfolio",
+   "series_id": "S000004149",
+   "ticker": "MUIXX"
+  },
+  {
+   "class_id": "C000204698",
+   "latest_form": "N-MFP3",
+   "name": "NYLIM U.S. Government Liquidity Fund",
+   "series_id": "S000063122",
+   "ticker": "MUSXX"
+  },
+  {
+   "class_id": "C000011661",
+   "latest_form": "N-MFP3",
+   "name": "Government Securities Portfolio",
+   "series_id": "S000004149",
+   "ticker": "MVAXX"
+  },
+  {
+   "class_id": "C000011663",
+   "latest_form": "N-MFP3",
+   "name": "Government Securities Portfolio",
+   "series_id": "S000004149",
+   "ticker": "MVIXX"
+  },
+  {
+   "class_id": "C000011656",
+   "latest_form": "N-MFP3",
+   "name": "Government Portfolio",
+   "series_id": "S000004148",
+   "ticker": "MVRXX"
+  },
+  {
+   "class_id": "C000011657",
+   "latest_form": "N-MFP3",
+   "name": "Government Portfolio",
+   "series_id": "S000004148",
+   "ticker": "MVVXX"
+  },
+  {
+   "class_id": "C000011691",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Securities Portfolio",
+   "series_id": "S000004154",
+   "ticker": "MVYXX"
+  },
+  {
+   "class_id": "C000011668",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Portfolio",
+   "series_id": "S000004150",
+   "ticker": "MWMXX"
+  },
+  {
+   "class_id": "C000011671",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Portfolio",
+   "series_id": "S000004150",
+   "ticker": "MWSXX"
+  },
+  {
+   "class_id": "C000032709",
+   "latest_form": "N-MFP3",
+   "name": "AB Fixed-Income Shares, Inc. - AB Government Money Market Portfolio",
+   "series_id": "S000011990",
+   "ticker": "MYMXX"
+  },
+  {
+   "class_id": "C000020486",
+   "latest_form": "N-MFP3",
+   "name": "North Carolina Capital Management Trust - Government Portfolio",
+   "series_id": "S000007506",
+   "ticker": "NCCTX"
+  },
+  {
+   "class_id": "C000210425",
+   "latest_form": "N-MFP3",
+   "name": "North Capital Treasury Money Market Fund",
+   "series_id": "S000064982",
+   "ticker": "NCGXX"
+  },
+  {
+   "class_id": "C000271532",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Instruments Portfolio",
+   "series_id": "S000058876",
+   "ticker": "NDEXX"
+  },
+  {
+   "class_id": "C000026117",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES NEW YORK MUNICIPAL CASH TRUST",
+   "series_id": "S000009560",
+   "ticker": "NISXX"
+  },
+  {
+   "class_id": "C000070152",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Portfolio",
+   "series_id": "S000023949",
+   "ticker": "NITXX"
+  },
+  {
+   "class_id": "C000003412",
+   "latest_form": "N-MFP3",
+   "name": "U.S. GOVERNMENT MONEY MARKET FUND",
+   "series_id": "S000001266",
+   "ticker": "NOGXX"
+  },
+  {
+   "class_id": "C000003413",
+   "latest_form": "N-MFP3",
+   "name": "U.S. Government Select Money Market Fund",
+   "series_id": "S000001267",
+   "ticker": "NOSXX"
+  },
+  {
+   "class_id": "C000193058",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Instruments Portfolio",
+   "series_id": "S000058876",
+   "ticker": "NPYXX"
+  },
+  {
+   "class_id": "C000070154",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Portfolio",
+   "series_id": "S000023949",
+   "ticker": "NTPXX"
+  },
+  {
+   "class_id": "C000193056",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Instruments Portfolio",
+   "series_id": "S000058876",
+   "ticker": "NTYXX"
+  },
+  {
+   "class_id": "C000020372",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Government Money Market Fund",
+   "series_id": "S000007421",
+   "ticker": "NWGXX"
+  },
+  {
+   "class_id": "C000020405",
+   "latest_form": "N-MFP3",
+   "name": "Allspring National Tax-Free Money Market Fund",
+   "series_id": "S000007436",
+   "ticker": "NWMXX"
+  },
+  {
+   "class_id": "C000013650",
+   "latest_form": "N-MFP3",
+   "name": "Nationwide Government Money Market Fund",
+   "series_id": "S000005013",
+   "ticker": "NWSXX"
+  },
+  {
+   "class_id": "C000020399",
+   "latest_form": "N-MFP3",
+   "name": "Allspring 100% Treasury Money Market Fund",
+   "series_id": "S000007432",
+   "ticker": "NWTXX"
+  },
+  {
+   "class_id": "C000026114",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES NEW YORK MUNICIPAL CASH TRUST",
+   "series_id": "S000009560",
+   "ticker": "NYCXX"
+  },
+  {
+   "class_id": "C000271776",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES MONEY MARKET MANAGEMENT DIGITAL TREASURY FUND",
+   "series_id": "S000101569",
+   "ticker": "OFFXX"
+  },
+  {
+   "class_id": "C000010945",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Government Money Market Fund",
+   "series_id": "S000003909",
+   "ticker": "OGAXX"
+  },
+  {
+   "class_id": "C000010943",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Government Money Market Fund",
+   "series_id": "S000003909",
+   "ticker": "OGSXX"
+  },
+  {
+   "class_id": "C000010941",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Government Money Market Fund",
+   "series_id": "S000003909",
+   "ticker": "OGVXX"
+  },
+  {
+   "class_id": "C000231963",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional U.S. Government Money Market Fund",
+   "series_id": "S000010701",
+   "ticker": "OPGXX"
+  },
+  {
+   "class_id": "C000231964",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Money Market Fund",
+   "series_id": "S000019117",
+   "ticker": "OPRXX"
+  },
+  {
+   "class_id": "C000231965",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Plus Money Market Fund",
+   "series_id": "S000019118",
+   "ticker": "OPTXX"
+  },
+  {
+   "class_id": "C000271298",
+   "latest_form": "N-MFP3",
+   "name": "State Street Prime Retail Reserves Money Market Fund",
+   "series_id": "S000101207",
+   "ticker": "PAVXX"
+  },
+  {
+   "class_id": "C000032175",
+   "latest_form": "N-MFP3",
+   "name": "Payden Cash Reserves Money Market Fund",
+   "series_id": "S000011750",
+   "ticker": "PBHXX"
+  },
+  {
+   "class_id": "C000012411",
+   "latest_form": "N-MFP3",
+   "name": "PGIM Government Money Market Fund",
+   "series_id": "S000004517",
+   "ticker": "PBMXX"
+  },
+  {
+   "class_id": "C000026149",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES PRIME CASH OBLIGATIONS FUND",
+   "series_id": "S000009571",
+   "ticker": "PCCXX"
+  },
+  {
+   "class_id": "C000157049",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES PRIME CASH OBLIGATIONS FUND",
+   "series_id": "S000009571",
+   "ticker": "PCDXX"
+  },
+  {
+   "class_id": "C000007348",
+   "latest_form": "N-MFP3",
+   "name": "UBS Government Money Market Investments Fund",
+   "series_id": "S000002695",
+   "ticker": "PCEXX"
+  },
+  {
+   "class_id": "C000138972",
+   "latest_form": "N-MFP3",
+   "name": "Pacific Capital U.S. Government Money Market Fund",
+   "series_id": "S000044713",
+   "ticker": "PCGXX"
+  },
+  {
+   "class_id": "C000271299",
+   "latest_form": "N-MFP3",
+   "name": "State Street Prime Retail Reserves Money Market Fund",
+   "series_id": "S000101207",
+   "ticker": "PCMXX"
+  },
+  {
+   "class_id": "C000026147",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES PRIME CASH OBLIGATIONS FUND",
+   "series_id": "S000009571",
+   "ticker": "PCOXX"
+  },
+  {
+   "class_id": "C000271300",
+   "latest_form": "N-MFP3",
+   "name": "State Street Prime Retail Reserves Money Market Fund",
+   "series_id": "S000101207",
+   "ticker": "PCPXX"
+  },
+  {
+   "class_id": "C000019363",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Fund",
+   "series_id": "S000007081",
+   "ticker": "PCSXX"
+  },
+  {
+   "class_id": "C000200880",
+   "latest_form": "N-MFP3",
+   "name": "Pacific Capital U.S. Government Money Market Fund",
+   "series_id": "S000044713",
+   "ticker": "PCUXX"
+  },
+  {
+   "class_id": "C000190787",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES PRIME CASH OBLIGATIONS FUND",
+   "series_id": "S000009571",
+   "ticker": "PCVXX"
+  },
+  {
+   "class_id": "C000017192",
+   "latest_form": "N-MFP3",
+   "name": "Putnam Money Market Fund",
+   "series_id": "S000006251",
+   "ticker": "PDDXX"
+  },
+  {
+   "class_id": "C000017194",
+   "latest_form": "N-MFP3",
+   "name": "Putnam Money Market Fund",
+   "series_id": "S000006251",
+   "ticker": "PFCXX"
+  },
+  {
+   "class_id": "C000072055",
+   "latest_form": "N-MFP3",
+   "name": "PIMCO Government Money Market Fund",
+   "series_id": "S000024337",
+   "ticker": "PGFXX"
+  },
+  {
+   "class_id": "C000072053",
+   "latest_form": "N-MFP3",
+   "name": "PIMCO Government Money Market Fund",
+   "series_id": "S000024337",
+   "ticker": "PGOXX"
+  },
+  {
+   "class_id": "C000072056",
+   "latest_form": "N-MFP3",
+   "name": "PIMCO Government Money Market Fund",
+   "series_id": "S000024337",
+   "ticker": "PGPXX"
+  },
+  {
+   "class_id": "C000196721",
+   "latest_form": "N-MFP3",
+   "name": "Government Money Market Fund",
+   "series_id": "S000060089",
+   "ticker": "PGVXX"
+  },
+  {
+   "class_id": "C000239771",
+   "latest_form": "N-MFP3",
+   "name": "Government Money Market Fund",
+   "series_id": "S000060089",
+   "ticker": "PGWXX"
+  },
+  {
+   "class_id": "C000169180",
+   "latest_form": "N-MFP3",
+   "name": "PIMCO Government Money Market Fund",
+   "series_id": "S000024337",
+   "ticker": "PGYXX"
+  },
+  {
+   "class_id": "C000003007",
+   "latest_form": "N-MFP3",
+   "name": "Government Portfolio",
+   "series_id": "S000001112",
+   "ticker": "PIFXX"
+  },
+  {
+   "class_id": "C000003006",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Portfolio",
+   "series_id": "S000001111",
+   "ticker": "PIMXX"
+  },
+  {
+   "class_id": "C000004027",
+   "latest_form": "N-MFP3",
+   "name": "BLACKROCK WEALTH LIQUID ENVIRONMENTALLY AWARE FUND",
+   "series_id": "S000001503",
+   "ticker": "PINXX"
+  },
+  {
+   "class_id": "C000020413",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Treasury Plus Money Market Fund",
+   "series_id": "S000007440",
+   "ticker": "PISXX"
+  },
+  {
+   "class_id": "C000020412",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Treasury Plus Money Market Fund",
+   "series_id": "S000007440",
+   "ticker": "PIVXX"
+  },
+  {
+   "class_id": "C000010924",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Liquid Assets Money Market Fund",
+   "series_id": "S000003905",
+   "ticker": "PJLXX"
+  },
+  {
+   "class_id": "C000010951",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Treasury Plus Money Market Fund",
+   "series_id": "S000003910",
+   "ticker": "PJTXX"
+  },
+  {
+   "class_id": "C000019362",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Fund",
+   "series_id": "S000007081",
+   "ticker": "PMJXX"
+  },
+  {
+   "class_id": "C000256460",
+   "latest_form": "N-MFP3",
+   "name": "Victory Pioneer U.S. Government Money Market Fund",
+   "series_id": "S000089750",
+   "ticker": "PMTXX"
+  },
+  {
+   "class_id": "C000012412",
+   "latest_form": "N-MFP3",
+   "name": "PGIM Government Money Market Fund",
+   "series_id": "S000004517",
+   "ticker": "PMZXX"
+  },
+  {
+   "class_id": "C000004025",
+   "latest_form": "N-MFP3",
+   "name": "BLACKROCK WEALTH LIQUID ENVIRONMENTALLY AWARE FUND",
+   "series_id": "S000001503",
+   "ticker": "PNIXX"
+  },
+  {
+   "class_id": "C000004026",
+   "latest_form": "N-MFP3",
+   "name": "BLACKROCK WEALTH LIQUID ENVIRONMENTALLY AWARE FUND",
+   "series_id": "S000001503",
+   "ticker": "PNPXX"
+  },
+  {
+   "class_id": "C000026156",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES INSTITUTIONAL PRIME OBLIGATIONS FUND",
+   "series_id": "S000009574",
+   "ticker": "POIXX"
+  },
+  {
+   "class_id": "C000271301",
+   "latest_form": "N-MFP3",
+   "name": "State Street Prime Retail Reserves Money Market Fund",
+   "series_id": "S000101207",
+   "ticker": "PRAXX"
+  },
+  {
+   "class_id": "C000026148",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES PRIME CASH OBLIGATIONS FUND",
+   "series_id": "S000009571",
+   "ticker": "PRCXX"
+  },
+  {
+   "class_id": "C000271297",
+   "latest_form": "N-MFP3",
+   "name": "State Street Prime Retail Reserves Money Market Fund",
+   "series_id": "S000101207",
+   "ticker": "PRDXX"
+  },
+  {
+   "class_id": "C000005535",
+   "latest_form": "N-MFP3",
+   "name": "T. Rowe Price Government Money Fund, Inc.",
+   "series_id": "S000002140",
+   "ticker": "PRRXX"
+  },
+  {
+   "class_id": "C000026157",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES INSTITUTIONAL PRIME OBLIGATIONS FUND",
+   "series_id": "S000009574",
+   "ticker": "PRSXX"
+  },
+  {
+   "class_id": "C000005566",
+   "latest_form": "N-MFP3",
+   "name": "T. Rowe Price U.S. Treasury Money Fund",
+   "series_id": "S000002169",
+   "ticker": "PRTXX"
+  },
+  {
+   "class_id": "C000020414",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Treasury Plus Money Market Fund",
+   "series_id": "S000007440",
+   "ticker": "PRVXX"
+  },
+  {
+   "class_id": "C000256459",
+   "latest_form": "N-MFP3",
+   "name": "Victory Pioneer U.S. Government Money Market Fund",
+   "series_id": "S000089750",
+   "ticker": "PRYXX"
+  },
+  {
+   "class_id": "C000157048",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES PRIME CASH OBLIGATIONS FUND",
+   "series_id": "S000009571",
+   "ticker": "PTAXX"
+  },
+  {
+   "class_id": "C000017193",
+   "latest_form": "N-MFP3",
+   "name": "Putnam Money Market Fund",
+   "series_id": "S000006251",
+   "ticker": "PTBXX"
+  },
+  {
+   "class_id": "C000005557",
+   "latest_form": "N-MFP3",
+   "name": "T. Rowe Price Municipal Money Fund, Inc.",
+   "series_id": "S000002161",
+   "ticker": "PTEXX"
+  },
+  {
+   "class_id": "C000157046",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES PRIME CASH OBLIGATIONS FUND",
+   "series_id": "S000009571",
+   "ticker": "PTRXX"
+  },
+  {
+   "class_id": "C000157045",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES PRIME CASH OBLIGATIONS FUND",
+   "series_id": "S000009571",
+   "ticker": "PTSXX"
+  },
+  {
+   "class_id": "C000157047",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES PRIME CASH OBLIGATIONS FUND",
+   "series_id": "S000009571",
+   "ticker": "PTTXX"
+  },
+  {
+   "class_id": "C000017196",
+   "latest_form": "N-MFP3",
+   "name": "Putnam Money Market Fund",
+   "series_id": "S000006251",
+   "ticker": "PURXX"
+  },
+  {
+   "class_id": "C000234678",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Account",
+   "series_id": "S000005087",
+   "ticker": "QCMMFX"
+  },
+  {
+   "class_id": "C000154496",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Account",
+   "series_id": "S000005087",
+   "ticker": "QCMMIX"
+  },
+  {
+   "class_id": "C000154495",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Account",
+   "series_id": "S000005087",
+   "ticker": "QCMMPX"
+  },
+  {
+   "class_id": "C000154494",
+   "latest_form": "N-MFP3",
+   "name": "Money Market Account",
+   "series_id": "S000005087",
+   "ticker": "QCMMRX"
+  },
+  {
+   "class_id": "C000075888",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "RAAXX"
+  },
+  {
+   "class_id": "C000075889",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "RABXX"
+  },
+  {
+   "class_id": "C000075890",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "RACXX"
+  },
+  {
+   "class_id": "C000075891",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "RADXX"
+  },
+  {
+   "class_id": "C000075892",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "RAEXX"
+  },
+  {
+   "class_id": "C000075893",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "RAFXX"
+  },
+  {
+   "class_id": "C000164807",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "RAGXX"
+  },
+  {
+   "class_id": "C000148462",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "RBEXX"
+  },
+  {
+   "class_id": "C000243226",
+   "latest_form": "N-MFP3",
+   "name": "RBC BlueBay U.S. Government Money Market Fund",
+   "series_id": "S000001806",
+   "ticker": "RGMXX"
+  },
+  {
+   "class_id": "C000277170",
+   "latest_form": "N-MFP3",
+   "name": "RBC BlueBay U.S. Government Money Market Fund",
+   "series_id": "S000001806",
+   "ticker": "RGPXX"
+  },
+  {
+   "class_id": "C000013784",
+   "latest_form": "N-MFP3",
+   "name": "HSBC U.S. Government Money Market Fund",
+   "series_id": "S000005047",
+   "ticker": "RGYXX"
+  },
+  {
+   "class_id": "C000010944",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Government Money Market Fund",
+   "series_id": "S000003909",
+   "ticker": "RJGXX"
+  },
+  {
+   "class_id": "C000008120",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan 100% U.S. Treasury Securities Money Market Fund",
+   "series_id": "S000002965",
+   "ticker": "RJTXX"
+  },
+  {
+   "class_id": "C000167202",
+   "latest_form": "N-MFP3",
+   "name": "UBS RMA Government Money Market Fund",
+   "series_id": "S000053134",
+   "ticker": "RMGXX"
+  },
+  {
+   "class_id": "C000246242",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Government Money Market Fund",
+   "series_id": "S000007421",
+   "ticker": "RNRXX"
+  },
+  {
+   "class_id": "C000009538",
+   "latest_form": "N-MFP3",
+   "name": "Davis Government Money Market Fund",
+   "series_id": "S000003444",
+   "ticker": "RPGXX"
+  },
+  {
+   "class_id": "C000246243",
+   "latest_form": "N-MFP3",
+   "name": "Allspring 100% Treasury Money Market Fund",
+   "series_id": "S000007432",
+   "ticker": "RRAXX"
+  },
+  {
+   "class_id": "C000246244",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Treasury Plus Money Market Fund",
+   "series_id": "S000007440",
+   "ticker": "RRTXX"
+  },
+  {
+   "class_id": "C000008142",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Tax Free Money Market Fund",
+   "series_id": "S000002970",
+   "ticker": "RTJXX"
+  },
+  {
+   "class_id": "C000113321",
+   "latest_form": "N-MFP3",
+   "name": "U.S. Government Money Market Fund",
+   "series_id": "S000003657",
+   "ticker": "RYFXX"
+  },
+  {
+   "class_id": "C000143784",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Plus Money Market Fund",
+   "series_id": "S000019118",
+   "ticker": "SAEXX"
+  },
+  {
+   "class_id": "C000143775",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional U.S. Government Money Market Fund",
+   "series_id": "S000010701",
+   "ticker": "SAHXX"
+  },
+  {
+   "class_id": "C000143783",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Plus Money Market Fund",
+   "series_id": "S000019118",
+   "ticker": "SAJXX"
+  },
+  {
+   "class_id": "C000143776",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional U.S. Government Money Market Fund",
+   "series_id": "S000010701",
+   "ticker": "SALXX"
+  },
+  {
+   "class_id": "C000145476",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional U.S. Government Money Market Fund",
+   "series_id": "S000010701",
+   "ticker": "SAMXX"
+  },
+  {
+   "class_id": "C000219264",
+   "latest_form": "N-MFP3",
+   "name": "Schwab California Municipal Money Fund",
+   "series_id": "S000004512",
+   "ticker": "SCAXX"
+  },
+  {
+   "class_id": "C000017348",
+   "latest_form": "N-MFP3",
+   "name": "DWS Tax-Exempt Portfolio",
+   "series_id": "S000006303",
+   "ticker": "SCIXX"
+  },
+  {
+   "class_id": "C000222231",
+   "latest_form": "N-MFP3",
+   "name": "Schwab Treasury Obligations Money Fund",
+   "series_id": "S000036659",
+   "ticker": "SCOXX"
+  },
+  {
+   "class_id": "C000018368",
+   "latest_form": "N-MFP3",
+   "name": "SDIT TREASURY II FUND",
+   "series_id": "S000006774",
+   "ticker": "SCPXX"
+  },
+  {
+   "class_id": "C000219263",
+   "latest_form": "N-MFP3",
+   "name": "Schwab AMT Tax-Free Money Fund",
+   "series_id": "S000004500",
+   "ticker": "SCTXX"
+  },
+  {
+   "class_id": "C000167199",
+   "latest_form": "N-MFP3",
+   "name": "UBS Select Government Institutional Fund",
+   "series_id": "S000053131",
+   "ticker": "SEGXX"
+  },
+  {
+   "class_id": "C000274228",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Government",
+   "series_id": "S000009242",
+   "ticker": "SEIXX"
+  },
+  {
+   "class_id": "C000018365",
+   "latest_form": "N-MFP3",
+   "name": "SDIT GOVERNMENT",
+   "series_id": "S000006773",
+   "ticker": "SEOXX"
+  },
+  {
+   "class_id": "C000007334",
+   "latest_form": "N-MFP3",
+   "name": "UBS Select Treasury Institutional Fund",
+   "series_id": "S000002682",
+   "ticker": "SETXX"
+  },
+  {
+   "class_id": "C000018362",
+   "latest_form": "N-MFP3",
+   "name": "SDIT GOVERNMENT",
+   "series_id": "S000006773",
+   "ticker": "SEVXX"
+  },
+  {
+   "class_id": "C000030147",
+   "latest_form": "N-MFP3",
+   "name": "Saratoga U.S. Government Money Market Portfolio",
+   "series_id": "S000010883",
+   "ticker": "SGAXX"
+  },
+  {
+   "class_id": "C000030148",
+   "latest_form": "N-MFP3",
+   "name": "Saratoga U.S. Government Money Market Portfolio",
+   "series_id": "S000010883",
+   "ticker": "SGMXX"
+  },
+  {
+   "class_id": "C000018363",
+   "latest_form": "N-MFP3",
+   "name": "SDIT GOVERNMENT",
+   "series_id": "S000006773",
+   "ticker": "SGOXX"
+  },
+  {
+   "class_id": "C000167200",
+   "latest_form": "N-MFP3",
+   "name": "UBS Select Government Preferred Fund",
+   "series_id": "S000053132",
+   "ticker": "SGPXX"
+  },
+  {
+   "class_id": "C000018375",
+   "latest_form": "N-MFP3",
+   "name": "SDIT GOVERNMENT II",
+   "series_id": "S000006776",
+   "ticker": "SGTXX"
+  },
+  {
+   "class_id": "C000222229",
+   "latest_form": "N-MFP3",
+   "name": "Schwab Government Money Fund",
+   "series_id": "S000004506",
+   "ticker": "SGUXX"
+  },
+  {
+   "class_id": "C000260816",
+   "latest_form": "N-MFP3",
+   "name": "Schwab Government Money Market ETF",
+   "series_id": "S000092777",
+   "ticker": "SGVT"
+  },
+  {
+   "class_id": "C000018364",
+   "latest_form": "N-MFP3",
+   "name": "SDIT GOVERNMENT",
+   "series_id": "S000006773",
+   "ticker": "SGWXX"
+  },
+  {
+   "class_id": "C000248579",
+   "latest_form": "N-MFP3",
+   "name": "UBS Select 100% US Treasury Institutional Fund",
+   "series_id": "S000084282",
+   "ticker": "SIOXX"
+  },
+  {
+   "class_id": "C000010946",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan U.S. Government Money Market Fund",
+   "series_id": "S000003909",
+   "ticker": "SJGXX"
+  },
+  {
+   "class_id": "C000010933",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Municipal Money Market Fund",
+   "series_id": "S000003906",
+   "ticker": "SJMXX"
+  },
+  {
+   "class_id": "C000046408",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Government Money Market Fund",
+   "series_id": "S000016623",
+   "ticker": "SMGXX"
+  },
+  {
+   "class_id": "C000038267",
+   "latest_form": "N-MFP3",
+   "name": "Schwab Prime Advantage Money Fund",
+   "series_id": "S000004508",
+   "ticker": "SNAXX"
+  },
+  {
+   "class_id": "C000112046",
+   "latest_form": "N-MFP3",
+   "name": "Schwab Treasury Obligations Money Fund",
+   "series_id": "S000036659",
+   "ticker": "SNOXX"
+  },
+  {
+   "class_id": "C000169257",
+   "latest_form": "N-MFP3",
+   "name": "Schwab Retirement Government Money Fund",
+   "series_id": "S000053802",
+   "ticker": "SNRXX"
+  },
+  {
+   "class_id": "C000198373",
+   "latest_form": "N-MFP3",
+   "name": "Schwab U.S. Treasury Money Fund",
+   "series_id": "S000004507",
+   "ticker": "SNSXX"
+  },
+  {
+   "class_id": "C000151955",
+   "latest_form": "N-MFP3",
+   "name": "Schwab Government Money Fund",
+   "series_id": "S000004506",
+   "ticker": "SNVXX"
+  },
+  {
+   "class_id": "C000219265",
+   "latest_form": "N-MFP3",
+   "name": "Schwab New York Municipal Money Fund",
+   "series_id": "S000004513",
+   "ticker": "SNYXX"
+  },
+  {
+   "class_id": "C000250059",
+   "latest_form": "N-MFP3",
+   "name": "UBS Select 100% US Treasury Preferred Fund",
+   "series_id": "S000084283",
+   "ticker": "SOPXX"
+  },
+  {
+   "class_id": "C000019230",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Government Money Market Fund",
+   "series_id": "S000007051",
+   "ticker": "SPAXX"
+  },
+  {
+   "class_id": "C000275994",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Government Cash Management",
+   "series_id": "S000000128",
+   "ticker": "SPFXX"
+  },
+  {
+   "class_id": "C000243326",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Government Cash Management",
+   "series_id": "S000000128",
+   "ticker": "SPKXX"
+  },
+  {
+   "class_id": "C000019231",
+   "latest_form": "N-MFP3",
+   "name": "Fidelity Money Market Fund",
+   "series_id": "S000007052",
+   "ticker": "SPRXX"
+  },
+  {
+   "class_id": "C000271009",
+   "latest_form": "N-MFP3",
+   "name": "State Street Stablecoin Reserves Money Market Fund",
+   "series_id": "S000101071",
+   "ticker": "SSCXX"
+  },
+  {
+   "class_id": "C000143781",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Money Market Fund",
+   "series_id": "S000019117",
+   "ticker": "SSJXX"
+  },
+  {
+   "class_id": "C000143780",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Money Market Fund",
+   "series_id": "S000019117",
+   "ticker": "SSKXX"
+  },
+  {
+   "class_id": "C000143782",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Money Market Fund",
+   "series_id": "S000019117",
+   "ticker": "SSNXX"
+  },
+  {
+   "class_id": "C000146109",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional U.S. Government Money Market Fund",
+   "series_id": "S000010701",
+   "ticker": "SSOXX"
+  },
+  {
+   "class_id": "C000143785",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Plus Money Market Fund",
+   "series_id": "S000019118",
+   "ticker": "SSQXX"
+  },
+  {
+   "class_id": "C000271008",
+   "latest_form": "N-MFP3",
+   "name": "State Street Stablecoin Reserves Money Market Fund",
+   "series_id": "S000101071",
+   "ticker": "SSRXX"
+  },
+  {
+   "class_id": "C000248580",
+   "latest_form": "N-MFP3",
+   "name": "UBS Select 100% US Treasury Preferred Fund",
+   "series_id": "S000084283",
+   "ticker": "STAXX"
+  },
+  {
+   "class_id": "C000264902",
+   "latest_form": "N-MFP3",
+   "name": "Stablecoin Reserves Fund",
+   "series_id": "S000096115",
+   "ticker": "STBXX"
+  },
+  {
+   "class_id": "C000020379",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Money Market Fund",
+   "series_id": "S000007425",
+   "ticker": "STGXX"
+  },
+  {
+   "class_id": "C000051800",
+   "latest_form": "N-MFP3",
+   "name": "UBS Select Treasury Preferred Fund",
+   "series_id": "S000018677",
+   "ticker": "STPXX"
+  },
+  {
+   "class_id": "C000018367",
+   "latest_form": "N-MFP3",
+   "name": "SDIT TREASURY II FUND",
+   "series_id": "S000006774",
+   "ticker": "STWXX"
+  },
+  {
+   "class_id": "C000222230",
+   "latest_form": "N-MFP3",
+   "name": "Schwab U.S. Treasury Money Fund",
+   "series_id": "S000004507",
+   "ticker": "SUTXX"
+  },
+  {
+   "class_id": "C000018373",
+   "latest_form": "N-MFP3",
+   "name": "SDIT GOVERNMENT II",
+   "series_id": "S000006776",
+   "ticker": "SVBXX"
+  },
+  {
+   "class_id": "C000012381",
+   "latest_form": "N-MFP3",
+   "name": "Schwab Government Money Fund",
+   "series_id": "S000004506",
+   "ticker": "SWGXX"
+  },
+  {
+   "class_id": "C000250980",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Instruments Portfolio",
+   "series_id": "S000058876",
+   "ticker": "SWIXX"
+  },
+  {
+   "class_id": "C000012393",
+   "latest_form": "N-MFP3",
+   "name": "Schwab California Municipal Money Fund",
+   "series_id": "S000004512",
+   "ticker": "SWKXX"
+  },
+  {
+   "class_id": "C000012391",
+   "latest_form": "N-MFP3",
+   "name": "Schwab Municipal Money Fund",
+   "series_id": "S000004511",
+   "ticker": "SWOXX"
+  },
+  {
+   "class_id": "C000017880",
+   "latest_form": "N-MFP3",
+   "name": "Schwab Government Money Market Portfolio",
+   "series_id": "S000006545",
+   "ticker": "SWPXX"
+  },
+  {
+   "class_id": "C000232976",
+   "latest_form": "N-MFP3",
+   "name": "Treasury Portfolio",
+   "series_id": "S000023949",
+   "ticker": "SWSXX"
+  },
+  {
+   "class_id": "C000012389",
+   "latest_form": "N-MFP3",
+   "name": "Schwab Municipal Money Fund",
+   "series_id": "S000004511",
+   "ticker": "SWTXX"
+  },
+  {
+   "class_id": "C000012383",
+   "latest_form": "N-MFP3",
+   "name": "Schwab Prime Advantage Money Fund",
+   "series_id": "S000004508",
+   "ticker": "SWVXX"
+  },
+  {
+   "class_id": "C000039063",
+   "latest_form": "N-MFP3",
+   "name": "Schwab AMT Tax-Free Money Fund",
+   "series_id": "S000004500",
+   "ticker": "SWWXX"
+  },
+  {
+   "class_id": "C000012395",
+   "latest_form": "N-MFP3",
+   "name": "Schwab New York Municipal Money Fund",
+   "series_id": "S000004513",
+   "ticker": "SWYXX"
+  },
+  {
+   "class_id": "C000247804",
+   "latest_form": "N-MFP3",
+   "name": "XD Treasury Money Market Fund",
+   "series_id": "S000083789",
+   "ticker": "SXDXX"
+  },
+  {
+   "class_id": "C000030150",
+   "latest_form": "N-MFP3",
+   "name": "Saratoga U.S. Government Money Market Portfolio",
+   "series_id": "S000010883",
+   "ticker": "SZCXX"
+  },
+  {
+   "class_id": "C000279963",
+   "latest_form": "N-MFP3",
+   "name": "State Street Federal Treasury Plus Money Market Fund",
+   "series_id": "S000086382",
+   "ticker": "TADXX"
+  },
+  {
+   "class_id": "C000200990",
+   "latest_form": "N-MFP3",
+   "name": "NTAM Treasury Assets Fund",
+   "series_id": "S000062062",
+   "ticker": "TAFXX"
+  },
+  {
+   "class_id": "C000279964",
+   "latest_form": "N-MFP3",
+   "name": "State Street Federal Treasury Plus Money Market Fund",
+   "series_id": "S000086382",
+   "ticker": "TAGXX"
+  },
+  {
+   "class_id": "C000081830",
+   "latest_form": "N-MFP3",
+   "name": "Transamerica Government Money Market",
+   "series_id": "S000007798",
+   "ticker": "TAMXX"
+  },
+  {
+   "class_id": "C000279961",
+   "latest_form": "N-MFP3",
+   "name": "State Street Federal Treasury Money Market Fund",
+   "series_id": "S000086381",
+   "ticker": "TAOXX"
+  },
+  {
+   "class_id": "C000192374",
+   "latest_form": "N-MFP3",
+   "name": "State Street Treasury Obligations Money Market Fund",
+   "series_id": "S000058519",
+   "ticker": "TAQXX"
+  },
+  {
+   "class_id": "C000262483",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TRUST FOR U.S. TREASURY OBLIGATIONS",
+   "series_id": "S000009579",
+   "ticker": "TATXX"
+  },
+  {
+   "class_id": "C000011679",
+   "latest_form": "N-MFP3",
+   "name": "Tax Exempt Portfolio",
+   "series_id": "S000004152",
+   "ticker": "TAXXX"
+  },
+  {
+   "class_id": "C000279960",
+   "latest_form": "N-MFP3",
+   "name": "State Street Federal Treasury Money Market Fund",
+   "series_id": "S000086381",
+   "ticker": "TAYXX"
+  },
+  {
+   "class_id": "C000026164",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TAX-FREE OBLIGATIONS FUND",
+   "series_id": "S000009577",
+   "ticker": "TBIXX"
+  },
+  {
+   "class_id": "C000026165",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TAX-FREE OBLIGATIONS FUND",
+   "series_id": "S000009577",
+   "ticker": "TBSXX"
+  },
+  {
+   "class_id": "C000190788",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TAX-FREE OBLIGATIONS FUND",
+   "series_id": "S000009577",
+   "ticker": "TBVXX"
+  },
+  {
+   "class_id": "C000003922",
+   "latest_form": "N-MFP3",
+   "name": "TEMPCASH",
+   "series_id": "S000001474",
+   "ticker": "TCDXX"
+  },
+  {
+   "class_id": "C000279966",
+   "latest_form": "N-MFP3",
+   "name": "State Street Federal Treasury Plus Money Market Fund",
+   "series_id": "S000086382",
+   "ticker": "TCEXX"
+  },
+  {
+   "class_id": "C000018374",
+   "latest_form": "N-MFP3",
+   "name": "SDIT GOVERNMENT II",
+   "series_id": "S000006776",
+   "ticker": "TCGXX"
+  },
+  {
+   "class_id": "C000014638",
+   "latest_form": "N-MFP3",
+   "name": "Nuveen Money Market Fund",
+   "series_id": "S000005374",
+   "ticker": "TCIXX"
+  },
+  {
+   "class_id": "C000279959",
+   "latest_form": "N-MFP3",
+   "name": "State Street Federal Treasury Money Market Fund",
+   "series_id": "S000086381",
+   "ticker": "TCOXX"
+  },
+  {
+   "class_id": "C000017975",
+   "latest_form": "N-MFP3",
+   "name": "U.S. Government Money Market Fund",
+   "series_id": "S000006582",
+   "ticker": "TCRXX"
+  },
+  {
+   "class_id": "C000157050",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TRUST FOR U.S. TREASURY OBLIGATIONS",
+   "series_id": "S000009579",
+   "ticker": "TCSXX"
+  },
+  {
+   "class_id": "C000003930",
+   "latest_form": "N-MFP3",
+   "name": "FEDFUND",
+   "series_id": "S000001475",
+   "ticker": "TDDXX"
+  },
+  {
+   "class_id": "C000017911",
+   "latest_form": "N-MFP3",
+   "name": "Tax Exempt Portfolio",
+   "series_id": "S000004152",
+   "ticker": "TECXX"
+  },
+  {
+   "class_id": "C000193189",
+   "latest_form": "N-MFP3",
+   "name": "T. Rowe Price Municipal Money Fund, Inc.",
+   "series_id": "S000002161",
+   "ticker": "TERXX"
+  },
+  {
+   "class_id": "C000248682",
+   "latest_form": "N-MFP3",
+   "name": "Tax Exempt Portfolio",
+   "series_id": "S000004152",
+   "ticker": "TEWXX"
+  },
+  {
+   "class_id": "C000011681",
+   "latest_form": "N-MFP3",
+   "name": "Tax Exempt Portfolio",
+   "series_id": "S000004152",
+   "ticker": "TEXXX"
+  },
+  {
+   "class_id": "C000003928",
+   "latest_form": "N-MFP3",
+   "name": "FEDFUND",
+   "series_id": "S000001475",
+   "ticker": "TFDXX"
+  },
+  {
+   "class_id": "C000003939",
+   "latest_form": "N-MFP3",
+   "name": "T-FUND",
+   "series_id": "S000001476",
+   "ticker": "TFEXX"
+  },
+  {
+   "class_id": "C000003948",
+   "latest_form": "N-MFP3",
+   "name": "BlackRock Select Treasury Based Liquidity Fund",
+   "series_id": "S000001477",
+   "ticker": "TFFXX"
+  },
+  {
+   "class_id": "C000171812",
+   "latest_form": "N-MFP3",
+   "name": "Transamerica Government Money Market",
+   "series_id": "S000007798",
+   "ticker": "TFGXX"
+  },
+  {
+   "class_id": "C000171811",
+   "latest_form": "N-MFP3",
+   "name": "Transamerica Government Money Market",
+   "series_id": "S000007798",
+   "ticker": "TGRXX"
+  },
+  {
+   "class_id": "C000171813",
+   "latest_form": "N-MFP3",
+   "name": "Transamerica Government Money Market",
+   "series_id": "S000007798",
+   "ticker": "TGTXX"
+  },
+  {
+   "class_id": "C000033994",
+   "latest_form": "N-MFP3",
+   "name": "Nuveen Money Market Fund",
+   "series_id": "S000005374",
+   "ticker": "TIEXX"
+  },
+  {
+   "class_id": "C000071257",
+   "latest_form": "N-MFP3",
+   "name": "RBC BlueBay U.S. Government Money Market Fund",
+   "series_id": "S000001806",
+   "ticker": "TIMXX"
+  },
+  {
+   "class_id": "C000033995",
+   "latest_form": "N-MFP3",
+   "name": "Nuveen Money Market Fund",
+   "series_id": "S000005374",
+   "ticker": "TIRXX"
+  },
+  {
+   "class_id": "C000026171",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES U.S. TREASURY CASH RESERVES",
+   "series_id": "S000009580",
+   "ticker": "TISXX"
+  },
+  {
+   "class_id": "C000260907",
+   "latest_form": "N-MFP3",
+   "name": "BNY Dreyfus Treasury Securities Cash Management",
+   "series_id": "S000000113",
+   "ticker": "TKNXX"
+  },
+  {
+   "class_id": "C000013876",
+   "latest_form": "N-MFP3",
+   "name": "Nuveen Life Money Market Fund",
+   "series_id": "S000005089",
+   "ticker": "TLMXX"
+  },
+  {
+   "class_id": "C000003921",
+   "latest_form": "N-MFP3",
+   "name": "TEMPCASH",
+   "series_id": "S000001474",
+   "ticker": "TMCXX"
+  },
+  {
+   "class_id": "C000005546",
+   "latest_form": "N-MFP3",
+   "name": "T. Rowe Price Maryland Municipal Money Fund",
+   "series_id": "S000002150",
+   "ticker": "TMDXX"
+  },
+  {
+   "class_id": "C000162551",
+   "latest_form": "N-MFP3",
+   "name": "Nuveen Money Market Fund",
+   "series_id": "S000005374",
+   "ticker": "TMHXX"
+  },
+  {
+   "class_id": "C000202749",
+   "latest_form": "N-MFP3",
+   "name": "Nuveen Money Market Fund",
+   "series_id": "S000005374",
+   "ticker": "TMWXX"
+  },
+  {
+   "class_id": "C000144363",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TREASURY OBLIGATIONS FUND",
+   "series_id": "S000009578",
+   "ticker": "TOAXX"
+  },
+  {
+   "class_id": "C000026166",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TREASURY OBLIGATIONS FUND",
+   "series_id": "S000009578",
+   "ticker": "TOCXX"
+  },
+  {
+   "class_id": "C000242771",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TREASURY OBLIGATIONS FUND",
+   "series_id": "S000009578",
+   "ticker": "TODXX"
+  },
+  {
+   "class_id": "C000026167",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TREASURY OBLIGATIONS FUND",
+   "series_id": "S000009578",
+   "ticker": "TOIXX"
+  },
+  {
+   "class_id": "C000271489",
+   "latest_form": "N-MFP3",
+   "name": "UBS Select 100% US Treasury Institutional Fund",
+   "series_id": "S000084282",
+   "ticker": "TOKXX"
+  },
+  {
+   "class_id": "C000242767",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TREASURY OBLIGATIONS FUND",
+   "series_id": "S000009578",
+   "ticker": "TOLXX"
+  },
+  {
+   "class_id": "C000242769",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TREASURY OBLIGATIONS FUND",
+   "series_id": "S000009578",
+   "ticker": "TOMXX"
+  },
+  {
+   "class_id": "C000242770",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TREASURY OBLIGATIONS FUND",
+   "series_id": "S000009578",
+   "ticker": "TOPXX"
+  },
+  {
+   "class_id": "C000026168",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TREASURY OBLIGATIONS FUND",
+   "series_id": "S000009578",
+   "ticker": "TOSXX"
+  },
+  {
+   "class_id": "C000026169",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TREASURY OBLIGATIONS FUND",
+   "series_id": "S000009578",
+   "ticker": "TOTXX"
+  },
+  {
+   "class_id": "C000242768",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TREASURY OBLIGATIONS FUND",
+   "series_id": "S000009578",
+   "ticker": "TOVXX"
+  },
+  {
+   "class_id": "C000275150",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Treasury Plus Money Market Fund",
+   "series_id": "S000007440",
+   "ticker": "TPAXX"
+  },
+  {
+   "class_id": "C000003920",
+   "latest_form": "N-MFP3",
+   "name": "TEMPCASH",
+   "series_id": "S000001474",
+   "ticker": "TPCXX"
+  },
+  {
+   "class_id": "C000279965",
+   "latest_form": "N-MFP3",
+   "name": "State Street Federal Treasury Plus Money Market Fund",
+   "series_id": "S000086382",
+   "ticker": "TPDXX"
+  },
+  {
+   "class_id": "C000279962",
+   "latest_form": "N-MFP3",
+   "name": "State Street Federal Treasury Money Market Fund",
+   "series_id": "S000086381",
+   "ticker": "TPEXX"
+  },
+  {
+   "class_id": "C000052880",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Plus Money Market Fund",
+   "series_id": "S000019118",
+   "ticker": "TPIXX"
+  },
+  {
+   "class_id": "C000172254",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Plus Money Market Fund",
+   "series_id": "S000019118",
+   "ticker": "TPLXX"
+  },
+  {
+   "class_id": "C000079558",
+   "latest_form": "N-MFP3",
+   "name": "Nuveen Money Market Fund",
+   "series_id": "S000005374",
+   "ticker": "TPPXX"
+  },
+  {
+   "class_id": "C000069462",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Plus Money Market Fund",
+   "series_id": "S000019118",
+   "ticker": "TPSXX"
+  },
+  {
+   "class_id": "C000052879",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Plus Money Market Fund",
+   "series_id": "S000019118",
+   "ticker": "TPVXX"
+  },
+  {
+   "class_id": "C000011682",
+   "latest_form": "N-MFP3",
+   "name": "Tax Exempt Portfolio",
+   "series_id": "S000004152",
+   "ticker": "TPXXX"
+  },
+  {
+   "class_id": "C000190632",
+   "latest_form": "N-MFP3",
+   "name": "T. Rowe Price U.S. Treasury Money Fund",
+   "series_id": "S000002169",
+   "ticker": "TRGXX"
+  },
+  {
+   "class_id": "C000052877",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Money Market Fund",
+   "series_id": "S000019117",
+   "ticker": "TRIXX"
+  },
+  {
+   "class_id": "C000052878",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Money Market Fund",
+   "series_id": "S000019117",
+   "ticker": "TRVXX"
+  },
+  {
+   "class_id": "C000219346",
+   "latest_form": "N-MFP3",
+   "name": "T. Rowe Price U.S. Treasury Money Fund",
+   "series_id": "S000002169",
+   "ticker": "TRZXX"
+  },
+  {
+   "class_id": "C000005547",
+   "latest_form": "N-MFP3",
+   "name": "T. Rowe Price Cash Reserves Fund",
+   "series_id": "S000002151",
+   "ticker": "TSCXX"
+  },
+  {
+   "class_id": "C000003949",
+   "latest_form": "N-MFP3",
+   "name": "BlackRock Select Treasury Based Liquidity Fund",
+   "series_id": "S000001477",
+   "ticker": "TSDXX"
+  },
+  {
+   "class_id": "C000189452",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "TSIXX"
+  },
+  {
+   "class_id": "C000003938",
+   "latest_form": "N-MFP3",
+   "name": "T-FUND",
+   "series_id": "S000001476",
+   "ticker": "TSTXX"
+  },
+  {
+   "class_id": "C000248683",
+   "latest_form": "N-MFP3",
+   "name": "Tax Exempt Portfolio",
+   "series_id": "S000004152",
+   "ticker": "TSXXX"
+  },
+  {
+   "class_id": "C000003955",
+   "latest_form": "N-MFP3",
+   "name": "TREASURY TRUST FUND",
+   "series_id": "S000001478",
+   "ticker": "TTDXX"
+  },
+  {
+   "class_id": "C000190629",
+   "latest_form": "N-MFP3",
+   "name": "T. Rowe Price Government Money Fund, Inc.",
+   "series_id": "S000002140",
+   "ticker": "TTGXX"
+  },
+  {
+   "class_id": "C000157051",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TRUST FOR U.S. TREASURY OBLIGATIONS",
+   "series_id": "S000009579",
+   "ticker": "TTIXX"
+  },
+  {
+   "class_id": "C000189453",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "TTMXX"
+  },
+  {
+   "class_id": "C000026170",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TRUST FOR U.S. TREASURY OBLIGATIONS",
+   "series_id": "S000009579",
+   "ticker": "TTOXX"
+  },
+  {
+   "class_id": "C000243030",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES TRUST FOR U.S. TREASURY OBLIGATIONS",
+   "series_id": "S000009579",
+   "ticker": "TTQXX"
+  },
+  {
+   "class_id": "C000003954",
+   "latest_form": "N-MFP3",
+   "name": "TREASURY TRUST FUND",
+   "series_id": "S000001478",
+   "ticker": "TTTXX"
+  },
+  {
+   "class_id": "C000004729",
+   "latest_form": "N-MFP3",
+   "name": "RBC BlueBay U.S. Government Money Market Fund",
+   "series_id": "S000001806",
+   "ticker": "TUGXX"
+  },
+  {
+   "class_id": "C000071260",
+   "latest_form": "N-MFP3",
+   "name": "RBC BlueBay U.S. Government Money Market Fund",
+   "series_id": "S000001806",
+   "ticker": "TUIXX"
+  },
+  {
+   "class_id": "C000193184",
+   "latest_form": "N-MFP3",
+   "name": "T. Rowe Price Maryland Municipal Money Fund",
+   "series_id": "S000002150",
+   "ticker": "TWNXX"
+  },
+  {
+   "class_id": "C000248684",
+   "latest_form": "N-MFP3",
+   "name": "Tax Exempt Portfolio",
+   "series_id": "S000004152",
+   "ticker": "TWSXX"
+  },
+  {
+   "class_id": "C000017350",
+   "latest_form": "N-MFP3",
+   "name": "DWS Tax-Exempt Portfolio",
+   "series_id": "S000006303",
+   "ticker": "TXMXX"
+  },
+  {
+   "class_id": "C000011678",
+   "latest_form": "N-MFP3",
+   "name": "Tax Exempt Portfolio",
+   "series_id": "S000004152",
+   "ticker": "TXXXX"
+  },
+  {
+   "class_id": "C000069461",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Money Market Fund",
+   "series_id": "S000019117",
+   "ticker": "TYSXX"
+  },
+  {
+   "class_id": "C000034889",
+   "latest_form": "N-MFP3",
+   "name": "Victory Treasury Money Market Trust",
+   "series_id": "S000012919",
+   "ticker": "UATXX"
+  },
+  {
+   "class_id": "C000164453",
+   "latest_form": "N-MFP3",
+   "name": "UBS Prime Preferred Fund",
+   "series_id": "S000052307",
+   "ticker": "UPPXX"
+  },
+  {
+   "class_id": "C000164452",
+   "latest_form": "N-MFP3",
+   "name": "UBS Prime Reserves Fund",
+   "series_id": "S000052306",
+   "ticker": "UPRXX"
+  },
+  {
+   "class_id": "C000034875",
+   "latest_form": "N-MFP3",
+   "name": "Victory Money Market Fund",
+   "series_id": "S000012906",
+   "ticker": "USAXX"
+  },
+  {
+   "class_id": "C000034887",
+   "latest_form": "N-MFP3",
+   "name": "Victory Tax Exempt Money Market Fund",
+   "series_id": "S000012917",
+   "ticker": "USEXX"
+  },
+  {
+   "class_id": "C000179955",
+   "latest_form": "N-MFP3",
+   "name": "American Funds U.S. Government Money Market Fund",
+   "series_id": "S000025394",
+   "ticker": "USGXX"
+  },
+  {
+   "class_id": "C000242773",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES U.S. TREASURY CASH RESERVES",
+   "series_id": "S000009580",
+   "ticker": "UTDXX"
+  },
+  {
+   "class_id": "C000242775",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES U.S. TREASURY CASH RESERVES",
+   "series_id": "S000009580",
+   "ticker": "UTEXX"
+  },
+  {
+   "class_id": "C000026172",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES U.S. TREASURY CASH RESERVES",
+   "series_id": "S000009580",
+   "ticker": "UTIXX"
+  },
+  {
+   "class_id": "C000242772",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES U.S. TREASURY CASH RESERVES",
+   "series_id": "S000009580",
+   "ticker": "UTPXX"
+  },
+  {
+   "class_id": "C000259499",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES U.S. TREASURY CASH RESERVES",
+   "series_id": "S000009580",
+   "ticker": "UTRXX"
+  },
+  {
+   "class_id": "C000044045",
+   "latest_form": "N-MFP3",
+   "name": "The United States TreasuryTrust",
+   "series_id": "S000016030",
+   "ticker": "UTSXX"
+  },
+  {
+   "class_id": "C000242774",
+   "latest_form": "N-MFP3",
+   "name": "FEDERATED HERMES U.S. TREASURY CASH RESERVES",
+   "series_id": "S000009580",
+   "ticker": "UTVXX"
+  },
+  {
+   "class_id": "C000008122",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan California Municipal Money Market Fund",
+   "series_id": "S000002966",
+   "ticker": "VCAXX"
+  },
+  {
+   "class_id": "C000007065",
+   "latest_form": "N-MFP3",
+   "name": "Vanguard California Municipal Money Market Fund",
+   "series_id": "S000002565",
+   "ticker": "VCTXX"
+  },
+  {
+   "class_id": "C000214495",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Government",
+   "series_id": "S000009242",
+   "ticker": "VETXX"
+  },
+  {
+   "class_id": "C000008127",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Federal Money Market Fund",
+   "series_id": "S000002967",
+   "ticker": "VFIXX"
+  },
+  {
+   "class_id": "C000008125",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Federal Money Market Fund",
+   "series_id": "S000002967",
+   "ticker": "VFPXX"
+  },
+  {
+   "class_id": "C000008124",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Federal Money Market Fund",
+   "series_id": "S000002967",
+   "ticker": "VFVXX"
+  },
+  {
+   "class_id": "C000008119",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan 100% U.S. Treasury Securities Money Market Fund",
+   "series_id": "S000002965",
+   "ticker": "VHPXX"
+  },
+  {
+   "class_id": "C000012238",
+   "latest_form": "N-MFP3",
+   "name": "Vanguard Federal Money Market Fund",
+   "series_id": "S000004462",
+   "ticker": "VMFXX"
+  },
+  {
+   "class_id": "C000008138",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Prime Money Market Fund",
+   "series_id": "S000002969",
+   "ticker": "VMIXX"
+  },
+  {
+   "class_id": "C000012240",
+   "latest_form": "N-MFP3",
+   "name": "Vanguard Cash Reserves Federal Money Market Fund",
+   "series_id": "S000004463",
+   "ticker": "VMRXX"
+  },
+  {
+   "class_id": "C000007961",
+   "latest_form": "N-MFP3",
+   "name": "Vanguard Municipal Money Market Fund",
+   "series_id": "S000002898",
+   "ticker": "VMSXX"
+  },
+  {
+   "class_id": "C000008135",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Prime Money Market Fund",
+   "series_id": "S000002969",
+   "ticker": "VMVXX"
+  },
+  {
+   "class_id": "C000008128",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan New York Municipal Money Market Fund",
+   "series_id": "S000002968",
+   "ticker": "VNYXX"
+  },
+  {
+   "class_id": "C000008121",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan 100% U.S. Treasury Securities Money Market Fund",
+   "series_id": "S000002965",
+   "ticker": "VPIXX"
+  },
+  {
+   "class_id": "C000008136",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Prime Money Market Fund",
+   "series_id": "S000002969",
+   "ticker": "VPMXX"
+  },
+  {
+   "class_id": "C000204674",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Securities Lending Money Market Fund",
+   "series_id": "S000063113",
+   "ticker": "VSLXX"
+  },
+  {
+   "class_id": "C000230478",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional U.S. Government Money Market Fund",
+   "series_id": "S000010701",
+   "ticker": "VTGXX"
+  },
+  {
+   "class_id": "C000008143",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Tax Free Money Market Fund",
+   "series_id": "S000002970",
+   "ticker": "VTIXX"
+  },
+  {
+   "class_id": "C000230480",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Plus Money Market Fund",
+   "series_id": "S000019118",
+   "ticker": "VTLXX"
+  },
+  {
+   "class_id": "C000008140",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Tax Free Money Market Fund",
+   "series_id": "S000002970",
+   "ticker": "VTMXX"
+  },
+  {
+   "class_id": "C000230479",
+   "latest_form": "N-MFP3",
+   "name": "State Street Institutional Treasury Money Market Fund",
+   "series_id": "S000019117",
+   "ticker": "VTTXX"
+  },
+  {
+   "class_id": "C000005732",
+   "latest_form": "N-MFP3",
+   "name": "Vanguard Treasury Money Market Fund",
+   "series_id": "S000002233",
+   "ticker": "VUSXX"
+  },
+  {
+   "class_id": "C000247805",
+   "latest_form": "N-MFP3",
+   "name": "XD Treasury Money Market Fund",
+   "series_id": "S000083789",
+   "ticker": "VXDXX"
+  },
+  {
+   "class_id": "C000008141",
+   "latest_form": "N-MFP3",
+   "name": "JPMorgan Tax Free Money Market Fund",
+   "series_id": "S000002970",
+   "ticker": "VXPXX"
+  },
+  {
+   "class_id": "C000215435",
+   "latest_form": "N-MFP3",
+   "name": "Voya Government Money Market Fund",
+   "series_id": "S000066947",
+   "ticker": "VYAXX"
+  },
+  {
+   "class_id": "C000215437",
+   "latest_form": "N-MFP3",
+   "name": "Voya Government Money Market Fund",
+   "series_id": "S000066947",
+   "ticker": "VYBXX"
+  },
+  {
+   "class_id": "C000215436",
+   "latest_form": "N-MFP3",
+   "name": "Voya Government Money Market Fund",
+   "series_id": "S000066947",
+   "ticker": "VYCXX"
+  },
+  {
+   "class_id": "C000007971",
+   "latest_form": "N-MFP3",
+   "name": "Vanguard New York Municipal Money Market Fund",
+   "series_id": "S000002906",
+   "ticker": "VYFXX"
+  },
+  {
+   "class_id": "C000215433",
+   "latest_form": "N-MFP3",
+   "name": "Voya Government Money Market Fund",
+   "series_id": "S000066947",
+   "ticker": "VYGXX"
+  },
+  {
+   "class_id": "C000250818",
+   "latest_form": "N-MFP3",
+   "name": "Voya Government Money Market Fund",
+   "series_id": "S000066947",
+   "ticker": "VYHXX"
+  },
+  {
+   "class_id": "C000215195",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Premier Institutional Liquid Reserves",
+   "series_id": "S000066840",
+   "ticker": "WAAXX"
+  },
+  {
+   "class_id": "C000215194",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Premier Institutional Government Reserves",
+   "series_id": "S000066839",
+   "ticker": "WABXX"
+  },
+  {
+   "class_id": "C000215193",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Premier Institutional Government Reserves",
+   "series_id": "S000066839",
+   "ticker": "WACXX"
+  },
+  {
+   "class_id": "C000215197",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Premier Institutional U.S. Treasury Reserves",
+   "series_id": "S000066841",
+   "ticker": "WADXX"
+  },
+  {
+   "class_id": "C000215196",
+   "latest_form": "N-MFP3",
+   "name": "Western Asset Premier Institutional U.S. Treasury Reserves",
+   "series_id": "S000066841",
+   "ticker": "WAEXX"
+  },
+  {
+   "class_id": "C000015430",
+   "latest_form": "N-MFP3",
+   "name": "Wilmington U.S. Government Money Market Fund",
+   "series_id": "S000005650",
+   "ticker": "WAGXX"
+  },
+  {
+   "class_id": "C000146024",
+   "latest_form": "N-MFP3",
+   "name": "U.S. GOVERNMENT SELECT PORTFOLIO",
+   "series_id": "S000001275",
+   "ticker": "WCGXX"
+  },
+  {
+   "class_id": "C000159700",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Government Money Market Fund",
+   "series_id": "S000007421",
+   "ticker": "WFFXX"
+  },
+  {
+   "class_id": "C000020369",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Government Money Market Fund",
+   "series_id": "S000007421",
+   "ticker": "WFGXX"
+  },
+  {
+   "class_id": "C000020406",
+   "latest_form": "N-MFP3",
+   "name": "Allspring National Tax-Free Money Market Fund",
+   "series_id": "S000007436",
+   "ticker": "WFNXX"
+  },
+  {
+   "class_id": "C000020398",
+   "latest_form": "N-MFP3",
+   "name": "Allspring 100% Treasury Money Market Fund",
+   "series_id": "S000007432",
+   "ticker": "WFTXX"
+  },
+  {
+   "class_id": "C000020370",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Government Money Market Fund",
+   "series_id": "S000007421",
+   "ticker": "WGAXX"
+  },
+  {
+   "class_id": "C000015429",
+   "latest_form": "N-MFP3",
+   "name": "Wilmington U.S. Government Money Market Fund",
+   "series_id": "S000005650",
+   "ticker": "WGEXX"
+  },
+  {
+   "class_id": "C000109084",
+   "latest_form": "N-MFP3",
+   "name": "Wilmington U.S. Government Money Market Fund",
+   "series_id": "S000005650",
+   "ticker": "WGOXX"
+  },
+  {
+   "class_id": "C000247854",
+   "latest_form": "N-MFP3",
+   "name": "Wilmington U.S. Government Money Market Fund",
+   "series_id": "S000005650",
+   "ticker": "WGQXX"
+  },
+  {
+   "class_id": "C000015428",
+   "latest_form": "N-MFP3",
+   "name": "Wilmington U.S. Government Money Market Fund",
+   "series_id": "S000005650",
+   "ticker": "WGSXX"
+  },
+  {
+   "class_id": "C000229774",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Government",
+   "series_id": "S000009242",
+   "ticker": "WMNXX"
+  },
+  {
+   "class_id": "C000086826",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Money Market Fund",
+   "series_id": "S000007425",
+   "ticker": "WMOXX"
+  },
+  {
+   "class_id": "C000168181",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Money Market Fund",
+   "series_id": "S000007425",
+   "ticker": "WMPXX"
+  },
+  {
+   "class_id": "C000020404",
+   "latest_form": "N-MFP3",
+   "name": "Allspring National Tax-Free Money Market Fund",
+   "series_id": "S000007436",
+   "ticker": "WNTXX"
+  },
+  {
+   "class_id": "C000229776",
+   "latest_form": "N-MFP3",
+   "name": "Goldman Sachs Financial Square Fund - Treasury Instruments",
+   "series_id": "S000009261",
+   "ticker": "WOMXX"
+  },
+  {
+   "class_id": "C000150668",
+   "latest_form": "N-MFP3",
+   "name": "Allspring 100% Treasury Money Market Fund",
+   "series_id": "S000007432",
+   "ticker": "WOTXX"
+  },
+  {
+   "class_id": "C000015427",
+   "latest_form": "N-MFP3",
+   "name": "Wilmington U.S. Treasury Money Market Fund",
+   "series_id": "S000005649",
+   "ticker": "WTAXX"
+  },
+  {
+   "class_id": "C000015424",
+   "latest_form": "N-MFP3",
+   "name": "Wilmington U.S. Treasury Money Market Fund",
+   "series_id": "S000005649",
+   "ticker": "WTEXX"
+  },
+  {
+   "class_id": "C000245468",
+   "latest_form": "N-MFP3",
+   "name": "WisdomTree Treasury Money Market Digital Fund",
+   "series_id": "S000082184",
+   "ticker": "WTGXX"
+  },
+  {
+   "class_id": "C000215930",
+   "latest_form": "N-MFP3",
+   "name": "Wilmington U.S. Treasury Money Market Fund",
+   "series_id": "S000005649",
+   "ticker": "WTIXX"
+  },
+  {
+   "class_id": "C000210934",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Treasury Plus Money Market Fund",
+   "series_id": "S000007440",
+   "ticker": "WTLXX"
+  },
+  {
+   "class_id": "C000064992",
+   "latest_form": "N-MFP3",
+   "name": "Allspring Treasury Plus Money Market Fund",
+   "series_id": "S000007440",
+   "ticker": "WTPXX"
+  },
+  {
+   "class_id": "C000247853",
+   "latest_form": "N-MFP3",
+   "name": "Wilmington U.S. Treasury Money Market Fund",
+   "series_id": "S000005649",
+   "ticker": "WTQXX"
+  },
+  {
+   "class_id": "C000086828",
+   "latest_form": "N-MFP3",
+   "name": "Allspring 100% Treasury Money Market Fund",
+   "series_id": "S000007432",
+   "ticker": "WTRXX"
+  },
+  {
+   "class_id": "C000015425",
+   "latest_form": "N-MFP3",
+   "name": "Wilmington U.S. Treasury Money Market Fund",
+   "series_id": "S000005649",
+   "ticker": "WTSXX"
+  }
+ ],
+ "generated": "2026-11-18",
+ "schema_version": 1,
+ "source": "edgar daily index, 70 days to 2026-11-18"
+}
