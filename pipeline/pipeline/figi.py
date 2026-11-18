@@ -36,8 +36,15 @@ candidate ISINs of release ``2026-11-16.1``: 84.7% of their weight is accepted, 
 ``Mutual Fund`` (an open-end fund, ETP or closed-end fund filed as an equity — a fund position,
 refused on purpose), 1.0% has no match.
 
+    python -m pipeline.figi pull    --out figi_cache_v1.jsonl          # the last night's cache, if any
+    python -m pipeline.figi collect --universe all --out isins.json    # every long equity ISIN in the latest filings
     python -m pipeline.figi refresh --isins isins.json --cache figi_cache_v1.jsonl
-    python -m pipeline.figi stats --cache figi_cache_v1.jsonl
+    python -m pipeline.figi push    --cache figi_cache_v1.jsonl        # keep it for tomorrow
+    python -m pipeline.figi stats   --cache figi_cache_v1.jsonl
+
+The nightly job runs the first four **before** the build (``refresh.yml``); the build then reads the file with
+``--figi-cache``. The cache lives in R2 at ``inputs/figi_cache_v1.jsonl`` — outside every release prefix, and with no ISIN in
+it (``verify_cache_shape`` refuses to push a file that has anything but the five public-domain fields under an HMAC key).
 """
 
 from __future__ import annotations
@@ -47,8 +54,11 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sys
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -406,6 +416,148 @@ def refresh(
     return stats
 
 
+# --- the nightly's three small steps: collect, pull, push -----------------------
+
+
+#: Where the cache is kept between nights. Outside ``releases/`` and ``latest/``: it is a build input, not a
+#: release, and no retention rule or promotion touches it.
+REMOTE_KEY = f"inputs/{DEFAULT_CACHE_NAME}"
+DEFAULT_PUBLIC_BASE = "https://data.unpackfund.com"
+
+_KEY_RE = re.compile(r"^[0-9a-f]{32}$")
+_ALLOWED_FIELDS = frozenset(
+    {"key", "status", "fetched_at", "share_class_figi", "sector", "security_type2"}
+)
+
+
+def verify_cache_shape(path: Path) -> int:
+    """Refuse a cache file that could carry an identifier in the clear; return its record count.
+
+    The bucket serves every prefix publicly, so this is the guard between "a file of HMAC keys and
+    public-domain fields" and "a file that publishes ISINs". Every line must be a record whose key is 32
+    hex characters and whose fields are within the five the layer writes. ``Answer.to_record`` can only
+    produce that shape; this holds the file, not the writer, to it.
+    """
+    count = 0
+    for number, line in enumerate(path.read_text().splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError as error:
+            raise FigiError(f"{path.name} line {number} is not JSON") from error
+        if not isinstance(record, dict) or not _KEY_RE.match(str(record.get("key", ""))):
+            raise FigiError(f"{path.name} line {number}: the key is not a 32-hex HMAC")
+        extra = set(record) - _ALLOWED_FIELDS
+        if extra:
+            raise FigiError(f"{path.name} line {number}: unexpected fields {sorted(extra)}")
+        count += 1
+    return count
+
+
+def collect_isins(
+    spec: str = "all",
+    *,
+    workers: int = 8,
+    progress: Callable[[str], None] | None = None,
+) -> list[str]:
+    """Every valid ISIN of a long equity row in the latest filing of every fund in the universe.
+
+    The cache refresh has to run *before* the build (the build never calls the network, H-CV5), and
+    which rows the ladder leaves unmapped is only known after the build. So the question asked is the
+    wider one the build can always answer from the same filings: every equity row with a positive balance
+    and a valid ISIN. The first night that is the whole equity universe; afterwards only new or expired
+    ISINs are sent (``refresh``), and the answers also serve the join rungs.
+
+    Funds whose filing cannot be read are skipped and counted, never fatal: a missing ISIN only means a
+    row stays unmapped, which is what it was.
+    """
+    # Imported here: ``build`` imports this module.
+    from concurrent.futures import ThreadPoolExecutor
+
+    from . import build, classify, filings
+
+    refs = build.resolve_universe(spec)
+    filings.prefetch(refs, workers=workers, progress=progress)
+
+    def one(ref) -> set[str] | None:
+        try:
+            found = filings.latest(ref)
+        except Exception:  # noqa: BLE001 - one unreadable filing must not stop the night
+            return None
+        isins: set[str] = set()
+        for holding in found.filing.holdings:
+            if (
+                holding.isin
+                and (holding.balance or 0) > 0
+                and (holding.val_usd or 0) > 0
+                and classify.classify(
+                    holding.asset_cat, holding.issuer_cat, holding.is_derivative
+                ).category
+                == classify.EQUITY
+                and identifiers.valid_isin(holding.isin)
+            ):
+                isins.add(holding.isin.strip().upper())
+        return isins
+
+    collected: set[str] = set()
+    skipped = 0
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        for result in pool.map(one, refs):
+            if result is None:
+                skipped += 1
+            else:
+                collected |= result
+    if progress is not None:
+        progress(f"figi: {len(collected):,} equity ISINs from {len(refs) - skipped:,} funds ({skipped} unreadable)")
+    return sorted(collected)
+
+
+def pull(
+    out: Path,
+    *,
+    base: str = DEFAULT_PUBLIC_BASE,
+    opener: Callable[..., Any] = urllib.request.urlopen,
+) -> bool:
+    """Fetch last night's cache from R2. ``False`` (and no file) on the first night, when there is none.
+
+    A cache-busting query is added: the public host caches objects, and this one changes every night.
+    A file that fails the shape check is refused rather than used.
+    """
+    url = f"{base}/{REMOTE_KEY}?v={int(time.time())}"
+    request = urllib.request.Request(url, headers={"User-Agent": identifiers.USER_AGENT})
+    try:
+        with opener(request, timeout=120) as response:
+            body = response.read()
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return False
+        raise FigiError(f"could not fetch the cache: HTTP {error.code}") from error
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(body)
+    try:
+        verify_cache_shape(out)
+    except FigiError:
+        out.unlink(missing_ok=True)
+        raise
+    return True
+
+
+def push(cache: Path, *, client: Any = None) -> int:
+    """Upload the cache to R2 for tomorrow; returns the record count. Refuses an unsafe file."""
+    count = verify_cache_shape(cache)
+    if client is None:
+        from . import r2, release
+
+        credentials, endpoint, bucket = release.credentials_from_env()
+        client = r2.R2Client(endpoint, bucket, credentials)
+    # Mutable, unlike every release object: it is rewritten nightly, so it must not be cached.
+    client.put(
+        REMOTE_KEY, cache.read_bytes(), content_type="application/x-ndjson", cache_control="no-cache"
+    )
+    return count
+
+
 # --- command line --------------------------------------------------------------
 
 
@@ -430,9 +582,35 @@ def main(argv: list[str] | None = None) -> int:
     refresh_parser.add_argument("--limit", type=int, default=None)
     stats_parser = commands.add_parser("stats", help="counts for a cache file")
     stats_parser.add_argument("--cache", type=Path, required=True)
+    collect_parser = commands.add_parser("collect", help="list the equity ISINs of the latest filings")
+    collect_parser.add_argument("--universe", default="all")
+    collect_parser.add_argument("--out", type=Path, required=True)
+    collect_parser.add_argument("--workers", type=int, default=8)
+    pull_parser = commands.add_parser("pull", help="fetch last night's cache from R2 (none on night one)")
+    pull_parser.add_argument("--out", type=Path, required=True)
+    push_parser = commands.add_parser("push", help="upload the cache to R2 for tomorrow")
+    push_parser.add_argument("--cache", type=Path, required=True)
     args = parser.parse_args(argv)
 
+    log = lambda message: print(message, file=sys.stderr, flush=True)  # noqa: E731
     try:
+        # These three need neither the key nor the pepper: no ISIN is read from, or written to, a cache.
+        if args.command == "collect":
+            isins = collect_isins(args.universe, workers=args.workers, progress=log)
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(json.dumps(isins))
+            print(json.dumps({"isins": len(isins)}))
+            return 0
+        if args.command == "pull":
+            found = pull(args.out)
+            print(json.dumps({"pulled": found}))
+            return 0
+        if args.command == "push":
+            if not args.cache.exists():
+                print(json.dumps({"pushed": 0, "note": "no cache file"}))
+                return 0
+            print(json.dumps({"pushed": push(args.cache)}))
+            return 0
         pepper = pepper_from_env()
         if args.command == "stats":
             cache = ShareClassMap.load(args.cache, pepper)
