@@ -338,27 +338,39 @@ def next_release_id(client, prefix: str, as_of: str) -> str:
 
 
 def content_fingerprint(manifest: dict, descriptor: dict) -> str:
-    """A hash of what a release publishes, ignoring when it was built.
+    """A hash of what a release publishes, for one build of one code revision.
 
-    `as_of`, `generated_at` and `pipeline_git_sha` change every run even when nothing else
-    does; the published bytes are what a consumer reads. Two releases with the same
-    fingerprint are the same data under a different name, and publishing the second one
-    costs one Class A operation per object for no change (the measured cause of the
-    November 2026 overage: about sixteen extra releases in eighteen days).
+    It deliberately excludes the descriptor's `objects["manifest"]` entry — the hash of
+    `manifest.json`, which carries `as_of` and `generated_at` — because including it would
+    make every release id differ and the skip could never fire. What it does cover: every
+    fund document's hash, every descriptor object that carries a hash (catalogue, tickers,
+    aliases, companies index and countries, securities shards, benchmarks), and the code
+    identity. What it does not hash directly: the per-company shards and `index/*.json`,
+    which appear as counts — they are a deterministic function of the fund documents and the
+    code (invariant I5), and both are in the payload.
+
+    Two releases with the same fingerprint publish the same bytes under a different name, and
+    publishing the second costs one Class A operation per object for no change. The measured
+    cause of the November 2026 overage: about sixteen extra releases in eighteen days.
     """
+    # `objects["manifest"]` is the hash OF `manifest.json`, which carries `as_of` and
+    # `generated_at` — including it would make every new release id differ, so the skip could
+    # never fire. It is the one descriptor entry that must be left out.
+    objects = {
+        str(label): json.dumps(value, sort_keys=True)
+        for label, value in (descriptor.get("objects") or {}).items()
+        if label != "manifest"
+    }
     payload = {
         "files": sorted(
             (str(entry.get("path")), str(entry.get("sha256"))) for entry in manifest.get("files") or []
         ),
-        "objects": sorted(
-            (str(label), json.dumps(value, sort_keys=True))
-            for label, value in (descriptor.get("objects") or {}).items()
-        ),
-        # The derived families — `companies/{id}.json`, `securities/*.json` — are counted in
-        # the descriptor, not hashed, so a code change that alters them without touching a
-        # fund document would fingerprint identically to the previous release and be skipped.
-        # Including the code identity makes that impossible: a merge forces one republish, and
-        # two nightly runs of the same code on the same filings still match.
+        "objects": sorted(objects.items()),
+        # The derived families (`companies/<id>.json`, `index/*.json`, `companies/sizes.json`)
+        # are counted in the descriptor, not hashed, so nothing here proves they are the same.
+        # The build is deterministic (invariant I5, `pipeline.checks`), which makes them a
+        # function of the fund documents and the code — and both are in this payload. A code
+        # change therefore always fingerprints differently, which is the behaviour it should have.
         "code": [descriptor.get("schema_version"), descriptor.get("pipeline_git_sha")],
     }
     body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
@@ -374,7 +386,10 @@ def published_fingerprint(
     under the 10M allowance, which is why this check is affordable where a listing is not.
     """
     key = f"{pointer_prefix.strip('/')}/{pointer_name}"
-    descriptor = _read_json(public, key)
+    # Cache-busted: this codebase records ~3 minutes of edge negative cache on the data host,
+    # and a stale 200 naming an older pointer is the one direction that could suppress a real
+    # upload. The manifest behind an immutable release path needs no such help.
+    descriptor = _read_json(public, key, cache_bust=str(int(time.time())))
     if not descriptor or descriptor.get("kind") != "release":
         return None
     as_of = str(descriptor.get("as_of") or "").strip("/")
@@ -386,14 +401,14 @@ def published_fingerprint(
     return as_of, content_fingerprint(manifest, descriptor)
 
 
-def _read_json(public: PublicReader, key: str) -> dict | None:
+def _read_json(public: PublicReader, key: str, *, cache_bust: str | None = None) -> dict | None:
     """One published JSON object, or None when it is absent or not JSON — never an exception.
 
     The skip check must not turn a transient 404 into a failed upload: an unreadable pointer
     means "cannot prove it is unchanged", and the upload proceeds.
     """
     try:
-        response = public.fetch(key)
+        response = public.fetch(key, cache_bust=cache_bust)
     except Exception:  # noqa: BLE001 - a transport failure here must not block a publish
         return None
     if response.status != 200:
@@ -461,7 +476,12 @@ def upload_release(
     if not dry_run:
         fingerprint = content_fingerprint(manifest, release_descriptor)
         existing = published_fingerprint(public, pointer_prefix, pointer_name)
-        if existing is not None and existing[1] == fingerprint:
+        # Same *date* only. A re-run on one date is the waste this removes; a new night must
+        # still publish even when nothing changed, because `promote` refuses a staging pointer
+        # older than three days and the staging pointer only moves with a new release.
+        today = str(manifest["as_of"]).strip("/").split(".")[0]
+        same_date = existing is not None and existing[0].split(".")[0] == today
+        if same_date and existing[1] == fingerprint:
             print(
                 f"  unchanged: {existing[0]} already publishes these bytes; nothing written, "
                 "0 Class A operations"

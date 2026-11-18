@@ -254,23 +254,47 @@ def test_fingerprint_changes_when_the_code_does():
     assert release.content_fingerprint(manifest, before) != release.content_fingerprint(manifest, reschema)
 
 
-def test_upload_skips_when_the_staged_pointer_already_publishes_the_same_bytes(tmp_path):
-    """A re-run for unchanged data must cost zero Class A operations.
+def _published_pair(manifest, descriptor, *, as_of):
+    """The manifest and descriptor as a real second build of the same filings would write them.
 
-    Measured 2026-11-01..18: ~16 releases beyond the one-a-day plan, each 22,357 PutObjects —
-    a third of the month's busy work, and enough on its own to cross the 1M allowance.
+    Same file hashes, new `as_of`/`generated_at`, and `objects["manifest"]` re-hashed over the
+    new bytes — which is exactly the shape that made the first version of this guard unreachable.
+    """
+    import copy
+    import hashlib
+
+    document = copy.deepcopy(descriptor)
+    document["as_of"] = as_of
+    body = dict(manifest, as_of=as_of, generated_at="2026-11-18T00:00:00Z")
+    encoded = json.dumps(body, sort_keys=True).encode()
+    document["objects"] = dict(
+        document.get("objects") or {},
+        manifest={
+            "path": "manifest.json",
+            "bytes": len(encoded),
+            "sha256": hashlib.sha256(encoded).hexdigest(),
+        },
+    )
+    return body, document
+
+
+def test_upload_skips_a_same_date_rerun_of_identical_data(tmp_path):
+    """A re-run on one date must cost zero Class A operations.
+
+    The case that matters is the one the first attempt could not reach: a second id on the
+    same date, same filings, same code. 2026-11-02 published eight of these.
     """
     from pipeline import release
     from tests.conftest import fund_document, write_release
 
-    directory = write_release(tmp_path, [fund_document()], release_id="2026-11-18.9")
+    directory = write_release(tmp_path, [fund_document()], release_id="2026-11-18.2")
     manifest = json.loads((directory / "manifest.json").read_text())
     descriptor = json.loads((directory / "release.json").read_text())
-    older = dict(descriptor, as_of="2026-11-17.4")
+    published, published_descriptor = _published_pair(manifest, descriptor, as_of="2026-11-18.1")
     public = _Public(
         {
-            "staging/latest/release.json": json.dumps(older).encode(),
-            f"releases/{older['as_of']}/manifest.json": json.dumps(manifest).encode(),
+            "staging/latest/release.json": json.dumps(published_descriptor).encode(),
+            "releases/2026-11-18.1/manifest.json": json.dumps(published).encode(),
         }
     )
     store = _Store()
@@ -279,7 +303,7 @@ def test_upload_skips_when_the_staged_pointer_already_publishes_the_same_bytes(t
         directory,
         client=store,
         public=public,
-        prefix=f"releases/{manifest['as_of']}.9",
+        prefix="releases/2026-11-18.2",
         pointer_prefix="staging/latest",
     )
 
@@ -289,23 +313,57 @@ def test_upload_skips_when_the_staged_pointer_already_publishes_the_same_bytes(t
     assert store.listings == []  # the skip happens before any listing is paid for
 
 
-def test_upload_refuses_a_third_release_on_one_date(tmp_path, monkeypatch):
-    from pipeline import cost_ceilings as ceilings
+def test_a_new_night_still_publishes_identical_data(tmp_path):
+    """A different date must publish even when nothing changed.
+
+    `promote` refuses a staging pointer older than three days, and the pointer only moves with
+    a new release — so a skip that crossed midnight would turn a quiet week into a red promote.
+    """
+    from pipeline import release
+    from tests.conftest import fund_document, write_release
+
+    directory = write_release(tmp_path, [fund_document()], release_id="2026-11-19.1")
+    manifest = json.loads((directory / "manifest.json").read_text())
+    descriptor = json.loads((directory / "release.json").read_text())
+    published, published_descriptor = _published_pair(manifest, descriptor, as_of="2026-11-18.1")
+    public = _Public(
+        {
+            "staging/latest/release.json": json.dumps(published_descriptor).encode(),
+            "releases/2026-11-18.1/manifest.json": json.dumps(published).encode(),
+        }
+    )
+    store = _Store()
+    store.put = lambda key, body, **kwargs: (store.puts.append(key) or "etag")
+
+    report = release.upload_release(
+        directory,
+        client=store,
+        public=public,
+        prefix="releases/2026-11-19.1",
+        pointer_prefix="staging/latest",
+    )
+
+    assert not report.unchanged
+    assert store.puts  # it published
+
+
+def test_upload_refuses_a_fourth_release_on_one_date(tmp_path):
+    """Fills one date's allowance with earlier attempts, then asks for one more."""
     from pipeline import release
     from tests.conftest import fund_document, write_release
 
     directory = write_release(tmp_path, [fund_document()], release_id="2026-11-18.9")
     manifest = json.loads((directory / "manifest.json").read_text())
     as_of = manifest["as_of"]
-    monkeypatch.setattr(ceilings, "MAX_DAILY_OBJECTS", 5)
-    store = _Store({f"releases/{as_of}.1/a.json": b"", f"releases/{as_of}.1/b.json": b""})
+    published = len([p for p in directory.rglob("*") if p.is_file()]) - 1  # what a build would upload
+    store = _Store({f"releases/{as_of}.1/obj{index}.json": b"" for index in range(3 * published)})
 
-    with pytest.raises(ceilings.CostCeilingError) as error:
+    with pytest.raises(cc.CostCeilingError) as error:
         release.upload_release(
             directory,
             client=store,
             public=_Public(),
-            prefix=f"releases/{as_of}.9",
+            prefix=f"releases/{as_of}",
             pointer_prefix="staging/latest",
         )
 
@@ -314,8 +372,19 @@ def test_upload_refuses_a_third_release_on_one_date(tmp_path, monkeypatch):
     assert store.listings == [f"releases/{as_of.split('.')[0]}"]
 
 
-def test_guard_day_allows_the_plan_and_the_hotfix_but_not_the_third():
-    cc.guard_day(objects=WIDE_OBJECTS, already=0)                 # release one
-    cc.guard_day(objects=WIDE_OBJECTS, already=WIDE_OBJECTS)      # release two, the hotfix
+def test_guard_day_allows_plan_hotfix_and_retry_but_not_the_fourth():
+    cc.guard_day(objects=WIDE_OBJECTS, already=0)                    # the plan
+    cc.guard_day(objects=WIDE_OBJECTS, already=WIDE_OBJECTS)         # a hotfix
+    cc.guard_day(objects=WIDE_OBJECTS, already=2 * WIDE_OBJECTS)     # the retry
     with pytest.raises(cc.CostCeilingError):
-        cc.guard_day(objects=WIDE_OBJECTS, already=2 * WIDE_OBJECTS)  # the third is a loop
+        cc.guard_day(objects=WIDE_OBJECTS, already=3 * WIDE_OBJECTS)  # a fourth is a loop
+
+
+def test_guard_day_leaves_room_for_a_retry_after_a_partial_upload():
+    """A release that died at 88 % still counts, and its retry must not be refused.
+
+    The ceiling scales with the release size rather than a fixed object count, so a dead
+    partial (22,000 of 22,357) does not consume a whole release's allowance.
+    """
+    partial = int(WIDE_OBJECTS * 0.88)
+    cc.guard_day(objects=WIDE_OBJECTS, already=WIDE_OBJECTS + partial)

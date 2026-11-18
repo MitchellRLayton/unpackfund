@@ -98,13 +98,14 @@ R2_STORAGE_BUDGET = int(R2_FREE_BYTES * HEADROOM)
 #: Class A objects one release may write, at one release a day: 1M ops a month / 30 days.
 MAX_RELEASE_OBJECTS = R2_FREE_CLASS_A_OPS // 30
 
-#: Objects one date may publish in total. The plan is one release a day (22,357 objects
-#: measured, 60 % of `MAX_RELEASE_OBJECTS`); two is the hotfix ceiling, and the third is
-#: what a stuck retry loop looks like — 2026-11-02 published eight releases, 176,181
-#: objects, because a re-run allocated a new id each time. This is a **rate** guard, not
-#: the monthly budget: a day at the ceiling every day would still exceed the month, which
-#: is why content-identical re-runs are refused outright (`release.content_fingerprint`).
-MAX_DAILY_OBJECTS = 2 * MAX_RELEASE_OBJECTS
+#: How many releases one date may publish: the plan, a hotfix, and one retry. 2026-11-02
+#: published eight (176,181 objects) because every re-run allocated a new id. The ceiling is
+#: `MAX_DAILY_RELEASES x this release's own size`, not a fixed object count: a fixed count
+#: derived from `MAX_RELEASE_OBJECTS` would allow four real releases (4 x 22,357 < 3 x 33,333),
+#: and a release that died at 98 % must still leave room for its retry. This is a **rate**
+#: guard, not the monthly budget (30 days at it is 2M); the real average is set by the
+#: one-a-day plan and by skipping an unchanged same-date re-run.
+MAX_DAILY_RELEASES = 3
 
 #: Room for the four quarterly archive stubs the prune keeps (measured at ~4 MB each) so that
 #: `MAX_RESIDENT_RELEASES` maximum-size releases *plus* the stubs still fit the budget — without
@@ -189,7 +190,7 @@ def assess_day(*, objects: int, already: int) -> list[Ceiling]:
         Ceiling(
             "R2 Class A ops today (release uploads)",
             already + objects,
-            MAX_DAILY_OBJECTS,
+            MAX_DAILY_RELEASES * objects,
             "objects",
         )
     ]
@@ -252,9 +253,9 @@ def guard_day(*, objects: int, already: int, release_id: str = "") -> list[Ceili
             f"REFUSED: {label} would take today past the upload rate guard\n"
             f"{detail}\n"
             f"  already published today: {already:,} object(s); this release adds {objects:,}\n"
-            f"  one release a day is the plan and two is the hotfix ceiling (ADR-0028). "
-            f"Re-running the same data costs nothing — it is skipped as unchanged — so this "
-            f"is a third distinct release today or a very large one"
+            f"  one release a day is the plan, and this date is already at three releases' "
+            f"worth (ADR-0028). A same-day re-run of unchanged data is skipped before the "
+            f"first write, so this is a fourth distinct release today"
         )
     return ceilings
 
@@ -281,7 +282,7 @@ def main(argv: list[str] | None = None) -> int:
         print("free-tier ceilings, as encoded in pipeline/pipeline/cost_ceilings.py")
         print(f"  R2 storage              {_human_bytes(R2_FREE_BYTES)} per month")
         print(f"  R2 Class A ops          {R2_FREE_CLASS_A_OPS:,} per month "
-              f"(one release: {MAX_RELEASE_OBJECTS:,} objects; one date: {MAX_DAILY_OBJECTS:,})")
+              f"(one release: {MAX_RELEASE_OBJECTS:,} objects; one date: {MAX_DAILY_RELEASES} releases)")
         print(f"  R2 Class B ops          {R2_FREE_CLASS_B_OPS:,} per month")
         print(f"  Workers asset files     {WORKERS_FREE_ASSET_FILES:,} per version")
         print(f"  Workers Builds          {WORKERS_FREE_BUILDS_MINUTES:,} minutes per month")
