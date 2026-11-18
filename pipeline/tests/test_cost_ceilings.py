@@ -236,6 +236,24 @@ def test_fingerprint_ignores_when_the_release_was_built():
     assert release.content_fingerprint(first, descriptor) != release.content_fingerprint(changed, descriptor)
 
 
+def test_fingerprint_changes_when_the_code_does():
+    """The derived families are counted, not hashed — the code identity covers that gap.
+
+    `companies/` and `securities/` appear in the descriptor as counts, so a classifier change
+    that alters them while every fund document stays byte-identical would otherwise fingerprint
+    the same and the skip would silently withhold the new data.
+    """
+    from pipeline import release
+
+    manifest = {"files": [{"path": "funds/VOO.json", "sha256": "a", "bytes": 10}]}
+    before = {"schema_version": "3", "pipeline_git_sha": "aaa", "objects": {"catalogue": {"sha256": "c"}}}
+    after = dict(before, pipeline_git_sha="bbb")
+    reschema = dict(before, schema_version="4")
+
+    assert release.content_fingerprint(manifest, before) != release.content_fingerprint(manifest, after)
+    assert release.content_fingerprint(manifest, before) != release.content_fingerprint(manifest, reschema)
+
+
 def test_upload_skips_when_the_staged_pointer_already_publishes_the_same_bytes(tmp_path):
     """A re-run for unchanged data must cost zero Class A operations.
 

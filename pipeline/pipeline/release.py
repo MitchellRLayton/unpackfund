@@ -354,6 +354,12 @@ def content_fingerprint(manifest: dict, descriptor: dict) -> str:
             (str(label), json.dumps(value, sort_keys=True))
             for label, value in (descriptor.get("objects") or {}).items()
         ),
+        # The derived families — `companies/{id}.json`, `securities/*.json` — are counted in
+        # the descriptor, not hashed, so a code change that alters them without touching a
+        # fund document would fingerprint identically to the previous release and be skipped.
+        # Including the code identity makes that impossible: a merge forces one republish, and
+        # two nightly runs of the same code on the same filings still match.
+        "code": [descriptor.get("schema_version"), descriptor.get("pipeline_git_sha")],
     }
     body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(body).hexdigest()
