@@ -461,9 +461,9 @@ export default function MethodologyPage() {
       </p>
 
       <p>
-        On the Compare page, a side that does not total 100% is refused rather than scaled,
-        because the overlap of an 88% mix is a sum over 88% of its value. Scale to 100%
-        makes the side whole and writes the result into the link.
+        On the Compare page, a side that does not total 100% is refused rather than
+        scaled, because the overlap of an 88% mix is a sum over 88% of its value. Scale to
+        100% makes the side whole and writes the result into the link.
       </p>
       <p>
         If either mix holds a fund under 60% traced, the Compare overlap is withheld and
