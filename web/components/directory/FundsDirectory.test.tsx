@@ -115,9 +115,9 @@ describe("FundsDirectory", () => {
   it("states what the list is once, and links to how the numbers are made (D-F-02)", () => {
     render(<FundsDirectory />);
     expect(screen.getByText(/4 funds · 12,895 companies/)).toBeTruthy();
-    expect(screen.getByRole("link", { name: "How it works" }).getAttribute("href")).toMatch(
-      /^\/methodology\/?$/,
-    );
+    expect(
+      screen.getByRole("link", { name: "How it works" }).getAttribute("href"),
+    ).toMatch(/^\/methodology\/?$/);
     expect(screen.queryByText("Directory")).toBeNull();
     expect(screen.queryByText(/several words are all required/)).toBeNull();
   });

@@ -113,8 +113,8 @@ export function CompaniesDirectory({
         </p>
         {release ? (
           <Provenance>
-            {formatCount(release.company_count)} companies across{" "}
-            {formatCount(release.fund_count)} funds
+            {formatCount(rows.length)} companies across {formatCount(release.fund_count)}{" "}
+            funds
           </Provenance>
         ) : null}
       </header>

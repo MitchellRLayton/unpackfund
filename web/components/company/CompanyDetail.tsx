@@ -30,11 +30,14 @@
 import { useEffect, useRef } from "react";
 
 import { flagEmoji } from "@/lib/country-flag";
+import { tierOf } from "@/lib/country-tier";
 import { formatCount, formatShare, formatWeightBp } from "@/lib/format";
 import { isCompanyId, type Ledger, type ReleaseDescriptor } from "@/lib/types";
 import { useCatalogue, useCompany } from "@/lib/use-release";
 
 import { InfoTip } from "@/components/feedback/InfoTip";
+import { MARKET_LONG } from "@/components/lenses/lens-math";
+import { useProvider } from "@/components/lenses/provider-preference";
 
 import styles from "./company.module.css";
 import {
@@ -67,6 +70,8 @@ export function CompanyDetail({
   countryOf,
   openCompany,
 }: CompanyDetailProps) {
+  // The convention the Markets lens shows: one choice, read from the URL.
+  const { provider } = useProvider();
   const companyId = rawId !== null && isCompanyId(rawId) ? rawId : null;
 
   const shard = useCompany(release, companyId);
@@ -107,6 +112,7 @@ export function CompanyDetail({
   const country = companyId
     ? (companyCountry(shard.data, companyId, null) ?? countryOf(companyId))
     : null;
+  const tier = country ? tierOf(country, { provider }) : null;
   const holding = companyId ? holdingLine(ledger, companyId) : null;
   const funds = companyFundRows(shard.data, catalogue.data);
   const shown = funds.slice(0, FUND_ROW_LIMIT);
@@ -161,9 +167,20 @@ export function CompanyDetail({
                   <span className={styles.fact__label}>Domicile</span>
                   <span className={styles.fact__value}>
                     {country ? (
-                      <span className="country-tag">
-                        <span aria-hidden="true">{flagEmoji(country)}</span> {country}
-                      </span>
+                      <>
+                        <span className="country-tag">
+                          <span aria-hidden="true">{flagEmoji(country)}</span> {country}
+                        </span>{" "}
+                        {/* The tier the Markets lens would put it in, named once as a chip. */}
+                        {tier ? (
+                          <>
+                            <span className="chip" data-convention={provider}>
+                              {tier}
+                            </span>
+                            <InfoTip label="Market tier">{MARKET_LONG[tier]}</InfoTip>
+                          </>
+                        ) : null}
+                      </>
                     ) : shard.status === "ready" ? (
                       <span className="muted">not recorded</span>
                     ) : (

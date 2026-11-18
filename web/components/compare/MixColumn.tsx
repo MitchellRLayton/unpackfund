@@ -1,5 +1,6 @@
 "use client";
 
+import { displayName } from "@/lib/provider-name";
 import { coverageBand, coverageChip, formatCount, formatWeightBp } from "@/lib/format";
 import { MAX_HOLDINGS, type Tally } from "@/lib/holdings";
 import type { Catalogue, FundWeight, ReleaseDescriptor } from "@/lib/types";
@@ -113,7 +114,9 @@ export function MixColumn({
               return (
                 <li key={entry.ticker} className={styles.holding}>
                   <span className={`mono ${styles.ticker}`}>{entry.ticker}</span>
-                  <span className={styles.fundName}>{names.get(entry.ticker) ?? ""}</span>
+                  <span className={styles.fundName}>
+                    {displayName(names.get(entry.ticker) ?? "")}
+                  </span>
                   {band !== "full" && coveragePct !== undefined ? (
                     <span
                       className={
