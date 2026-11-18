@@ -98,15 +98,14 @@ R2_STORAGE_BUDGET = int(R2_FREE_BYTES * HEADROOM)
 #: Class A objects one release may write, at one release a day: 1M ops a month / 30 days.
 MAX_RELEASE_OBJECTS = R2_FREE_CLASS_A_OPS // 30
 
-#: The trailing-30-day operating line for release uploads. **Not** `HEADROOM`: storage and
-#: operation shortages fail differently. At 75 % the guard would refuse the nightly release
-#: around the 20th of a busy month and freeze the site's data for a week to save cents; at
-#: 95 % a nightly loop still fits (30 x 22,357 = 670,710), and the 5 % left over covers what
-#: the ledger does not count — the ~24 k of listings and any remediation copies.
+#: The period's operating line for release uploads: the allowance minus the band margin, so the
+#: free band has the same 100,000 of slack as every later band. **Not** `HEADROOM` (75 %): at
+#: 750,000 the guard would refuse the nightly release around the 22nd of a busy month and freeze
+#: the site's data to save cents, where 900,000 still fits a 30-day loop (30 x 22,357 = 670,710).
 #:
-#: A rolling window, not a calendar month: the allowance resets on the billing period, and the
-#: 2026-11-17 charge was the period's million counted from 2026-10-28.
-R2_WINDOW_BUDGET = int(R2_FREE_CLASS_A_OPS * 0.95)
+#: The period, not a calendar month: the allowance resets on the billing period, and the 2026-11-17
+#: charge shows a period that began in late October.
+R2_WINDOW_BUDGET = R2_FREE_CLASS_A_OPS - 100_000
 
 #: How many releases one date may publish: the plan, a hotfix, and one retry. 2026-11-02
 #: published eight (176,181 objects) because every re-run allocated a new id. The ceiling is
@@ -208,8 +207,8 @@ def assess_day(*, objects: int, already: int) -> list[Ceiling]:
 
 #: R2 bills the *next whole million* once the allowance is crossed ("1,000,001 operations bills
 #: as 2,000,000"), so the marginal cost of an operation inside an already-billed band is zero,
-#: and the next charge starts only at the boundary. The guard therefore stops at 95 % of the
-#: band it is in: 950,000 while free, then 1,950,000 in the second band, and so on. The margin
+#: and the next charge starts only at the boundary. The guard therefore stops 100,000 short of
+#: the top of the band it is in: 900,000 free, 1,900,000 in the second, and so on. The margin
 #: covers what the ledger does not count — listings, retries, one remediation copy (the 2026-11-18
 #: quarantine was 30,815) and a hand-rolled upload.
 BAND_MARGIN = 100_000
@@ -226,12 +225,16 @@ def window_ceiling(used: int) -> int:
     # so the band has NOT advanced — allowing another 22k there would start the first charge.
     if used <= R2_FREE_CLASS_A_OPS:
         return R2_WINDOW_BUDGET
-    band = (used // R2_FREE_CLASS_A_OPS) + 1
+    # A band advances only once its boundary is *crossed*: at exactly 2,000,000 the second
+    # million is consumed and nothing new is billable, so the line is still 1,900,000. The
+    # first version divided `used` by a million and added one, which skipped a band at every
+    # exact multiple — the same defect as the 1,000,000 edge, one band up.
+    band = (used - 1) // R2_FREE_CLASS_A_OPS + 1
     return band * R2_FREE_CLASS_A_OPS - BAND_MARGIN
 
 
 def assess_window(*, used: int, adding: int) -> list[Ceiling]:
-    """What the trailing 30 days have spent, plus this release, against the band it is in."""
+    """What this period has spent, plus this release, against the band it is in."""
     return [Ceiling("R2 Class A, this billing period", used + adding, window_ceiling(used), "objects")]
 
 
@@ -300,7 +303,7 @@ def guard_day(*, objects: int, already: int, release_id: str = "") -> list[Ceili
 
 
 def guard_window(*, used: int, adding: int, release_id: str = "") -> list[Ceiling]:
-    """Refuse a release that would take the trailing 30 days past their operating line.
+    """Refuse a release that would take the this period past their operating line.
 
     This is the budget the November charge showed was missing: the per-release and per-date
     guards each passed, and the period still crossed the allowance because nothing counted it.

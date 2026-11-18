@@ -86,7 +86,7 @@ class UploadReport:
     unchanged: bool = False
     #: Objects already published under `releases/<as_of>/` today, including this release's.
     day_objects: int | None = None
-    #: Class A operations in the trailing 30 days including this release, from the ledger.
+    #: Class A operations this billing period including this release, from the ledger.
     window_objects: int | None = None
     started_at: str = ""
     finished_at: str = ""
@@ -427,7 +427,9 @@ def _read_json(public: PublicReader, key: str, *, cache_bust: str | None = None)
 #: pointer. The free allowance resets on the billing period, and the 2026-11-17 charge showed
 #: that period is the account's anniversary (created 2026-10-28), not the calendar month.
 USAGE_KEY = "ops/usage.json"
-#: The day of the month the account's billing period turns over — 2026-10-28, its creation.
+#: The day of the month the account's billing period turns over. The 2026-10-28 creation date is
+#: the best-supported start: the 17th's charge rules out a calendar month, and a 10-29 start would
+#: also fit, so the model can be a day out — which moves the line by a day, not by a factor.
 PERIOD_START_DAY = 28
 #: How long entries are kept. Two periods, so a boundary never prunes something still counted.
 USAGE_KEEP_DAYS = 60
@@ -602,7 +604,7 @@ def upload_release(
         entry = {"date": today, "id": str(manifest["as_of"]), "objects": this_release}
         try:
             _retrying(lambda: write_usage(client, entries + [entry], today), label=USAGE_KEY)
-        except R2Error as error:
+        except (R2Error, TimeoutError, OSError) as error:
             raise CostCeilingError(
                 f"REFUSED: the usage ledger could not be updated ({error}). Publishing without "
                 f"accounting for it is how a period crosses its allowance unnoticed"
@@ -1031,7 +1033,7 @@ def _print_report(report: UploadReport) -> None:
     if report.day_objects is not None:
         print(f"  today: {report.day_objects:,} object(s) published under this date so far")
     if report.window_objects is not None:
-        print(f"  last 30 days: {report.window_objects:,} Class A operation(s) recorded")
+        print(f"  this period: {report.window_objects:,} Class A operation(s) recorded")
     # A 13,750-object release cannot print one line per object and still be read.
     # Under 40 objects the per-object list is the report; above that it is a summary
     # plus every failure, because a failure is the only line that needs acting on.

@@ -183,7 +183,7 @@ def test_cli_refuses_a_release_over_the_byte_line(tmp_path, monkeypatch):
 # -- the two guards that came out of the 2026-11-18 overage audit --------------
 import json  # noqa: E402  (used only by the store-level tests below)
 
-from pipeline.r2 import PublicResponse  # noqa: E402
+from pipeline.r2 import PublicResponse, R2Error  # noqa: E402
 
 
 class _Store:
@@ -198,17 +198,6 @@ class _Store:
     def list_keys(self, prefix: str = "") -> list[str]:
         self.listings.append(prefix)
         return sorted(key for key in self.keys if key.startswith(prefix))
-
-    def list_prefixes(self, prefix: str, *, delimiter: str = "/") -> list[str]:
-        found = set()
-        for key in self.keys:
-            if not key.startswith(prefix):
-                continue
-            rest = key[len(prefix) :]
-            head = rest.split(delimiter)[0]
-            if delimiter in rest and head:
-                found.add(f"{prefix}{head}{delimiter}")
-        return sorted(found)
 
     def put(self, key: str, body: bytes, *, content_type: str = "", cache_control: str = "") -> str:
         self.puts.append(key)
@@ -411,11 +400,13 @@ def test_the_ceiling_moves_to_the_band_once_the_allowance_is_crossed():
     minus a 100,000 margin, not 950,000) — refusing there would freeze publishing and buy
     nothing. At exactly 1,000,000 the band has NOT advanced: nothing has been billed yet.
     """
-    assert cc.window_ceiling(0) == 950_000
-    assert cc.window_ceiling(1_000_000) == 950_000
+    assert cc.window_ceiling(0) == 900_000
+    assert cc.window_ceiling(1_000_000) == 900_000   # consumed: nothing billed yet
     assert cc.window_ceiling(1_000_001) == 1_900_000
+    assert cc.window_ceiling(2_000_000) == 1_900_000  # consumed: band has not advanced
+    assert cc.window_ceiling(2_000_001) == 2_900_000
+    assert cc.window_ceiling(2_960_000) == 2_900_000  # past it: refuse
     assert cc.window_ceiling(1_062_238) == 1_900_000  # the measured 2026-11-18 position
-    assert cc.window_ceiling(1_960_000) == 1_900_000  # already past it: refuse
     cc.guard_window(used=1_062_238, adding=22_357)    # publishing continues inside the band
     with pytest.raises(cc.CostCeilingError):
         cc.guard_window(used=1_900_000, adding=22_357)  # the next boundary is 2,000,000
@@ -451,7 +442,7 @@ def test_guard_window_refuses_when_the_rolling_month_adds_up():
     """
     size = WIDE_OBJECTS  # 22,357 measured
     fits = cc.R2_WINDOW_BUDGET // size
-    assert fits == 42
+    assert fits == 40
     cc.guard_window(used=(fits - 1) * size, adding=size)
     with pytest.raises(cc.CostCeilingError):
         cc.guard_window(used=fits * size, adding=size)
@@ -518,7 +509,7 @@ def test_the_window_budget_leaves_room_for_what_the_ledger_misses():
     At 75 % the guard would refuse a nightly release around the 20th of a busy month and
     freeze the site's data for a week to save a few cents.
     """
-    assert cc.R2_WINDOW_BUDGET == 950_000
+    assert cc.R2_WINDOW_BUDGET == 900_000
     assert 30 * 22_357 <= cc.R2_WINDOW_BUDGET  # the plan fits
     assert cc.R2_WINDOW_BUDGET < cc.R2_FREE_CLASS_A_OPS  # and billing is still avoided
 
@@ -615,3 +606,76 @@ def test_the_ledger_keeps_only_recent_entries():
     kept = [entry["date"] for entry in json.loads(store.writes[release.USAGE_KEY])["entries"]]
     # Two periods (60 days): 2026-10-01 survives, 2026-01-01 does not.
     assert kept == ["2026-10-01", "2026-11-18"]
+
+
+# -- the branches the second review found unproven ----------------------------
+class _StatusPublic(_Public):
+    """A data host that answers one status for every key."""
+
+    def __init__(self, status: int, body: bytes = b""):
+        super().__init__()
+        self.status = status
+        self.body = body
+
+    def fetch(self, key, *, origin=None, cache_bust=None):
+        return PublicResponse(f"{self.base_url}/{key}", self.status, {}, self.body)
+
+
+def test_a_server_error_on_the_ledger_refuses_rather_than_reading_zero(tmp_path):
+    """A 5xx is 'unknown', not 'nothing spent' — the fail-open this guard exists to avoid."""
+    from pipeline import release
+    from tests.conftest import fund_document, write_release
+
+    directory = write_release(tmp_path, [fund_document()], release_id="2026-11-18.9")
+    with pytest.raises(cc.CostCeilingError) as error:
+        release.upload_release(
+            directory,
+            client=_Store(),
+            public=_StatusPublic(503),
+            prefix="releases/2026-11-18.9",
+            pointer_prefix="staging/latest",
+        )
+    assert "ledger" in str(error.value)
+
+
+def test_an_unparseable_ledger_refuses(tmp_path):
+    from pipeline import release
+    from tests.conftest import fund_document, write_release
+
+    directory = write_release(tmp_path, [fund_document()], release_id="2026-11-18.9")
+    with pytest.raises(cc.CostCeilingError):
+        release.upload_release(
+            directory,
+            client=_Store(),
+            public=_StatusPublic(200, b"<<not json>>"),
+            prefix="releases/2026-11-18.9",
+            pointer_prefix="staging/latest",
+        )
+
+
+def test_a_ledger_write_failure_refuses_the_release(tmp_path):
+    """The write is the only put that must succeed before any object: no accounting, no publish."""
+    from pipeline import release
+    from tests.conftest import fund_document, write_release
+
+    class RefusesLedger(_Store):
+        def put(self, key, body, *, content_type="", cache_control=""):
+            if key == release.USAGE_KEY:
+                raise R2Error("PUT", 503, "service unavailable", key)
+            return super().put(key, body, content_type=content_type, cache_control=cache_control)
+
+    directory = write_release(tmp_path, [fund_document()], release_id="2026-11-18.9")
+    store = RefusesLedger()
+
+    with pytest.raises(cc.CostCeilingError) as error:
+        release.upload_release(
+            directory,
+            client=store,
+            public=_Public(),
+            prefix="releases/2026-11-18.9",
+            pointer_prefix="staging/latest",
+            verify=False,
+        )
+
+    assert "ledger" in str(error.value)
+    assert store.puts == []  # nothing else was written
