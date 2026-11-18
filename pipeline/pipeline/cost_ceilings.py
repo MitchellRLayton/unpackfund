@@ -350,6 +350,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  Workers Builds          {WORKERS_FREE_BUILDS_MINUTES:,} minutes per month")
         print(f"  Actions storage         {GITHUB_FREE_ACTIONS_STORAGE_MB:,} MB "
               f"(GitHub Free); runner minutes free while the repo is public")
+        print(f"  R2 Class A window       {R2_WINDOW_BUDGET:,} in the trailing 30 days while free; "
+              f"else the top of the band, minus {BAND_MARGIN:,}")
         print(f"  headroom policy         {HEADROOM:.0%} — refuse above the ceiling, warn above headroom")
         print("  a measured gate: --release <dir> or --site <dir>")
         return 0
