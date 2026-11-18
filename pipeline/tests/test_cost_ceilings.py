@@ -178,3 +178,126 @@ def test_cli_refuses_a_release_over_the_byte_line(tmp_path, monkeypatch):
     assert cc.main(["--release", str(release_dir)]) == 0
     monkeypatch.setattr(cc, "R2_STORAGE_BUDGET", 8)
     assert cc.main(["--release", str(release_dir)]) == 1
+
+
+# -- the two guards that came out of the 2026-11-18 overage audit --------------
+import json  # noqa: E402  (used only by the store-level tests below)
+
+from pipeline.r2 import PublicResponse  # noqa: E402
+
+
+class _Store:
+    """Just enough of the client: a key set, the puts it was asked for, and no network."""
+
+    def __init__(self, keys: dict[str, bytes] | None = None):
+        self.keys = dict(keys or {})
+        self.puts: list[str] = []
+        self.listings: list[str] = []
+
+    def list_keys(self, prefix: str = "") -> list[str]:
+        self.listings.append(prefix)
+        return sorted(key for key in self.keys if key.startswith(prefix))
+
+    def put(self, key: str, body: bytes, *, content_type: str = "", cache_control: str = "") -> str:
+        self.puts.append(key)
+        return "etag"
+
+
+class _Public:
+    """A data host that serves the documents it was given and 404s the rest."""
+
+    base_url = "https://data.example"
+
+    def __init__(self, documents: dict[str, bytes] | None = None):
+        self.documents = dict(documents or {})
+        self.fetched: list[str] = []
+
+    def fetch(self, key: str, *, origin: str | None = None, cache_bust: str | None = None) -> PublicResponse:
+        self.fetched.append(key)
+        body = self.documents.get(key)
+        if body is None:
+            return PublicResponse(f"{self.base_url}/{key}", 404, {}, b"")
+        return PublicResponse(f"{self.base_url}/{key}", 200, {"cache-control": "no-cache"}, body)
+
+
+def test_fingerprint_ignores_when_the_release_was_built():
+    from pipeline import release
+
+    descriptor = {"objects": {"catalogue": {"path": "catalogue.json", "bytes": 1, "sha256": "c"}}}
+    first = {
+        "as_of": "2026-11-17.1",
+        "generated_at": "2026-11-17T06:30:00Z",
+        "files": [{"path": "funds/VOO.json", "sha256": "a", "bytes": 10}],
+    }
+    later = dict(first, as_of="2026-11-18.1", generated_at="2026-11-18T06:30:00Z", pipeline_git_sha="deadbeef")
+    changed = dict(first, files=[{"path": "funds/VOO.json", "sha256": "b", "bytes": 10}])
+
+    assert release.content_fingerprint(first, descriptor) == release.content_fingerprint(later, descriptor)
+    assert release.content_fingerprint(first, descriptor) != release.content_fingerprint(changed, descriptor)
+
+
+def test_upload_skips_when_the_staged_pointer_already_publishes_the_same_bytes(tmp_path):
+    """A re-run for unchanged data must cost zero Class A operations.
+
+    Measured 2026-11-01..18: ~16 releases beyond the one-a-day plan, each 22,357 PutObjects —
+    a third of the month's busy work, and enough on its own to cross the 1M allowance.
+    """
+    from pipeline import release
+    from tests.conftest import fund_document, write_release
+
+    directory = write_release(tmp_path, [fund_document()], release_id="2026-11-18.9")
+    manifest = json.loads((directory / "manifest.json").read_text())
+    descriptor = json.loads((directory / "release.json").read_text())
+    older = dict(descriptor, as_of="2026-11-17.4")
+    public = _Public(
+        {
+            "staging/latest/release.json": json.dumps(older).encode(),
+            f"releases/{older['as_of']}/manifest.json": json.dumps(manifest).encode(),
+        }
+    )
+    store = _Store()
+
+    report = release.upload_release(
+        directory,
+        client=store,
+        public=public,
+        prefix=f"releases/{manifest['as_of']}.9",
+        pointer_prefix="staging/latest",
+    )
+
+    assert report.unchanged
+    assert report.objects == []
+    assert store.puts == []
+    assert store.listings == []  # the skip happens before any listing is paid for
+
+
+def test_upload_refuses_a_third_release_on_one_date(tmp_path, monkeypatch):
+    from pipeline import cost_ceilings as ceilings
+    from pipeline import release
+    from tests.conftest import fund_document, write_release
+
+    directory = write_release(tmp_path, [fund_document()], release_id="2026-11-18.9")
+    manifest = json.loads((directory / "manifest.json").read_text())
+    as_of = manifest["as_of"]
+    monkeypatch.setattr(ceilings, "MAX_DAILY_OBJECTS", 5)
+    store = _Store({f"releases/{as_of}.1/a.json": b"", f"releases/{as_of}.1/b.json": b""})
+
+    with pytest.raises(ceilings.CostCeilingError) as error:
+        release.upload_release(
+            directory,
+            client=store,
+            public=_Public(),
+            prefix=f"releases/{as_of}.9",
+            pointer_prefix="staging/latest",
+        )
+
+    assert "rate guard" in str(error.value)
+    assert store.puts == []
+    assert store.listings == [f"releases/{as_of.split('.')[0]}"]
+
+
+def test_guard_day_allows_the_plan_and_the_hotfix_but_not_the_third():
+    cc.guard_day(objects=WIDE_OBJECTS, already=0)                 # release one
+    cc.guard_day(objects=WIDE_OBJECTS, already=WIDE_OBJECTS)      # release two, the hotfix
+    with pytest.raises(cc.CostCeilingError):
+        cc.guard_day(objects=WIDE_OBJECTS, already=2 * WIDE_OBJECTS)  # the third is a loop

@@ -27,7 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from . import paths
-from .cost_ceilings import CostCeilingError, guard_release
+from .cost_ceilings import CostCeilingError, guard_day, guard_release
 from .r2 import IMMUTABLE, NO_CACHE, Credentials, PublicReader, R2Client, R2Error
 from .sigv4 import EMPTY_PAYLOAD_SHA256  # noqa: F401  (re-exported for tests that stub signing)
 
@@ -79,6 +79,13 @@ class UploadReport:
     #: edge's negative cache talking, not the release.
     live_pointer_edge: str | None = None
     dry_run: bool = False
+    #: Set when the pointer already names identical content, so nothing was written. The
+    #: comparison is `content_fingerprint`, which ignores `as_of`/`generated_at`/the git sha:
+    #: two builds of the same filings publish the same bytes, and re-uploading them under a
+    #: new id is 22,357 Class A operations for no change.
+    unchanged: bool = False
+    #: Objects already published under `releases/<as_of>/` today, including this release's.
+    day_objects: int | None = None
     started_at: str = ""
     finished_at: str = ""
 
@@ -330,6 +337,68 @@ def next_release_id(client, prefix: str, as_of: str) -> str:
     return f"{date}.{suffix}"
 
 
+def content_fingerprint(manifest: dict, descriptor: dict) -> str:
+    """A hash of what a release publishes, ignoring when it was built.
+
+    `as_of`, `generated_at` and `pipeline_git_sha` change every run even when nothing else
+    does; the published bytes are what a consumer reads. Two releases with the same
+    fingerprint are the same data under a different name, and publishing the second one
+    costs one Class A operation per object for no change (the measured cause of the
+    November 2026 overage: about sixteen extra releases in eighteen days).
+    """
+    payload = {
+        "files": sorted(
+            (str(entry.get("path")), str(entry.get("sha256"))) for entry in manifest.get("files") or []
+        ),
+        "objects": sorted(
+            (str(label), json.dumps(value, sort_keys=True))
+            for label, value in (descriptor.get("objects") or {}).items()
+        ),
+    }
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(body).hexdigest()
+
+
+def published_fingerprint(
+    public: PublicReader, pointer_prefix: str, pointer_name: str
+) -> tuple[str, str] | None:
+    """`(as_of, content_fingerprint)` of the release a pointer names, or None.
+
+    Two reads (the descriptor and the manifest) and both are Class B — reading is free
+    under the 10M allowance, which is why this check is affordable where a listing is not.
+    """
+    key = f"{pointer_prefix.strip('/')}/{pointer_name}"
+    descriptor = _read_json(public, key)
+    if not descriptor or descriptor.get("kind") != "release":
+        return None
+    as_of = str(descriptor.get("as_of") or "").strip("/")
+    if not as_of:
+        return None
+    manifest = _read_json(public, f"releases/{as_of}/manifest.json")
+    if not manifest:
+        return None
+    return as_of, content_fingerprint(manifest, descriptor)
+
+
+def _read_json(public: PublicReader, key: str) -> dict | None:
+    """One published JSON object, or None when it is absent or not JSON — never an exception.
+
+    The skip check must not turn a transient 404 into a failed upload: an unreadable pointer
+    means "cannot prove it is unchanged", and the upload proceeds.
+    """
+    try:
+        response = public.fetch(key)
+    except Exception:  # noqa: BLE001 - a transport failure here must not block a publish
+        return None
+    if response.status != 200:
+        return None
+    try:
+        document = json.loads(response.body)
+    except ValueError:
+        return None
+    return document if isinstance(document, dict) else None
+
+
 def upload_release(
     release: Path,
     *,
@@ -375,6 +444,39 @@ def upload_release(
         dry_run=dry_run,
         started_at=datetime.now(UTC).isoformat(timespec="seconds"),
     )
+
+    # Nothing new? Then nothing to write. The pointer about to be replaced is the first
+    # read: if it names the same published bytes, this is a rebuild of data that is already
+    # staged, and every PUT would be a Class A operation for no change. Measured cause of the
+    # November 2026 overage — about sixteen extra releases in eighteen days — and the cheapest
+    # guard here, because reading is Class B and free under the 10M allowance.
+    # Both of these ask the store, so `--dry-run` stays offline and local: it prints the
+    # report for the artefact without a pointer read or a listing.
+    if not dry_run:
+        fingerprint = content_fingerprint(manifest, release_descriptor)
+        existing = published_fingerprint(public, pointer_prefix, pointer_name)
+        if existing is not None and existing[1] == fingerprint:
+            print(
+                f"  unchanged: {existing[0]} already publishes these bytes; nothing written, "
+                "0 Class A operations"
+            )
+            report.unchanged = True
+            report.finished_at = datetime.now(UTC).isoformat(timespec="seconds")
+            if report_dir is not None:
+                write_report(report, report_dir)
+            return report
+
+        # Rate guard: what has already been published under today's date, plus this release,
+        # against the daily share of the Class A allowance. One release a day is the plan; a
+        # second is the hotfix ceiling. The listing is ~22 pages, 0.03% of the monthly
+        # allowance, and it is skipped entirely when the caller publishes under another prefix.
+        # `as_of` is the release id (`2026-11-18.1`); a date's uploads live under
+        # `releases/2026-11-18.<n>/`, so the common prefix stops at the date.
+        day = str(manifest["as_of"]).strip("/").split(".")[0]
+        day_prefix = f"releases/{day}"
+        already_today = len(client.list_keys(day_prefix)) if prefix.startswith(day_prefix) else 0
+        guard_day(objects=len(objects), already=already_today, release_id=str(manifest["as_of"]))
+        report.day_objects = already_today + len(objects)
 
     # Objects first: every immutable artifact, then its manifest.
     #
@@ -793,6 +895,11 @@ def write_report(report: UploadReport, report_dir: Path) -> Path:
 
 # -- CLI ---------------------------------------------------------------------
 def _print_report(report: UploadReport) -> None:
+    if report.unchanged:
+        print("  result: unchanged — the pointer already names these bytes; no objects written")
+        return
+    if report.day_objects is not None:
+        print(f"  today: {report.day_objects:,} object(s) published under this date so far")
     # A 13,750-object release cannot print one line per object and still be read.
     # Under 40 objects the per-object list is the report; above that it is a summary
     # plus every failure, because a failure is the only line that needs acting on.

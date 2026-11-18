@@ -30,6 +30,10 @@ class FakeR2:
         self.puts.append(key)
         return "etag"
 
+    def list_keys(self, prefix: str = "") -> list[str]:
+        """The upload path asks for today's keys to bound the day's Class A operations."""
+        return sorted(key for key in self.objects if key.startswith(prefix))
+
 
 class FakePublic:
     """Serves whatever FakeR2 holds, the way the data host would."""
