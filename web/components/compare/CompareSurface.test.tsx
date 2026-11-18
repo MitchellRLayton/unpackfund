@@ -183,30 +183,34 @@ describe("one side only", () => {
   });
 });
 
+/** The answer's headline paragraph: "overlap" is a popover button inside it (C-06). */
+function headline() {
+  return screen.getByText(
+    (_, el) =>
+      el?.tagName === "P" && /^These mixes overlap by/.test(el.textContent ?? ""),
+  );
+}
+
 describe("a whole comparison", () => {
   it("states the overlap as one sentence, answer first", () => {
     twoWholeMixes();
     render(<CompareSurface />);
 
-    const sentence = screen.getByText(/These two mixes overlap by/);
+    const sentence = headline();
     // Σ min: XYL 0.20 + CB 0.10 + TSM 0.20 = 50.00% of each mix.
-    expect(sentence.textContent).toContain("50.00%");
-    expect(sentence.textContent).toContain(
-      "that is the share of each mix held in the same companies.",
-    );
-    expect(
-      screen.getByText(/3 companies are held on both sides, of 5 held across the two/),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(/Oldest filing behind these numbers: 2026-06-30/),
-    ).toBeTruthy();
+    expect(sentence.textContent).toBe("These mixes overlap by 50.00%.");
+    // C-07: one dotted line, K shared of U companies · Covered: A, B · Oldest holdings.
+    const meta = screen.getByText(/3 shared of 5 companies/);
+    expect(meta.textContent).toContain("Covered: A");
+    expect(meta.textContent).toContain("Oldest holdings Jun 30, 2026");
   });
 
   it("partitions the companies between the three tabs", () => {
     twoWholeMixes();
     render(<CompareSurface />);
 
-    const shared = screen.getByRole("tab", { name: "Shared" });
+    // C-08: each tab carries its own count.
+    const shared = screen.getByRole("tab", { name: /^Shared \(\d+\)$/ });
     expect(shared.getAttribute("aria-selected")).toBe("true");
 
     const sharedRow = screen.getByRole("row", { name: /Xylem Inc/ });
@@ -215,13 +219,13 @@ describe("a whole comparison", () => {
     expect(sharedRow.textContent).toContain("VOO");
     expect(sharedRow.textContent).toContain("VTI");
 
-    fireEvent.click(screen.getByRole("tab", { name: "Only in A" }));
+    fireEvent.click(screen.getByRole("tab", { name: /^Only in A \(\d+\)$/ }));
     expect(screen.getByRole("row", { name: /Waste Management/ }).textContent).toContain(
       "20.00%",
     );
     expect(screen.queryByRole("row", { name: /Visa Inc/ })).toBeNull();
 
-    fireEvent.click(screen.getByRole("tab", { name: "Only in B" }));
+    fireEvent.click(screen.getByRole("tab", { name: /^Only in B \(\d+\)$/ }));
     expect(screen.getByRole("row", { name: /Visa Inc/ }).textContent).toContain("20.00%");
     expect(screen.queryByRole("row", { name: /Waste Management/ })).toBeNull();
   });
@@ -233,20 +237,20 @@ describe("a whole comparison", () => {
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((tab) => tab.getAttribute("tabindex"))).toEqual(["0", "-1", "-1"]);
 
-    const shared = screen.getByRole("tab", { name: "Shared" });
+    const shared = screen.getByRole("tab", { name: /^Shared/ });
     fireEvent.keyDown(shared, { key: "ArrowRight" });
-    const onlyA = screen.getByRole("tab", { name: "Only in A" });
+    const onlyA = screen.getByRole("tab", { name: /^Only in A/ });
     expect(onlyA.getAttribute("aria-selected")).toBe("true");
     expect(shared.getAttribute("aria-selected")).toBe("false");
     expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe(onlyA.id);
 
     fireEvent.keyDown(onlyA, { key: "End" });
     expect(
-      screen.getByRole("tab", { name: "Only in B" }).getAttribute("aria-selected"),
+      screen.getByRole("tab", { name: /^Only in B/ }).getAttribute("aria-selected"),
     ).toBe("true");
-    fireEvent.keyDown(screen.getByRole("tab", { name: "Only in B" }), { key: "Home" });
+    fireEvent.keyDown(screen.getByRole("tab", { name: /^Only in B/ }), { key: "Home" });
     expect(
-      screen.getByRole("tab", { name: "Shared" }).getAttribute("aria-selected"),
+      screen.getByRole("tab", { name: /^Shared/ }).getAttribute("aria-selected"),
     ).toBe("true");
   });
 
@@ -254,7 +258,7 @@ describe("a whole comparison", () => {
     twoWholeMixes();
     render(<CompareSurface />);
 
-    const markets = screen.getByRole("region", { name: "Where the two mixes sit" });
+    const markets = screen.getByRole("region", { name: "Markets" });
     const bars = within(markets).getAllByRole("img");
     expect(bars).toHaveLength(2);
 
@@ -264,18 +268,33 @@ describe("a whole comparison", () => {
       expect(bar.querySelectorAll(".bar__seg")).toHaveLength(3);
     }
     expect(bars[0]?.getAttribute("aria-label")).toContain("70.00% United States");
-    expect(bars[0]?.getAttribute("aria-label")).toContain(
-      "10.00% International Developed ex-US",
-    );
-    expect(bars[0]?.getAttribute("aria-label")).toContain("20.00% Emerging Markets");
+    expect(bars[0]?.getAttribute("aria-label")).toContain("10.00% Developed ex-US");
+    expect(bars[0]?.getAttribute("aria-label")).toContain("20.00% Emerging");
 
-    const us = within(markets).getByRole("row", { name: /United States/ });
+    // OD-04: compact labels in the table, the convention named once in the chip.
+    const us = within(markets).getByRole("row", { name: /^US/ });
     expect(us.textContent).toContain("70.00%");
     // Visa's Cayman domicile is the United States, not a fourth bucket: Mix B is
     // 20% Xylem + 20% Visa.
     expect(us.textContent).toContain("40.00%");
     // There is no "not placed" row: what the bar cannot place is stated in the caption.
     expect(within(markets).queryByRole("row", { name: /Not placed/ })).toBeNull();
+  });
+});
+
+describe("what the page no longer explains itself (C-01, C-02, C-10)", () => {
+  it("shares through one button, and links the method instead of printing it", () => {
+    twoWholeMixes();
+    render(<CompareSurface />);
+
+    expect(screen.getByRole("button", { name: "Share" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Copy link" })).toBeNull();
+    expect(screen.queryByText(/How the overlap is worked out/)).toBeNull();
+    expect(
+      screen
+        .getByRole("link", { name: "How overlap is calculated" })
+        .getAttribute("href"),
+    ).toMatch(/^\/methodology\/?#overlap$/);
   });
 });
 
@@ -288,7 +307,10 @@ describe("refusals", () => {
     render(<CompareSurface />);
 
     expect(screen.getByText("Not yet: Mix A has to total 100%.")).toBeTruthy();
-    expect(screen.getByText(/Mix A totals 88\.00%\./)).toBeTruthy();
+    // C-11 / CN_COMPARE_NOT_100.
+    expect(
+      screen.getByText("Mix A totals 88.00%. Scale to 100% to compare."),
+    ).toBeTruthy();
     expect(screen.queryByText(/overlap by/)).toBeNull();
     // Nothing is silently normalised to fill the gap.
     expect(screen.getByText("Total 88.00%")).toBeTruthy();
@@ -299,9 +321,8 @@ describe("refusals", () => {
     twoWholeMixes();
     render(<CompareSurface />);
 
-    const sentence = screen.getByText(/cannot be compared on overlap/);
-    expect(sentence.textContent).toContain("VTI in Mix B");
-    expect(sentence.textContent).toContain("52.1% traced to companies");
+    // C-12 / CN_COMPARE_WITHHELD: the ticker and the floor, nothing else.
+    expect(screen.getByText("Overlap withheld: VTI is under 60% traced.")).toBeTruthy();
     expect(screen.queryByText(/overlap by/)).toBeNull();
     expect(screen.queryByRole("tablist")).toBeNull();
   });
@@ -311,9 +332,7 @@ describe("refusals", () => {
     twoWholeMixes();
     render(<CompareSurface />);
 
-    expect(screen.getByText(/These two mixes overlap by/).textContent).toContain(
-      "50.00%",
-    );
+    expect(headline().textContent).toContain("50.00%");
     expect(screen.getByText(/Partly traced: VTI in Mix B/)).toBeTruthy();
   });
 });

@@ -7,7 +7,6 @@ import type { OverlapRow } from "@/lib/overlap";
 import {
   coverageGap,
   describePartial,
-  describeUncomparable,
   joinWithAnd,
   marketSplit,
   mixTotals,
@@ -75,27 +74,6 @@ describe("coverageGap", () => {
       [{ ticker: "BBB", coverage_pct: 93.2 }],
     );
     expect(gap).toEqual({ suppressed: [], partial: [] });
-  });
-});
-
-describe("describeUncomparable", () => {
-  it("names each fund, its side and its coverage, and states the floor", () => {
-    expect(
-      describeUncomparable([
-        { ticker: "VTI", coveragePct: 52.1, sides: ["a"] },
-        { ticker: "VXX", coveragePct: 44, sides: ["a", "b"] },
-      ]),
-    ).toBe(
-      "VTI in Mix A (52.1% traced to companies) and VXX in both mixes (44.0% traced to companies) sit below the 60% coverage floor, so the share the two mixes hold in the same companies cannot be stated.",
-    );
-  });
-
-  it("uses the singular when one fund is the reason", () => {
-    expect(
-      describeUncomparable([{ ticker: "VTI", coveragePct: 52.1, sides: ["b"] }]),
-    ).toBe(
-      "VTI in Mix B (52.1% traced to companies) sits below the 60% coverage floor, so the share the two mixes hold in the same companies cannot be stated.",
-    );
   });
 });
 

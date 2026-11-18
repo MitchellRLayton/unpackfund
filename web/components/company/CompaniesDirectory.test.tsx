@@ -51,11 +51,27 @@ function renderDirectory(count = 60) {
 afterEach(cleanup);
 
 describe("CompaniesDirectory", () => {
-  it("names the table with its own count and order", () => {
+  it("names the table with its order; the count is the pager's (D-C-04)", () => {
     renderDirectory();
-    const table = screen.getByRole("table", { name: /60 companies/ });
+    const table = screen.getByRole("table", { name: "Companies, by company name." });
     expect(table).toBeTruthy();
-    expect(screen.getByRole("table", { name: /ordered by company name/ })).toBe(table);
+    expect(screen.getByRole("status").textContent).toContain("of 60");
+  });
+
+  it("states what the list is once, without the old helper lines (D-C-01..03)", () => {
+    renderDirectory();
+    expect(screen.queryByText("Directory")).toBeNull();
+    expect(screen.queryByText(/several words are all required/)).toBeNull();
+    expect(screen.getByPlaceholderText("Company name or ticker")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "How it works" })).toBeTruthy();
+  });
+
+  it("puts the Held by and Domicile definitions in tips (D-C-04)", () => {
+    renderDirectory();
+    fireEvent.focus(screen.getByRole("button", { name: "About Held by" }));
+    expect(screen.getByRole("tooltip").textContent).toBe(
+      "Number of funds that hold it. Not a measure of size.",
+    );
   });
 
   it("renders one page of rows rather than the whole index", () => {
@@ -92,14 +108,14 @@ describe("CompaniesDirectory", () => {
       target: { value: "company 5" },
     });
     // 05, 15, 25, 35, 45 and 50–59: every name that carries a "5".
-    expect(screen.getByRole("table", { name: /15 companies/ })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("of 15");
     expect(screen.getByRole("table", { name: /closest match first/ })).toBeTruthy();
   });
 
   it("re-sorts on a header click and reports the direction", () => {
     renderDirectory();
     const table = screen.getByRole("table");
-    const holders = screen.getByRole("button", { name: /Held by/ });
+    const holders = screen.getByRole("button", { name: "Held by" });
     fireEvent.click(holders);
     const header = holders.closest("th");
     expect(header?.getAttribute("aria-sort")).toBe("descending");
@@ -115,7 +131,7 @@ describe("CompaniesDirectory", () => {
     });
     expect(screen.getByText("No company matches")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
-    expect(screen.getByRole("table", { name: /60 companies/ })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("of 60");
   });
 
   it("opens a company through the fragment rather than a bare jump", () => {

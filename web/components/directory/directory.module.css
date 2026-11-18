@@ -19,10 +19,6 @@
   align-items: start;
 }
 
-.controlsHint {
-  margin: var(--space-1) 0 0;
-}
-
 /* One control height across the bar: a search input's intrinsic height is a few pixels
  * taller than a select's, so the row's bottoms did not line up even with the labels
  * aligned. Scoped to this bar, not the global form rule. */

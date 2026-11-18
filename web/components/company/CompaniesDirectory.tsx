@@ -20,6 +20,7 @@ import { useMemo, useState } from "react";
 import { flagEmoji } from "@/lib/country-flag";
 import { tierOf } from "@/lib/country-tier";
 
+import { InfoTip } from "@/components/feedback/InfoTip";
 import { useProvider } from "@/components/lenses/provider-preference";
 import { formatCount } from "@/lib/format";
 import type { ReleaseDescriptor } from "@/lib/types";
@@ -50,6 +51,12 @@ export interface CompaniesDirectoryProps {
 }
 
 const COLUMNS: CompanyOrderKey[] = ["name", "ticker", "country", "holders"];
+
+/** The two headers whose words need a tip (D-C-04); the others say what they are. */
+const COLUMN_TIPS: Partial<Record<CompanyOrderKey, string>> = {
+  holders: "Number of funds that hold it. Not a measure of size.",
+  country: "Country the filings agree on. A dash means no agreed answer.",
+};
 
 export function CompaniesDirectory({
   rows,
@@ -100,16 +107,14 @@ export function CompaniesDirectory({
   return (
     <div className="stack stack--loose">
       <header className="stack">
-        <p className="eyebrow">Directory</p>
         <h1 className="title">Companies</h1>
         <p className="lede">
-          Every company that appears in a fund filing, with the domicile the release
-          records and how many funds hold it. Pick one to see the funds behind it.
+          Every company held by a fund. Pick one to see which funds hold it.
         </p>
         {release ? (
-          <Provenance release={release}>
-            {formatCount(release.company_count)} companies, tied to the companies of{" "}
-            {formatCount(release.fund_count)} funds.
+          <Provenance>
+            {formatCount(rows.length)} companies across {formatCount(release.fund_count)}{" "}
+            funds
           </Provenance>
         ) : null}
       </header>
@@ -162,7 +167,7 @@ export function CompaniesDirectory({
                   type="search"
                   autoComplete="off"
                   spellCheck={false}
-                  placeholder="Apple, AAPL, c_0000320193"
+                  placeholder="Company name or ticker"
                   value={query}
                   onChange={(event) => {
                     const next = event.target.value;
@@ -175,9 +180,6 @@ export function CompaniesDirectory({
                     }
                   }}
                 />
-                <p className="field__hint">
-                  Name, ticker, or company id — several words are all required.
-                </p>
               </div>
 
               <div className="field">
@@ -228,14 +230,8 @@ export function CompaniesDirectory({
             <div className="stack">
               <div className="table-wrap">
                 <table className="table">
-                  <caption>
-                    {formatCount(filtered.length)}{" "}
-                    {filtered.length === 1 ? "company" : "companies"}, ordered{" "}
-                    {companyOrderDescription(order)}. Rows {formatCount(current.start)}–
-                    {formatCount(current.end)} of {formatCount(filtered.length)}.
-                    &ldquo;Held by&rdquo; counts the funds in this release that report the
-                    company; it is not a size or a popularity measure, and a blank
-                    domicile means the release has no answer rather than a default.
+                  <caption className="visually-hidden">
+                    Companies, {companyOrderDescription(order)}.
                   </caption>
                   <thead>
                     <tr>
@@ -258,6 +254,12 @@ export function CompaniesDirectory({
                             {/* The arrow is drawn by `th[aria-sort] .table__sort::after`
                              * in globals.css, so it cannot disagree with the header. */}
                           </button>
+                          {/* Beside the sort button, never inside it. */}
+                          {COLUMN_TIPS[key] ? (
+                            <InfoTip label={COMPANY_COLUMN_LABELS[key]} inline>
+                              {COLUMN_TIPS[key]}
+                            </InfoTip>
+                          ) : null}
                         </th>
                       ))}
                     </tr>

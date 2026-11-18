@@ -187,25 +187,6 @@
   font-family: var(--font-mono);
 }
 
-.method {
-  border-top: 1px solid var(--rule);
-  padding-top: var(--space-4);
-}
-
-.method summary {
-  cursor: pointer;
-  font-size: var(--text-14);
-  color: var(--graphite);
-}
-
-.method summary:hover {
-  color: var(--ink);
-}
-
-.method > * + * {
-  margin-top: var(--space-3);
-}
-
 .copyStatus {
   font-size: var(--text-12);
   color: var(--graphite);

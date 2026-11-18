@@ -23,9 +23,12 @@
 
 import { useMemo, useState } from "react";
 
+import { COVERAGE_POPOVER_WITH_LIMIT, coverageChipText } from "@/lib/coverage";
 import { toRows } from "@/lib/directory";
-import { coverageBand, coverageChip, formatCount } from "@/lib/format";
+import { coverageBand, formatCount } from "@/lib/format";
 import { useCatalogue, useRelease } from "@/lib/use-release";
+
+import { InfoTip } from "@/components/feedback/InfoTip";
 
 import { applyFilters, issuerOptions, type BandFilter } from "./directory-search";
 import {
@@ -44,8 +47,11 @@ import { pageOf, PAGE_SIZE } from "./paging";
 import { Provenance } from "./Provenance";
 import styles from "./directory.module.css";
 
-/** Most funds we can list before the table becomes a document of its own. */
-const SEARCH_HINT = "Ticker, fund name, or issuer — several words are all required";
+/** The two headers whose words need a tip (D-F-04); the others say what they are. */
+const COLUMN_TIPS: Partial<Record<ColumnKey, string>> = {
+  assets: "Net assets in the fund's latest N-PORT filing.",
+  coverage: COVERAGE_POPOVER_WITH_LIMIT,
+};
 
 export function FundsDirectory() {
   const release = useRelease();
@@ -101,18 +107,14 @@ export function FundsDirectory() {
   return (
     <div className="stack stack--loose">
       <header className="stack">
-        <p className="eyebrow">Directory</p>
         <h1 className="title">Funds</h1>
         <p className="lede">
-          Every fund in the current release, with how much of its weight we can tie to a
-          company you can then look through. Coverage is a property of the filing, not a
-          score: below 60% a fund&apos;s concentration figures are withheld.
+          Every fund we have holdings for, and how much of each we can trace to companies.
         </p>
-        <h2 className="visually-hidden">Where this list comes from</h2>
         {releaseData ? (
-          <Provenance release={releaseData}>
-            {formatCount(releaseData.fund_count)} funds,{" "}
-            {formatCount(releaseData.company_count)} companies.
+          <Provenance>
+            {formatCount(releaseData.fund_count)} funds ·{" "}
+            {formatCount(releaseData.company_count)} companies
           </Provenance>
         ) : null}
       </header>
@@ -166,7 +168,6 @@ export function FundsDirectory() {
                   autoComplete="off"
                   spellCheck={false}
                   placeholder="VTI, Vanguard, total stock"
-                  aria-describedby="funds-search-hint"
                   value={query}
                   onChange={(event) => {
                     const next = event.target.value;
@@ -251,9 +252,6 @@ export function FundsDirectory() {
                 </select>
               </div>
             </div>
-            <p className={`field__hint ${styles.controlsHint}`} id="funds-search-hint">
-              {SEARCH_HINT}
-            </p>
           </section>
 
           {filtered.length === 0 ? (
@@ -288,14 +286,8 @@ export function FundsDirectory() {
             <div className="stack">
               <div className="table-wrap">
                 <table className="table">
-                  <caption>
-                    {formatCount(filtered.length)}{" "}
-                    {filtered.length === 1 ? "fund" : "funds"}, ordered{" "}
-                    {orderDescription(order)}. Rows {formatCount(current.start)}–
-                    {formatCount(current.end)} of {formatCount(filtered.length)}. Coverage
-                    is the share of a fund&apos;s filed weight that maps to a company we
-                    can identify, so a low figure is a limit of our mapping, not a defect
-                    in the fund.
+                  <caption className="visually-hidden">
+                    Funds, {orderDescription(order)}.
                   </caption>
                   <thead>
                     <tr>
@@ -319,6 +311,12 @@ export function FundsDirectory() {
                             {/* The arrow is drawn by `th[aria-sort] .table__sort::after`
                              * in globals.css, so it cannot disagree with the header. */}
                           </button>
+                          {/* Beside the sort button, never inside it. */}
+                          {COLUMN_TIPS[key] ? (
+                            <InfoTip label={COLUMN_LABELS[key]} inline>
+                              {COLUMN_TIPS[key]}
+                            </InfoTip>
+                          ) : null}
                         </th>
                       ))}
                     </tr>
@@ -341,7 +339,7 @@ export function FundsDirectory() {
                         </td>
                         <td className="num">
                           <span className={`chip chip--${coverageBand(row.coverage)}`}>
-                            {coverageChip(row.coverage)}
+                            {coverageChipText(row.coverage)}
                           </span>
                         </td>
                       </tr>

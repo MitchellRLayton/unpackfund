@@ -53,6 +53,13 @@ export const BUCKET_WORD: Record<MarketBucket, string> = {
   EM: "Emerging Markets",
 };
 
+/** The tier's long name, for the tip beside a compact `US` / `DM` / `EM` label (OD-04). */
+export const MARKET_LONG: Record<MarketBucket, string> = {
+  US: "United States",
+  DM: "Developed ex-US",
+  EM: "Emerging",
+};
+
 /** The provider's short name, for a label that has to fit beside a segment. */
 export const PROVIDER_SHORT: Record<Provider, string> = {
   MSCI: "MSCI",

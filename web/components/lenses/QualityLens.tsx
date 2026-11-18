@@ -33,6 +33,7 @@ import {
   formatFreshnessShort,
   formatShare,
 } from "@/lib/format";
+import { COVERAGE_POPOVER } from "@/lib/coverage";
 import type { LensProps } from "@/components/workspace/types";
 
 import {
@@ -304,9 +305,7 @@ export function QualityLens({ model }: LensProps) {
                   sort={sort}
                   onSort={setSort}
                   numeric
-                  tip={
-                    "Share of a fund's weight we can trace to named companies. 70% or more is full, 60–70% partial, under 60% withheld."
-                  }
+                  tip={COVERAGE_POPOVER}
                 />
                 {/* Not sortable: three dates in one cell, and a reader who wants them in
                     time order wants the filing lag, not the period. */}

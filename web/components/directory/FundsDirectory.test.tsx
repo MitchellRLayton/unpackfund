@@ -42,10 +42,12 @@ describe("FundsDirectory", () => {
   it("names the table with its count and the release's own order", () => {
     render(<FundsDirectory />);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Funds");
+    // D-F-04: the caption is spoken, not drawn, and says the order; the count is the pager's.
     const table = screen.getByRole("table", {
-      name: /4 funds, ordered largest first by the fund's own filed N-PORT net assets/,
+      name: "Funds, largest first by the fund's own filed N-PORT net assets.",
     });
     expect(within(table).getAllByRole("row")).toHaveLength(5);
+    expect(screen.getByRole("status").textContent).toContain("of 4");
   });
 
   it("prints the ticker, the size and a coverage chip for each fund", () => {
@@ -55,6 +57,7 @@ describe("FundsDirectory", () => {
     expect(firstBodyRow?.textContent).toContain("VTI");
     expect(firstBodyRow?.textContent).toContain("$400B");
     expect(firstBodyRow?.textContent).toContain("99.4% covered");
+    expect(firstBodyRow?.textContent).not.toContain("partial");
     expect(firstBodyRow?.querySelector('a[href="/f/VTI/"]')).toBeTruthy();
   });
 
@@ -63,7 +66,7 @@ describe("FundsDirectory", () => {
     fireEvent.change(screen.getByLabelText("Search"), {
       target: { value: "bnd" },
     });
-    expect(screen.getByRole("table", { name: /1 fund/ })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("of 1");
     expect(screen.getByRole("table", { name: /closest match first/ })).toBeTruthy();
   });
 
@@ -72,7 +75,7 @@ describe("FundsDirectory", () => {
     fireEvent.change(screen.getByLabelText("Issuer"), {
       target: { value: "Vanguard" },
     });
-    expect(screen.getByRole("table", { name: /2 funds/ })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("of 2");
   });
 
   it("filters by coverage band, not by a coverage number", () => {
@@ -80,14 +83,16 @@ describe("FundsDirectory", () => {
     fireEvent.change(screen.getByLabelText("Coverage"), {
       target: { value: "none" },
     });
-    const table = screen.getByRole("table", { name: /1 fund/ });
+    const table = screen.getByRole("table");
+    expect(screen.getByRole("status").textContent).toContain("of 1");
     expect(within(table).getAllByRole("row")).toHaveLength(2);
     expect(table.textContent).toContain("BND");
   });
 
   it("re-sorts on a header click and reports the direction", () => {
     render(<FundsDirectory />);
-    const size = screen.getByRole("button", { name: /Fund size/ });
+    // Exact: the header's tip button is "About Fund size", and is not the sort control.
+    const size = screen.getByRole("button", { name: "Fund size" });
     fireEvent.click(size);
     expect(size.closest("th")?.getAttribute("aria-sort")).toBe("descending");
     const table = screen.getByRole("table");
@@ -104,6 +109,25 @@ describe("FundsDirectory", () => {
     });
     expect(screen.getByText("No fund matches")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
-    expect(screen.getByRole("table", { name: /4 funds/ })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("of 4");
+  });
+
+  it("states what the list is once, and links to how the numbers are made (D-F-02)", () => {
+    render(<FundsDirectory />);
+    expect(screen.getByText(/4 funds · 12,895 companies/)).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "How it works" }).getAttribute("href"),
+    ).toMatch(/^\/methodology\/?$/);
+    expect(screen.queryByText("Directory")).toBeNull();
+    expect(screen.queryByText(/several words are all required/)).toBeNull();
+  });
+
+  it("puts the size and coverage definitions in tips, not in a caption (D-F-04)", () => {
+    render(<FundsDirectory />);
+    const coverage = screen.getByRole("button", { name: "About Coverage" });
+    fireEvent.focus(coverage);
+    expect(screen.getByRole("tooltip").textContent).toContain(
+      "A low figure is a limit of our matching, not a flaw in the fund.",
+    );
   });
 });

@@ -1,29 +1,18 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import type { ReleaseDescriptor } from "@/lib/types";
-
 /**
- * Where a directory's numbers come from, in one line, above the table.
+ * What a directory lists, in one line, above the table (D-F-02, D-C-02).
  *
- * Rule 3 of the redesign is that limits are content: a page that lists 9,000 funds
- * has to say what the list is, which release built it, and which part of it is a
- * filing rather than a calculation — before the first number, at reading weight,
- * not in a footnote. The line is short because the footer already carries the
- * not-advice sentence; this one carries the provenance.
+ * The release id and build date this line used to carry live in the sidebar's release badge, so
+ * they are not said twice. The counts are the caller's, because the two directories phrase them
+ * differently ("9,317 funds · 15,369 companies" and "15,369 companies across 9,317 funds"); the
+ * link to how the numbers are made is the same.
  */
-export function Provenance({
-  release,
-  children,
-}: {
-  release: ReleaseDescriptor;
-  children?: ReactNode;
-}) {
+export function Provenance({ children }: { children: ReactNode }) {
   return (
     <p className="notice-line">
-      Release <strong>{release.as_of}</strong>, built {release.generated_at.slice(0, 10)}{" "}
-      UTC from each fund&apos;s own SEC N-PORT filing. {children}{" "}
-      <Link href="/methodology/">How these numbers are made</Link>.
+      {children} · <Link href="/methodology/">How it works</Link>
     </p>
   );
 }

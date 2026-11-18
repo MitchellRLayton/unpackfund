@@ -1084,8 +1084,8 @@ export function CompaniesLens({ model }: LensProps) {
               this table compares against, and the {benchmark.ticker} column is the
               company&rsquo;s weight inside {benchmark.ticker}&rsquo;s own portfolio: not
               a share of your mix, and not how much of {benchmark.ticker} you hold. The
-              bracket is your weight minus {benchmark.ticker}&rsquo;s, in percentage
-              points — (-1.20%) means you hold 1.20 points less of the company than{" "}
+              change is your weight minus {benchmark.ticker}&rsquo;s, in percentage points
+              — -1.20 pp means you hold 1.20 points less of the company than{" "}
               {benchmark.ticker} does. It is green above zero and red below it, with no
               colour at exactly zero, and the sign is always printed, so the colour is
               emphasis and never the only reading. A company {benchmark.ticker} does not

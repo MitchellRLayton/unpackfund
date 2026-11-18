@@ -93,20 +93,6 @@ function eachFund(funds: readonly FundGap[]): string {
   );
 }
 
-/**
- * The sentence that replaces the overlap when a fund's coverage withholds it.
- *
- * The rule this encodes: below 60% of a fund's weight traced to companies, the
- * fund's weights are suppressed everywhere else on the site, and printing an
- * overlap computed on the traced remainder would describe a different mix. So the
- * number is not printed small, it is not printed at all — and the funds that caused
- * that are named, in the answer, not in a footnote below it.
- */
-export function describeUncomparable(funds: readonly FundGap[]): string {
-  const verb = funds.length === 1 ? "sits" : "sit";
-  return `${eachFund(funds)} ${verb} below the 60% coverage floor, so the share the two mixes hold in the same companies cannot be stated.`;
-}
-
 /** The same sentence's softer form: the weights are shown, and marked partial. */
 export function describePartial(funds: readonly FundGap[]): string {
   return `Partly traced: ${eachFund(funds)}. Only the traced part of those funds can appear on either side, so this share is a floor as well as a figure.`;
