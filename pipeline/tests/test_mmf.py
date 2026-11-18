@@ -82,6 +82,7 @@ def test_merge_is_a_sorted_union_and_the_newer_form_wins():
 
 
 def test_published_nport_tickers_are_never_published_as_aliases(tmp_path, monkeypatch):
+    monkeypatch.setattr(mmf, "ENABLED", True)
     monkeypatch.setattr(mmf, "SEED", tmp_path / "seed.json")
     monkeypatch.setattr(mmf.sec, "CACHE_DIR", tmp_path)
     (tmp_path / "mmf").mkdir()

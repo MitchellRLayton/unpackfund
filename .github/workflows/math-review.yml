@@ -112,7 +112,10 @@ jobs:
       - name: Model review
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          REVIEW_MODEL: ${{ vars.REVIEW_MODEL }}   # set to your ChatGPT-6.2-Sol OpenRouter model id
+          # Either location: a repository *variable* is what the spec names, and the
+          # first run here proved a *secret* is just as easy to create by mistake.
+          # `style-enrich.yml` accepts either spelling of its key for the same reason.
+          REVIEW_MODEL: ${{ vars.REVIEW_MODEL || secrets.REVIEW_MODEL }}
           BASE_REF: ${{ github.event.pull_request.base.sha || 'origin/main' }}
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}

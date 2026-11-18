@@ -46,6 +46,12 @@ ALL_FORMS = MMF_FORMS + MMF_AMENDMENTS
 SERIES_RE = re.compile(r"^S\d{9}$")
 TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,9}$")
 
+#: ADR-0027: the product does not accept money-market funds, so this list is built and
+#: tested but **not published**, and the nightly pass does not spend a request on it.
+#: One flag rather than a deleted module: the work is done, tested and reversible, and
+#: switching it on is this line plus the seed that is already committed.
+ENABLED = False
+
 PENDING = Path("mmf") / "pending.json"
 ALIASES = Path("mmf") / "aliases.json"
 SEED = Path(__file__).resolve().parent.parent / "data" / "mmf" / "aliases-seed.json"
@@ -229,6 +235,8 @@ def for_release(published: Iterable[str] = ()) -> list[dict[str, str]]:
     offline (invariant I5). New filings reach it through `drain_pending` on a night the
     index found some.
     """
+    if not ENABLED:
+        return []
     published_set = {ticker.upper() for ticker in published}
     merged = merge(load_seed(), load_cache())
     return [entry for entry in merged if entry["ticker"] not in published_set]
@@ -236,6 +244,8 @@ def for_release(published: Iterable[str] = ()) -> list[dict[str, str]]:
 
 def resolve(network: bool = True) -> list[dict[str, str]]:
     """Drain the queue (network), merge it into the cache, return the published list."""
+    if not ENABLED:
+        return []
     if network:
         entries, requests = drain_pending()
         if entries:
