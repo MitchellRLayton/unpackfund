@@ -1034,6 +1034,7 @@ def build_release(
     size_buckets: bool = True,
     share_map: figi.ShareClassMap | None = None,
     figi_cache: Path | None = None,
+    isin_direct_join: bool = False,
 ) -> Path:
     started = time.monotonic()
     index = CompanyIndex.load()
@@ -1158,7 +1159,12 @@ def build_release(
             # R3x learns from rows that resolved through their own filed LEI, which only the
             # issuer index can say; the ticker/name evidence this pass has always collected
             # is unchanged by it (``evidence.observe`` is gated on the ladder's own answer).
-            issuers=issuers,
+            #
+            # **Off unless asked for.** R3x maps rows that are unmapped today, so switching it on
+            # changes published numbers, and a change of numbers ships as a staged release with a
+            # before/after table the owner approves first (H-CV7). Without the flag this pass gets
+            # no issuer index, collects no direct evidence, and the table is the one built before.
+            issuers=issuers if isin_direct_join else None,
         )
         table = evidence.table()
         _log(
@@ -1168,6 +1174,12 @@ def build_release(
             f"contested, {table.thin.get('isin', 0)}/{table.thin.get('lei', 0)} seen "
             f"once) in {time.monotonic() - started_evidence:.1f}s"
         )
+        if isin_direct_join:
+            _log(
+                f"R3x (--isin-direct-join): {len(table.by_isin_direct):,} ISINs resolve through "
+                f"another row's own filed LEI ({table.contested.get('isin_direct', 0)} contested, "
+                f"{table.thin.get('isin_direct', 0)} below threshold)"
+            )
     else:
         _log("identity pass: disabled (--no-identity)")
 
@@ -1585,6 +1597,13 @@ def main(argv: list[str] | None = None) -> int:
         "against, and a half-written layer beside it cannot be chosen by accident)",
     )
     parser.add_argument(
+        "--isin-direct-join",
+        action="store_true",
+        help="turn on rung R3x: an ISIN that resolved to one company on another row's own filed LEI "
+        "resolves the same ISIN on a row without one. Maps rows that are unmapped today, so it "
+        "changes published numbers: use it for a staged release the owner has agreed to compare",
+    )
+    parser.add_argument(
         "--figi-cache",
         type=Path,
         default=None,
@@ -1680,6 +1699,7 @@ def main(argv: list[str] | None = None) -> int:
             layer_dir=args.layer,
             size_buckets=not args.no_size_buckets,
             figi_cache=args.figi_cache,
+            isin_direct_join=args.isin_direct_join,
         )
     except (
         GateError,

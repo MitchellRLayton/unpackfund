@@ -178,7 +178,7 @@ export interface FundAliases {
 }
 
 /**
- * `company_id` carries **two namespaces**, and every consumer must treat the id as
+ * `company_id` carries **three namespaces**, and every consumer must treat the id as
  * opaque because of it:
  *
  * - `c_` + 10 digits — an SEC operating company, keyed by CIK. Every row the EDGAR
@@ -186,13 +186,22 @@ export interface FundAliases {
  * - `l_` + 16 hex — a GLEIF-registered legal entity, keyed by a hash of the issuer's
  *   LEI. Foreign issuers file no N-PORT and have no CIK, so without this namespace
  *   96.6% of the international holdings had no identity at all (2026-10-30).
+ * - `f_` + 16 hex — an equity *share line* the ladder could not tie to a company,
+ *   named by OpenFIGI and keyed by a hash of its share-class FIGI. It has no size,
+ *   sector or industry, and the weight it carries is published per fund as
+ *   `security_matched_pct` (owner decision, 2026-11-18).
  *
  * Nothing in the app may assume an id is a CIK, and nothing may compare a CIK to an
- * LEI: the two namespaces are parallel, and a fund share never becomes an issuer.
+ * LEI: the namespaces are parallel, and a fund share never becomes an issuer.
+ *
+ * The shape is declared once on the pipeline side (`pipeline/namespaces.py`);
+ * `pipeline/tests/test_namespaces.py` fails if this literal drifts from it. The
+ * URL-fragment parser (`view-fragment.ts`) imports this constant rather than carrying
+ * a copy.
  */
-export const COMPANY_ID_PATTERN = /^(?:c_\d{10}|l_[0-9a-f]{16})$/;
+export const COMPANY_ID_PATTERN = /^(?:c_\d{10}|l_[0-9a-f]{16}|f_[0-9a-f]{16})$/;
 
-/** True for a well-formed `company_id` in either namespace. */
+/** True for a well-formed `company_id` in any namespace. */
 export function isCompanyId(value: string | null | undefined): value is string {
   return typeof value === "string" && COMPANY_ID_PATTERN.test(value);
 }
