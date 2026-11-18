@@ -192,6 +192,7 @@ class _Store:
     def __init__(self, keys: dict[str, bytes] | None = None):
         self.keys = dict(keys or {})
         self.puts: list[str] = []
+        self.writes: dict[str, bytes] = {}
         self.listings: list[str] = []
 
     def list_keys(self, prefix: str = "") -> list[str]:
@@ -211,6 +212,7 @@ class _Store:
 
     def put(self, key: str, body: bytes, *, content_type: str = "", cache_control: str = "") -> str:
         self.puts.append(key)
+        self.writes[key] = body
         return "etag"
 
 
@@ -405,15 +407,40 @@ def test_guard_day_leaves_room_for_a_retry_after_a_partial_upload():
 def test_the_ceiling_moves_to_the_band_once_the_allowance_is_crossed():
     """R2 bills the next whole million, so inside a paid band the next charge is at the boundary.
 
-    Below the allowance the line is 950,000; inside the second band it is 1,950,000, not
-    950,000 — refusing there would freeze publishing and buy nothing.
+    Below the allowance the line is 950,000; inside the second band it is 1,900,000 (2,000,000
+    minus a 100,000 margin, not 950,000) — refusing there would freeze publishing and buy
+    nothing. At exactly 1,000,000 the band has NOT advanced: nothing has been billed yet.
     """
     assert cc.window_ceiling(0) == 950_000
-    assert cc.window_ceiling(1_062_238) == 1_950_000  # the measured 2026-11-18 position
-    assert cc.window_ceiling(1_960_000) == 1_950_000  # already past: refuse
-    cc.guard_window(used=1_062_238, adding=22_357)      # publishing continues inside the band
+    assert cc.window_ceiling(1_000_000) == 950_000
+    assert cc.window_ceiling(1_000_001) == 1_900_000
+    assert cc.window_ceiling(1_062_238) == 1_900_000  # the measured 2026-11-18 position
+    assert cc.window_ceiling(1_960_000) == 1_900_000  # already past it: refuse
+    cc.guard_window(used=1_062_238, adding=22_357)    # publishing continues inside the band
     with pytest.raises(cc.CostCeilingError):
-        cc.guard_window(used=1_950_000, adding=22_357)  # the next boundary is 2,000,000
+        cc.guard_window(used=1_900_000, adding=22_357)  # the next boundary is 2,000,000
+
+
+def test_the_period_starts_on_the_accounts_anniversary():
+    """The allowance resets on the billing period — 2026-10-28 for this account, not the 1st.
+
+    The 2026-11-17 charge is the evidence: November alone was 800,570, which could not have
+    crossed on the 17th; the period's million was counted from 2026-10-28.
+    """
+    from pipeline import release
+
+    entries = [
+        {"date": "2026-10-27", "objects": 999},   # before the period
+        {"date": "2026-10-28", "objects": 500},   # first day of the period
+        {"date": "2026-11-02", "objects": 300},   # inside
+        {"date": "2026-11-19", "objects": 700},   # after today, ignored
+    ]
+    assert release.used_in_period(entries, "2026-11-18") == 800
+    assert release.period_start("2026-11-02") == "2026-10-28"
+    assert release.period_start("2026-11-18") == "2026-10-28"
+    assert release.period_start("2026-11-28") == "2026-11-28"
+    assert release.period_start("2026-12-01") == "2026-11-28"
+    assert release.period_start("2026-03-01") == "2026-02-28"
 
 
 def test_guard_window_refuses_when_the_rolling_month_adds_up():
@@ -429,21 +456,6 @@ def test_guard_window_refuses_when_the_rolling_month_adds_up():
     with pytest.raises(cc.CostCeilingError):
         cc.guard_window(used=fits * size, adding=size)
     assert (fits + 1) * size < cc.R2_FREE_CLASS_A_OPS  # it stops before the bill, not after
-
-
-def test_the_window_is_thirty_days_not_the_calendar_month():
-    """The allowance resets on the billing period, and the 2026-11-17 charge proved it is not
-    the 1st: the period's million was counted from 2026-10-28. An entry 31 days old leaves
-    the window; a 29-day-old one stays."""
-    entries = [
-        {"date": "2026-10-18", "objects": 999},   # outside
-        {"date": "2026-10-20", "objects": 500},   # 30 days before 2026-11-18 → inside
-        {"date": "2026-11-02", "objects": 300},   # inside
-        {"date": "2026-11-19", "objects": 700},   # after today, ignored
-    ]
-    from pipeline import release
-
-    assert release.used_in_window(entries, "2026-11-18") == 800
 
 
 def test_the_usage_ledger_is_read_and_written_around_the_release(tmp_path):
@@ -474,7 +486,7 @@ def test_the_usage_ledger_is_read_and_written_around_the_release(tmp_path):
             pointer_prefix="staging/latest",
         )
 
-    assert "last 30 days" in str(error.value)
+    assert "billing period" in str(error.value)
     assert "949,995" in str(error.value)
     assert store.puts == []
 
@@ -509,3 +521,97 @@ def test_the_window_budget_leaves_room_for_what_the_ledger_misses():
     assert cc.R2_WINDOW_BUDGET == 950_000
     assert 30 * 22_357 <= cc.R2_WINDOW_BUDGET  # the plan fits
     assert cc.R2_WINDOW_BUDGET < cc.R2_FREE_CLASS_A_OPS  # and billing is still avoided
+
+
+# -- the ledger must fail closed, and must not lose its history ---------------
+class _BrokenPublic(_Public):
+    """A data host that cannot answer at all."""
+
+    def fetch(self, key, *, origin=None, cache_bust=None):
+        raise OSError("connection reset")
+
+
+def test_an_unreadable_ledger_refuses_the_upload(tmp_path):
+    """Unmeasurable is not free.
+
+    The first version returned [] when the ledger could not be read, which silently turned the
+    period guard off — the one guard added because nothing counted the period.
+    """
+    from pipeline import release
+    from tests.conftest import fund_document, write_release
+
+    directory = write_release(tmp_path, [fund_document()], release_id="2026-11-18.9")
+    store = _Store()
+
+    with pytest.raises(cc.CostCeilingError) as error:
+        release.upload_release(
+            directory,
+            client=store,
+            public=_BrokenPublic(),
+            prefix="releases/2026-11-18.9",
+            pointer_prefix="staging/latest",
+        )
+
+    assert "ledger" in str(error.value)
+    assert store.puts == []
+
+
+def test_a_fresh_bucket_with_no_ledger_is_zero_not_an_error(tmp_path):
+    """A 404 is the first upload's normal state; only a broken read is a refusal."""
+    from pipeline import release
+    from tests.conftest import fund_document, write_release
+
+    directory = write_release(tmp_path, [fund_document()], release_id="2026-11-18.9")
+    report = release.upload_release(
+        directory,
+        client=_Store(),
+        public=_Public(),
+        prefix="releases/2026-11-18.9",
+        pointer_prefix="staging/latest",
+        verify=False,
+    )
+    assert report.failures == []
+
+
+def test_a_new_entry_does_not_replace_the_history(tmp_path):
+    """The ledger is appended to, not rebuilt from a second read.
+
+    The first version re-read the ledger after the upload and wrote `read + [entry]`; a failed
+    second read returned [] and replaced 30 days of history with one entry.
+    """
+    from pipeline import release
+    from tests.conftest import fund_document, write_release
+
+    directory = write_release(tmp_path, [fund_document()], release_id="2026-11-18.9")
+    seed = {"entries": [{"date": "2026-11-02", "objects": 700_000, "id": "seed"}]}
+    store = _Store()
+    public = _Public({"ops/usage.json": json.dumps(seed).encode()})
+
+    report = release.upload_release(
+        directory,
+        client=store,
+        public=public,
+        prefix="releases/2026-11-18.9",
+        pointer_prefix="staging/latest",
+        verify=False,
+    )
+
+    assert report.failures == []
+    written = json.loads(store.writes[release.USAGE_KEY])
+    dates = [entry["date"] for entry in written["entries"]]
+    assert "2026-11-02" in dates and "2026-11-18" in dates
+
+
+def test_the_ledger_keeps_only_recent_entries():
+    from pipeline import release
+
+    entries = [
+        {"date": "2026-01-01", "objects": 1},
+        {"date": "2026-10-01", "objects": 1},
+        {"date": "2026-11-18", "objects": 1},
+    ]
+    store = _Store()
+    release.write_usage(store, entries, "2026-11-18")
+    kept = [entry["date"] for entry in json.loads(store.writes[release.USAGE_KEY])["entries"]]
+    # Two periods (60 days): 2026-10-01 survives, 2026-01-01 does not.
+    assert kept == ["2026-10-01", "2026-11-18"]

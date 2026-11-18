@@ -422,39 +422,70 @@ def _read_json(public: PublicReader, key: str, *, cache_bust: str | None = None)
     return document if isinstance(document, dict) else None
 
 
-#: Where the last 30 days of Class A operations are counted. **Not** published data: the app
-#: never reads it, it lives outside `releases/`, and it is the one mutable object besides the
-#: pointer. A rolling 30 days rather than a calendar month, because the allowance resets on the
-#: billing period, and a period that starts on the 28th makes "this month" the wrong sum: the
-#: 2026-11-17 charge was the *period's* million, counted from 2026-10-28.
+#: Where the period's Class A operations are counted. **Not** published data: the app never
+#: reads it, it lives outside `releases/`, and it is the one mutable object besides the
+#: pointer. The free allowance resets on the billing period, and the 2026-11-17 charge showed
+#: that period is the account's anniversary (created 2026-10-28), not the calendar month.
 USAGE_KEY = "ops/usage.json"
-USAGE_WINDOW_DAYS = 30
+#: The day of the month the account's billing period turns over — 2026-10-28, its creation.
+PERIOD_START_DAY = 28
+#: How long entries are kept. Two periods, so a boundary never prunes something still counted.
+USAGE_KEEP_DAYS = 60
+
+
+class UsageError(RuntimeError):
+    """The usage ledger could not be read. Never treated as zero: unmeasurable is not free."""
+
+
+def period_start(today: str) -> str:
+    """The first day of the billing period containing `today` (an ISO date)."""
+    day = date.fromisoformat(today)
+    if day.day >= PERIOD_START_DAY:
+        return date(day.year, day.month, PERIOD_START_DAY).isoformat()
+    previous = date(day.year, day.month, 1) - timedelta(days=1)
+    return date(previous.year, previous.month, PERIOD_START_DAY).isoformat()
 
 
 def read_usage(public: PublicReader) -> list[dict]:
-    """The usage ledger's entries, or none when it is absent or unreadable.
+    """The usage ledger's entries.
 
-    An absent ledger makes the window a floor rather than a total, and the guard says so.
+    A **404 is zero** — a fresh bucket has no ledger yet, and the first upload must be able to
+    start one. Anything else (a transport error, a 5xx, an unparseable body) raises: the whole
+    point of this guard is that a period is accounted for, so a guard that cannot measure must
+    stop the run rather than wave it through. That is the difference between this call and
+    `_read_json`, which fails open because a missing pointer is harmless.
     """
-    document = _read_json(public, USAGE_KEY, cache_bust=str(int(time.time()))) or {}
-    entries = document.get("entries")
-    return list(entries) if isinstance(entries, list) else []
+    try:
+        response = public.fetch(USAGE_KEY, cache_bust=str(int(time.time())))
+    except Exception as error:  # noqa: BLE001 - any transport failure means "unknown", not "zero"
+        raise UsageError(f"the usage ledger could not be read ({error})") from error
+    if response.status == 404:
+        return []
+    if response.status != 200:
+        raise UsageError(f"the usage ledger returned HTTP {response.status}")
+    try:
+        document = json.loads(response.body)
+    except ValueError as error:
+        raise UsageError(f"the usage ledger is not JSON ({error})") from error
+    entries = document.get("entries") if isinstance(document, dict) else None
+    if not isinstance(entries, list):
+        raise UsageError("the usage ledger has no entries list")
+    return list(entries)
 
 
-def used_in_window(entries: list[dict], today: str, *, days: int = USAGE_WINDOW_DAYS) -> int:
-    """Objects published on dates inside the last `days`, inclusive of today."""
-    cutoff = (date.fromisoformat(today) - timedelta(days=days - 1)).isoformat()
-    total = 0
-    for entry in entries:
-        when = str(entry.get("date") or "")
-        if when and when >= cutoff and when <= today:
-            total += int(entry.get("objects") or 0)
-    return total
+def used_in_period(entries: list[dict], today: str) -> int:
+    """Class A operations recorded since the billing period began."""
+    start = period_start(today)
+    return sum(
+        int(entry.get("objects") or 0)
+        for entry in entries
+        if start <= str(entry.get("date") or "") <= today
+    )
 
 
 def write_usage(client, entries: list[dict], today: str) -> None:
-    """Replace the ledger, keeping only entries the window can still count."""
-    cutoff = (date.fromisoformat(today) - timedelta(days=USAGE_WINDOW_DAYS)).isoformat()
+    """Replace the ledger, keeping two periods of entries."""
+    cutoff = (date.fromisoformat(today) - timedelta(days=USAGE_KEEP_DAYS)).isoformat()
     kept = [entry for entry in entries if str(entry.get("date") or "") >= cutoff]
     body = json.dumps({"entries": kept}, sort_keys=True, separators=(",", ":")).encode()
     client.put(USAGE_KEY, body, cache_control=NO_CACHE)
@@ -513,6 +544,8 @@ def upload_release(
     # guard here, because reading is Class B and free under the 10M allowance.
     # Both of these ask the store, so `--dry-run` stays offline and local: it prints the
     # report for the artefact without a pointer read or a listing.
+    if dry_run:
+        print("  dry run: the unchanged check and the period budget ask the store and were not evaluated")
     if not dry_run:
         fingerprint = content_fingerprint(manifest, release_descriptor)
         existing = published_fingerprint(public, pointer_prefix, pointer_name)
@@ -544,15 +577,36 @@ def upload_release(
         guard_day(objects=len(objects), already=already_today, release_id=str(manifest["as_of"]))
         report.day_objects = already_today + len(objects)
 
-        # The trailing 30 days, which is the window the allowance is measured over. The ledger
-        # read is one free GET; the bucket's own prefix count cannot stand in for it, because
-        # retention deletes old releases and their operations were still billed.
+        # The billing period, which is the unit the allowance resets on. The ledger read is one
+        # free GET; the bucket's own prefix count cannot stand in for it, because retention
+        # deletes old releases and their operations were still billed.
         today = str(manifest["as_of"]).strip("/").split(".")[0]
-        entries = read_usage(public)
-        used = used_in_window(entries, today)
-        this_release = len(objects) + 1  # the objects and the pointer put
+        try:
+            entries = read_usage(public)
+        except UsageError as error:
+            raise CostCeilingError(
+                f"REFUSED: {error}. Publishing without the period's total is how the 2026-11 "
+                f"crossing happened; the ledger is on the data host under {USAGE_KEY}"
+            ) from error
+        used = used_in_period(entries, today)
+        # Objects, the pointer, and the ledger's own write, plus the day listing this run pays
+        # for (~23 `ListObjects` pages at 22,357 objects) — the estimate errs high on purpose.
+        this_release = len(objects) + 1 + 1 + (len(objects) // 1000 + 1)
         guard_window(used=used, adding=this_release, release_id=str(manifest["as_of"]))
         report.window_objects = used + this_release
+
+        # Recorded **before** the objects are written. A write that fails part-way has still
+        # spent its operations, and an entry added only on success would lose them — the one
+        # direction that turns a budget into a wish. The cost is that a failed upload counts
+        # against the period until it rolls over, which is the safe direction to be wrong in.
+        entry = {"date": today, "id": str(manifest["as_of"]), "objects": this_release}
+        try:
+            _retrying(lambda: write_usage(client, entries + [entry], today), label=USAGE_KEY)
+        except R2Error as error:
+            raise CostCeilingError(
+                f"REFUSED: the usage ledger could not be updated ({error}). Publishing without "
+                f"accounting for it is how a period crosses its allowance unnoticed"
+            ) from error
 
     # Objects first: every immutable artifact, then its manifest.
     #
@@ -613,18 +667,6 @@ def upload_release(
 
     if not dry_run:
         _observe_live_pointer(report, public)
-        if not report.failures:
-            # The ledger is written only for an upload that landed, so a failed run cannot
-            # spend the window's budget twice.
-            entries = read_usage(public) + [
-                {"date": today, "id": str(manifest["as_of"]), "objects": len(objects) + 1}
-            ]
-            try:
-                write_usage(client, entries, today)
-            except R2Error as error:
-                # The release is published; failing the upload over the counter would be worse
-                # than an under-counted window.
-                print(f"  warning: the usage ledger was not updated ({error}); the window guard under-counts")
 
     report.finished_at = datetime.now(UTC).isoformat(timespec="seconds")
     if report_dir is not None and not dry_run:

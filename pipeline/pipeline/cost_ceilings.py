@@ -210,8 +210,9 @@ def assess_day(*, objects: int, already: int) -> list[Ceiling]:
 #: as 2,000,000"), so the marginal cost of an operation inside an already-billed band is zero,
 #: and the next charge starts only at the boundary. The guard therefore stops at 95 % of the
 #: band it is in: 950,000 while free, then 1,950,000 in the second band, and so on. The margin
-#: covers what the ledger does not count — listings, remediation copies, a hand-rolled upload.
-BAND_MARGIN = 50_000
+#: covers what the ledger does not count — listings, retries, one remediation copy (the 2026-11-18
+#: quarantine was 30,815) and a hand-rolled upload.
+BAND_MARGIN = 100_000
 
 
 def window_ceiling(used: int) -> int:
@@ -221,7 +222,9 @@ def window_ceiling(used: int) -> int:
     the next million is already paid for, so refusing would buy nothing: the line becomes the
     top of that band.
     """
-    if used < R2_FREE_CLASS_A_OPS:
+    # `<=`, not `<`: at exactly 1,000,000 the allowance is consumed and nothing is billable,
+    # so the band has NOT advanced — allowing another 22k there would start the first charge.
+    if used <= R2_FREE_CLASS_A_OPS:
         return R2_WINDOW_BUDGET
     band = (used // R2_FREE_CLASS_A_OPS) + 1
     return band * R2_FREE_CLASS_A_OPS - BAND_MARGIN
@@ -229,7 +232,7 @@ def window_ceiling(used: int) -> int:
 
 def assess_window(*, used: int, adding: int) -> list[Ceiling]:
     """What the trailing 30 days have spent, plus this release, against the band it is in."""
-    return [Ceiling("R2 Class A, trailing 30 days", used + adding, window_ceiling(used), "objects")]
+    return [Ceiling("R2 Class A, this billing period", used + adding, window_ceiling(used), "objects")]
 
 
 def assess_bucket(*, bytes: int) -> list[Ceiling]:
@@ -311,7 +314,7 @@ def guard_window(*, used: int, adding: int, release_id: str = "") -> list[Ceilin
         label = f"release {release_id}" if release_id else "this release"
         detail = "\n".join(ceiling.line() for ceiling in over)
         raise CostCeilingError(
-            f"REFUSED: {label} would take the last 30 days past their Class A budget\n"
+            f"REFUSED: {label} would take this billing period past its Class A budget\n"
             f"{detail}\n"
             f"  {used:,} already spent in the window (usage ledger), and this release adds {adding:,}\n"
             f"  the line is {window_ceiling(used):,} for the band this window is in; it reserves "
@@ -350,8 +353,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  Workers Builds          {WORKERS_FREE_BUILDS_MINUTES:,} minutes per month")
         print(f"  Actions storage         {GITHUB_FREE_ACTIONS_STORAGE_MB:,} MB "
               f"(GitHub Free); runner minutes free while the repo is public")
-        print(f"  R2 Class A window       {R2_WINDOW_BUDGET:,} in the trailing 30 days while free; "
-              f"else the top of the band, minus {BAND_MARGIN:,}")
+        print(f"  R2 Class A period       {R2_WINDOW_BUDGET:,} while free; else the top of the band, "
+              f"minus {BAND_MARGIN:,}")
         print(f"  headroom policy         {HEADROOM:.0%} — refuse above the ceiling, warn above headroom")
         print("  a measured gate: --release <dir> or --site <dir>")
         return 0
