@@ -98,6 +98,15 @@ R2_STORAGE_BUDGET = int(R2_FREE_BYTES * HEADROOM)
 #: Class A objects one release may write, at one release a day: 1M ops a month / 30 days.
 MAX_RELEASE_OBJECTS = R2_FREE_CLASS_A_OPS // 30
 
+#: How many releases one date may publish: the plan, a hotfix, and one retry. 2026-11-02
+#: published eight (176,181 objects) because every re-run allocated a new id. The ceiling is
+#: `MAX_DAILY_RELEASES x this release's own size`, not a fixed object count: a fixed count
+#: derived from `MAX_RELEASE_OBJECTS` would allow four real releases (4 x 22,357 < 3 x 33,333),
+#: and a release that died at 98 % must still leave room for its retry. This is a **rate**
+#: guard, not the monthly budget (30 days at it is 2M); the real average is set by the
+#: one-a-day plan and by skipping an unchanged same-date re-run.
+MAX_DAILY_RELEASES = 3
+
 #: Room for the four quarterly archive stubs the prune keeps (measured at ~4 MB each) so that
 #: `MAX_RESIDENT_RELEASES` maximum-size releases *plus* the stubs still fit the budget — without
 #: it, three releases at the limit exactly consumed the budget and the stubs had nothing.
@@ -175,6 +184,18 @@ def assess_site(*, files: int) -> list[Ceiling]:
     return [Ceiling("Workers static-asset files", files, WORKERS_FREE_ASSET_FILES, "files")]
 
 
+def assess_day(*, objects: int, already: int) -> list[Ceiling]:
+    """Today's uploads plus this release, against the daily rate guard."""
+    return [
+        Ceiling(
+            "R2 Class A ops today (release uploads)",
+            already + objects,
+            MAX_DAILY_RELEASES * objects,
+            "objects",
+        )
+    ]
+
+
 def assess_bucket(*, bytes: int) -> list[Ceiling]:
     """The bucket as it stands after a prune, against the storage budget.
 
@@ -221,6 +242,24 @@ def guard_release(*, objects: int, bytes: int, release_id: str = "") -> list[Cei
     return ceilings
 
 
+def guard_day(*, objects: int, already: int, release_id: str = "") -> list[Ceiling]:
+    """Refuse a second-today release that would take the date past its rate guard."""
+    ceilings = assess_day(objects=objects, already=already)
+    over = over_budget(ceilings)
+    if over:
+        label = f"release {release_id}" if release_id else "this release"
+        detail = "\n".join(ceiling.line() for ceiling in over)
+        raise CostCeilingError(
+            f"REFUSED: {label} would take today past the upload rate guard\n"
+            f"{detail}\n"
+            f"  already published today: {already:,} object(s); this release adds {objects:,}\n"
+            f"  one release a day is the plan, and this date is already at three releases' "
+            f"worth (ADR-0028). A same-day re-run of unchanged data is skipped before the "
+            f"first write, so this is a fourth distinct release today"
+        )
+    return ceilings
+
+
 def _tree_measurement(directory: Path) -> tuple[int, int]:
     """Files and bytes a directory tree publishes (symlinks and directories excluded)."""
     files = 0
@@ -243,7 +282,7 @@ def main(argv: list[str] | None = None) -> int:
         print("free-tier ceilings, as encoded in pipeline/pipeline/cost_ceilings.py")
         print(f"  R2 storage              {_human_bytes(R2_FREE_BYTES)} per month")
         print(f"  R2 Class A ops          {R2_FREE_CLASS_A_OPS:,} per month "
-              f"(one release: {MAX_RELEASE_OBJECTS:,} objects)")
+              f"(one release: {MAX_RELEASE_OBJECTS:,} objects; one date: {MAX_DAILY_RELEASES} releases)")
         print(f"  R2 Class B ops          {R2_FREE_CLASS_B_OPS:,} per month")
         print(f"  Workers asset files     {WORKERS_FREE_ASSET_FILES:,} per version")
         print(f"  Workers Builds          {WORKERS_FREE_BUILDS_MINUTES:,} minutes per month")
