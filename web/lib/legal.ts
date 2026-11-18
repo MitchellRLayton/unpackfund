@@ -109,9 +109,13 @@ export const METHODOLOGY_VERSION = "1.5.0";
  * needed went with it. The policy's storage paragraph described those two values; it now
  * says the site writes nothing to localStorage or sessionStorage, which is true again.
  *
+ * 1.7.0 (2026-11-18): copy reduction iteration 1 — the footer is one line with the
+ * source phrase as its own constant, the "X-Ray" eyebrow is gone, and the Portfolio
+ * carries a notes strip that appears only when a caveat applies.
+ *
  * 1.6.0 (2026-11-11): the benchmark comparison is selectable — VT by default, plus VTI,
  * VOO, IDEV and IEMG, one at a time — and the methodology's benchmark section and the
  * glossary say so. A company's weight is still its share of the benchmark fund's own
  * NAV, so the method itself did not change and `METHODOLOGY_VERSION` stays at 1.5.0.
  */
-export const LEGAL_COPY_VERSION = "1.6.0";
+export const LEGAL_COPY_VERSION = "1.7.0";

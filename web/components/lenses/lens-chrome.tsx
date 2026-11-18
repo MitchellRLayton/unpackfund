@@ -18,12 +18,15 @@ import type { ReactNode } from "react";
 
 import { coverageBand, coverageChip } from "@/lib/format";
 import type { WorkspaceModel } from "@/lib/use-workspace";
+import styles from "./lens-chrome.module.css";
 
 /** Loading and empty states: say what the lens is waiting for, in plain words. */
 export function LensState({ title, body }: { title: string; body: string }) {
   return (
     <div className="empty" role="status">
-      <p className="empty__title">{title}</p>
+      {/* A one-line state has no heading: P-E-10 is "Loading data…" and nothing else. An
+       * empty <p> here would be a blank row with the body pushed below it. */}
+      {title ? <p className="empty__title">{title}</p> : null}
       <p className="muted small">{body}</p>
     </div>
   );
@@ -50,7 +53,7 @@ export function LensSection({
   action,
   children,
 }: {
-  title: string;
+  title: ReactNode;
   action?: ReactNode;
   children: ReactNode;
 }) {
@@ -66,26 +69,35 @@ export function LensSection({
 }
 
 /**
- * The download. The CSV is built when it is clicked, not on every render, and the
- * filename carries the release because a spreadsheet outlives the page.
+ * The download, as an icon.
+ *
+ * It was a text button beside every table heading, which put the words "Export CSV" on screen
+ * eleven times on the Portfolio alone — a control that is used once a visit competing with the
+ * table it belongs to. The icon keeps the control, its accessible name and its tooltip; the
+ * exported file and its filename are untouched (H1).
  */
 export function LensExport({
   label,
   onExport,
 }: {
-  /** What the file holds, in words, for the button's accessible name. */
+  /** What the file holds, in words. Kept for the caller's own test hooks. */
   label: string;
   onExport: () => void;
 }) {
+  const tip = "Download this table as CSV";
   return (
-    <button
-      type="button"
-      className="btn btn--sm"
-      onClick={onExport}
-      aria-label={`Export CSV: ${label}`}
-    >
-      Export CSV
-    </button>
+    <span className={styles.exportWrap}>
+      <button
+        type="button"
+        className={styles.exportButton}
+        onClick={onExport}
+        aria-label={tip}
+        title={tip}
+        data-export-label={label}
+      >
+        <span aria-hidden="true">↓</span>
+      </button>
+    </span>
   );
 }
 

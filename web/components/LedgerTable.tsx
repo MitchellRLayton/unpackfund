@@ -17,7 +17,7 @@ import { useMemo, useState } from "react";
 import { benchmarkDelta } from "@/lib/benchmark";
 import { flagEmoji } from "@/lib/country-flag";
 import { TIER_AS_OF, tierConvention, tierOf } from "@/lib/country-tier";
-import { deltaInkClass, formatCount, formatShare, formatSignedShare } from "@/lib/format";
+import { deltaInkClass, formatCount, formatShare, formatSignedPp } from "@/lib/format";
 import type { BenchmarkFacts, LedgerRow } from "@/lib/types";
 
 import { useProvider } from "@/components/lenses/provider-preference";
@@ -317,7 +317,7 @@ export function LedgerTable({
                           sign is in the text, and the direction is a sentence in the
                           caption (`static-xray-frontend` §4a, §8). */}
                         <span className={deltaInkClass(delta)}>
-                          {formatSignedShare(delta)}
+                          {formatSignedPp(delta)}
                         </span>
                       </>
                     )}

@@ -20,29 +20,28 @@
  * The bar's denominator is therefore the weight the release can *place*, and the
  * sentence under it says so. A bar that silently renormalised over a subset would be a
  * share of the wrong whole (`lookthrough-math-and-qa` §5).
+ *
+ * **Compact labels, one convention (OD-04, operator, 2026-11-18).** The bar and both
+ * tables print `US` / `DM` / `EM`, and the convention is named once per view — a tag
+ * beside the toggle — instead of `(MSCI)` on every label. The long names sit in the tips
+ * behind those labels. Nothing about the split changes: the code, the number and the
+ * tooltip's word are all text, so colour is still never the only carrier (H9).
  */
 
 import { useMemo } from "react";
 
 import { flagEmoji } from "@/lib/country-flag";
-import {
-  PROVIDERS,
-  PROVIDER_NAMES,
-  TIER_AS_OF,
-  tierConvention,
-} from "@/lib/country-tier";
+import { PROVIDERS, PROVIDER_NAMES } from "@/lib/country-tier";
 import { saveCsv } from "@/lib/export";
 import { formatCount, formatShare } from "@/lib/format";
+import { InfoTip } from "@/components/feedback/InfoTip";
 import type { LensProps } from "@/components/workspace/types";
 
-import { LensExport, LensLede, LensProblem, LensSection, LensState } from "./lens-chrome";
+import { LensExport, LensProblem, LensSection, LensState } from "./lens-chrome";
 import { lensCsvName, marketsCsv } from "./lens-csv";
 import { lensGateState } from "./lens-gate";
 import {
-  BUCKET_WORD,
   PROVIDER_SHORT,
-  TIER_WORD,
-  bucketWord,
   marketSplit,
   otherProvider,
   providerMoves,
@@ -63,6 +62,33 @@ const ROW_FILL: Record<MarketBucket, string> = {
   EM: "rowbar__fill--em",
 };
 
+/**
+ * The tier's long name, for the tip behind its compact label.
+ *
+ * OD-04's wording (`PROMPT.md` §5.1, "long form in tooltips"): the label on screen is the
+ * code, and the words are one keystroke away rather than repeated on every row.
+ */
+const MARKET_LONG: Record<MarketBucket, string> = {
+  US: "United States",
+  DM: "Developed ex-US",
+  EM: "Emerging",
+};
+
+/** `concepts.market_tier.popover` — the Tier column's one explanation (R4). */
+const MARKET_TIER_TIP =
+  "US, developed ex-US (DM), or emerging (EM), by the country's classification. Offshore holding domiciles such as Bermuda count as US.";
+
+/** CN_OFFSHORE_TIER: the tip on a tier cell the shared rule decided. */
+const OFFSHORE_TIER_TIP = "Offshore holding domicile, counted as US.";
+
+/**
+ * The eleven offshore holding domiciles — where a company is registered, not where it
+ * operates. The rule and the set live in `classification/classification.json`
+ * (`bucket_rules.shared`); this is only the display trigger for CN_OFFSHORE_TIER, so it
+ * moves with that file and never decides a tier itself.
+ */
+const OFFSHORE_HOLDCO = new Set("BM BS GG GI IM JE KY MC MH PA VG".split(" "));
+
 /** Below this a term is a rounding artefact, not a fact worth a clause. */
 const NEGLIGIBLE = 0.00005;
 
@@ -72,6 +98,12 @@ const NEGLIGIBLE = 0.00005;
  * a tenth of a point change a segment — and a callout for it would be noise.
  */
 const NOTABLE_MOVE = 0.01;
+
+/**
+ * How many countries may move before the one-line sentence becomes a table again: the
+ * condition's own bound (CN_FTSE_DIFF, `template_n_le_3`).
+ */
+const MOVES_IN_A_LINE = 3;
 
 export function MarketsLens({ model }: LensProps) {
   const { provider, setProvider } = useProvider();
@@ -144,80 +176,71 @@ export function MarketsLens({ model }: LensProps) {
     );
   };
 
-  // Every term is printed with its own number, and a term that is zero is left out
-  // rather than printed as "0.00% is …", which reads as a puzzle.
-  const outsideParts: string[] = [];
-  if (Math.abs(outside.unplacedCompanyWeight) > NEGLIGIBLE) {
-    outsideParts.push(
-      `${formatShare(outside.unplacedCompanyWeight)} is ${formatCount(
-        outside.unplacedCompanies,
-      )} ${
-        outside.unplacedCompanies === 1 ? "company" : "companies"
-      } the release has no country for`,
-    );
-  }
-  if (Math.abs(outside.unplacedSecurities) > NEGLIGIBLE) {
-    outsideParts.push(
-      `${formatShare(
-        outside.unplacedSecurities,
-      )} is share positions inside funds whose filing states no country`,
-    );
-  }
+  // CN_MARKETS_OUTSIDE: the parts of what the bar does not draw that have a clause of
+  // their own. A part that rounds to nothing is left out with its comma rather than
+  // printed as "0.00% is …", which reads as a puzzle; when neither is left the line is
+  // not rendered at all, because then the condition has not fired.
+  const outsideClauses: string[] = [];
   if (Math.abs(outside.cashAndDerivatives) > NEGLIGIBLE) {
-    outsideParts.push(
-      `${formatShare(outside.cashAndDerivatives)} is cash and derivative lines inside funds`,
+    outsideClauses.push(
+      `${formatShare(outside.cashAndDerivatives)} cash and derivatives`,
     );
-  }
-  if (Math.abs(outside.cash) > NEGLIGIBLE) {
-    outsideParts.push(`${formatShare(outside.cash)} is cash you hold`);
   }
   if (Math.abs(outside.filedOvershoot) > NEGLIGIBLE) {
-    outsideParts.push(
-      `${formatShare(
-        outside.filedOvershoot,
-      )} is the weight the filings report outside their own holding schedules`,
+    outsideClauses.push(
+      `${formatShare(outside.filedOvershoot)} filed outside listed holdings`,
     );
   }
+  const outsideLine =
+    outsideClauses.length > 0 ? `Not in the bar: ${outsideClauses.join(", ")}.` : null;
 
-  const outsideSentence =
-    outsideParts.length === 0
-      ? "Nothing is outside the bar: every position the filings report is placed in a market."
-      : `Outside the bar: ${outsideParts.join(", ")}.`;
+  // CN_FTSE_DIFF: one sentence while up to three countries move, the table behind a
+  // summary when more do. `moves` is the list the table prints; nothing is recomputed.
+  const moveClauses = moves.map(
+    (move) =>
+      `${move.code} would be ${move.to} (${formatShare(
+        split.placed > 0 ? move.weight / split.placed : 0,
+      )})`,
+  );
+  const moveLine =
+    moveClauses.length > 0
+      ? `Under ${PROVIDER_NAMES[other]}, ${moveClauses.join("; ")}.`
+      : null;
 
   return (
     <div className="stack">
       <LensProblem model={model} />
-      <LensLede>
-        Every position the release can place, split by the market its country belongs to:
-        the United States, international developed markets outside it, and emerging
-        markets. Weight is a share of the weight the filings place in a market — cash,
-        derivatives and positions whose filing states no country sit outside the bar and
-        are named under it. The countries behind the segments are in the second table,
-        with the two-letter code printed rather than implied. Which publisher&rsquo;s
-        convention decides that is your choice, and every label below names the one in
-        use.
-      </LensLede>
 
       <div className="stack stack--tight">
         {/* The convention, before the bar it decides. Two buttons rather than a select:
          * both choices are visible, the current one is pressed, and a reader can see
          * that there is a choice at all without opening anything. */}
         <div className="row row--between">
-          <p className="small muted" id="markets-provider-label">
-            Classify by:
+          <p className="small muted">
+            <span id="markets-provider-label">Classify by</span>
+            <InfoTip label="Classify by">
+              Index providers disagree on a few countries, such as South Korea. Pick whose
+              list to use.
+            </InfoTip>
           </p>
-          <div role="group" aria-labelledby="markets-provider-label" className="row">
-            {PROVIDERS.map((option) => (
-              <button
-                key={option}
-                type="button"
-                className={`btn btn--sm${option === provider ? "btn--primary" : ""}`}
-                aria-pressed={option === provider}
-                onClick={() => setProvider(option)}
-              >
-                {PROVIDER_SHORT[option]}
-              </button>
-            ))}
+          <div className="row">
+            <div role="group" aria-labelledby="markets-provider-label" className="row">
+              {PROVIDERS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  className={`btn btn--sm${option === provider ? "btn--primary" : ""}`}
+                  aria-pressed={option === provider}
+                  onClick={() => setProvider(option)}
+                >
+                  {PROVIDER_SHORT[option]}
+                </button>
+              ))}
+            </div>
+            {/* OD-04: the convention is named once, here, so no label below repeats it. */}
+            <span className="chip" data-convention={provider}>
+              {PROVIDER_SHORT[provider]}
+            </span>
           </div>
         </div>
 
@@ -241,10 +264,82 @@ export function MarketsLens({ model }: LensProps) {
                 className={`legend__swatch ${SEGMENT_BACKGROUND[tier.bucket]}`}
                 aria-hidden="true"
               />
-              {bucketWord(tier.bucket, provider)}
+              {tier.bucket}
+              <InfoTip label={tier.bucket}>{MARKET_LONG[tier.bucket]}</InfoTip>
             </span>
           ))}
         </div>
+
+        {/* CN_MARKETS_OUTSIDE, directly under the legend it explains. */}
+        {outsideLine === null ? null : <p className="small muted">{outsideLine}</p>}
+
+        {/* What the toggle would change, and nothing else — directly under the line it
+         * extends (CN_FTSE_DIFF's placement). A table of every country with two identical
+         * columns would bury the dozen that move; when none move, one sentence says so
+         * rather than an empty table with a caption. */}
+        {moves.length === 0 ? (
+          <p className="small muted">
+            The two conventions agree for this portfolio: every country in it lands in the
+            same segment under {PROVIDER_NAMES.MSCI} and {PROVIDER_NAMES.FTSE}.
+          </p>
+        ) : moves.length <= MOVES_IN_A_LINE ? (
+          <p className="small muted">{moveLine}</p>
+        ) : (
+          <details>
+            <summary className="small muted">
+              {moves.length} countries change under {PROVIDER_NAMES[other]}
+            </summary>
+            <div className="table-wrap">
+              <table className="table">
+                <caption className="visually-hidden">
+                  Only the countries whose segment changes between the two conventions are
+                  listed.
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Country</th>
+                    <th scope="col" className="num">
+                      Share of the bar
+                    </th>
+                    <th scope="col">Under {PROVIDER_NAMES.MSCI}</th>
+                    <th scope="col">Under {PROVIDER_NAMES.FTSE}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {moves.map((move) => {
+                    const underMsci = provider === "MSCI" ? move.from : move.to;
+                    const underFtse = provider === "MSCI" ? move.to : move.from;
+                    return (
+                      <tr key={move.code}>
+                        <th scope="row">
+                          <span className="country-tag">
+                            {flagEmoji(move.code)} {move.code}
+                          </span>
+                        </th>
+                        <td className="num">
+                          {formatShare(split.placed > 0 ? move.weight / split.placed : 0)}
+                        </td>
+                        <td>{underMsci}</td>
+                        <td>{underFtse}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        )}
+
+        {/* A company line with a negative weight is printed, never drawn. The rule is on
+         * `/methodology/#concentration` (MA-07); the sentence stays because it is a fact
+         * about this portfolio, not a definition. */}
+        {split.hasNegative ? (
+          <p className="small muted">
+            A company line with a negative weight (a short position inside a fund) is
+            printed in the table and left out of the drawing: a bar is made of positive
+            parts of a whole.
+          </p>
+        ) : null}
 
         {/* The one country a reader would otherwise have to notice for themselves. A
          * segment that moves when the convention changes is not a rounding difference:
@@ -256,9 +351,9 @@ export function MarketsLens({ model }: LensProps) {
               <span className="country-tag">
                 {flagEmoji(move.code)} {move.code}
               </span>{" "}
-              is {BUCKET_WORD[move.from]} under {PROVIDER_NAMES[provider]} and{" "}
-              {BUCKET_WORD[move.to]} under {PROVIDER_NAMES[other]} — the two publishers
-              disagree about it, and the bar follows the convention you pick.
+              is {move.from} under {PROVIDER_NAMES[provider]} and {move.to} under{" "}
+              {PROVIDER_NAMES[other]} — the two publishers disagree about it, and the bar
+              follows the convention you pick.
             </p>
             <button
               type="button"
@@ -269,95 +364,40 @@ export function MarketsLens({ model }: LensProps) {
             </button>
           </div>
         ))}
-
-        <div className="prose">
-          <p className="small muted">
-            The bar draws three shares of one total — the weight the filings place in a
-            market — and the table beneath it prints each one. {outsideSentence}
-            {split.hasNegative
-              ? " A company line with a negative weight (a short position inside a fund) is printed in the table and left out of the drawing: a bar is made of positive parts of a whole."
-              : ""}
-          </p>
-        </div>
-
-        {/* What the toggle would change, and nothing else. A table of every country with
-         * two identical columns would bury the dozen that move; when none move, one
-         * sentence says so rather than an empty table with a caption. */}
-        {moves.length === 0 ? (
-          <p className="small muted">
-            The two conventions agree for this portfolio: every country in it lands in the
-            same segment under {PROVIDER_NAMES.MSCI} and {PROVIDER_NAMES.FTSE}.
-          </p>
-        ) : (
-          <div className="table-wrap">
-            <table className="table">
-              <caption>
-                Only the countries whose segment changes between the two conventions are
-                listed. Share of the bar is the weight that moves when you switch, as a
-                share of the weight the bar draws.
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Country</th>
-                  <th scope="col" className="num">
-                    Share of the bar
-                  </th>
-                  <th scope="col">Under {PROVIDER_NAMES.MSCI}</th>
-                  <th scope="col">Under {PROVIDER_NAMES.FTSE}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {moves.map((move) => {
-                  const underMsci = provider === "MSCI" ? move.from : move.to;
-                  const underFtse = provider === "MSCI" ? move.to : move.from;
-                  return (
-                    <tr key={move.code}>
-                      <th scope="row">
-                        <span className="country-tag">
-                          {flagEmoji(move.code)} {move.code}
-                        </span>
-                      </th>
-                      <td className="num">
-                        {formatShare(split.placed > 0 ? move.weight / split.placed : 0)}
-                      </td>
-                      <td>{BUCKET_WORD[underMsci]}</td>
-                      <td>{BUCKET_WORD[underFtse]}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
 
       <LensSection
-        title="The bar, in numbers"
+        title="By market"
         action={<LensExport label="markets by segment" onExport={exportMarkets} />}
       >
         <div className="table-wrap">
           <table className="table">
-            <caption>
-              The three segments in the order the bar draws them. Weight is a share of the
-              total the bar draws, and that total is the last row. A company is counted
-              once however many funds hold it, so Companies counts company lines, never
-              positions.
+            {/* A caption for a screen reader only (R2, H9): what the table is, and that
+                its total is the bar's denominator — the rows print every number. */}
+            <caption className="visually-hidden">
+              Weight by market, as a share of placed weight.
             </caption>
             <thead>
               <tr>
                 <th scope="col">Market</th>
                 <th scope="col" className="num">
                   Weight
+                  <InfoTip label="Weight">
+                    Share of the weight we can place in a market.
+                  </InfoTip>
                 </th>
                 <th scope="col" className="num">
                   Companies
+                  <InfoTip label="Companies">
+                    Each company counted once, however many funds hold it.
+                  </InfoTip>
                 </th>
               </tr>
             </thead>
             <tbody>
               {split.tiers.map((tier) => (
                 <tr key={tier.bucket} data-tier={tier.bucket}>
-                  <th scope="row">{bucketWord(tier.bucket, provider)}</th>
+                  <th scope="row">{tier.bucket}</th>
                   <td className="num">{formatShare(tier.weight)}</td>
                   <td className="num">{formatCount(tier.companies)}</td>
                 </tr>
@@ -365,7 +405,7 @@ export function MarketsLens({ model }: LensProps) {
             </tbody>
             <tfoot>
               <tr>
-                <th scope="row">Everything the bar draws</th>
+                <th scope="row">Total</th>
                 <td className="num">{formatShare(split.placed)}</td>
                 <td className="num">{formatCount(split.companies)}</td>
               </tr>
@@ -380,27 +420,28 @@ export function MarketsLens({ model }: LensProps) {
       >
         <div className="table-wrap">
           <table className="tier-edge table">
-            <caption>
-              One row per country code the release answers with, largest weight first. The
-              two-letter code is the domicile the filings agree on; Tier is the market
-              convention applied to it. Weight is a share of your whole portfolio, and the
-              bar draws the same weight on one scale for the whole table, set by the
-              largest country.{" "}
-              {split.countries.length > 0
-                ? `Developed and emerging follow the ${tierConvention(provider)}, as of ${TIER_AS_OF}; offshore holding domiciles such as Bermuda and the Cayman Islands are the United States, because most of the weight in them is an American business listed in New York.`
-                : ""}
+            {/* The tier convention, its vintage and the offshore rule are the Tier
+                header's tip and the glossary entry behind it (R4, H6). */}
+            <caption className="visually-hidden">
+              Countries in your portfolio, largest first.
             </caption>
             <thead>
               <tr>
                 <th scope="col">Country</th>
-                <th scope="col">Tier</th>
+                <th scope="col">
+                  Tier
+                  <InfoTip label="Tier">{MARKET_TIER_TIP}</InfoTip>
+                </th>
                 <th scope="col" className="num">
                   Weight
+                  <InfoTip label="Weight">Share of your whole portfolio.</InfoTip>
                 </th>
                 <th scope="col" className="num">
                   Companies
                 </th>
-                <th scope="col">Weight, drawn</th>
+                <th scope="col">
+                  <span className="visually-hidden">Bar</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -415,7 +456,12 @@ export function MarketsLens({ model }: LensProps) {
                       {country.code}
                     </span>
                   </th>
-                  <td>{TIER_WORD[country.tier]}</td>
+                  <td>
+                    {country.tier}
+                    {country.tier === "US" && OFFSHORE_HOLDCO.has(country.code) ? (
+                      <InfoTip label="Offshore domicile">{OFFSHORE_TIER_TIP}</InfoTip>
+                    ) : null}
+                  </td>
                   <td className="num">{formatShare(country.weight)}</td>
                   <td className="num">{formatCount(country.companies)}</td>
                   <td>

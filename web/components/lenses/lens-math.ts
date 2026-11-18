@@ -25,7 +25,7 @@ import {
   type CountryTier,
   type Provider,
 } from "@/lib/country-tier";
-import { coverageBand, formatCoveragePct } from "@/lib/format";
+import { coverageBand } from "@/lib/format";
 import type {
   FundDocument,
   LedgerMetrics,
@@ -651,33 +651,31 @@ export function pairVerdict(a: PairCoverage, b: PairCoverage): PairVerdict {
 
   const below = funds
     .filter((fund) => coverageBand(fund.coveragePct ?? 0) === "none")
-    .map(
-      (fund) => `${fund.ticker} is ${formatCoveragePct(fund.coveragePct ?? 0)} covered`,
-    );
+    .map((fund) => fund.ticker);
   if (below.length > 0) {
-    // Naming the fund and its percentage is the whole reason: the row says "not
-    // computed" and this says which fund took it out. The caption states the rule.
+    // Naming the fund is the whole reason: the row says "not computed" and this says
+    // which fund took it out. The percentage is still printed in the cell's chip, and
+    // the 60% rule itself is stated at `/methodology/#overlap` (MA-04).
     return {
       state: "withheld",
-      note:
-        below.length === 1
-          ? `${below[0]}, below the 60% floor.`
-          : `${below.join(" and ")}, below the 60% floor.`,
+      note: `Not compared: ${below.join(" and ")} ${
+        below.length === 1 ? "is" : "are"
+      } under 60% traced.`,
     };
   }
 
   const partial = funds
     .filter((fund) => coverageBand(fund.coveragePct ?? 0) === "partial")
-    .map(
-      (fund) => `${fund.ticker} is ${formatCoveragePct(fund.coveragePct ?? 0)} covered`,
-    );
+    .map((fund) => fund.ticker);
   if (partial.length > 0) {
     return {
       state: "floor",
-      // The brief's sentence, and the whole of it: the reasoning is the lede's and the
-      // caption's job, so the row stays short enough to sit in a table cell and the
-      // answer strip can print the same words.
-      note: `${partial.join(" and ")}, so this overlap is a floor.`,
+      // The brief's sentence, and the whole of it: the reasoning is `/methodology/#overlap`'s
+      // job, so the row stays short enough to sit in a table cell and the answer strip can
+      // print the same words.
+      note: `Minimum: ${partial.join(" and ")} ${
+        partial.length === 1 ? "is" : "are"
+      } partly traced.`,
     };
   }
 

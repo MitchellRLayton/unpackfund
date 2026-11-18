@@ -8,6 +8,7 @@ import {
   formatDays,
   formatEffective,
   formatFreshness,
+  formatFreshnessShort,
   formatFundList,
   formatRatio,
   formatShare,
@@ -137,5 +138,22 @@ describe("formatEffective", () => {
   it("has nothing to print for a value that is not a number", () => {
     expect(formatEffective(Number.NaN)).toBe("—");
     expect(formatEffective(Number.POSITIVE_INFINITY)).toBe("—");
+  });
+});
+
+describe("formatFreshnessShort", () => {
+  it("puts the months in words and drops a filed year the period already gives", () => {
+    // The funds table's cell: same three facts as `formatFreshness`, read in a column.
+    expect(formatFreshnessShort("2026-06-30", "2026-08-28", 59)).toBe(
+      "Jun 30, 2026 · filed Aug 28 · 59 days",
+    );
+  });
+
+  it("keeps the filed year when it is not the period's year", () => {
+    // A December period filed in January: dropping the year would read "filed Jan 29"
+    // and hide the one fact that makes the lag legible.
+    expect(formatFreshnessShort("2025-12-31", "2026-01-29", 29)).toBe(
+      "Dec 31, 2025 · filed Jan 29, 2026 · 29 days",
+    );
   });
 });

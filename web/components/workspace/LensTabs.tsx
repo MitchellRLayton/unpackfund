@@ -49,6 +49,8 @@ import type { WorkspaceModel } from "@/lib/use-workspace";
 import type { Lens } from "@/lib/view-fragment";
 
 import { useWorkspaceActions } from "./actions";
+import { InfoTip } from "@/components/feedback/InfoTip";
+import { NotesStrip } from "./NotesStrip";
 import type { LensMetric } from "./metrics";
 import { LENS_TABS } from "./types";
 import styles from "./Workspace.module.css";
@@ -57,6 +59,9 @@ import styles from "./Workspace.module.css";
 const PANEL_ID = "lens-panel";
 /** The explanation a disabled strip points at. */
 const DISABLED_NOTE_ID = "lens-disabled-note";
+
+/** The tooltip on a tab while the strip is inert (P-E-08). */
+const DISABLED_TIP = "Add a holding to open this lens";
 /** The slot the docked copy renders into, inside the top bar. */
 const TOPBAR_SLOT_ID = "topbar-slot";
 /** The two densities' ids. Only one is ever in the accessibility tree, and a test needs
@@ -296,6 +301,7 @@ export function LensTabs({
                 return (
                   <button
                     key={tab.id}
+                    title={disabled ? DISABLED_TIP : undefined}
                     type="button"
                     role="tab"
                     id={`lens-tab-dock-${tab.id}`}
@@ -319,21 +325,45 @@ export function LensTabs({
               })}
             </div>
             <div className={styles.dockActions}>
-              <button
-                type="button"
-                className="btn btn--sm"
-                onClick={() => void actions.copy()}
-              >
-                Share
-              </button>
-              <button
-                type="button"
-                className="btn btn--sm"
-                onClick={actions.exportCsv}
-                disabled={model.ledger === null}
-              >
-                Export CSV
-              </button>
+              {/* P-E-13: the privacy paragraph that used to sit under the bottom action
+               * row is this tooltip, and the copy status carries the same sentence, so a
+               * reader who shares a portfolio learns where it lives at the moment it
+               * matters rather than in a paragraph they scrolled past. */}
+              <span className={styles.actionWithTip}>
+                <button
+                  type="button"
+                  className="btn btn--sm"
+                  onClick={() => void actions.copy()}
+                >
+                  Share
+                </button>
+                <InfoTip label="Share">
+                  Your portfolio lives only in this link. Nothing is saved.
+                </InfoTip>
+              </span>
+              <span role="status" className="small muted">
+                {actions.copied
+                  ? "Link copied. Your portfolio lives only in this link."
+                  : ""}
+              </span>
+              {/* P-E-12: the fourth action, between Share and the two the bottom row
+               * also had. The href is the same builder the deleted link used. */}
+              <a className="btn btn--sm" href={actions.compareHref}>
+                Compare
+              </a>
+              <span className={styles.actionWithTip}>
+                <button
+                  type="button"
+                  className="btn btn--sm"
+                  onClick={actions.exportCsv}
+                  disabled={model.ledger === null}
+                >
+                  Export CSV
+                </button>
+                <InfoTip label="Export CSV">
+                  All your companies, with what each fund contributes.
+                </InfoTip>
+              </span>
               <button type="button" className="btn btn--sm" onClick={actions.print}>
                 Print
               </button>
@@ -361,6 +391,7 @@ export function LensTabs({
             return (
               <button
                 key={tab.id}
+                title={disabled ? DISABLED_TIP : undefined}
                 type="button"
                 role="tab"
                 id={`lens-tab-${tab.id}`}
@@ -443,11 +474,17 @@ export function LensTabs({
         ) : null}
       </div>
 
-      {disabled ? (
-        <p id={DISABLED_NOTE_ID} className="small muted">
-          Add a fund, a stock or cash and the five lenses open.
-        </p>
-      ) : null}
+      {/* Directly under the metric strip, on every lens. Renders nothing when no
+       * condition fires. */}
+      <NotesStrip model={model} />
+
+      {/* P-E-08: the sentence is no longer a paragraph under the strip. It is the tabs'
+       * description, so a screen reader still hears why they are inert, and each tab
+       * carries it as its own tooltip on hover and focus. Hidden, not deleted — the
+       * aria-describedby has to resolve to something. */}
+      <p id={DISABLED_NOTE_ID} className="visually-hidden">
+        Add a holding to open this lens
+      </p>
 
       <div
         ref={panelRef}
@@ -458,6 +495,9 @@ export function LensTabs({
         }
         tabIndex={0}
         className={styles.lensPanel}
+        // P-E-09: kept in the DOM so `aria-controls` still resolves, but not rendered
+        // as a status message — the empty state above already says everything.
+        hidden={disabled}
       >
         {renderLens(model)}
       </div>

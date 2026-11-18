@@ -6,13 +6,15 @@
  *
  * The block is a rendering of `lib/effective-holdings-view.ts`'s tested object. It prints,
  * in order: the headline (owned companies vs the effective count), the verdict against the
- * selected benchmark, three comparison bars on one linear scale, two key facts, and the
- * arithmetic in a closed disclosure. The concentration curve is a lazy-loaded deeper view
- * behind "See the curve" — its module and d3 imports are not in the first page bundle.
+ * selected benchmark, three comparison bars on one linear scale, the overlap finding, the
+ * four figures the old arithmetic disclosure carried, and a link to the method. The
+ * concentration curve is a lazy-loaded deeper view behind "See the curve" — its module and
+ * d3 imports are not in the first page bundle.
  *
  * Rules the markup keeps:
- * - **No jargon outside the disclosure.** The block says "effective number" and "lenient
- *   count"; the arithmetic's own names (HHI, entropy) live only in the disclosure.
+ * - **No jargon.** The block says "effective holdings", "Core" and "Broad"; the
+ *   arithmetic's own names (HHI, entropy) are not printed at all — the method is the
+ *   methodology page's `#effective-holdings`, one link away (P-C-05, OD-03 B).
  * - **Every bar is labelled and numbered.** Colour is reinforcement, never the carrier.
  * - **A missing benchmark removes the comparison, not the block.** The You bar and the
  *   headline stay; the verdict and the benchmark bar are absent rather than zero.
@@ -22,6 +24,7 @@
 
 import { useEffect, useMemo, useState, type ComponentType } from "react";
 
+import { Term } from "@/components/prose/Term";
 import type { EffectiveHoldings } from "@/lib/effective-holdings";
 import {
   bandFor,
@@ -104,7 +107,7 @@ export function EffectiveHoldingsSummary({
 
   if (effective.band === "none" || view.effective === null) {
     return (
-      <LensSection title="Effective holdings">
+      <LensSection title={<Term name="effective-holdings">Effective holdings</Term>}>
         <p className="small muted">
           Coverage is below 60% of weight ({formatShare(effective.coveragePct / 100)}), so
           no effective-holdings figure is shown: one computed over the part that resolved
@@ -139,7 +142,7 @@ export function EffectiveHoldingsSummary({
   const max = Math.max(...bars.map((bar) => bar.value)) * 1.1;
 
   return (
-    <LensSection title="Effective holdings">
+    <LensSection title={<Term name="effective-holdings">Effective holdings</Term>}>
       <p className={styles.headline}>{view.headline}</p>
       {view.band ? (
         <p className={styles.riskLine}>
@@ -187,13 +190,6 @@ export function EffectiveHoldingsSummary({
 
       {!view.singleStock ? (
         <ul className={styles.bullets}>
-          {view.top10WeightPct !== null && view.top1 ? (
-            <li>
-              Your 10 largest companies are {formatPct1(view.top10WeightPct / 100)} of
-              your money. {view.top1.name} alone is{" "}
-              {formatPct1(view.top1.weightPct / 100)}.
-            </li>
-          ) : null}
           {view.singleFund ? null : view.noShared ? (
             <li>
               Your funds don&apos;t share any companies, so overlap isn&apos;t reducing
@@ -201,12 +197,9 @@ export function EffectiveHoldingsSummary({
             </li>
           ) : view.worstOverlap && view.noOverlapEffective !== null ? (
             <li>
-              Overlap is the biggest reason. Your {formatCount(view.fundCount)} funds
-              share their largest names ({view.worstOverlap.name} is in{" "}
-              {formatCount(view.worstOverlap.heldBy)} of {formatCount(view.fundCount)}).
-              Without that overlap you&apos;d have the diversification of{" "}
-              {effectiveWords(view.noOverlapEffective)} companies instead of{" "}
-              {effectiveWords(view.effective)}.{" "}
+              Overlap is the main cause: {view.worstOverlap.name} is in{" "}
+              {formatCount(view.worstOverlap.heldBy)} of your{" "}
+              {formatCount(view.fundCount)} funds.{" "}
               <button type="button" className={styles.inlineLink} onClick={onSeeOverlap}>
                 See Overlap →
               </button>
@@ -215,59 +208,30 @@ export function EffectiveHoldingsSummary({
         </ul>
       ) : null}
 
+      {/*
+        P-C-05, on the owner's decision OD-03 option B: the seven-paragraph arithmetic
+        disclosure becomes a link to the method, and the four per-portfolio figures it
+        carried stay on screen. The research the risk bands lean on is at that anchor
+        (MA-01), not repeated here. Each figure prints only when it exists — a missing
+        count is absent, never a zero.
+      */}
       {!view.singleStock ? (
-        <details className={styles.details}>
-          <summary>How this is calculated</summary>
-          <p>
-            <strong>
-              Effective number of companies ({effectiveWords(view.effective)})
-            </strong>{" "}
-            = 1 ÷ Σ(weight²), using each company&apos;s combined weight across all your
-            funds. It&apos;s the number of equally weighted companies that would give the
-            same concentration. Example: two stocks at 50/50 → 2.0. At 90/10 → 1.2.
-          </p>
-          <p>
-            <strong>Lenient count ({effectiveWords(view.lenient ?? 0)})</strong> =
-            e^(entropy of your weights). It gives more credit to the long tail of small
-            positions, so it&apos;s always between the effective number and the number of
-            companies you own.
-          </p>
-          <p>
-            <strong>
-              Without overlap ({effectiveWords(view.noOverlapEffective ?? 0)}; lenient{" "}
-              {effectiveWords(view.noOverlapLenient ?? 0)})
-            </strong>
-            : the same calculations if every fund&apos;s positions were separate
-            companies. The gap from {effectiveWords(view.effective)} is how much
-            diversification overlap costs you ({view.overlapCostPct ?? 0}%).
-          </p>
-          <p>
-            <strong>Top-10 concentration</strong>: your 10 largest companies are{" "}
-            {view.top10WeightPct === null ? "—" : formatPct1(view.top10WeightPct / 100)}{" "}
-            of your money and account for{" "}
-            {view.top10HhiSharePct === null
-              ? "—"
-              : formatPct1(view.top10HhiSharePct / 100)}{" "}
-            of the effective-number calculation.
-          </p>
-          <p className={styles.note}>
-            It measures how evenly your money is spread across companies; it ignores how
-            companies move together, so 100 semiconductor stocks can score
-            &ldquo;diversified&rdquo; and still be one sector bet.
-          </p>
-          <p className={styles.note}>
-            The single-company-risk bands are a design choice informed by the research,
-            not a published standard: Evans &amp; Archer (1968) at 16 equal-weighted
-            securities, Statman (1987) at 30–40, and Domian, Louton &amp; Racine (2007) at
-            164.
-          </p>
-          <p className={styles.note}>
-            Weights are normalized to the{" "}
-            {view.coveredPct === null ? "covered" : formatShare(view.coveredPct / 100)} of
-            your portfolio that filings can place. Holdings as of each fund&apos;s latest
-            public filing.
-          </p>
-        </details>
+        <div className={styles.method}>
+          <a className={styles.inlineLink} href="/methodology/#effective-holdings">
+            How this is calculated
+          </a>
+          {view.noOverlapEffective !== null &&
+          view.noOverlapLenient !== null &&
+          view.overlapCostPct !== null &&
+          view.top10HhiSharePct !== null ? (
+            <p className="small muted">
+              Without overlap: Core {effectiveWords(view.noOverlapEffective)}, Broad{" "}
+              {effectiveWords(view.noOverlapLenient)} · overlap costs{" "}
+              {view.overlapCostPct}% of Core · top 10 drive{" "}
+              {formatPct1(view.top10HhiSharePct / 100)} of Core
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       <details

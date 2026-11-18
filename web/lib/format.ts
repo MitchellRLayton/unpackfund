@@ -91,6 +91,30 @@ export function formatSignedShare(delta: number): string {
 }
 
 /**
+ * A difference between two weights, in percentage points: `+5.37 pp`, `-0.42 pp`, `0.00 pp`.
+ *
+ * The bracket form `formatSignedShare` returns reads as a *level* in a column of
+ * percentages — the operator's decision (OD-05) is that a difference says so in its unit.
+ * The rule for zero is theirs too: anything smaller than half of the last printed place
+ * (0.005 pp) prints `0.00 pp` with no sign, rather than the `>-0.01%` / `<0.01%` pair,
+ * which claimed a direction the number does not have and made a reader stop and decode it.
+ *
+ * The input is a fraction, like every weight in this app; the multiplication happens here,
+ * once, so no caller has to remember it.
+ */
+export function formatSignedPp(delta: number): string {
+  const points = delta * 100;
+  if (Math.abs(points) < 0.005) return "0.00 pp";
+  const magnitude = Math.abs(points).toFixed(2);
+  return `${points > 0 ? "+" : "-"}${magnitude} pp`;
+}
+
+/** Whether a difference is small enough to print as a flat zero. */
+export function isPpZero(delta: number): boolean {
+  return Math.abs(delta * 100) < 0.005;
+}
+
+/**
  * The ink a signed difference wears, from the sign alone: green above zero, red below,
  * `--muted` at an exact zero — a difference of zero has no side to be on, so it gets no
  * direction.
@@ -204,6 +228,31 @@ export function formatPct1Of(pct: number): string {
 /** The scorecard strip's date line: `2026-06-30 · filed 2026-08-28 · 59 days`. */
 export function formatFreshness(asOf: string, filedAt: string, lagDays: number): string {
   return `${formatIsoDate(asOf)} · filed ${formatIsoDate(filedAt)} · ${formatDays(lagDays)}`;
+}
+
+/**
+ * The funds table's date cell: `Jun 30, 2026 · filed Aug 28 · 59 days`.
+ *
+ * The same three facts as `formatFreshness`, in a table cell where the reader is comparing
+ * funds rather than reading one scorecard: months in words, and the filed year dropped
+ * because it is the period's year in almost every row. It is a sibling rather than a flag on
+ * `formatFreshness` so the scorecard's line cannot change by accident — the two callers want
+ * different things and said so.
+ *
+ * Built from the string, never through `Date`, for the reason `formatDateLong` gives.
+ */
+export function formatFreshnessShort(
+  asOf: string,
+  filedAt: string,
+  lagDays: number,
+): string {
+  const period = formatDateLong(asOf);
+  const filed = formatDateLong(filedAt);
+  // Drop the year only when it is the same year as the period — otherwise the cell would
+  // read "Dec 31, 2025 · filed Jan 29" and hide the year that matters.
+  const sameYear = asOf.slice(0, 4) === filedAt.slice(0, 4);
+  const filedShort = sameYear ? filed.replace(/,\s*\d{4}$/, "") : filed;
+  return `${period} · filed ${filedShort} · ${formatDays(lagDays)}`;
 }
 
 /**

@@ -289,7 +289,7 @@ describe("the style columns' sort", () => {
     expect(screen.queryByRole("button", { name: "Style bench." })).toBeNull();
     // Default sort is weight descending, and the caption says so rather than naming a
     // column that is not on the page.
-    expect(screen.getByText(/Sorted by Your weight, largest first/)).toBeTruthy();
+    expect(screen.getByText(/Sorted by Your weight\./)).toBeTruthy();
   });
 
   it("sorts by the style weight when that header is clicked", () => {
@@ -311,7 +311,7 @@ describe("the style columns' sort", () => {
     // Against the blend: c_abc is held at 50% and carries 5% of it, so it is the most
     // overweight (0.45); then c_def (0.30 − 0.067 = 0.233); then c_ghi (0.20 − 0.10 = 0.10).
     expect(companyOrder()).toEqual(["C_ABC", "C_DEF", "C_GHI"]);
-    expect(styleCells("C_GHI")).toEqual({ bench: "8.00%", delta: "(+12.00%)" });
+    expect(styleCells("C_GHI")).toEqual({ bench: "8.00%", delta: "+12.00 pp" });
 
     // Pick one class. US small value holds nothing of c_ghi and 10% of c_abc, so the style
     // numbers themselves move — which is the whole point of the picker.
@@ -324,8 +324,8 @@ describe("the style columns' sort", () => {
       .getByText(/Benchmark composition/)
       .closest("[data-style-definitions]");
     expect(definitions?.textContent).toContain("US Small Cap Value — showing");
-    expect(styleCells("C_GHI")).toEqual({ bench: "0.00%", delta: "(+20.00%)" });
-    expect(styleCells("C_ABC")).toEqual({ bench: "10.00%", delta: "(+40.00%)" });
+    expect(styleCells("C_GHI")).toEqual({ bench: "0.00%", delta: "+20.00 pp" });
+    expect(styleCells("C_ABC")).toEqual({ bench: "10.00%", delta: "+40.00 pp" });
   });
 
   it("shows the blend by default and offers every class the gate selected", () => {
@@ -358,12 +358,12 @@ describe("the style columns' sort", () => {
 describe("the style columns' defaults", () => {
   it("opens on your weight, and picking a style does not change the sort", () => {
     render(<CompaniesLens model={model(true)} />);
-    expect(screen.getByText(/Sorted by Your weight, largest first/)).toBeTruthy();
+    expect(screen.getByText(/Sorted by Your weight\./)).toBeTruthy();
 
     const picker = screen.getByRole("group", { name: /style benchmark/i });
     fireEvent.click(within(picker).getByRole("button", { name: "US Small Cap Value" }));
     // Choosing a benchmark re-bases the numbers; it is not a sort command.
-    expect(screen.getByText(/Sorted by Your weight, largest first/)).toBeTruthy();
+    expect(screen.getByText(/Sorted by Your weight\./)).toBeTruthy();
   });
 
   it("does not carry a style sort into a different portfolio", () => {
@@ -375,7 +375,7 @@ describe("the style columns' defaults", () => {
 
     // The reader replaces the funds. The table opens the way a first visit does.
     rerender(<CompaniesLens model={model(true, { SPMO: 1 })} />);
-    expect(screen.getByText(/Sorted by Your weight, largest first/)).toBeTruthy();
+    expect(screen.getByText(/Sorted by Your weight\./)).toBeTruthy();
   });
 
   it("names the benchmark's biggest names the reader does not hold, and says it is not advice", () => {

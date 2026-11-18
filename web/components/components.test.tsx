@@ -259,24 +259,24 @@ describe("the benchmark column", () => {
     expect(screen.getAllByText("15.00%")).toHaveLength(2);
     expect(screen.getByText("4.06%")).toBeTruthy();
     // The bracket is your weight minus the benchmark's, signed: 15.00% - 4.06%.
-    expect(screen.getByText("(+10.94%)")).toBeTruthy();
+    expect(screen.getByText("+10.94 pp")).toBeTruthy();
     // A company the benchmark's traced holdings exclude is a true zero, printed
     // as a zero rather than left blank, and its bracket is the whole of your
     // weight because there is nothing of the benchmark's to subtract.
     expect(screen.getByText("0.00%")).toBeTruthy();
-    expect(screen.getByText("(+2.00%)")).toBeTruthy();
+    expect(screen.getByText("+2.00 pp")).toBeTruthy();
     expect(container.querySelector("caption")?.textContent).toContain(
       "share of VT's own portfolio",
     );
   });
 
   it("puts the signed difference beside the benchmark weight, the operator's example", () => {
-    // Held 1.52% of NVIDIA while VT holds 4.06%: the column reads `4.06% (-2.54%)`,
+    // Held 1.52% of NVIDIA while VT holds 4.06%: the column reads `4.06% -2.54 pp`,
     // i.e. you hold 2.54 percentage points less than the benchmark does.
     const rows = [row("c_1", "NVIDIA Corp", 0.0152, 1, 0.0406)];
     const { container } = render(<LedgerTable rows={rows} benchmark={vt} />);
     const cell = container.querySelectorAll<HTMLTableCellElement>("td.numeric")[1];
-    expect(cell?.textContent?.replace(/\s+/g, " ").trim()).toBe("4.06% (-2.54%)");
+    expect(cell?.textContent?.replace(/\s+/g, " ").trim()).toBe("4.06% -2.54 pp");
     // The direction is stated in words as well as by the sign, so a reader does
     // not have to infer which side is which from the minus.
     expect(container.querySelector("caption")?.textContent).toContain(
@@ -299,7 +299,7 @@ describe("the benchmark column", () => {
     );
     // Portfolio weight, In VT, then the Funds column's `direct`.
     expect(cells[0]).toBe("0.30%");
-    expect(cells[1]).toBe("0.00% (+0.30%)");
+    expect(cells[1]).toBe("0.00% +0.30 pp");
     expect(cells[2]).toBe("direct");
   });
 
@@ -470,18 +470,20 @@ describe("the country channel", () => {
       "delta",
     ]);
     expect(brackets.map((span) => span.textContent)).toEqual([
-      "(+3.50%)",
-      "(-1.00%)",
-      "(0.00%)",
+      "+3.50 pp",
+      "-1.00 pp",
+      "0.00 pp",
     ]);
-    // The sign is never implied by the ink: an up bracket begins `(+`, a down `(-`, and a
-    // level one carries no sign at all because there is no side to be on.
+    // The sign is never implied by the ink: an up difference is written `+`, a down `-`,
+    // and a level one carries no sign at all because there is no side to be on. The unit
+    // is percentage points (OD-05, 2026-11-18), so the sign leads the number rather than
+    // sitting inside a bracket.
     for (const span of brackets) {
       const text = span.textContent ?? "";
-      if (span.classList.contains("delta--up")) expect(text.startsWith("(+")).toBe(true);
+      if (span.classList.contains("delta--up")) expect(text.startsWith("+")).toBe(true);
       else if (span.classList.contains("delta--down"))
-        expect(text.startsWith("(-")).toBe(true);
-      else expect(text).toBe("(0.00%)");
+        expect(text.startsWith("-")).toBe(true);
+      else expect(text).toBe("0.00 pp");
     }
     // The edge still says where each company is domiciled, in its own channel.
     expect(

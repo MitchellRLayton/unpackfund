@@ -19,9 +19,10 @@
  * says so.
  *
  * Sortable, because "which fund is newest" and "which fund is largest" are the
- * two questions a table of funds gets asked, and the caption says which sort is
- * on and what each column means. The sort is a real button inside a column
- * header, with `aria-sort` on the header where ARIA puts it.
+ * two questions a table of funds gets asked. The sort is a real button inside a
+ * column header, with `aria-sort` on the header where ARIA puts it. The caption is
+ * one sentence for a screen reader — which sort is on — and what each column means
+ * lives in the header's own tooltip, beside the sort button rather than inside it.
  */
 
 import { useMemo, useState } from "react";
@@ -31,7 +32,13 @@ import {
   type EffectiveHoldings,
 } from "@/lib/effective-holdings";
 import { saveCsv } from "@/lib/export";
-import { formatCount, formatEffective, formatFreshness, formatShare } from "@/lib/format";
+import {
+  formatCount,
+  formatEffective,
+  formatFreshnessShort,
+  formatShare,
+} from "@/lib/format";
+import { InfoTip } from "@/components/feedback/InfoTip";
 import { Term } from "@/components/prose/Term";
 import { TableScroll } from "@/components/TableScroll";
 import type { LensProps } from "@/components/workspace/types";
@@ -40,7 +47,6 @@ import {
   CellNote,
   CoverageChip,
   LensExport,
-  LensLede,
   LensProblem,
   LensSection,
   LensState,
@@ -65,30 +71,59 @@ const COLUMNS: Array<{
   numeric: boolean;
   /** The direction the first click on this column sorts in. */
   first: "ascending" | "descending";
+  /** The header's tooltip (P-F-03), verbatim from the copy spec. A column with no
+   *  entry prints its label alone; "Fund" needs no explanation. */
+  tip?: string;
 }> = [
   { key: "ticker", label: "Fund", numeric: false, first: "ascending" },
-  { key: "weight", label: "Weight", numeric: true, first: "descending" },
-  { key: "positions", label: "Positions", numeric: true, first: "descending" },
-  { key: "coveragePct", label: "Coverage", numeric: true, first: "descending" },
-  { key: "asOf", label: "Reporting period, filed", numeric: false, first: "descending" },
-  { key: "top10Share", label: "Your top ten", numeric: true, first: "descending" },
+  {
+    key: "weight",
+    label: "Weight",
+    numeric: true,
+    first: "descending",
+    tip: "Share of your whole portfolio.",
+  },
+  {
+    key: "positions",
+    label: "Positions",
+    numeric: true,
+    first: "descending",
+    tip: "Lines in the fund's own filing, matched or not.",
+  },
+  {
+    key: "coveragePct",
+    label: "Coverage",
+    numeric: true,
+    first: "descending",
+    tip: "Share of a fund's weight we can trace to named companies. 70% or more is full, 60–70% partial, under 60% withheld.",
+  },
+  {
+    key: "asOf",
+    label: "Holdings as of",
+    numeric: false,
+    first: "descending",
+    tip: "Quarter-end the holdings describe, the filing date, and the days between.",
+  },
+  {
+    key: "top10Share",
+    label: "Your top ten",
+    numeric: true,
+    first: "descending",
+    tip: "Share of your ten largest companies that comes through this fund.",
+  },
 ];
 
-/**
- * The closing row is not a total, and this is the sentence that says so wherever the
- * label is hovered or read out. It is one sentence because a tooltip is not a caption.
- */
-const PORTFOLIO_ROW_HINT =
-  "Not an average of the rows above. Companies held by more than one fund merge, which lowers both counts.";
+/** The two counts share one grouped header, which is why its tip is not a column's. */
+const EFFECTIVE_HOLDINGS_TIP =
+  "Counted inside each fund on its own, not as a share of your money.";
 
-const COLUMN_LABEL: Record<FundSortKey, string> = {
-  ticker: "Fund",
-  weight: "Weight",
-  positions: "Positions",
-  coveragePct: "Coverage",
-  asOf: "Reporting period",
-  top10Share: "Your top ten",
-};
+/**
+ * The closing row is not a total, and this is the sentence that says so where the row's
+ * label is hovered, focused or read out. It is one sentence because a tooltip is not a
+ * caption.
+ */
+const PORTFOLIO_ROW_TIP =
+  "Counted on your merged companies, not averaged from the rows above.";
 
 /** The caption says which sort is on in the column's own words, not "descending". */
 function directionWords(key: FundSortKey, direction: "ascending" | "descending"): string {
@@ -136,6 +171,10 @@ export function FundsLens({ model }: LensProps) {
   const ledger = model.ledger;
   const docs = model.fundByTicker;
   const fundWeights = model.split.fundWeights;
+  // Whether the portfolio holds a stock directly, which is what decides the words
+  // under the "All funds" top-ten figure: some of those ten may be the visitor's own
+  // positions rather than a fund's (CN_DIRECT_REST). A length, never a number.
+  const hasDirectHoldings = model.split.direct.length > 0;
 
   const rows = useMemo(() => {
     if (!ledger) return null;
@@ -191,7 +230,10 @@ export function FundsLens({ model }: LensProps) {
 
   const totalWeight = sorted.reduce((sum, row) => sum + row.weight, 0);
   const totalTop10 = sorted.reduce((sum, row) => sum + (row.top10Share ?? 0), 0);
-  const sortLabel = COLUMN_LABEL[sort.key];
+  // The column's own words, from the one list that also sets the header's label: a second
+  // label map is how "Reporting period" and "Reporting period, filed" came to disagree.
+  const sortColumn = COLUMNS.find((column) => column.key === sort.key);
+  const sortLabel = sortColumn ? sortColumn.label : sort.key;
 
   const exportFunds = () => {
     saveCsv(
@@ -218,11 +260,6 @@ export function FundsLens({ model }: LensProps) {
   return (
     <div className="stack">
       <LensProblem model={model} />
-      <LensLede>
-        One row per fund in your portfolio: its weight, how many lines its filing has, how
-        much of its weight resolved to a company, when that filing covers and when it
-        reached us, and how much of your ten largest companies it supplies.
-      </LensLede>
 
       <LensSection
         title="Your funds"
@@ -234,28 +271,11 @@ export function FundsLens({ model }: LensProps) {
             portfolio with more than a few funds. */}
         <TableScroll label="Your funds">
           <table className="table">
-            <caption>
-              Sorted by {sortLabel}, {directionWords(sort.key, sort.direction)}. Every
-              heading is a button: choose it to sort by that column, choose it again to
-              reverse. Weight is a share of your whole portfolio, so the column adds up to
-              the weight your funds carry — the rest is your direct positions and cash.
-              Positions is the number of lines in the fund&rsquo;s own filing, resolved or
-              not, and the same company can be in several funds, so that column is not
-              added up. Coverage is the share of a fund&rsquo;s weight that resolved to a
-              company: 70% and above is full, 60% to just under 70% is partial, below 60%
-              is withheld and no concentration figure is shown for that fund anywhere.
-              Your top ten is the share of your ten largest company lines that came
-              through this fund — a share of the top ten, not of the fund, and the same
-              ten companies for every row. A fund below full coverage contributes only the
-              part of its filing that resolved, so its share there is a floor rather than
-              a ceiling. Effective holdings is the pair of equal-sized-holdings counts
-              read for each fund on its own, at 100% of that fund rather than as a share
-              of your money: Core counts the large positions, Broad counts everything. A
-              fund below 60% coverage has both withheld. The last two rows are the funds
-              added up and then your portfolio as a whole — the counts there are computed
-              once over your merged companies, so they are not the column added up, and
-              the row says so. The funds total adds unrounded values, so it can differ
-              from the column by a hundredth.
+            {/* One sentence, for a screen reader: the columns explain themselves through
+                their header tips and the sort state through `aria-sort` (P-F-02). */}
+            <caption className="visually-hidden">
+              Your funds. Sorted by {sortLabel},{" "}
+              {directionWords(sort.key, sort.direction)}.
             </caption>
             <thead>
               <tr>
@@ -280,6 +300,13 @@ export function FundsLens({ model }: LensProps) {
                       >
                         {column.label}
                       </button>
+                      {/* Beside the sort button, never inside it: a button in a button is
+                          two controls in one tab stop and no defined activation. */}
+                      {column.tip ? (
+                        <InfoTip label={column.label} inline>
+                          {column.tip}
+                        </InfoTip>
+                      ) : null}
                     </th>
                   );
                 })}
@@ -287,6 +314,7 @@ export function FundsLens({ model }: LensProps) {
                     together and mean nothing apart, each with its own word. */}
                 <th scope="colgroup" colSpan={2} className="num">
                   Effective holdings
+                  <InfoTip label="Effective holdings">{EFFECTIVE_HOLDINGS_TIP}</InfoTip>
                 </th>
               </tr>
               <tr>
@@ -318,7 +346,7 @@ export function FundsLens({ model }: LensProps) {
                   </td>
                   <td>
                     {row.asOf && row.filedAt && row.lagDays !== null
-                      ? formatFreshness(row.asOf, row.filedAt, row.lagDays)
+                      ? formatFreshnessShort(row.asOf, row.filedAt, row.lagDays)
                       : "no filing"}
                   </td>
                   <td className="num">
@@ -338,18 +366,21 @@ export function FundsLens({ model }: LensProps) {
                 <td />
                 <td className="num">
                   {top10.total > 0 ? formatShare(totalTop10) : "—"}
-                  <CellNote>of your ten largest; the rest is direct</CellNote>
+                  {/* CN_DIRECT_REST: the rest of the top ten is direct only when the
+                      portfolio has a direct holding to put there. */}
+                  <CellNote>
+                    {hasDirectHoldings
+                      ? "of your top ten; the rest is direct"
+                      : "of your top ten"}
+                  </CellNote>
                 </td>
                 <td className="num" />
                 <td className="num" />
               </tr>
               <tr>
-                <th
-                  scope="row"
-                  title={PORTFOLIO_ROW_HINT}
-                  aria-describedby="funds-portfolio-hint"
-                >
+                <th scope="row">
                   Your portfolio
+                  <InfoTip label="Your portfolio">{PORTFOLIO_ROW_TIP}</InfoTip>
                 </th>
                 <td className="num" />
                 <td className="num" />
@@ -361,12 +392,6 @@ export function FundsLens({ model }: LensProps) {
               </tr>
             </tfoot>
           </table>
-          {/* The same sentence as the label's `title`, for a reader who never hovers:
-              a tooltip is the only affordance this table has for a hint, and `title`
-              alone is not reachable from the keyboard. */}
-          <p id="funds-portfolio-hint" className="visually-hidden">
-            {PORTFOLIO_ROW_HINT}
-          </p>
         </TableScroll>
       </LensSection>
     </div>

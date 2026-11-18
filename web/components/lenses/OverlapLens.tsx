@@ -16,20 +16,25 @@
  * overlap can only be too low when a fund cannot place its own weight — the
  * untraced part can hide a company both funds hold, never invent one — so the band
  * decides how loudly the row has to say so. A withheld pair still gets a row: its
- * numbers say "not computed" and the Note column names the fund and its percentage.
+ * numbers say "not computed" and the Note column names the fund.
+ *
+ * The definition itself is not repeated here: the headline links to
+ * `/methodology/#overlap`, and each column header carries its own one-line tip, so
+ * this lens states no concept twice (R4).
  */
 
+import Link from "next/link";
 import { useMemo } from "react";
 
+import { InfoTip } from "@/components/feedback/InfoTip";
 import { saveCsv } from "@/lib/export";
-import { coverageChip, formatCount, formatShare } from "@/lib/format";
+import { coverageBand, coverageChip, formatCount, formatShare } from "@/lib/format";
 import type { LensProps } from "@/components/workspace/types";
 
 import {
   CellNote,
   LensAnswer,
   LensExport,
-  LensLede,
   LensProblem,
   LensSection,
   LensState,
@@ -188,44 +193,35 @@ export function OverlapLens({ model }: LensProps) {
           best.numbers.overlap,
         )} of their value in the same companies.${best.note === null ? "" : ` ${best.note}`}`;
 
+  // A column of empty cells is not a column: the Note column exists only when some
+  // row has something to say in it (P-O-04).
+  const showNote = rows.some((row) => row.note !== null);
+
   return (
     <div className="stack">
       <LensProblem model={model} />
-      <LensAnswer>{answer}</LensAnswer>
-      <LensLede>
-        Overlap is the share of value two funds hold in the same companies: for each
-        company, the smaller of the two funds&rsquo; weights, added up. It is a share of a
-        fund, never a share of your money, and the two sides of a pair are treated the
-        same way — the overlap of A with B is the overlap of B with A. A pair is compared
-        when both funds are in at least the partial coverage band, 60% of their weight
-        traced. A fund in the partial band, 60% up to but not including 70%, leaves up to
-        40 points of itself untraced, and untraced weight can only hide holdings the two
-        funds have in common — so that row says in words that its number is a floor. A
-        fund below 60% is not compared at all. Every overlap here is a floor rather than
-        an exact figure, including the ones with no note, because no fund places all of
-        itself.
-      </LensLede>
+      {/* The definition is on `/methodology/#overlap` now, so the headline carries the
+          link rather than the paragraph: one concept, explained once, linked from every
+          surface that uses it (R4). The link sits at the end of the headline row, small
+          and muted, so it cannot compete with the sentence it qualifies. */}
+      <div className="row row--between">
+        <LensAnswer>{answer}</LensAnswer>
+        <Link className="small muted" href="/methodology/#overlap">
+          How overlap works
+        </Link>
+      </div>
 
       <LensSection
-        title="Every pair"
+        title="All pairs"
         action={<LensExport label="pairwise overlap" onExport={exportOverlap} />}
       >
         <div className="table-wrap">
           <table className="table">
-            <caption>
-              One row per pair of funds in your portfolio, in the order your portfolio
-              lists them. A is the fund in the first column and B the one in the second.
-              Overlap is the sum over companies of the smaller of the two weights; Only in
-              A is the part of A&rsquo;s portfolio in companies B does not hold, and Only
-              in A plus Overlap is the share of A that resolved to a company — the rest of
-              A is weight with no company. Companies in common counts the companies both
-              hold with positive weight; Companies in either is the union the two were
-              compared over. Overlap, Only in A and Only in B are shares of a fund, so a
-              pair with a small overlap is not a pair of small funds. Rows are sorted by
-              overlap, largest first, and a pair that is withheld is listed after them.
-              Note carries the qualifier: a fund in the partial band makes the row a
-              floor, and a fund below the 60% floor withholds it, with its percentage
-              printed.
+            {/* The definition of every column is on `/methodology/#overlap` and in each
+                header's tip, so the caption says what the table is for and nothing more
+                (R2). It stays a real `<caption>` for a screen reader (H9). */}
+            <caption className="visually-hidden">
+              Every pair of your funds, most overlap first.
             </caption>
             <thead>
               <tr>
@@ -233,20 +229,35 @@ export function OverlapLens({ model }: LensProps) {
                 <th scope="col">Fund B</th>
                 <th scope="col" className="num">
                   Overlap
+                  <InfoTip label="Overlap">
+                    Share of value the two funds hold in the same companies.
+                  </InfoTip>
                 </th>
                 <th scope="col" className="num">
                   Only in A
+                  <InfoTip label="Only in A">
+                    Share of Fund A in companies Fund B doesn&apos;t hold.
+                  </InfoTip>
                 </th>
                 <th scope="col" className="num">
                   Only in B
+                  <InfoTip label="Only in B">
+                    Share of Fund B in companies Fund A doesn&apos;t hold.
+                  </InfoTip>
                 </th>
                 <th scope="col" className="num">
                   Companies in common
+                  <InfoTip label="Companies in common">
+                    Companies both funds hold.
+                  </InfoTip>
                 </th>
                 <th scope="col" className="num">
                   Companies in either
+                  <InfoTip label="Companies in either">
+                    Companies held by at least one of the two.
+                  </InfoTip>
                 </th>
-                <th scope="col">Note</th>
+                {showNote ? <th scope="col">Note</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -254,13 +265,15 @@ export function OverlapLens({ model }: LensProps) {
                 <tr key={`${row.a}\u0000${row.b}`}>
                   <th scope="row">
                     <span className="mono">{row.a}</span>
-                    {row.coverageAPct === null ? null : (
+                    {row.coverageAPct === null ||
+                    coverageBand(row.coverageAPct) === "full" ? null : (
                       <CellNote>{coverageChip(row.coverageAPct)}</CellNote>
                     )}
                   </th>
                   <td>
                     <span className="mono">{row.b}</span>
-                    {row.coverageBPct === null ? null : (
+                    {row.coverageBPct === null ||
+                    coverageBand(row.coverageBPct) === "full" ? null : (
                       <CellNote>{coverageChip(row.coverageBPct)}</CellNote>
                     )}
                   </td>
@@ -283,7 +296,9 @@ export function OverlapLens({ model }: LensProps) {
                   <td className="num">
                     {row.numbers === null ? "—" : formatCount(row.numbers.unionCompanies)}
                   </td>
-                  <td className="small muted">{row.note === null ? "" : row.note}</td>
+                  {showNote ? (
+                    <td className="small muted">{row.note === null ? "" : row.note}</td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

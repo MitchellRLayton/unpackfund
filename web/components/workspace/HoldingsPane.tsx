@@ -23,7 +23,7 @@
  *    §5); a fund whose coverage is below 60% says so in the row, not in a footnote.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   MAX_HOLDINGS,
@@ -46,12 +46,10 @@ import {
 } from "@/lib/coverage";
 import {
   coverageBand,
-  coverageChip,
   formatCents,
   formatCount,
   formatCoveragePct,
   formatDateLong,
-  formatFreshness,
   formatWeightBp,
 } from "@/lib/format";
 import { useReorderList, type ReorderList } from "@/lib/use-reorder";
@@ -60,25 +58,29 @@ import { useCatalogue, useTickers } from "@/lib/use-release";
 import type { EntryMode, EntryKind, FundDocument, PortfolioEntry } from "@/lib/types";
 import type { WorkspaceModel } from "@/lib/use-workspace";
 
+import { InfoTip } from "@/components/feedback/InfoTip";
+import { Term } from "@/components/prose/Term";
+
+import { EXAMPLE_LABEL, isExamplePortfolio } from "./example";
 import { parsePaste, previewCounts, previewPaste, type PasteLine } from "./paste";
 import { scaleToWhole } from "./total";
 import styles from "./Workspace.module.css";
 
-/** The add field's id: the empty state's "Type it" card focuses it. */
+/** The add field's id, and the paste disclosure's: the empty card focuses the paste box. */
 export const ADD_INPUT_ID = "add-holding";
-/** The paste disclosure, for the empty state's "Paste it" card. */
+/** The paste disclosure, for the empty state's "Paste a list" button. */
 export const PASTE_ID = "paste-holdings";
 const PASTE_TEXTAREA_ID = "paste-holdings-text";
 const SUGGEST_ID = "add-suggestions";
 
-/** Move focus to the add field. Called from a card that is not the field. */
-export function focusAddInput(): void {
-  const element = document.getElementById(ADD_INPUT_ID);
-  if (element instanceof HTMLInputElement) {
-    element.focus();
-    element.select();
-  }
-}
+/** How long the transient status after a switch to dollars stays up. */
+const STATUS_MS = 5_000;
+
+/** What that status says: what happened, and the scale it happened on. */
+const DOLLARS_STATUS = "Switched to dollars, scaled to $10,000.";
+
+/** The example's chip in the holdings header, and the tip that qualifies it. */
+const EXAMPLE_CHIP = "Example";
 
 /** Open the paste box and put the caret in it. */
 export function openPasteBox(): void {
@@ -101,6 +103,18 @@ interface Suggestion {
   label: string;
   detail: string;
   kind: "cash" | "fund";
+}
+
+/**
+ * An allocation line's first word, capitalised.
+ *
+ * The line used to trail a lead sentence ("Percentages are shares of one whole."), so
+ * `tallyOf` writes its half in lower case ("fully allocated"). The lead sentence is gone and
+ * the tally now opens the line, so its first letter is raised here — the case of one letter,
+ * with the words and the figures still owned by `tallyOf`.
+ */
+function lineStart(sentence: string): string {
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
 }
 
 /**
@@ -156,6 +170,33 @@ function AmountField({
 }
 
 /**
+ * The coverage chip's words, banded.
+ *
+ * The percentage is `formatCoveragePct`'s — the one rounding rule, untouched — and the
+ * band is written after it as well as carried by the chip's colour, because "partial" and
+ * "withheld" are facts a reader has to be able to see without colour vision.
+ */
+function coverageChipText(coveragePct: number): string {
+  const pct = formatCoveragePct(coveragePct);
+  switch (coverageBand(coveragePct)) {
+    case "full":
+      return `${pct} covered`;
+    case "partial":
+      return `${pct} covered · partial`;
+    case "none":
+      return `${pct} covered · withheld`;
+  }
+}
+
+/**
+ * What the coverage chip's tip says: the concept's one-sentence definition, which is the
+ * same sentence `/glossary/` expands under `#coverage`, so the chip and the glossary
+ * cannot describe the same number two ways.
+ */
+const COVERAGE_TIP =
+  "Share of a fund's weight we can trace to named companies. 70% or more is full, 60–70% partial, under 60% withheld.";
+
+/**
  * One chip per qualifier: coverage, reporting period, or what kind of row this is.
  *
  * Coverage is two shares for a fund, not one, and the row carries both when the release
@@ -175,7 +216,9 @@ function RowChips({ entry, model }: { entry: PortfolioEntry; model: WorkspaceMod
   }
   const fund = model.fundByTicker.get(entry.key);
   if (!fund) {
-    return <span className="chip">reading the filing…</span>;
+    // The row already says "Reading filing…" beside the ticker, so this slot is a bar
+    // with no words: the same sentence twice is a stutter, not a second fact.
+    return <span className={styles.chipSkeleton} aria-hidden="true" />;
   }
   const pair = coveragePair(fund);
   return (
@@ -184,13 +227,16 @@ function RowChips({ entry, model }: { entry: PortfolioEntry; model: WorkspaceMod
         className={`chip chip--${coverageBand(fund.coverage_pct)}`}
         title={
           pair.identified === null
-            ? "Weight-based coverage: the share of this fund's own holdings the app could name."
+            ? undefined
             : "Attribution: the share of this fund's weight tied to a named company. The dashed figure beside it is the share we can identify as a security, which is a weaker test and is not company coverage."
         }
       >
         {pair.identified === null
-          ? coverageChip(fund.coverage_pct)
+          ? coverageChipText(fund.coverage_pct)
           : `${formatCoveragePct(pair.attributed)} ${ATTRIBUTED_LABEL}`}
+        {pair.identified === null ? (
+          <InfoTip label="Coverage">{COVERAGE_TIP}</InfoTip>
+        ) : null}
       </span>
       {pair.identified === null ? null : (
         <span
@@ -200,15 +246,13 @@ function RowChips({ entry, model }: { entry: PortfolioEntry; model: WorkspaceMod
           {formatCoveragePct(pair.identified)} {IDENTIFIED_LABEL}
         </span>
       )}
-      <span
-        className="chip chip--date"
-        title={`Reporting period ${formatFreshness(
-          fund.as_of,
-          fund.filed_at,
-          fund.lag_days,
-        )}`}
-      >
+      <span className="chip chip--date">
         {formatDateLong(fund.as_of)}
+        <InfoTip label="Holdings date">
+          {`Holdings as of ${formatDateLong(fund.as_of)} · filed ${formatDateLong(
+            fund.filed_at,
+          )} (${fund.lag_days} days later)`}
+        </InfoTip>
       </span>
     </>
   );
@@ -292,7 +336,7 @@ function HoldingRows({
               </span>
               {entry.kind === "fund" ? (
                 <span className={`small muted ${styles.rowName}`}>
-                  {model.fundByTicker.get(entry.key)?.name ?? "reading the filing…"}
+                  {model.fundByTicker.get(entry.key)?.name ?? "Reading filing…"}
                 </span>
               ) : null}
               <div className={styles.rowSub}>
@@ -354,11 +398,30 @@ export function HoldingsPane({
   const [active, setActive] = useState(-1);
   const [adding, setAdding] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
+  /**
+   * The one-line status after a switch to dollars. It is not the `message` box: the box is
+   * an answer that stays until the next action (a refusal, or a confirmation with an undo),
+   * and this is a statement that has done its job the moment it is read — so it is a polite
+   * status that clears after five seconds or on the next edit.
+   */
+  const [modeStatus, setModeStatus] = useState<string | null>(null);
   const [pasteText, setPasteText] = useState("");
   const [pasting, setPasting] = useState(false);
 
+  useEffect(() => {
+    if (modeStatus === null) return;
+    const timer = window.setTimeout(() => setModeStatus(null), STATUS_MS);
+    return () => window.clearTimeout(timer);
+  }, [modeStatus]);
+
   const entries = portfolio.entries;
   const mode = portfolio.mode;
+  /**
+   * The example's own portfolio, once it has been opened. It is labelled in the header,
+   * beside the row count, because that is where a reader looks to see what is in the pane
+   * — an illustration labelled below the page is labelled after it has been read.
+   */
+  const isExample = isExamplePortfolio(mode, entries);
   const present = useMemo(() => entries.map((entry) => entry.key), [entries]);
   const tally = tallyOf(
     mode,
@@ -610,13 +673,18 @@ export function HoldingsPane({
     (next: "bp" | "usd") => {
       if (next === mode) return;
       portfolio.setMode(next);
+      if (next === "usd") {
+        // A statement about what just happened, not a description of the screen: it is
+        // rendered as a polite status and clears itself, so it cannot be mistaken for a
+        // standing note about the numbers below it.
+        setMessage(null);
+        setModeStatus(DOLLARS_STATUS);
+        return;
+      }
       setMessage({
         tone: "info",
-        title: next === "usd" ? "Amounts in dollars" : "Amounts in percent",
-        body:
-          next === "usd"
-            ? "The same split, re-expressed on a $10,000 notional: 60% becomes $6,000.00."
-            : "The same split, re-expressed as shares of your total.",
+        title: "Amounts in percent",
+        body: "The same split, re-expressed as shares of your total.",
       });
     },
     [mode, portfolio],
@@ -639,6 +707,12 @@ export function HoldingsPane({
           <span className="small muted">
             {formatCount(entries.length)} of {formatCount(MAX_HOLDINGS)}
           </span>
+          {isExample ? (
+            <span className="chip">
+              {EXAMPLE_CHIP}
+              <InfoTip label="Example">{EXAMPLE_LABEL}</InfoTip>
+            </span>
+          ) : null}
           {onCollapse ? (
             <button
               type="button"
@@ -700,13 +774,14 @@ export function HoldingsPane({
               autoCapitalize="characters"
               spellCheck={false}
               maxLength={40}
-              placeholder="Ticker, name, or issuer"
+              placeholder="Ticker, fund, issuer, or “cash”"
               value={input}
               onFocus={() => setWantsSuggestions(true)}
               onChange={(event) => {
                 setInput(event.target.value);
                 setActive(-1);
                 setMessage(null);
+                setModeStatus(null);
                 setWantsSuggestions(true);
               }}
               onKeyDown={(event) => {
@@ -733,9 +808,6 @@ export function HoldingsPane({
               {adding ? "Adding…" : "Add"}
             </button>
           </div>
-          <p className="field__hint">
-            A ticker, a fund name, an issuer, or a stock symbol. Type “cash” to add cash.
-          </p>
           {open ? (
             <ul
               className="suggest"
@@ -774,17 +846,18 @@ export function HoldingsPane({
           <summary className="small muted">Paste a list</summary>
           <div className="field">
             <p className="field__hint">
-              One holding per line: <span className="mono">VTI 40%</span>,{" "}
-              <span className="mono">VXUS $12,000</span>,{" "}
-              <span className="mono">BND</span>. A bare number is a percentage. Nothing is
-              added until you press the button.
+              One per line, like <span className="mono">VTI 40%</span> or{" "}
+              <span className="mono">VXUS $12,000</span>. A bare number is a percent.
             </p>
             <textarea
               id={PASTE_TEXTAREA_ID}
               aria-label="Holdings to paste, one per line"
               placeholder={"VTI 40%\nVXUS 30%\nBND 30%"}
               value={pasteText}
-              onChange={(event) => setPasteText(event.target.value)}
+              onChange={(event) => {
+                setPasteText(event.target.value);
+                setModeStatus(null);
+              }}
             />
             {pasteLines.length > 0 ? (
               <ul className={styles.pastePreview} aria-label="What the paste will add">
@@ -820,6 +893,12 @@ export function HoldingsPane({
             </div>
           </div>
         </details>
+
+        {modeStatus ? (
+          <p role="status" className="small muted">
+            {modeStatus}
+          </p>
+        ) : null}
 
         {message ? (
           <div
@@ -862,22 +941,26 @@ export function HoldingsPane({
           ) : null}
           <p className="small muted">
             {mode === "bp" ? (
-              <>
-                Percentages are shares of one whole.{" "}
-                <span
-                  className={`num tally__gate ${
-                    tally.ok ? "tally__gate--open" : "tally__gate--locked"
-                  }`}
-                >
-                  {tally.sentence}
-                </span>
-                .
-              </>
+              <span
+                className={`num tally__gate ${
+                  tally.ok ? "tally__gate--open" : "tally__gate--locked"
+                }`}
+              >
+                {portfolio.unallocatedBp > 0 ? (
+                  // The figures are `formatWeightBp`'s, the words of `tallyOf`'s, and the
+                  // only thing added here is the glossary popover on the word itself: the
+                  // sentence leads the line now, so `Term` has a word of its own to sit on.
+                  <>
+                    {formatWeightBp(portfolio.unallocatedBp)}{" "}
+                    <Term name="unallocated-weight">unallocated</Term>
+                  </>
+                ) : (
+                  lineStart(tally.sentence)
+                )}
+              </span>
             ) : (
               <>
-                <span className="num">{formatCents(portfolio.total)}</span> invested —{" "}
-                {tally.sentence}. Dollar amounts are your money; the shares are worked out
-                from their total.
+                <span className="num">{formatCents(portfolio.total)}</span> total
               </>
             )}
           </p>
@@ -916,20 +999,18 @@ export function HoldingsPane({
             mode={mode}
             entries={entries}
             reorder={reorder}
-            onAmount={(entry, amount) =>
-              portfolio.setAmount(entry.kind, entry.key, amount)
-            }
+            onAmount={(entry, amount) => {
+              setModeStatus(null);
+              portfolio.setAmount(entry.kind, entry.key, amount);
+            }}
             onRemove={(kind, key) => {
               portfolio.remove(kind, key);
               setMessage(null);
+              setModeStatus(null);
             }}
             onRemoveAll={removeAll}
           />
-        ) : (
-          <p className="small muted">
-            Nothing in this portfolio yet. Add a holding above, or paste a list.
-          </p>
-        )}
+        ) : null}
       </div>
     </section>
   );
