@@ -109,6 +109,13 @@ _RUNG_ISIN = "isin_corroborated"
 _RUNG_LEI = "lei_corroborated"
 _RUNG_LEI_ISSUER = gleif.RUNG_LEI
 _RUNG_ISIN_LEI_ISSUER = gleif.RUNG_ISIN_LEI
+#: R3x: the row's ISIN already resolves to exactly one company on another row of the release
+#: *through that row's own filed LEI* (``lei_issuer``). Learned from direct evidence only, and
+#: consulted last, after every other rung has declined, so a row that maps today cannot change.
+_RUNG_ISIN_DIRECT = "isin_direct_join"
+#: R7: OpenFIGI names the row's ISIN as an equity share line (``figi.ShareClassMap``); the row gets an
+#: ``f_`` id. Consulted after R3x, never feeds the identity evidence.
+_RUNG_FIGI = "figi_security"
 _RUNG_NONE = "unmapped"
 #: The rung a row is counted under when it resolves to nothing. Public because a
 #: caller's own refusal rule (``weights.build_vector``) has to name it as well.
@@ -123,8 +130,13 @@ ALL_RUNGS = (
     _RUNG_LEI,
     _RUNG_LEI_ISSUER,
     _RUNG_ISIN_LEI_ISSUER,
+    _RUNG_ISIN_DIRECT,
+    _RUNG_FIGI,
     _RUNG_NONE,
 )
+#: Public names for the two rungs a caller outside this module has to say out loud.
+RUNG_ISIN_DIRECT = _RUNG_ISIN_DIRECT
+RUNG_FIGI = _RUNG_FIGI
 #: The rungs that resolve a row into the foreign-issuer namespace (``l_``).
 ISSUER_RUNGS = (_RUNG_LEI_ISSUER, _RUNG_ISIN_LEI_ISSUER)
 #: The rungs that come from the corroborated-identity table rather than from a
@@ -135,6 +147,12 @@ IDENTITY_RUNGS = (_RUNG_ISIN, _RUNG_LEI)
 #: coincidence; two independent funds holding the same security and both resolving
 #: it to the same issuer is a fact about the security.
 IDENTITY_MIN_OCCURRENCES = 2
+#: The same threshold for the **direct** table (R3x). One sighting is enough here because the
+#: evidence is a different kind: not a ticker or name coincidence, but a row that states its own
+#: issuer LEI beside its own ISIN, which GLEIF then confirms. Unanimity is still required (a second
+#: company for the same ISIN refuses it), and the table is consulted only for a row nothing else
+#: could map. Raising this to 2 is a one-character change if the staged build shows it matters.
+DIRECT_ISIN_MIN_OCCURRENCES = 1
 
 
 def normalize_name(name: str) -> str:
@@ -550,6 +568,10 @@ class IdentityEvidence:
     def __init__(self) -> None:
         self.isin: dict[str, Counter[str]] = defaultdict(Counter)
         self.lei: dict[str, Counter[str]] = defaultdict(Counter)
+        #: ISIN → company, from rows that resolved through their **own filed LEI** only
+        #: (``lei_issuer``). Kept apart from ``isin`` so the two kinds of evidence keep their
+        #: own thresholds and the existing table is byte-for-byte what it was.
+        self.direct_isin: dict[str, Counter[str]] = defaultdict(Counter)
 
     def observe(
         self, isin: str | None, lei: str | None, company_id: str | None
@@ -562,11 +584,18 @@ class IdentityEvidence:
         if lei:
             self.lei[lei][company_id] += 1
 
+    def observe_direct(self, isin: str | None, company_id: str | None) -> None:
+        """Credit one row that resolved by its own filed LEI to its ISIN."""
+        if isin and company_id:
+            self.direct_isin[isin][company_id] += 1
+
     def merge(self, other: "IdentityEvidence") -> None:
         for key, counts in other.isin.items():
             self.isin[key].update(counts)
         for key, counts in other.lei.items():
             self.lei[key].update(counts)
+        for key, counts in other.direct_isin.items():
+            self.direct_isin[key].update(counts)
 
     def table(self) -> "IdentityTable":
         return IdentityTable.from_evidence(self)
@@ -574,6 +603,7 @@ class IdentityEvidence:
 
 def _unanimous(
     candidates: dict[str, Counter[str]],
+    minimum: int = IDENTITY_MIN_OCCURRENCES,
 ) -> tuple[dict[str, str], int, int]:
     """Keep identifier keys with one company and enough sightings.
 
@@ -590,7 +620,7 @@ def _unanimous(
             contested += 1
             continue
         company_id, occurrences = next(iter(counts.items()))
-        if occurrences < IDENTITY_MIN_OCCURRENCES:
+        if occurrences < minimum:
             thin += 1
             continue
         agreed[key] = company_id
@@ -611,6 +641,9 @@ class IdentityTable:
 
     by_isin: dict[str, str] = field(default_factory=dict)
     by_lei: dict[str, str] = field(default_factory=dict)
+    #: R3x: ISIN → company from rows that resolved by their own filed LEI. Consulted by
+    #: ``resolve_direct`` only, after every other rung has declined (see ``weights.build_vector``).
+    by_isin_direct: dict[str, str] = field(default_factory=dict)
     #: Rejected key counts, by identifier kind — the visible cost of the rule.
     contested: dict[str, int] = field(default_factory=dict)
     thin: dict[str, int] = field(default_factory=dict)
@@ -623,12 +656,21 @@ class IdentityTable:
     def from_evidence(cls, evidence: IdentityEvidence) -> "IdentityTable":
         by_isin, contested_isin, thin_isin = _unanimous(evidence.isin)
         by_lei, contested_lei, thin_lei = _unanimous(evidence.lei)
+        by_direct, contested_direct, thin_direct = _unanimous(
+            evidence.direct_isin, DIRECT_ISIN_MIN_OCCURRENCES
+        )
         return cls(
             by_isin=by_isin,
             by_lei=by_lei,
-            contested={"isin": contested_isin, "lei": contested_lei},
-            thin={"isin": thin_isin, "lei": thin_lei},
+            by_isin_direct=by_direct,
+            contested={"isin": contested_isin, "lei": contested_lei, "isin_direct": contested_direct},
+            thin={"isin": thin_isin, "lei": thin_lei, "isin_direct": thin_direct},
         )
+
+    def resolve_direct(self, isin: str | None) -> tuple[str | None, str]:
+        """R3x: the company this ISIN resolved to on another row's own LEI, or unmapped."""
+        company = self.by_isin_direct.get(isin) if isin else None
+        return (company, _RUNG_ISIN_DIRECT) if company else (None, _RUNG_NONE)
 
     def resolve(self, isin: str | None, lei: str | None) -> tuple[str | None, str]:
         """The company this security is, or ``(None, "unmapped")``."""
