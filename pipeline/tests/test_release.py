@@ -201,6 +201,19 @@ def test_validator_rejects_cusip_in_output(tmp_path, document):
     assert validate.validate(corrupt_release(tmp_path, document, mutate)) == 1
 
 
+def test_validator_rejects_isin_in_output(tmp_path, document):
+    """A published name that carries a real ISIN fails the release (a US one embeds a CUSIP)."""
+    from pipeline import identifiers
+
+    body = "US000000001"
+    isin = body + identifiers.isin_check_digit(body)
+
+    def mutate(doc):
+        doc["holdings"][0]["name"] = f"CDS {isin} 05.000 SP 06/20/2027 LONG"
+
+    assert validate.validate(corrupt_release(tmp_path, document, mutate)) == 1
+
+
 def test_validator_rejects_unknown_warning(tmp_path, document):
     def mutate(doc):
         doc["warnings"] = [*doc["warnings"], "trust_me"]

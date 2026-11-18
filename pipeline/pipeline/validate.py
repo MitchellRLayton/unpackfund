@@ -84,7 +84,9 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RELEASE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(\.\d+)?$")
 # A CUSIP is 3-digit issuer prefix + 5 alphanumeric + 1 check digit. Bounded so it
 # cannot match inside a 10-digit CIK or a series id. Non-US issuers may use letters
-# in the prefix, which this misses — hence the belt-and-braces key check.
+# in the prefix, which this misses — hence the belt-and-braces key check. An ISIN
+# (two letters + 9 alphanumeric + a check digit; a US or Canadian one contains a CUSIP)
+# is tested by ``identifiers.is_licensed``, which is what ``_check_cusip`` calls.
 # Imported rather than restated: the pattern that redacts in ``artifact`` and the
 # pattern that fails the release here must be the same rule.
 CUSIP_RE = LICENSED_ID_RE
@@ -1539,7 +1541,7 @@ def _check_cusip(release_dir: Path, manifest: dict, report: Report) -> None:
                 break
         for value in _strings(document):
             if is_licensed(value):
-                offenders.append(f"{path.name}: CUSIP-shaped token {value!r}")
+                offenders.append(f"{path.name}: CUSIP- or ISIN-shaped token {value!r}")
                 break
     if offenders:
         report.fail("cusip", "; ".join(offenders))
