@@ -96,19 +96,44 @@ from . import classify, nport, paths
 #: point is treated as part of a number rather than as a boundary.
 LICENSED_ID_RE = re.compile(r"(?<![0-9A-Za-z.])([0-9]{3}[0-9A-Z]{5}[0-9])(?![0-9A-Za-z]|\.[0-9])")
 
+#: An **ISIN**-shaped token: two letters, nine alphanumerics, a final digit (12
+#: characters), bounded the same way. A US or Canadian ISIN *is* a CUSIP with a country
+#: prefix and a check digit, so it carries the licensed identifier inside it — and the
+#: 9-character rule above cannot see it, because inside an ISIN the CUSIP is glued to
+#: letters on both sides. That is how 86 real ISINs reached the live release in swap
+#: and bond row names (``CDS US… 05.000 SP …``).
+#:
+#: **Shape alone is not enough.** ``BELLSYSTEM24`` is twelve characters ending in a
+#: digit and is a company's name, not an ISIN. A real ISIN always passes its ISO 6166
+#: check digit and a name almost never does, so a token is licensed only when it is
+#: both this shape *and* ``valid_isin`` — ``licensed_tokens`` is the one place that
+#: applies the pair. (A mistyped ISIN fails its own check digit and is not redacted;
+#: it is not an identifier anyone can use, which is the trade for not mangling names.)
+ISIN_TOKEN_RE = re.compile(r"(?<![0-9A-Za-z.])([A-Z]{2}[A-Z0-9]{9}[0-9])(?![0-9A-Za-z]|\.[0-9])")
+
 #: What a row is called when its filed name was the identifier and nothing else.
 UNNAMED_HOLDING = "Unnamed holding"
 
 
+def _drop_isin(match: "re.Match[str]") -> str:
+    """Replacement for an ISIN-shaped token: nothing if it is an ISIN, itself if not."""
+    return "" if valid_isin(match.group(1)) else match.group(0)
+
+
 def public_name(name: str | None) -> str:
-    """Return ``name`` with any licensed identifier removed."""
-    cleaned = LICENSED_ID_RE.sub("", name or "").strip(" -,:;")
+    """Return ``name`` with any licensed identifier (ISIN or CUSIP) removed."""
+    without_isin = ISIN_TOKEN_RE.sub(_drop_isin, name or "")
+    cleaned = LICENSED_ID_RE.sub("", without_isin).strip(" -,:;")
     return cleaned or UNNAMED_HOLDING
 
 
 def is_licensed(value: str | None) -> bool:
-    """True when ``value`` contains a licensed identifier."""
-    return bool(value) and LICENSED_ID_RE.search(value) is not None
+    """True when ``value`` contains a licensed identifier (a CUSIP, or a real ISIN)."""
+    if not value:
+        return False
+    if LICENSED_ID_RE.search(value) is not None:
+        return True
+    return any(valid_isin(match.group(1)) for match in ISIN_TOKEN_RE.finditer(value))
 
 
 # ---------------------------------------------------------------------------
