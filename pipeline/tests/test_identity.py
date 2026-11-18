@@ -168,6 +168,10 @@ def test_rung_counts_name_every_identity_rung():
         # key for key.
         "lei_issuer": 0,
         "isin_lei_issuer": 0,
+        # R3x (the ISIN already resolved on another row's own LEI) and R7 (OpenFIGI names the
+        # share line) are in the vocabulary for the same reason: zero says "ran, matched nothing".
+        "isin_direct_join": 0,
+        "figi_security": 0,
         "unmapped": 5,
     }
 

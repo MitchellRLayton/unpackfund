@@ -52,6 +52,7 @@ from . import (
     classify,
     companies,
     company_countries,
+    figi,
     filings,
     fund_lookthrough,
     identifiers,
@@ -66,6 +67,7 @@ from . import (
 )
 from .companies import CompanyIndex, IdentityEvidence, IdentityTable
 from . import gleif
+from .namespaces import ID_HEX_DIGITS
 from .nport import NportFiling, NportParseError
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -442,6 +444,7 @@ def build_fund(
     issuers: gleif.IssuerIndex | None = None,
     fund_leis: Mapping[str, str] | None = None,
     security_map: identifiers.SecurityMap | None = None,
+    share_map: figi.ShareClassMap | None = None,
 ) -> FundBuild:
     started = time.monotonic()
     found = filings.latest(ref)
@@ -479,6 +482,7 @@ def build_fund(
         issuers=issuers,
         fund_leis=fund_leis,
         security_map=security_map,
+        share_map=share_map,
     )
 
     # Gate 1 — the *investable* schedule reconciles to the fund's own NAV.
@@ -619,6 +623,7 @@ def _attempt(
     issuers: gleif.IssuerIndex | None = None,
     fund_leis: Mapping[str, str] | None = None,
     security_map: identifiers.SecurityMap | None = None,
+    share_map: figi.ShareClassMap | None = None,
 ) -> tuple[FundBuild | None, str | None]:
     try:
         return (
@@ -630,6 +635,7 @@ def _attempt(
                 issuers=issuers,
                 fund_leis=fund_leis,
                 security_map=security_map,
+                share_map=share_map,
             ),
             None,
         )
@@ -702,6 +708,7 @@ def _walk(
     series_out: dict[str, str] | None = None,
     votes: company_countries.Tally | None = None,
     security_map: identifiers.SecurityMap | None = None,
+    share_map: figi.ShareClassMap | None = None,
 ) -> tuple[list[FundBuild], list[dict[str, str]]]:
     """Build every fund once, collecting the artifacts and the failures.
 
@@ -761,6 +768,7 @@ def _walk(
                     issuers=issuers,
                     fund_leis=fund_leis,
                     security_map=security_map,
+                    share_map=share_map,
                 ),
                 ref,
             )
@@ -778,6 +786,7 @@ def _walk(
                         issuers=issuers,
                         fund_leis=fund_leis,
                         security_map=security_map,
+                        share_map=share_map,
                     ),
                 )
                 for ref in refs
@@ -836,7 +845,9 @@ def _gleif_jurisdictions(
 
 
 def _identity_namespaces(
-    issuers: "gleif.IssuerIndex | None", rung_totals: dict[str, int]
+    issuers: "gleif.IssuerIndex | None",
+    rung_totals: dict[str, int],
+    share_map: "figi.ShareClassMap | None" = None,
 ) -> dict[str, dict]:
     """The published contract for both id namespaces, and who was in each.
 
@@ -868,6 +879,20 @@ def _identity_namespaces(
                 "isin_lei_issuer": int(rung_totals.get(gleif.RUNG_ISIN_LEI, 0))
                 - int(issuers.bridges.get(gleif.RUNG_ISIN_LEI, 0)),
             },
+        }
+    if share_map is not None:
+        # Present only when the release was built against an OpenFIGI cache, so a release built
+        # without one is byte-identical to the releases before this namespace existed.
+        namespaces["f_"] = {
+            "kind": "openfigi_share_class_security",
+            "key": f"sha256(shareClassFIGI)[:{ID_HEX_DIGITS}]",
+            "source": "OpenFIGI (FIGI identifiers are public domain)",
+            # An f_ company counts toward coverage_pct; the weight it carries is published per
+            # fund as security_matched_pct (owner decision OD-CV1).
+            "counts_toward_coverage": True,
+            "accepted_security_types": sorted(figi.ACCEPTED_TYPES),
+            "cache": share_map.provenance(),
+            "rows": {"figi_security": int(rung_totals.get(companies.RUNG_FIGI, 0))},
         }
     return namespaces
 
@@ -1007,6 +1032,9 @@ def build_release(
     security_map: identifiers.SecurityMap | None = None,
     layer_dir: Path | None = None,
     size_buckets: bool = True,
+    share_map: figi.ShareClassMap | None = None,
+    figi_cache: Path | None = None,
+    isin_direct_join: bool = False,
 ) -> Path:
     started = time.monotonic()
     index = CompanyIndex.load()
@@ -1064,6 +1092,25 @@ def build_release(
             f"(layer {security_map.release}, supplied by the caller)"
         )
 
+    # R7's lookup (``figi.ShareClassMap``): read once, like the security map, from a cache file
+    # the nightly refresh step wrote *before* this build. The build never calls OpenFIGI
+    # (H-CV5), so two builds of one release read the same bytes, and the cache's sha256 is
+    # recorded in the manifest as the pin. A cache that was asked for and cannot be read is a
+    # refusal, not a quiet fall-back to "no f_ rows": that would publish a coverage drop.
+    if share_map is None and figi_cache is not None:
+        try:
+            share_map = figi.ShareClassMap.load(figi_cache, figi.pepper_from_env())
+        except (figi.FigiError, OSError) as error:
+            raise GateError(f"the OpenFIGI cache cannot be used: {error}") from error
+    if share_map is not None:
+        counts = share_map.stats()
+        _log(
+            f"OpenFIGI cache: {counts['records']:,} answers, {counts['accepted']:,} accepted "
+            f"as equity share lines (sha256 {str(share_map.sha256)[:12]}…)"
+        )
+    else:
+        _log("OpenFIGI cache: none — no row can become an f_ company")
+
     release = release_id or time.strftime("%Y-%m-%d", time.gmtime()) + ".1"
     release_dir = out_dir / "releases" / release
     funds_dir = release_dir / "funds"
@@ -1109,6 +1156,15 @@ def build_release(
             merge_evidence=evidence,
             series_out=fund_leis,
             security_map=security_map,
+            # R3x learns from rows that resolved through their own filed LEI, which only the
+            # issuer index can say; the ticker/name evidence this pass has always collected
+            # is unchanged by it (``evidence.observe`` is gated on the ladder's own answer).
+            #
+            # **Off unless asked for.** R3x maps rows that are unmapped today, so switching it on
+            # changes published numbers, and a change of numbers ships as a staged release with a
+            # before/after table the owner approves first (H-CV7). Without the flag this pass gets
+            # no issuer index, collects no direct evidence, and the table is the one built before.
+            issuers=issuers if isin_direct_join else None,
         )
         table = evidence.table()
         _log(
@@ -1118,6 +1174,12 @@ def build_release(
             f"contested, {table.thin.get('isin', 0)}/{table.thin.get('lei', 0)} seen "
             f"once) in {time.monotonic() - started_evidence:.1f}s"
         )
+        if isin_direct_join:
+            _log(
+                f"R3x (--isin-direct-join): {len(table.by_isin_direct):,} ISINs resolve through "
+                f"another row's own filed LEI ({table.contested.get('isin_direct', 0)} contested, "
+                f"{table.thin.get('isin_direct', 0)} below threshold)"
+            )
     else:
         _log("identity pass: disabled (--no-identity)")
 
@@ -1148,6 +1210,7 @@ def build_release(
         fund_leis=fund_leis or None,
         votes=country_tally,
         security_map=security_map,
+        share_map=share_map,
     )
 
     if failures and on_error == "fail":
@@ -1318,7 +1381,7 @@ def build_release(
         files=files,
         rung_counts={name: int(rung_totals.get(name, 0)) for name in RUNG_NAMES},
         asset_cat_counts=dict(sorted(cat_totals.items())),
-        identity_namespaces=_identity_namespaces(issuers, rung_totals),
+        identity_namespaces=_identity_namespaces(issuers, rung_totals, share_map),
         country_fallback=country_fallback_manifest,
         generated_at=generated_at,
     )
@@ -1534,6 +1597,21 @@ def main(argv: list[str] | None = None) -> int:
         "against, and a half-written layer beside it cannot be chosen by accident)",
     )
     parser.add_argument(
+        "--isin-direct-join",
+        action="store_true",
+        help="turn on rung R3x: an ISIN that resolved to one company on another row's own filed LEI "
+        "resolves the same ISIN on a row without one. Maps rows that are unmapped today, so it "
+        "changes published numbers: use it for a staged release the owner has agreed to compare",
+    )
+    parser.add_argument(
+        "--figi-cache",
+        type=Path,
+        default=None,
+        help="OpenFIGI answer cache (figi_cache_v1.jsonl, written by `python -m pipeline.figi "
+        "refresh` before the build) — turns on rung R7. Needs FIGI_CACHE_PEPPER. Absent: no row "
+        "can become an f_ company, and the release is byte-identical to one built before R7",
+    )
+    parser.add_argument(
         "--no-security-identity",
         action="store_true",
         help="skip the security map (identifier → FIGI) and publish identification "
@@ -1620,6 +1698,8 @@ def main(argv: list[str] | None = None) -> int:
             security_identity=not args.no_security_identity,
             layer_dir=args.layer,
             size_buckets=not args.no_size_buckets,
+            figi_cache=args.figi_cache,
+            isin_direct_join=args.isin_direct_join,
         )
     except (
         GateError,

@@ -24,6 +24,7 @@ from typing import Any
 
 from .identifiers import LICENSED_ID_RE, is_licensed
 from .gleif import is_issuer_id, is_sec_company_id, LEI_RE
+from .namespaces import COMPANY_ID_RE, is_security_id
 
 from . import paths
 from . import sizes
@@ -41,7 +42,7 @@ REPO_ROOT = paths.REPO_ROOT
 TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,9}$")
 
 #: A published company id: ``c_`` + 10-digit CIK, or ``l_`` + 16 hex (companies.py).
-COMPANY_ID_RE = re.compile(r"^(?:c_\d{10}|l_[0-9a-f]{16})$")
+# ``COMPANY_ID_RE`` (all three namespaces) is declared once, in ``namespaces``.
 #: ``YYYY-MM-DD``, the shape every date in a release carries. The size table is the
 #: one object where a date is an argument rather than a filing artefact (ADR-0022).
 _DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -620,7 +621,56 @@ def _check_fund(document: dict, report: Report) -> None:
 
     _check_categories(document, report)
     _check_identified(document, report)
+    _check_security_matched(document, report)
     _check_fund_of_funds(document, report)
+
+
+def _check_security_matched(document: dict, report: Report) -> None:
+    """``security_matched_pct`` is the weight on ``f_`` rows, present exactly when there is any.
+
+    An ``f_`` company counts toward ``coverage_pct`` but is only a named share line (owner
+    decision OD-CV1), so the part of the coverage figure that is security-matched is published
+    beside it. Held here: the field appears if and only if the document's own rows carry an ``f_``
+    id (a field with no row behind it, or rows with no field, is the defect); it equals the
+    weight those rows carry over the gross weight, to one decimal; and it can never exceed
+    ``coverage_pct``, of which it is a part. Optional by presence, so a document that predates it
+    still validates.
+    """
+    ticker = document.get("ticker", "?")
+    rows = [row for row in document.get("holdings") or [] if isinstance(row, dict)]
+    gross = sum(abs(int(row.get("weight_bp") or 0)) for row in rows)
+    matched = sum(
+        abs(int(row.get("weight_bp") or 0)) for row in rows if is_security_id(row.get("company_id"))
+    )
+    published = "security_matched_pct" in document
+    if not matched:
+        if published:
+            report.fail(
+                f"{ticker}.security_matched_pct", "published, but no holding carries an f_ id"
+            )
+        return
+    if not published:
+        report.fail(
+            f"{ticker}.security_matched_pct",
+            f"missing: {matched:,} bp of holdings carry an f_ id",
+        )
+        return
+    pct = document["security_matched_pct"]
+    if isinstance(pct, bool) or not isinstance(pct, (int, float)) or not 0 <= pct <= 100:
+        report.fail(f"{ticker}.security_matched_pct", f"{pct!r} is not a percentage")
+        return
+    exact = 100 * matched / gross if gross else 0.0
+    if abs(pct - exact) > IDENTIFIED_PERCENT_SLACK:
+        report.fail(
+            f"{ticker}.security_matched_pct", f"{pct!r} != recomputed {exact:.4f} from the rows"
+        )
+    coverage = document.get("coverage_pct")
+    if isinstance(coverage, (int, float)) and not isinstance(coverage, bool):
+        if pct > coverage + IDENTIFIED_PERCENT_SLACK:
+            report.fail(
+                f"{ticker}.security_matched_pct",
+                f"{pct!r} exceeds coverage_pct {coverage!r}, of which it is a part",
+            )
 
 
 #: A fund publishing at least this much in funds must name the sleeves it holds.
@@ -1574,9 +1624,9 @@ def _check_lei(release_dir: Path, manifest: dict, report: Report) -> None:
                 offenders.append(f"{path.name}: LEI-shaped token")
                 break
         for value in _strings(document):
-            if is_sec_company_id(value) or is_issuer_id(value):
+            if is_sec_company_id(value) or is_issuer_id(value) or is_security_id(value):
                 continue
-            if value.startswith(("c_", "l_")) and len(value) > 2:
+            if value.startswith(("c_", "l_", "f_")) and len(value) > 2:
                 bad_ids.append(f"{path.name}: malformed company id {value!r}")
                 break
     if offenders:
@@ -1586,7 +1636,7 @@ def _check_lei(release_dir: Path, manifest: dict, report: Report) -> None:
     if bad_ids:
         report.fail("company_id", "; ".join(bad_ids))
     else:
-        report.ok("company_id", "every c_/l_ id matches its namespace's shape")
+        report.ok("company_id", "every c_/l_/f_ id matches its namespace's shape")
 
 
 def _check_budget(release_dir: Path, report: Report) -> None:

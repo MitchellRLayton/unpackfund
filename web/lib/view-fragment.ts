@@ -22,7 +22,7 @@
  */
 
 import { decodePortfolio, encodePortfolio } from "./fragment";
-import type { Portfolio } from "./types";
+import { COMPANY_ID_PATTERN, type Portfolio } from "./types";
 
 export const LENSES = ["companies", "markets", "funds", "overlap", "quality"] as const;
 export type Lens = (typeof LENSES)[number];
@@ -32,13 +32,13 @@ export interface ViewState {
   /** `null` when the fragment carries no portfolio (a company page, or a bare lens). */
   portfolio: Portfolio | null;
   lens: Lens;
-  /** A company id (`c_…` or `l_…`), or `null`. */
+  /** A company id (`c_…`, `l_…` or `f_…`), or `null`. */
   companyId: string | null;
   /** Why a portfolio part failed to decode, when it did. */
   problem: string | null;
 }
 
-const COMPANY_RE = /^(?:c_\d{10}|l_[0-9a-f]{16})$/;
+const COMPANY_RE = COMPANY_ID_PATTERN;
 
 export function isLens(value: string): value is Lens {
   return (LENSES as readonly string[]).includes(value);
