@@ -78,6 +78,9 @@ from typing import Iterable, Mapping, Sequence
 
 from . import release
 from .artifact import canonical_bytes, utc_now_iso
+#: The storage allowance has one definition, in `cost_ceilings`, so the prune and the
+#: upload gate cannot disagree about where the free tier ends.
+from .cost_ceilings import GB, R2_FREE_BYTES as FREE_TIER_BYTES
 from .r2 import IMMUTABLE, ObjectEntry, R2Client, R2Error
 
 RELEASES_PREFIX = "releases/"
@@ -103,8 +106,6 @@ MASS_DELETE_FRACTION = 0.60
 #: One DeleteObjects request takes at most this many keys.
 DELETE_BATCH = 1000
 
-GB = 1_000_000_000
-FREE_TIER_BYTES = 10 * GB
 
 KEEP = "keep"
 STUB = "stub"
