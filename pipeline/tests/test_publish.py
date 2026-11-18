@@ -14,6 +14,7 @@ from unittest import mock
 import pytest
 
 from pipeline import release
+from pipeline.cost_ceilings import CostCeilingError
 from pipeline.r2 import NO_CACHE, IMMUTABLE, PublicResponse, R2Error
 from tests.conftest import fund_document, write_release
 
@@ -33,7 +34,6 @@ class FakeR2:
     def list_keys(self, prefix: str = "") -> list[str]:
         """The upload path asks for today's keys to bound the day's Class A operations."""
         return sorted(key for key in self.objects if key.startswith(prefix))
-
 
 class FakePublic:
     """Serves whatever FakeR2 holds, the way the data host would."""
@@ -96,8 +96,15 @@ def test_uploads_every_object_then_the_pointer(release_dir):
     assert report.pointer_key == "staging/latest/release.json"
     # The pointer is written last, and every object in the release directory is
     # published — not just the funds the manifest happens to enumerate.
+    # The usage ledger is written first (accounting before the spend it accounts for), the
+    # pointer last (a pointer before its objects would be a live 404 for every fund).
+    assert storage.puts[0] == release.USAGE_KEY
     assert storage.puts[-1] == "staging/latest/release.json"
-    published = {key.removeprefix("releases/2026-10-28.9/") for key in storage.puts[:-1]}
+    published = {
+        key.removeprefix("releases/2026-10-28.9/")
+        for key in storage.puts
+        if key.startswith("releases/2026-10-28.9/")
+    }
     on_disk = {
         path.relative_to(release_dir).as_posix()
         for path in release_dir.rglob("*")
@@ -261,7 +268,8 @@ def test_a_transient_transport_error_is_retried_not_fatal(release_dir):
         _, _, report = publish(release_dir, storage)
 
     assert report.failures == []
-    # Every key failed once and succeeded on the retry: one 0.5 s backoff per key.
+    # Every key failed once and succeeded on the retry: one 0.5 s backoff per key — the usage
+    # ledger, every release object, and the pointer.
     assert set(storage.attempts.values()) == {2}
     assert sleeps == [0.5] * len(storage.attempts)
     published = [key for key in storage.puts if key.startswith("releases/")]
@@ -293,6 +301,10 @@ def test_a_read_timeout_on_the_public_check_is_retried(release_dir):
 
 def test_a_permanent_error_still_fails_the_upload(release_dir):
     storage = FlakyR2(failures=99)
-    with mock.patch.object(release, "_retry_sleep", lambda _s: None), pytest.raises(R2Error):
+    # The ledger is the first write, so a permanently failing store is refused at the ledger:
+    # CostCeilingError wraps the reason, and the retry policy still ran.
+    with mock.patch.object(release, "_retry_sleep", lambda _s: None), pytest.raises(
+        (R2Error, CostCeilingError)
+    ):
         publish(release_dir, storage)
     assert max(storage.attempts.values()) == 4, "three retries, then the error is the answer"
