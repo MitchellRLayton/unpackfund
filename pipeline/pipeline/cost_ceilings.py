@@ -98,6 +98,16 @@ R2_STORAGE_BUDGET = int(R2_FREE_BYTES * HEADROOM)
 #: Class A objects one release may write, at one release a day: 1M ops a month / 30 days.
 MAX_RELEASE_OBJECTS = R2_FREE_CLASS_A_OPS // 30
 
+#: The trailing-30-day operating line for release uploads. **Not** `HEADROOM`: storage and
+#: operation shortages fail differently. At 75 % the guard would refuse the nightly release
+#: around the 20th of a busy month and freeze the site's data for a week to save cents; at
+#: 95 % a nightly loop still fits (30 x 22,357 = 670,710), and the 5 % left over covers what
+#: the ledger does not count — the ~24 k of listings and any remediation copies.
+#:
+#: A rolling window, not a calendar month: the allowance resets on the billing period, and the
+#: 2026-11-17 charge was the period's million counted from 2026-10-28.
+R2_WINDOW_BUDGET = int(R2_FREE_CLASS_A_OPS * 0.95)
+
 #: How many releases one date may publish: the plan, a hotfix, and one retry. 2026-11-02
 #: published eight (176,181 objects) because every re-run allocated a new id. The ceiling is
 #: `MAX_DAILY_RELEASES x this release's own size`, not a fixed object count: a fixed count
@@ -196,6 +206,32 @@ def assess_day(*, objects: int, already: int) -> list[Ceiling]:
     ]
 
 
+#: R2 bills the *next whole million* once the allowance is crossed ("1,000,001 operations bills
+#: as 2,000,000"), so the marginal cost of an operation inside an already-billed band is zero,
+#: and the next charge starts only at the boundary. The guard therefore stops at 95 % of the
+#: band it is in: 950,000 while free, then 1,950,000 in the second band, and so on. The margin
+#: covers what the ledger does not count — listings, remediation copies, a hand-rolled upload.
+BAND_MARGIN = 50_000
+
+
+def window_ceiling(used: int) -> int:
+    """The line this window must not cross, given what it has already spent.
+
+    Below the allowance that is `R2_WINDOW_BUDGET`. Once the window is inside a billable band
+    the next million is already paid for, so refusing would buy nothing: the line becomes the
+    top of that band.
+    """
+    if used < R2_FREE_CLASS_A_OPS:
+        return R2_WINDOW_BUDGET
+    band = (used // R2_FREE_CLASS_A_OPS) + 1
+    return band * R2_FREE_CLASS_A_OPS - BAND_MARGIN
+
+
+def assess_window(*, used: int, adding: int) -> list[Ceiling]:
+    """What the trailing 30 days have spent, plus this release, against the band it is in."""
+    return [Ceiling("R2 Class A, trailing 30 days", used + adding, window_ceiling(used), "objects")]
+
+
 def assess_bucket(*, bytes: int) -> list[Ceiling]:
     """The bucket as it stands after a prune, against the storage budget.
 
@@ -256,6 +292,32 @@ def guard_day(*, objects: int, already: int, release_id: str = "") -> list[Ceili
             f"  one release a day is the plan, and this date is already at three releases' "
             f"worth (ADR-0028). A same-day re-run of unchanged data is skipped before the "
             f"first write, so this is a fourth distinct release today"
+        )
+    return ceilings
+
+
+def guard_window(*, used: int, adding: int, release_id: str = "") -> list[Ceiling]:
+    """Refuse a release that would take the trailing 30 days past their operating line.
+
+    This is the budget the November charge showed was missing: the per-release and per-date
+    guards each passed, and the period still crossed the allowance because nothing counted it.
+    `used` comes from the usage ledger (`release.read_usage`), which counts operations
+    performed — the bucket's own size is the wrong number, because retention deletes old
+    releases and their operations were still billed.
+    """
+    ceilings = assess_window(used=used, adding=adding)
+    over = over_budget(ceilings)
+    if over:
+        label = f"release {release_id}" if release_id else "this release"
+        detail = "\n".join(ceiling.line() for ceiling in over)
+        raise CostCeilingError(
+            f"REFUSED: {label} would take the last 30 days past their Class A budget\n"
+            f"{detail}\n"
+            f"  {used:,} already spent in the window (usage ledger), and this release adds {adding:,}\n"
+            f"  the line is {window_ceiling(used):,} for the band this window is in; it reserves "
+            f"{BAND_MARGIN:,} for the listings and copies the ledger does not count, because R2 bills "
+            f"the next whole million and crossing it starts a new $4.50 charge (ADR-0028). Publishing "
+            f"less, or packing the release smaller, is the fix; raising the line is an ADR amendment"
         )
     return ceilings
 

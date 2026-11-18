@@ -23,11 +23,11 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from . import paths
-from .cost_ceilings import CostCeilingError, guard_day, guard_release
+from .cost_ceilings import CostCeilingError, guard_day, guard_release, guard_window
 from .r2 import IMMUTABLE, NO_CACHE, Credentials, PublicReader, R2Client, R2Error
 from .sigv4 import EMPTY_PAYLOAD_SHA256  # noqa: F401  (re-exported for tests that stub signing)
 
@@ -86,6 +86,8 @@ class UploadReport:
     unchanged: bool = False
     #: Objects already published under `releases/<as_of>/` today, including this release's.
     day_objects: int | None = None
+    #: Class A operations in the trailing 30 days including this release, from the ledger.
+    window_objects: int | None = None
     started_at: str = ""
     finished_at: str = ""
 
@@ -420,6 +422,44 @@ def _read_json(public: PublicReader, key: str, *, cache_bust: str | None = None)
     return document if isinstance(document, dict) else None
 
 
+#: Where the last 30 days of Class A operations are counted. **Not** published data: the app
+#: never reads it, it lives outside `releases/`, and it is the one mutable object besides the
+#: pointer. A rolling 30 days rather than a calendar month, because the allowance resets on the
+#: billing period, and a period that starts on the 28th makes "this month" the wrong sum: the
+#: 2026-11-17 charge was the *period's* million, counted from 2026-10-28.
+USAGE_KEY = "ops/usage.json"
+USAGE_WINDOW_DAYS = 30
+
+
+def read_usage(public: PublicReader) -> list[dict]:
+    """The usage ledger's entries, or none when it is absent or unreadable.
+
+    An absent ledger makes the window a floor rather than a total, and the guard says so.
+    """
+    document = _read_json(public, USAGE_KEY, cache_bust=str(int(time.time()))) or {}
+    entries = document.get("entries")
+    return list(entries) if isinstance(entries, list) else []
+
+
+def used_in_window(entries: list[dict], today: str, *, days: int = USAGE_WINDOW_DAYS) -> int:
+    """Objects published on dates inside the last `days`, inclusive of today."""
+    cutoff = (date.fromisoformat(today) - timedelta(days=days - 1)).isoformat()
+    total = 0
+    for entry in entries:
+        when = str(entry.get("date") or "")
+        if when and when >= cutoff and when <= today:
+            total += int(entry.get("objects") or 0)
+    return total
+
+
+def write_usage(client, entries: list[dict], today: str) -> None:
+    """Replace the ledger, keeping only entries the window can still count."""
+    cutoff = (date.fromisoformat(today) - timedelta(days=USAGE_WINDOW_DAYS)).isoformat()
+    kept = [entry for entry in entries if str(entry.get("date") or "") >= cutoff]
+    body = json.dumps({"entries": kept}, sort_keys=True, separators=(",", ":")).encode()
+    client.put(USAGE_KEY, body, cache_control=NO_CACHE)
+
+
 def upload_release(
     release: Path,
     *,
@@ -504,6 +544,16 @@ def upload_release(
         guard_day(objects=len(objects), already=already_today, release_id=str(manifest["as_of"]))
         report.day_objects = already_today + len(objects)
 
+        # The trailing 30 days, which is the window the allowance is measured over. The ledger
+        # read is one free GET; the bucket's own prefix count cannot stand in for it, because
+        # retention deletes old releases and their operations were still billed.
+        today = str(manifest["as_of"]).strip("/").split(".")[0]
+        entries = read_usage(public)
+        used = used_in_window(entries, today)
+        this_release = len(objects) + 1  # the objects and the pointer put
+        guard_window(used=used, adding=this_release, release_id=str(manifest["as_of"]))
+        report.window_objects = used + this_release
+
     # Objects first: every immutable artifact, then its manifest.
     #
     # Day 4 uploaded these one at a time and re-read each one from the public URL
@@ -563,6 +613,18 @@ def upload_release(
 
     if not dry_run:
         _observe_live_pointer(report, public)
+        if not report.failures:
+            # The ledger is written only for an upload that landed, so a failed run cannot
+            # spend the window's budget twice.
+            entries = read_usage(public) + [
+                {"date": today, "id": str(manifest["as_of"]), "objects": len(objects) + 1}
+            ]
+            try:
+                write_usage(client, entries, today)
+            except R2Error as error:
+                # The release is published; failing the upload over the counter would be worse
+                # than an under-counted window.
+                print(f"  warning: the usage ledger was not updated ({error}); the window guard under-counts")
 
     report.finished_at = datetime.now(UTC).isoformat(timespec="seconds")
     if report_dir is not None and not dry_run:
@@ -926,6 +988,8 @@ def _print_report(report: UploadReport) -> None:
         return
     if report.day_objects is not None:
         print(f"  today: {report.day_objects:,} object(s) published under this date so far")
+    if report.window_objects is not None:
+        print(f"  last 30 days: {report.window_objects:,} Class A operation(s) recorded")
     # A 13,750-object release cannot print one line per object and still be read.
     # Under 40 objects the per-object list is the report; above that it is a summary
     # plus every failure, because a failure is the only line that needs acting on.

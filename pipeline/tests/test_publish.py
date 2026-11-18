@@ -34,6 +34,18 @@ class FakeR2:
         """The upload path asks for today's keys to bound the day's Class A operations."""
         return sorted(key for key in self.objects if key.startswith(prefix))
 
+    def list_prefixes(self, prefix: str, *, delimiter: str = "/") -> list[str]:
+        """…and for the month's release prefixes, one request rather than one per object."""
+        found = set()
+        for key in self.objects:
+            if not key.startswith(prefix):
+                continue
+            rest = key[len(prefix) :]
+            head = rest.split(delimiter)[0]
+            if delimiter in rest and head:
+                found.add(f"{prefix}{head}{delimiter}")
+        return sorted(found)
+
 
 class FakePublic:
     """Serves whatever FakeR2 holds, the way the data host would."""
@@ -96,8 +108,14 @@ def test_uploads_every_object_then_the_pointer(release_dir):
     assert report.pointer_key == "staging/latest/release.json"
     # The pointer is written last, and every object in the release directory is
     # published — not just the funds the manifest happens to enumerate.
-    assert storage.puts[-1] == "staging/latest/release.json"
-    published = {key.removeprefix("releases/2026-10-28.9/") for key in storage.puts[:-1]}
+    # The pointer is written, then the month's usage ledger — never before the bytes exist.
+    assert storage.puts[-2] == "staging/latest/release.json"
+    assert storage.puts[-1] == release.USAGE_KEY
+    published = {
+        key.removeprefix("releases/2026-10-28.9/")
+        for key in storage.puts
+        if key.startswith("releases/2026-10-28.9/")
+    }
     on_disk = {
         path.relative_to(release_dir).as_posix()
         for path in release_dir.rglob("*")
@@ -261,9 +279,12 @@ def test_a_transient_transport_error_is_retried_not_fatal(release_dir):
         _, _, report = publish(release_dir, storage)
 
     assert report.failures == []
-    # Every key failed once and succeeded on the retry: one 0.5 s backoff per key.
-    assert set(storage.attempts.values()) == {2}
-    assert sleeps == [0.5] * len(storage.attempts)
+    # Every release key failed once and succeeded on the retry: one 0.5 s backoff per key.
+    # (The usage ledger is best-effort and not retried, so it is counted separately.)
+    release_attempts = {key: count for key, count in storage.attempts.items() if key.startswith("releases/")}
+    assert set(release_attempts.values()) == {2}
+    # The pointer is retried too, and it is not a release key.
+    assert sleeps == [0.5] * (len(release_attempts) + 1)
     published = [key for key in storage.puts if key.startswith("releases/")]
     assert len(published) == len(set(published)), "a retried object is not uploaded twice"
 

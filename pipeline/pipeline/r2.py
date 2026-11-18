@@ -290,6 +290,37 @@ class R2Client:
         """The keys under `prefix`, every page of them."""
         return [entry.key for entry in self.list_objects(prefix)]
 
+    def list_prefixes(self, prefix: str, *, delimiter: str = "/") -> list[str]:
+        """The immediate sub-prefixes under `prefix`: one request, not one per object.
+
+        `ListObjects` bills as Class A per *request*, so asking which releases exist must not
+        walk every object inside them. This is what the monthly budget guard calls: one
+        request returns ~34 release prefixes where `list_keys` would spend 625 pages.
+        """
+        params = [("list-type", "2"), ("max-keys", "1000"), ("delimiter", delimiter)]
+        if prefix:
+            params.append(("prefix", prefix))
+        encoded = "&".join(
+            f"{urllib.parse.quote(name, safe='')}={urllib.parse.quote(value, safe='')}" for name, value in params
+        )
+        decoded = "&".join(f"{name}={value}" for name, value in params)
+        _, _, body = self._send(
+            "GET",
+            f"{self.endpoint}/{self.bucket}?{encoded}",
+            sign_url=f"{self.endpoint}/{self.bucket}?{decoded}",
+            key=prefix or None,
+        )
+        try:
+            root = ET.fromstring(body)
+        except ET.ParseError as error:
+            raise R2Error("ListObjectsV2", 0, f"unparseable listing: {error}", prefix or None) from error
+        prefixes = [value for node in _findall(root, "CommonPrefixes") if (value := _findtext(node, "Prefix"))]
+        if (_findtext(root, "IsTruncated") or "false").strip().lower() == "true":
+            # More than 1,000 sub-prefixes under one month is far past the budget already;
+            # a short count would understate usage, which is the one direction that must not happen.
+            raise R2Error("ListObjectsV2", 0, f"{prefix!r} has more than 1,000 sub-prefixes", prefix or None)
+        return prefixes
+
     def delete_object(self, key: str) -> None:
         """Delete one object. Missing is not an error: DELETE is idempotent on R2."""
         try:

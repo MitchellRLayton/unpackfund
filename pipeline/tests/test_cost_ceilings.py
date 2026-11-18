@@ -198,6 +198,17 @@ class _Store:
         self.listings.append(prefix)
         return sorted(key for key in self.keys if key.startswith(prefix))
 
+    def list_prefixes(self, prefix: str, *, delimiter: str = "/") -> list[str]:
+        found = set()
+        for key in self.keys:
+            if not key.startswith(prefix):
+                continue
+            rest = key[len(prefix) :]
+            head = rest.split(delimiter)[0]
+            if delimiter in rest and head:
+                found.add(f"{prefix}{head}{delimiter}")
+        return sorted(found)
+
     def put(self, key: str, body: bytes, *, content_type: str = "", cache_control: str = "") -> str:
         self.puts.append(key)
         return "etag"
@@ -388,3 +399,113 @@ def test_guard_day_leaves_room_for_a_retry_after_a_partial_upload():
     """
     partial = int(WIDE_OBJECTS * 0.88)
     cc.guard_day(objects=WIDE_OBJECTS, already=WIDE_OBJECTS + partial)
+
+
+# -- the monthly budget: the unit the allowance is actually measured in --------
+def test_the_ceiling_moves_to_the_band_once_the_allowance_is_crossed():
+    """R2 bills the next whole million, so inside a paid band the next charge is at the boundary.
+
+    Below the allowance the line is 950,000; inside the second band it is 1,950,000, not
+    950,000 — refusing there would freeze publishing and buy nothing.
+    """
+    assert cc.window_ceiling(0) == 950_000
+    assert cc.window_ceiling(1_062_238) == 1_950_000  # the measured 2026-11-18 position
+    assert cc.window_ceiling(1_960_000) == 1_950_000  # already past: refuse
+    cc.guard_window(used=1_062_238, adding=22_357)      # publishing continues inside the band
+    with pytest.raises(cc.CostCeilingError):
+        cc.guard_window(used=1_950_000, adding=22_357)  # the next boundary is 2,000,000
+
+
+def test_guard_window_refuses_when_the_rolling_month_adds_up():
+    """A 43rd release at 22,357 objects is 961,351 — over the 950,000 line, under the 1M bill.
+
+    This is the guard the November charge showed was missing: the per-release and per-date
+    checks both passed while the period went on to cross a million.
+    """
+    size = WIDE_OBJECTS  # 22,357 measured
+    fits = cc.R2_WINDOW_BUDGET // size
+    assert fits == 42
+    cc.guard_window(used=(fits - 1) * size, adding=size)
+    with pytest.raises(cc.CostCeilingError):
+        cc.guard_window(used=fits * size, adding=size)
+    assert (fits + 1) * size < cc.R2_FREE_CLASS_A_OPS  # it stops before the bill, not after
+
+
+def test_the_window_is_thirty_days_not_the_calendar_month():
+    """The allowance resets on the billing period, and the 2026-11-17 charge proved it is not
+    the 1st: the period's million was counted from 2026-10-28. An entry 31 days old leaves
+    the window; a 29-day-old one stays."""
+    entries = [
+        {"date": "2026-10-18", "objects": 999},   # outside
+        {"date": "2026-10-20", "objects": 500},   # 30 days before 2026-11-18 → inside
+        {"date": "2026-11-02", "objects": 300},   # inside
+        {"date": "2026-11-19", "objects": 700},   # after today, ignored
+    ]
+    from pipeline import release
+
+    assert release.used_in_window(entries, "2026-11-18") == 800
+
+
+def test_the_usage_ledger_is_read_and_written_around_the_release(tmp_path):
+    """The guard counts operations performed, not objects still stored.
+
+    Retention deletes old releases: the bucket held 4 release prefixes on 2026-11-18 while
+    November had published ~34, so a prefix count would have understated the period by ~85 %.
+    """
+    from pipeline import release
+    from tests.conftest import fund_document, write_release
+
+    directory = write_release(tmp_path, [fund_document()], release_id="2026-11-18.9")
+    public = _Public(
+        {
+            "ops/usage.json": json.dumps(
+                {"entries": [{"date": "2026-11-17", "objects": 949_995, "id": "seed"}]}
+            ).encode()
+        }
+    )
+    store = _Store()
+
+    with pytest.raises(cc.CostCeilingError) as error:
+        release.upload_release(
+            directory,
+            client=store,
+            public=public,
+            prefix="releases/2026-11-18.9",
+            pointer_prefix="staging/latest",
+        )
+
+    assert "last 30 days" in str(error.value)
+    assert "949,995" in str(error.value)
+    assert store.puts == []
+
+
+def test_a_missing_ledger_starts_the_window_at_zero_and_writes_it(tmp_path):
+    from pipeline import release
+    from tests.conftest import fund_document, write_release
+
+    directory = write_release(tmp_path, [fund_document()], release_id="2026-11-18.9")
+    store = _Store()
+
+    report = release.upload_release(
+        directory,
+        client=store,
+        public=_Public(),
+        prefix="releases/2026-11-18.9",
+        pointer_prefix="staging/latest",
+        verify=False,
+    )
+
+    assert report.failures == []
+    assert report.window_objects is not None and report.window_objects < 1000
+    assert release.USAGE_KEY in store.puts
+
+
+def test_the_window_budget_leaves_room_for_what_the_ledger_misses():
+    """95 %, not the 75 % used elsewhere: a nightly loop must still fit inside the window.
+
+    At 75 % the guard would refuse a nightly release around the 20th of a busy month and
+    freeze the site's data for a week to save a few cents.
+    """
+    assert cc.R2_WINDOW_BUDGET == 950_000
+    assert 30 * 22_357 <= cc.R2_WINDOW_BUDGET  # the plan fits
+    assert cc.R2_WINDOW_BUDGET < cc.R2_FREE_CLASS_A_OPS  # and billing is still avoided
