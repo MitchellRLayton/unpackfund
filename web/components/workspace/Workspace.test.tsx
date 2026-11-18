@@ -839,7 +839,7 @@ describe("Workspace — the holdings pane and the lenses", () => {
       within(lenses)
         .getAllByRole("tab")
         .map((tab) => tab.textContent),
-    ).toEqual(["Companies", "Markets", "Funds", "Overlap", "Data quality"]);
+    ).toEqual(["Companies", "Markets", "Funds", "Overlap", "Data Quality"]);
 
     const comesBefore = (first: Node, second: Node) =>
       (first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
