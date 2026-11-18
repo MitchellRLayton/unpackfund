@@ -32,34 +32,32 @@
  *    anything but the visitor's own weights.
  * 5. **Sorting, filtering and paging are the view's, not the ledger's.** `sortBy` copies,
  *    the filter searches name, ticker, country code and tier word, and the export is the
- *    whole ledger — the disclosure under the table says so, because a spreadsheet that
- *    looked like the page would be a different answer. The table pages at 50 rows rather than virtualizing
+ *    whole ledger — the export's tooltip says so, because a spreadsheet that looked like
+ *    the page would be a different answer. The table pages at 50 rows rather than virtualizing
  *    (`static-xray-frontend` §8): a row whose fund list wraps has no fixed height, so a
  *    window would have to clip the very list rule 2 exists to show, and a real page keeps
  *    the table semantics a screen reader relies on instead of an `aria-rowindex` we
  *    maintain by hand.
  *
  * The benchmark columns are the comparison, not a second holding: `benchmarkDelta` and
- * `formatSignedShare` are ADR-0015's one place where two displayed weights are subtracted,
+ * `formatSignedPp` are ADR-0015's one place where two displayed weights are subtracted,
  * the sign is always printed, and a release with no benchmark drops both columns rather
  * than printing a column of zeros. Which fund supplies the weights is the reader's choice
  * (`?bench=`), one at a time, defaulting to VT; both headings and the exported file name it.
  *
- * **The caption is one line** (operator's instruction, 2026-11-03). It used to carry all
- * five rules above as prose — eight sentences between the heading and the first row, which
- * is a wall of text nobody reads and which pushed the table down the page. What stays in
- * the caption is what a reader needs *while looking at the rows*: what the table is, how it
- * is ordered, and what the comparison column is against. The rest is in the `<details>`
- * under the table, closed by default, which is the shape `/x` uses for its method block.
- * The operator accepted the cost in as many words — the caption is no longer a description
- * a screen reader announces with the table — so do not "restore" the long version for
- * accessibility: the disclosure is reachable by keyboard and by a screen reader, and it is
- * the only copy.
+ * **The caption is for a screen reader, and only for a screen reader** (P-C-12). It says
+ * what the table is, how it is ordered, and what the comparison column is against; the
+ * sort's direction is `aria-sort`'s job on the header the reader is standing on, so the
+ * caption does not repeat it. A caption drawn above the rows was tried and rejected on
+ * 2026-11-03 — eight sentences of prose between the heading and the first row — and the
+ * copy audit's second pass made the one line it shrank to invisible instead of deleting
+ * it, because the table's description is still the caption's to give.
  */
 
 import { useMemo, useState } from "react";
 
 import { PAGE_SIZE, pageOf } from "@/components/directory/paging";
+import { InfoTip } from "@/components/feedback/InfoTip";
 import {
   activeShare,
   unownedBenchmarkNames,
@@ -75,21 +73,14 @@ import {
   formatCount,
   formatPct1,
   formatShare,
-  formatSignedShare,
+  formatSignedPp,
 } from "@/lib/format";
 import type { LedgerRow, LedgerSource } from "@/lib/types";
 import type { LensProps } from "@/components/workspace/types";
 
 import { ConcentrationLine } from "./ConcentrationLine";
 import styles from "./CompaniesLens.module.css";
-import {
-  CellNote,
-  LensExport,
-  LensLede,
-  LensProblem,
-  LensSection,
-  LensState,
-} from "./lens-chrome";
+import { CellNote, LensExport, LensProblem, LensSection, LensState } from "./lens-chrome";
 import { EffectiveHoldingsSummary } from "./EffectiveHoldingsSummary";
 import { companiesCsv, lensCsvName } from "./lens-csv";
 import { lensGateState } from "./lens-gate";
@@ -106,6 +97,8 @@ interface Column {
   numeric: boolean;
   /** The direction the first click on this column sorts in. */
   first: "ascending" | "descending";
+  /** The header's InfoTip, in the brief's words (P-C-13). No tip, no ⓘ. */
+  tip?: string;
   /** Only shown when the release publishes a benchmark (`static-xray-frontend` §4a). */
   benchmark?: boolean;
   /**
@@ -130,8 +123,15 @@ function columnsFor(benchmarkTicker: string): Column[] {
       label: "Country, market",
       numeric: false,
       first: "ascending",
+      tip: "Where the company is domiciled, and its market tier.",
     },
-    { key: "weight", label: "Your weight", numeric: true, first: "descending" },
+    {
+      key: "weight",
+      label: "Your weight",
+      numeric: true,
+      first: "descending",
+      tip: "Share of your whole portfolio.",
+    },
     // The pair's headings carry the ticker of the fund the columns are actually against:
     // "VT", then "Change vs VT" — or "VOO" and "Change vs VOO" once the reader picks it.
     {
@@ -140,6 +140,7 @@ function columnsFor(benchmarkTicker: string): Column[] {
       numeric: true,
       first: "descending",
       benchmark: true,
+      tip: `This company's weight inside ${benchmarkTicker}'s own filing. Blank: ${benchmarkTicker} doesn't hold it.`,
     },
     {
       key: null,
@@ -147,6 +148,7 @@ function columnsFor(benchmarkTicker: string): Column[] {
       numeric: true,
       first: "descending",
       benchmark: true,
+      tip: `Your weight minus ${benchmarkTicker}'s weight.`,
     },
     // POC: `Style bench.` keeps a short header so the table width is stable (§9.2); the
     // class name lives in the caption and the tooltip.
@@ -164,8 +166,20 @@ function columnsFor(benchmarkTicker: string): Column[] {
       first: "descending",
       style: true,
     },
-    { key: "funds", label: "Held by", numeric: true, first: "descending" },
-    { key: null, label: "From your funds", numeric: false, first: "descending" },
+    {
+      key: "funds",
+      label: "Held by",
+      numeric: true,
+      first: "descending",
+      tip: "How many of your funds hold this company.",
+    },
+    {
+      key: null,
+      label: "From your funds",
+      numeric: false,
+      first: "descending",
+      tip: "How much of this company reaches you through each fund, as a share of your whole portfolio.",
+    },
   ];
 }
 
@@ -210,16 +224,6 @@ function styleChoiceLabel(chosen: { styleClass: { display: string } } | null): s
 /** The two keys that exist only while the style columns do. */
 function isStyleKey(key: CompanySortKey): boolean {
   return key === "style" || key === "styleDelta";
-}
-
-/** The caption says which sort is on in the column's own words, not "descending". */
-function directionWords(
-  key: CompanySortKey,
-  direction: "ascending" | "descending",
-): string {
-  const ascending = direction === "ascending";
-  if (key === "name" || key === "country") return ascending ? "A first" : "Z first";
-  return ascending ? "smallest first" : "largest first";
 }
 
 type Comparator = (a: LedgerRow, b: LedgerRow) => number;
@@ -578,10 +582,10 @@ export function CompaniesLens({ model }: LensProps) {
        * it describes, not in a card above the tabs. */}
       <ConcentrationLine ledger={ledger} />
       {/*
-        First in the lens, above the lede and the filter, because it is the
-        portfolio's answer rather than a note about the table: a reader who opens
-        this tab is asking "what do I own", and a summary that sits below the filter
-        box — where it started — needs a scroll to find and reads as table chrome.
+        First in the lens, above the filter, because it is the portfolio's answer rather
+        than a note about the table: a reader who opens this tab is asking "what do I own",
+        and a summary that sits below the filter box — where it started — needs a scroll
+        to find and reads as table chrome.
       */}
       <EffectiveHoldingsSummary
         effective={ledger.effective}
@@ -591,12 +595,6 @@ export function CompaniesLens({ model }: LensProps) {
         directCount={model.split.direct.length}
         onSeeOverlap={() => model.setLens("overlap")}
       />
-
-      <LensLede>
-        Every company you own a piece of, once, with its weight in your portfolio, the
-        number of funds that hold it, and where in the mix it came from. The same company
-        held through three funds is one row.
-      </LensLede>
 
       {suppressed.length > 0 ? (
         <p className="notice notice--quiet" role="status">
@@ -610,7 +608,7 @@ export function CompaniesLens({ model }: LensProps) {
       ) : null}
 
       <div className="field">
-        <label className="field__label" htmlFor="companies-filter">
+        <label className="field__label visually-hidden" htmlFor="companies-filter">
           Filter companies
         </label>
         <input
@@ -622,14 +620,10 @@ export function CompaniesLens({ model }: LensProps) {
             setQuery(event.target.value);
             resetPage();
           }}
-          placeholder="Company, ticker, country code, or market"
-          aria-describedby="companies-filter-note"
+          placeholder="Filter by name or ticker"
           autoComplete="off"
           spellCheck={false}
         />
-        <p className="field__hint" id="companies-filter-note">
-          Filters the table only. The export is the whole ledger.
-        </p>
       </div>
 
       <LensSection
@@ -638,10 +632,18 @@ export function CompaniesLens({ model }: LensProps) {
           <LensExport label="every company in the ledger" onExport={exportCompanies} />
         }
       >
+        {/*
+          The count, and the one qualifier a reader needs to read the weights: they are
+          shares of the part of the portfolio a filing could place, not of the whole.
+          Unfiltered, "{TOTAL} of {TOTAL}" was the same number twice.
+        */}
         <p className="small muted">
-          {formatCount(visible.length)} of {formatCount(ledger.rows.length)} companies.
-          Counted by company, not by fund: the weights in this table add up to the part of
-          your portfolio a filing could place, {formatShare(totalWeight)} of the whole.
+          {query.trim().length === 0
+            ? `${formatCount(ledger.rows.length)} companies`
+            : `${formatCount(visible.length)} of ${formatCount(
+                ledger.rows.length,
+              )} companies`}{" "}
+          · {formatShare(totalWeight)} of your portfolio traced to a company
         </p>
         {/*
           Which fund the two comparison columns are against. A display preference in the
@@ -787,18 +789,14 @@ export function CompaniesLens({ model }: LensProps) {
         <div className="table-wrap">
           <table className={`tier-edge table ${styles.compact}`}>
             {/*
-              The caption is one line, on the operator's instruction (2026-11-03): the
-              eight-sentence version that used to live here was a wall of text above the
-              table, and nobody reads a wall of text. What a reader needs while looking at
-              the rows is what the table is, how it is ordered, and what the comparison
-              column is against; everything else — the column meanings, the bracket's
-              direction and ink, the market tier's convention, the export's scope — is one
-              click away in the disclosure under the table, which is the same shape `/x`
-              uses for its method block (`static-xray-frontend` §4a, v1.0.27).
+              The caption is for a screen reader only (P-C-12): the table's shape, its
+              order and what the comparison column is against, in one sentence. The sort's
+              direction is announced by `aria-sort` on the header the reader is standing on,
+              so printing it here as well said it twice. A caption drawn above the rows was
+              a second heading, not a description (`static-xray-frontend` §4a, v1.0.27).
             */}
-            <caption>
-              One row per company. Sorted by {sortLabel},{" "}
-              {directionWords(effectiveSort.key, effectiveSort.direction)}.
+            <caption className="visually-hidden">
+              One row per company. Sorted by {sortLabel}.
               {benchmark
                 ? showStyleColumns
                   ? ` Benchmarks: ${benchmark.ticker} · style.`
@@ -809,6 +807,10 @@ export function CompaniesLens({ model }: LensProps) {
               <tr>
                 {columns.map((column) => {
                   const active = column.key !== null && sort.key === column.key;
+                  // The tip sits beside the header's own control, never inside it: a
+                  // button in a button is invalid, and a sort button that also opened a
+                  // tooltip could not say which it was doing (PROMPT.md §5.4).
+                  const tip = column.tip;
                   if (column.key === null) {
                     return (
                       <th
@@ -817,6 +819,7 @@ export function CompaniesLens({ model }: LensProps) {
                         className={column.numeric ? "num" : undefined}
                       >
                         {column.label}
+                        {tip ? <InfoTip label={column.label}>{tip}</InfoTip> : null}
                       </th>
                     );
                   }
@@ -838,6 +841,11 @@ export function CompaniesLens({ model }: LensProps) {
                       >
                         {column.label}
                       </button>
+                      {tip ? (
+                        <InfoTip label={column.label} inline>
+                          {tip}
+                        </InfoTip>
+                      ) : null}
                     </th>
                   );
                 })}
@@ -921,7 +929,7 @@ export function CompaniesLens({ model }: LensProps) {
                           "—"
                         ) : (
                           <span className={deltaInkClass(delta)}>
-                            {formatSignedShare(delta)}
+                            {formatSignedPp(delta)}
                           </span>
                         )}
                       </td>
@@ -934,7 +942,7 @@ export function CompaniesLens({ model }: LensProps) {
                             "—"
                           ) : (
                             <span className={deltaInkClass(styleDelta)}>
-                              {formatSignedShare(styleDelta)}
+                              {formatSignedPp(styleDelta)}
                             </span>
                           )}
                         </td>

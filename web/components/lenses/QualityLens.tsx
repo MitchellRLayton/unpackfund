@@ -14,16 +14,23 @@
  * Nothing here is softened. A number that is missing is shown as missing, a weight
  * that is not in a company is not redistributed over the ones that are, and the
  * three dates behind every figure are printed beside it rather than in a footnote.
+ *
+ * The lens states its figures and links its definitions: coverage, the bands and the
+ * split of what is not traced live at `/methodology/#coverage` and
+ * `/methodology/#look-through`, and the per-column meaning is a one-line tip on the
+ * header, so no concept is explained twice (R4).
  */
 
 import { useMemo } from "react";
 
+import { InfoTip } from "@/components/feedback/InfoTip";
 import { saveCsv } from "@/lib/export";
 import {
   coverageBand,
   formatCount,
   formatCoveragePct,
-  formatDays,
+  formatDateLong,
+  formatFreshnessShort,
   formatShare,
 } from "@/lib/format";
 import type { LensProps } from "@/components/workspace/types";
@@ -33,7 +40,6 @@ import {
   CoverageChip,
   LensAnswer,
   LensExport,
-  LensLede,
   LensProblem,
   LensSection,
   LensState,
@@ -110,12 +116,18 @@ export function QualityLens({ model }: LensProps) {
   const unmapped = gate.ledger.unmapped;
   const covered = formatCoveragePct(metrics.covered_weight_pct);
 
-  const partialFunds = rows.filter(
-    (row) => row.coveragePct !== null && coverageBand(row.coveragePct) === "partial",
-  );
-  const withheldFunds = rows.filter(
-    (row) => row.coveragePct !== null && coverageBand(row.coveragePct) === "none",
-  );
+  // CN_ZERO_ROW: a row that prints as 0.00% is not a share of anything, so it is not
+  // printed. "Named companies" and "Total" are never hidden this way.
+  const showCashRow = formatShare(totals.cash) !== "0.00%";
+
+  // P-Q-05, and MA-08 behind it: a filed position that rounds to zero basis points is
+  // a line, never money, so the Count column and the Weight column do not count the
+  // same things. The tip says so once, on the header, instead of under the table.
+  const zeroPositions = unmapped.positions - unmapped.positions_with_weight;
+  const countTip =
+    zeroPositions > 0
+      ? `Positions that carry weight. ${formatCount(zeroPositions)} more round to zero and aren't counted.`
+      : "Positions that carry weight.";
 
   const exportQuality = () => {
     const csvFunds: QualityCsvFund[] = rows.flatMap((row) =>
@@ -153,50 +165,47 @@ export function QualityLens({ model }: LensProps) {
     <div className="stack">
       <LensProblem model={model} />
       <LensAnswer>
-        {covered} of the weight you invested resolved to a company; the rest is weight the
-        release could not name.
+        {covered} of your invested weight is traced to named companies.
       </LensAnswer>
-      <LensLede>
-        Coverage is the share of a fund&rsquo;s weight whose positions resolved to a
-        company, and the bands are the same everywhere on this site: 70% and above is
-        full, 60% up to but not including 70% is partial, below 60% is withheld. The
-        second table splits everything that is not a company by cause, and the parts add
-        up to your whole portfolio. No figure here is estimated, averaged over the gap, or
-        rounded up to a band.
-      </LensLede>
 
       <LensSection
-        title="Coverage by weight"
+        title="Coverage by fund"
         action={<LensExport label="coverage and filing dates" onExport={exportQuality} />}
       >
         <div className="table-wrap">
           <table className="table">
-            <caption>
-              One row per fund that carries a weight in your portfolio, least covered
-              first, so the fund a reader most needs to see is at the top. Weight is a
-              share of your whole portfolio and the column adds up to the weight your
-              funds carry. Weight with no company is the part of that fund&rsquo;s money
-              in positions that resolved to no company — a security no identifier matched,
-              a cash line, or a derivative — so it is the weight the fund contributes to
-              the second table. Coverage is the share of the fund&rsquo;s own weight that
-              did resolve; the bands are exactly 70% and above full, 60% to just under 70%
-              partial, below 60% withheld. The last column is the three filing dates the
-              row&rsquo;s numbers depend on: the end of the reporting period, the day the
-              filing was filed, and how many days that took.
+            {/* The caption says what the table is and stays visually hidden (H9, R2);
+                each column's meaning is a one-line tip, and the band rule itself is on
+                `/methodology/#coverage` (R4). */}
+            <caption className="visually-hidden">
+              Coverage by fund, least covered first.
             </caption>
             <thead>
               <tr>
                 <th scope="col">Fund</th>
                 <th scope="col" className="num">
                   Weight
+                  <InfoTip label="Weight">Share of your whole portfolio.</InfoTip>
                 </th>
                 <th scope="col" className="num">
                   Weight with no company
+                  <InfoTip label="Weight with no company">
+                    {
+                      "Part of this fund's weight with no company behind it: unmatched securities, cash and derivatives."
+                    }
+                  </InfoTip>
                 </th>
                 <th scope="col" className="num">
                   Coverage
+                  {/* `concepts.coverage.popover` (copy-spec.yaml:58): the same sentence
+                      the coverage chip carries, so the band rule has one wording. */}
+                  <InfoTip label="Coverage">
+                    {
+                      "Share of a fund's weight we can trace to named companies. 70% or more is full, 60–70% partial, under 60% withheld."
+                    }
+                  </InfoTip>
                 </th>
-                <th scope="col">Reporting period, filed</th>
+                <th scope="col">Holdings as of</th>
               </tr>
             </thead>
             <tbody>
@@ -223,7 +232,7 @@ export function QualityLens({ model }: LensProps) {
                   </td>
                   <td>
                     {row.asOf && row.filedAt && row.lagDays !== null
-                      ? `${row.asOf} · filed ${row.filedAt} · ${formatDays(row.lagDays)}`
+                      ? formatFreshnessShort(row.asOf, row.filedAt, row.lagDays)
                       : "no filing"}
                   </td>
                 </tr>
@@ -240,10 +249,10 @@ export function QualityLens({ model }: LensProps) {
                 <td>
                   {gate.ledger.oldest_as_of !== null ? (
                     <CellNote>
-                      oldest reporting period {gate.ledger.oldest_as_of}
+                      oldest {formatDateLong(gate.ledger.oldest_as_of)}
                       {gate.ledger.max_lag_days === null
                         ? ""
-                        : `; slowest filing ${formatDays(gate.ledger.max_lag_days)}`}
+                        : ` · slowest ${formatCount(gate.ledger.max_lag_days)} days`}
                     </CellNote>
                   ) : (
                     <CellNote>no fund filings in this portfolio</CellNote>
@@ -255,18 +264,15 @@ export function QualityLens({ model }: LensProps) {
         </div>
       </LensSection>
 
-      <LensSection title="Where the rest of your money is">
+      <LensSection title="Where your money is">
         <div className="table-wrap">
           <table className="table">
-            <caption>
-              Every share of your portfolio, so the parts can be checked against the whole
-              instead of taken on trust. A share position with no company is a mapping
-              failure and is disclosed as one; cash and derivative lines have no company
-              by definition and are not failures. Count is company lines in the first row
-              and positions in the next two, counting only positions that carry weight — a
-              position that rounds to zero basis points is a line, never money. The last
-              row is the difference between the weight the filings report and the weight
-              the cash and positions account for, kept signed so the total closes.
+            {/* The caption is the table's name, visually hidden (H9, R2). What each row
+                is, and the two rules the numbers follow — a position that rounds to zero
+                basis points is a line and never money (MA-08), and the filing adjustment
+                is signed — are the row tips and the count tip. */}
+            <caption className="visually-hidden">
+              Every part of your portfolio, adding to 100%.
             </caption>
             <thead>
               <tr>
@@ -276,32 +282,40 @@ export function QualityLens({ model }: LensProps) {
                 </th>
                 <th scope="col" className="num">
                   Count
+                  <InfoTip label="Count">{countTip}</InfoTip>
                 </th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <th scope="row">Companies the release names</th>
+                <th scope="row">Named companies</th>
                 <td className="num">{formatShare(totals.resolved)}</td>
                 <td className="num">{formatCount(gate.ledger.rows.length)}</td>
               </tr>
               <tr>
-                <th scope="row">Share positions with no company</th>
+                <th scope="row">
+                  Unmatched securities
+                  <InfoTip label="Unmatched securities">
+                    {"Securities in a fund that we couldn't match to a company."}
+                  </InfoTip>
+                </th>
                 <td className="num">{formatShare(totals.unmatchedSecurities)}</td>
                 <td className="num">{formatCount(unmapped.securities_with_weight)}</td>
               </tr>
               <tr>
-                <th scope="row">Cash and derivative lines inside funds</th>
+                <th scope="row">Cash and derivatives in funds</th>
                 <td className="num">{formatShare(totals.unmatchedCashDerivatives)}</td>
                 <td className="num">
                   {formatCount(unmapped.cash_and_derivatives_with_weight)}
                 </td>
               </tr>
-              <tr>
-                <th scope="row">Cash you hold</th>
-                <td className="num">{formatShare(totals.cash)}</td>
-                <td className="num">—</td>
-              </tr>
+              {showCashRow ? (
+                <tr>
+                  <th scope="row">Your cash</th>
+                  <td className="num">{formatShare(totals.cash)}</td>
+                  <td className="num">—</td>
+                </tr>
+              ) : null}
               {totals.unallocated > 0 ? (
                 <tr>
                   <th scope="row">Not entered</th>
@@ -311,8 +325,12 @@ export function QualityLens({ model }: LensProps) {
               ) : null}
               <tr>
                 <th scope="row">
-                  Filed weight outside the holding schedules
-                  <CellNote>a signed correction, usually negative</CellNote>
+                  Filing adjustment
+                  <InfoTip label="Filing adjustment">
+                    {
+                      "Difference between a fund's reported total and its listed positions. Usually negative."
+                    }
+                  </InfoTip>
                 </th>
                 <td className="num">{formatShare(totals.filedOvershoot)}</td>
                 <td className="num">—</td>
@@ -320,91 +338,12 @@ export function QualityLens({ model }: LensProps) {
             </tbody>
             <tfoot>
               <tr>
-                <th scope="row">Everything</th>
+                <th scope="row">Total</th>
                 <td className="num">{formatShare(totals.total)}</td>
                 <td className="num" />
               </tr>
             </tfoot>
           </table>
-        </div>
-        <p className="tiny muted">
-          {unmapped.positions === unmapped.positions_with_weight
-            ? `All ${formatCount(unmapped.positions)} filed positions with no company carry weight and are counted as money in the rows above.`
-            : `${formatCount(unmapped.positions)} filed positions have no company behind them; ${formatCount(
-                unmapped.positions_with_weight,
-              )} of them carry weight and are counted as money in the rows above. The other ${formatCount(
-                unmapped.positions - unmapped.positions_with_weight,
-              )} round to zero basis points, so they are counted as lines and never described as weight.`}
-        </p>
-      </LensSection>
-
-      <LensSection title="What is not traced">
-        {/* `.prose` for the measure and the rhythm: this is a column of reading, not
-            a caption, and 68ch is the width the site reads at. */}
-        <div className="prose">
-          <p>
-            {covered} of the weight you invested resolved to a company.{" "}
-            {formatShare(totals.resolved)} of your whole portfolio is in a company the
-            release names; {formatShare(1 - totals.resolved)} is not in one, and the table
-            above says what each part of that is.
-          </p>
-          <p>
-            Nothing is redistributed. Weight that resolved to no company stays outside
-            every company line and every concentration figure, so no company looks larger
-            than its filings say and no coverage figure is raised by money that could not
-            be placed.
-          </p>
-          {partialFunds.length > 0 ? (
-            <p>
-              In the partial band:{" "}
-              {partialFunds
-                .map(
-                  (row) =>
-                    `${row.ticker} (${formatCoveragePct(row.coveragePct ?? 0)} of its weight)`,
-                )
-                .join(", ")}
-              . The figures drawn from a fund in this band come from that share of its
-              filing, and the rest is disclosed as weight with no company rather than
-              assumed.
-            </p>
-          ) : null}
-          {withheldFunds.length > 0 ? (
-            <p>
-              Below the 60% floor:{" "}
-              {withheldFunds
-                .map(
-                  (row) =>
-                    `${row.ticker} (${formatCoveragePct(row.coveragePct ?? 0)} of its weight)`,
-                )
-                .join(", ")}
-              . A fund in this band has no concentration figure shown anywhere on the
-              site: withholding it is the only way a fund that traced a third of itself
-              cannot be mistaken for an average one.
-            </p>
-          ) : null}
-          {partialFunds.length === 0 && withheldFunds.length === 0 ? (
-            <p>
-              Every fund in your mix is in the full coverage band, 70% or more. That is
-              still not all of it: a fund in the full band can leave up to 30% of its
-              weight with no company, so each figure here is a floor rather than an exact
-              value.
-            </p>
-          ) : null}
-          {gate.ledger.oldest_as_of !== null && gate.ledger.max_lag_days !== null ? (
-            <p>
-              The filings are not simultaneous. The oldest reporting period in your mix
-              ends {gate.ledger.oldest_as_of}, and the slowest filer took{" "}
-              {formatDays(gate.ledger.max_lag_days)} to file. A company held by two funds
-              can therefore be measured twice, at two dates, and the ledger treats the
-              later weight as the same company rather than an error.
-            </p>
-          ) : null}
-          <p>
-            A position with a negative weight — a short inside a fund — is counted in the
-            ledger and printed where it appears, but it is excluded from the ten largest
-            companies and from every concentration figure, because a bar and a sum share
-            can only be made of positive parts of a whole.
-          </p>
         </div>
       </LensSection>
     </div>

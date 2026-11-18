@@ -511,8 +511,24 @@
   }
 }
 
+/*
+ * The meta slot of a holdings row whose filing has not arrived.
+ *
+ * The row already says "Reading filing…" beside the ticker, so this slot carries a bar and
+ * no words: the same sentence twice is a stutter, not a second fact.
+ */
+.chipSkeleton {
+  display: inline-block;
+  width: 5rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  background: var(--wash-strong);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .skeleton {
+  .skeleton,
+  .chipSkeleton {
     animation: none;
     opacity: 0.6;
   }
@@ -839,4 +855,12 @@
 
 .note[data-tone="info"] .noteIcon {
   color: var(--graphite);
+}
+
+/* An action and its tooltip, so the tip is anchored to the control it explains. */
+.actionWithTip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }

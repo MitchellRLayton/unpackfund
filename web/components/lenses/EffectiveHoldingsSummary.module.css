@@ -126,22 +126,24 @@
   outline-offset: 2px;
 }
 
-.details,
+/* The link to the method, and the four figures the disclosure used to carry (P-C-05). */
+.method,
 .curve {
   border-top: 1px solid var(--rule);
   padding-top: var(--space-2);
 }
 
-.details summary,
+.method {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: start;
+}
+
 .curve summary {
   cursor: pointer;
   color: var(--graphite);
 }
 
-.details p {
+.method p {
   max-width: 62ch;
-}
-
-.note {
-  color: var(--graphite);
 }

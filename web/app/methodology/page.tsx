@@ -126,6 +126,11 @@ export default function MethodologyPage() {
         it is a fund, it is treated as a fund; if it is cash, it is cash.
       </p>
 
+      <p>
+        A filed position that rounds to zero basis points is counted as a line, never as
+        weight.
+      </p>
+
       <h2 id="identity">How a holding becomes a company</h2>
       <p>
         Each position is matched to a <Term name="company">company</Term> through the
@@ -180,6 +185,13 @@ export default function MethodologyPage() {
         vector would understate the weights it did publish without saying so.
       </p>
 
+      <p>
+        The Data quality lens splits the whole portfolio into named companies, unmatched
+        securities, cash and derivatives inside funds, cash you hold, and a signed filing
+        adjustment: the difference between a fund&rsquo;s reported total and its listed
+        positions, usually negative.
+      </p>
+
       <h2 id="coverage">Coverage, and the 70/60 bands</h2>
       <p>
         <Term name="coverage">Coverage</Term> is the share of a fund&rsquo;s weight that
@@ -231,6 +243,11 @@ export default function MethodologyPage() {
         does — so the release measures coverage inside each class as well, which is the
         only version two funds can be compared on.
       </p>
+
+      <p>
+        Even a fund in the full band can leave up to 30% of its weight untraced, so every
+        figure that depends on coverage is a floor rather than an exact value.
+      </p>
       <h3 id="identified">Identified, and attributed</h3>
       <p>
         A position can be known at two depths, and the site prints both numbers rather
@@ -268,6 +285,11 @@ export default function MethodologyPage() {
         period and the longest gap.
       </p>
 
+      <p>
+        Filings are not simultaneous. A company held by two funds can be measured at two
+        dates, and the later weight is treated as the same company, not as an error.
+      </p>
+
       <h2 id="concentration">Concentration</h2>
       <p>Three figures, computed once from the summed company rows:</p>
       <ul>
@@ -291,6 +313,12 @@ export default function MethodologyPage() {
         not the index of the portfolio. When a fund in the portfolio covers less than 60%
         of its weight, the figures are withheld rather than computed over the part that
         resolved.
+      </p>
+
+      <p>
+        A negative weight, a short inside a fund, is listed in the companies table but
+        excluded from the top 10 and from every concentration figure, because those
+        figures are built from positive parts of a whole.
       </p>
 
       <h2 id="effective-holdings">Effective holdings</h2>
@@ -393,6 +421,17 @@ export default function MethodologyPage() {
         few names, and that is the whole claim.
       </p>
 
+      <p>
+        The single-company-risk bands are a design choice informed by research, not a
+        published standard: Evans and Archer (1968) at 16 equal-weighted securities,
+        Statman (1987) at 30 to 40, and Domian, Louton and Racine (2007) at 164.
+      </p>
+      <p>
+        Effective holdings measure how evenly money is spread across companies. They
+        ignore how companies move together, so 100 semiconductor stocks can score as
+        diversified and still be one sector bet.
+      </p>
+
       <h2 id="overlap">Overlap</h2>
       <p>
         <Term name="overlap">Overlap</Term> compares two portfolios company by company:
@@ -409,6 +448,16 @@ export default function MethodologyPage() {
         itself gets no overlap figure.
       </p>
 
+      <p>
+        Every overlap figure is a minimum. No fund can be traced completely, and untraced
+        weight can only hide holdings two funds share.
+      </p>
+      <p>
+        In the Overlap lens a pair is compared only when both funds are at least 60%
+        traced. When either fund is in the partial band (60% to under 70%), the pair is
+        marked as a minimum.
+      </p>
+
       <h2 id="markets">Market tiers</h2>
       <p>
         The left edge of a ledger row answers a narrower question than it looks like it
@@ -417,13 +466,22 @@ export default function MethodologyPage() {
         <Term name="market-tier">MSCI-aligned country classification</Term> as of 5
         November 2026, because most of the funds it looks through are MSCI-benchmarked —
         iShares, Avantis and DFA — and Vanguard is the FTSE exception. The FTSE Russell
-        view is one click away, and every label says which convention it is using.
+        view is one click away. The publisher&rsquo;s convention is named once in every
+        view that shows markets, in a tag beside the market heading, rather than on every
+        label — the labels carry the market, and one tag says whose definition of it is in
+        force.
       </p>
       <p>
         The data carries five tiers — developed, emerging, frontier, standalone and
         unclassified — and the bar draws three segments. Developed is developed ex-US;
         everything else is emerging. Frontier and standalone therefore fold into emerging,
         which is why a market can change tier without changing a number.
+      </p>
+
+      <p>
+        Three things sit outside the market bar: cash and derivative lines inside funds,
+        weight a filing reports outside its own holding schedules, and companies with no
+        agreed country.
       </p>
 
       <h3 id="markets-divergence">Where the two conventions disagree</h3>
@@ -854,6 +912,11 @@ export default function MethodologyPage() {
         rather than left implicit. When a release publishes no document for the chosen
         fund, the column is absent rather than filled with zeros, because a zero would
         claim that fund holds none of these companies.
+      </p>
+
+      <p>
+        A blank benchmark weight means the benchmark&rsquo;s traced holdings do not
+        include the company.
       </p>
 
       <h2 id="corrections">Corrections</h2>

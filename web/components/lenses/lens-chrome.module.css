@@ -1,0 +1,31 @@
+/* The download control: an icon in the table heading's action slot. */
+.exportWrap {
+  display: inline-flex;
+}
+
+.exportButton {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--graphite);
+  font-size: var(--text-14);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.exportButton:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.exportButton:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}

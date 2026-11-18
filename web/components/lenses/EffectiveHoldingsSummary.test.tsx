@@ -92,14 +92,19 @@ describe("the redesigned block", () => {
     expect(screen.queryByText(/Overlap is the biggest reason/)).toBeNull();
   });
 
-  it("keeps the arithmetic's names inside the disclosure", () => {
+  it("keeps the arithmetic's names out of the block, and links to the method", () => {
     const { container } = renderBlock();
     const text = container.textContent ?? "";
-    expect(text).not.toContain("Core");
-    expect(text).not.toContain("Broad");
+    // OD-03 option B (P-C-05): the four per-portfolio figures stay on screen, named Core
+    // and Broad. The formula's own names (HHI, entropy) are gone from the block, because
+    // the prose that held them is now the methodology page.
+    expect(text).not.toContain("HHI");
+    expect(text).not.toContain("entropy");
+    expect(text).toContain("Without overlap: Core");
+    expect(text).toContain("Broad");
     expect(screen.getByText("How this is calculated")).toBeTruthy();
-    // The research the cutoffs lean on is cited in the disclosure.
-    expect(screen.getByText(/Evans & Archer/)).toBeTruthy();
+    // The research the cutoffs lean on moved to methodology #effective-holdings (MA-01).
+    expect(screen.queryByText(/Evans & Archer/)).toBeNull();
     expect(screen.getByText("See the curve")).toBeTruthy();
   });
 

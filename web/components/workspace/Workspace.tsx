@@ -19,10 +19,9 @@
  * - **The lenses, below the answer.** The five tables, on the URL's own state.
  * - **The actions, last.** A share link, a comparison, a file, a page.
  *
- * An empty portfolio reads in the operator's order: the "nothing here yet" card, then the
- * lens tabs, then the worked example, then the actions. The example is a sibling of the
- * card rather than part of it, because its place in that order is between two other
- * modules.
+ * An empty portfolio reads in the operator's order: the "no holdings yet" card, then the
+ * lens tabs, then the actions. The example's ticker chips live inside that card, so there
+ * is one empty state rather than a card plus a second block below it.
  *
  * Honesty rules the shell enforces, whatever a lens does:
  *
@@ -42,8 +41,7 @@ import { useProvider } from "@/components/lenses/provider-preference";
 import { ActionsRow } from "./ActionsRow";
 import { buildAnswer, type Answer, type AnswerInput } from "./answer";
 import { buildMetrics } from "./metrics";
-import { EmptyState, WorkedExample } from "./EmptyState";
-import { EXAMPLE_LABEL, isExamplePortfolio } from "./example";
+import { EmptyState } from "./EmptyState";
 import { HoldingsChips, HoldingsCompact, HoldingsPane } from "./HoldingsPane";
 import { LensTabs } from "./LensTabs";
 import { PrintSummary } from "./PrintSummary";
@@ -120,9 +118,6 @@ export function Workspace() {
 
   const metrics = useMemo(() => buildMetrics(model, provider), [model, provider]);
 
-  const isExample =
-    hasEntries && isExamplePortfolio(model.portfolio.mode, model.portfolio.entries);
-
   /**
    * The hero is for the empty state only.
    *
@@ -136,11 +131,7 @@ export function Workspace() {
   ) : (
     <header className={styles.head}>
       <h1 className="title">See the companies behind your funds</h1>
-      <p className="subtitle">
-        Add the funds you own and UnpackFund adds their SEC filings up: the companies you
-        hold, the markets they are in, and how much of each fund could be traced to a
-        company at all.
-      </p>
+      <p className="subtitle">Add the funds you own to see every company inside them.</p>
     </header>
   );
 
@@ -235,13 +226,9 @@ export function Workspace() {
             </div>
           ) : null}
 
-          {!hasEntries ? <EmptyState model={model} onReveal={revealPane} /> : null}
+          {!hasEntries ? <EmptyState onReveal={revealPane} /> : null}
 
           <LensTabs model={model} metrics={metrics} disabled={!hasEntries} />
-
-          {isExample ? <p className={styles.exampleLabel}>{EXAMPLE_LABEL}</p> : null}
-
-          {!hasEntries ? <WorkedExample model={model} /> : null}
 
           <ActionsRow model={model} />
         </div>

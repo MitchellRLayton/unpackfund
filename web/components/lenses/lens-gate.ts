@@ -35,10 +35,9 @@ export function lensGateState(model: WorkspaceModel): LensGate {
   }
 
   if (model.release.status === "loading") {
-    return blocked(
-      "Waiting for the release",
-      "Nothing can be counted until the app knows which release the filings come from. This lens has no numbers to show yet.",
-    );
+    // P-E-10: one line. The gate itself is unchanged — no number is shown until the
+    // release is known, which is the whole reason this branch exists.
+    return blocked("", "Loading data…");
   }
 
   if (model.release.status === "error") {
@@ -96,8 +95,8 @@ export function lensGateState(model: WorkspaceModel): LensGate {
 
   if (model.pendingFunds.length > 0) {
     return blocked(
-      "Waiting for filings",
-      `Still arriving: ${formatFundList(model.pendingFunds)}. A fund's coverage, its reporting period and its holdings all come from its own filing, so the lens shows nothing until every fund in the mix has one.`,
+      `Reading ${model.pendingFunds.length} ${model.pendingFunds.length === 1 ? "filing" : "filings"}…`,
+      `Still loading: ${formatFundList(model.pendingFunds)}.`,
     );
   }
 

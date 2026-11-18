@@ -24,7 +24,7 @@ import type { WorkspaceModel } from "@/lib/use-workspace";
 import type { Lens } from "@/lib/view-fragment";
 
 import { Workspace } from "./Workspace";
-import { EXAMPLE_LABEL, EXAMPLE_TICKERS } from "./example";
+import { EXAMPLE_TICKERS } from "./example";
 
 /**
  * The workspace shell, driven through a hand-built model.
@@ -463,10 +463,12 @@ describe("Workspace — the companies table", () => {
     const caption = table.querySelector("caption")?.textContent ?? "";
 
     // The operator's instruction (2026-11-03): the eight-sentence caption was a wall of
-    // text above the table that nobody read. What is left is what a reader needs while
-    // looking at the rows — what the table is, how it is ordered, what it compares against.
+    // text above the table that nobody read. P-C-12 then made the one line a screen
+    // reader's caption, so the sort's direction is announced by `aria-sort` on the header
+    // instead of being printed twice. What is left is what the table is, how it is
+    // ordered, and what it compares against.
     expect(caption).toContain("One row per company");
-    expect(caption).toContain("Sorted by Your weight, largest first");
+    expect(caption).toContain("Sorted by Your weight.");
     expect(caption).toContain("Benchmark: VT");
     expect(caption.length).toBeLessThan(120);
 
@@ -494,7 +496,7 @@ describe("Workspace — the companies table", () => {
       panel.getByRole("columnheader", { name: "Company" }).getAttribute("aria-sort"),
     ).toBe("ascending");
     expect(panel.getByRole("table").querySelector("caption")?.textContent).toContain(
-      "Sorted by Company, A first",
+      "Sorted by Company.",
     );
   });
 
@@ -531,7 +533,7 @@ describe("Workspace — the holdings pane and the lenses", () => {
     // Whole: the bar wears the completed state, and the sentence is the green one.
     expect(wholeRender.container.querySelector(".meter__fill--whole")).not.toBeNull();
     expect(wholeRender.container.querySelector(".tally__gate--open")?.textContent).toBe(
-      "fully allocated",
+      "Fully allocated",
     );
     expect(wholeRender.container.querySelector(".tally__gate--locked")).toBeNull();
     // The percentage is its own, larger figure beside the unit it is a share of.
@@ -698,9 +700,15 @@ describe("Workspace — the holdings pane and the lenses", () => {
     const benchmarked = renderWorkspace({ entries: ENTRIES, ledger: BENCHMARKED });
     const panel = within(screen.getByRole("tabpanel"));
 
+    // The label each header prints, without the header tip's ⓘ: the glyph is decoration
+    // (`aria-hidden`), and the tip's accessible name is "About {label}" (P-C-13).
     const headers = panel
       .getAllByRole("columnheader")
-      .map((header) => header.textContent?.trim());
+      .map(
+        (header) =>
+          header.querySelector("button.table__sort")?.textContent?.trim() ??
+          header.firstChild?.textContent?.trim(),
+      );
     expect(headers).toEqual([
       "Rank",
       "Company",
@@ -724,7 +732,7 @@ describe("Workspace — the holdings pane and the lenses", () => {
     expect(cells[0]).toBe("1");
     expect(cells[2]).toBe("21.00%");
     expect(cells[3]).toBe("20.00%");
-    expect(cells[4]).toBe("(+1.00%)");
+    expect(cells[4]).toBe("+1.00 pp");
 
     benchmarked.unmount();
 
@@ -756,18 +764,20 @@ describe("Workspace — the holdings pane and the lenses", () => {
     const panel = within(screen.getByRole("tabpanel"));
 
     // Above the benchmark: green, and the sign says so on its own.
-    expect(panel.getByText("(+1.00%)").className).toBe("delta delta--up");
+    expect(panel.getByText("+1.00 pp").className).toBe("delta delta--up");
     // Below it: red.
-    expect(panel.getByText("(-32.00%)").className).toBe("delta delta--down");
+    expect(panel.getByText("-32.00 pp").className).toBe("delta delta--down");
     // Exactly level: the bracket is the whole answer, with no side to colour.
-    expect(panel.getByText("(0.00%)").className).toBe("delta");
+    expect(panel.getByText("0.00 pp").className).toBe("delta");
   });
 
   it("exports every company, not the page", () => {
     renderWorkspace({ entries: ENTRIES, ledger: bigLedger(500) });
 
     fireEvent.click(
-      within(screen.getByRole("tabpanel")).getByRole("button", { name: /Export/ }),
+      within(screen.getByRole("tabpanel")).getByRole("button", {
+        name: /Download this table/,
+      }),
     );
 
     const text = saved.at(-1) ?? "";
@@ -789,7 +799,9 @@ describe("Workspace — the holdings pane and the lenses", () => {
     renderWorkspace({ entries: ENTRIES, ledger: BENCHMARKED });
 
     fireEvent.click(
-      within(screen.getByRole("tabpanel")).getByRole("button", { name: /Export/ }),
+      within(screen.getByRole("tabpanel")).getByRole("button", {
+        name: /Download this table/,
+      }),
     );
 
     const lines = (saved.at(-1) ?? "").trimEnd().split("\n");
@@ -807,18 +819,19 @@ describe("Workspace — the holdings pane and the lenses", () => {
   it("renders the empty state, with the example labelled as an example", () => {
     renderWorkspace();
 
-    expect(screen.getByText("Nothing in this portfolio yet")).toBeTruthy();
-    expect(screen.getAllByText(EXAMPLE_LABEL).length).toBeGreaterThan(0);
+    expect(screen.getByText("No holdings yet")).toBeTruthy();
+    // The caption, not the constant: the card says it in the brief's words, and the chip
+    // that carries `EXAMPLE_LABEL` appears once the example is open.
+    expect(screen.getByText("Example, not a recommendation.")).toBeTruthy();
     // A portfolio with no entries has no chip bar to collapse.
     expect(screen.queryByRole("button", { name: "Edit holdings" })).toBeNull();
   });
 
-  it("puts the empty card, the lenses, the worked example, then the actions in that order", () => {
+  it("puts the empty card, the lenses, then the actions in that order", () => {
     renderWorkspace();
 
-    const card = screen.getByRole("heading", { name: "Nothing in this portfolio yet" });
+    const card = screen.getByRole("heading", { name: "No holdings yet" });
     const lenses = screen.getByRole("tablist", { name: "Lenses" });
-    const example = screen.getByRole("heading", { name: "Worked example" });
     const actions = screen.getByRole("button", { name: "Print summary" });
 
     // The module in the middle is the five-lens tablist, not some other tab strip.
@@ -832,38 +845,31 @@ describe("Workspace — the holdings pane and the lenses", () => {
       (first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
     expect(comesBefore(card, lenses)).toBe(true);
-    expect(comesBefore(lenses, example)).toBe(true);
-    expect(comesBefore(example, actions)).toBe(true);
+    expect(comesBefore(lenses, actions)).toBe(true);
   });
 
-  it("shows the example as real numbers without printing its weights first", () => {
+  it("names the example's funds without printing its weights first", () => {
     renderWorkspace();
 
-    const section = screen
-      .getByRole("heading", { name: "Worked example" })
-      .closest("section");
-    expect(section).not.toBeNull();
+    const card = screen
+      .getByRole("heading", { name: "No holdings yet" })
+      .closest(".empty");
+    expect(card).not.toBeNull();
 
     // Tickers only: the percentages arrive with the holdings pane after "Open the
     // example", not before the visitor has chosen anything.
-    const chips = Array.from(section?.querySelectorAll(".chip") ?? []).map((chip) =>
+    const chips = Array.from(card?.querySelectorAll(".chip") ?? []).map((chip) =>
       chip.textContent?.trim(),
     );
     expect(chips).toEqual([...EXAMPLE_TICKERS]);
-    expect(section?.textContent).not.toContain("14.29%");
-
-    // The example is a demonstration, not a mock-up: its filings are aggregated into the
-    // same answer box the visitor's own portfolio gets.
-    expect(section?.querySelector(".summary-box__headline")?.textContent).toContain(
-      "You own 6 companies through 7 funds.",
-    );
+    expect(card?.textContent).not.toContain("14.29%");
   });
 
-  it("leaves the worked example out once the portfolio has entries", () => {
+  it("leaves the empty state out once the portfolio has entries", () => {
     renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
 
-    expect(screen.queryByRole("heading", { name: "Worked example" })).toBeNull();
-    expect(screen.queryByText(EXAMPLE_LABEL)).toBeNull();
+    expect(screen.queryByRole("heading", { name: "No holdings yet" })).toBeNull();
+    expect(screen.queryByText("Example, not a recommendation.")).toBeNull();
   });
 });
 
@@ -1002,8 +1008,12 @@ describe("Workspace — the docked lens strip", () => {
       expect(tab.hasAttribute("disabled")).toBe(true);
     }
     expect(strip.getAttribute("aria-describedby")).toBe("lens-disabled-note");
-    expect(
-      screen.getByText("Add a fund, a stock or cash and the five lenses open."),
-    ).toBeTruthy();
+    // P-E-08: the sentence is no longer a paragraph under the strip. It is the tabs'
+    // description — still reachable, now visually hidden — and each tab carries it as a
+    // tooltip for a reader without a screen reader.
+    expect(screen.getByText("Add a holding to open this lens")).toBeTruthy();
+    for (const tab of within(strip).getAllByRole("tab")) {
+      expect(tab.getAttribute("title")).toBe("Add a holding to open this lens");
+    }
   });
 });

@@ -442,31 +442,31 @@ describe("pairVerdict", () => {
     expect(pairVerdict(fund(AAA, 70), fund(BBB, 100)).state).toBe("printed");
   });
 
-  it("prints a partial-band pair and says in words that it is a floor", () => {
+  it("prints a partial-band pair and says in words that it is a minimum", () => {
     const verdict = pairVerdict(fund(AAA, 80), fund(BBB, 64.8));
     expect(verdict.state).toBe("floor");
-    expect(verdict.note).toBe("BBB is 64.8% covered, so this overlap is a floor.");
+    expect(verdict.note).toBe("Minimum: BBB is partly traced.");
     // 60.0 is partial, not full.
     expect(pairVerdict(fund(AAA, 60), fund(BBB, 100)).state).toBe("floor");
   });
 
   it("names every partial fund when both are in that band", () => {
     expect(pairVerdict(fund(AAA, 68), fund(BBB, 61)).note).toBe(
-      "AAA is 68.0% covered and BBB is 61.0% covered, so this overlap is a floor.",
+      "Minimum: AAA and BBB are partly traced.",
     );
   });
 
-  it("withholds the pair below the 60% floor, naming the fund and its percentage", () => {
+  it("withholds the pair below the 60% floor, naming the fund", () => {
     const verdict = pairVerdict(fund(AAA, 80), fund(BBB, 59.9));
     expect(verdict.state).toBe("withheld");
-    expect(verdict.note).toBe("BBB is 59.9% covered, below the 60% floor.");
+    expect(verdict.note).toBe("Not compared: BBB is under 60% traced.");
     // A withheld fund settles it even when the other one is in the full band.
     expect(pairVerdict(fund(AAA, 100), fund(BBB, 0)).state).toBe("withheld");
   });
 
   it("keeps the strongest reason when both funds are below the floor", () => {
     expect(pairVerdict(fund(AAA, 37), fund(BBB, 12)).note).toBe(
-      "AAA is 37.0% covered and BBB is 12.0% covered, below the 60% floor.",
+      "Not compared: AAA and BBB are under 60% traced.",
     );
   });
 

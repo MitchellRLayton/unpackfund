@@ -1,3 +1,4 @@
+import { fireEvent, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
@@ -235,27 +236,34 @@ const MODEL = model({ ledger: LEDGER, funds: FUNDS });
 
 /** Every lens, rendered. A throw or a leaked `NaN` fails the suite. */
 describe("the four lenses render a worked portfolio", () => {
-  it("markets: one bar, two tables, the code in text and the tiers in words", () => {
+  it("markets: one bar, two tables, the code in text and the tiers as codes", () => {
     const html = renderToStaticMarkup(<MarketsLens model={MODEL} />);
-    // Three segments, named the way the operator asked for them, and no fourth.
-    expect(html).toContain("United States");
-    expect(html).toContain("International Developed ex-US");
-    expect(html).toContain("Emerging Markets");
+    // Three segments, in OD-04's compact labels, and no fourth. The long name is the
+    // tip's accessible name rather than the visible label, so it is never lost — only
+    // said once, behind the code.
+    expect(html).toContain('<th scope="row">US</th>');
+    expect(html).toContain('<th scope="row">DM</th>');
+    expect(html).toContain('<th scope="row">EM</th>');
+    expect(html).toContain('aria-label="About US"');
+    expect(html).toContain('aria-label="About DM"');
+    expect(html).toContain('aria-label="About EM"');
     expect(html).not.toContain("Other developed markets");
     expect(html).not.toContain("No market tier");
     expect(html).not.toContain("Unplaced");
     expect(html).toContain("49.00%");
     // What the bar does not draw is stated with its own number instead of drawn.
-    expect(html).toContain("Outside the bar:");
+    expect(html).toContain("Not in the bar:");
     expect(html).toContain("US");
-    expect(html).toContain("Developed");
-    expect(html).toContain("MSCI-aligned country classification");
+    // The convention is named once, beside the toggle, and never on a label.
+    expect(html).toContain('data-convention="MSCI"');
+    expect(html).not.toContain("(MSCI)");
     expect(html).toContain('data-tier="US"');
     // The bar's numbers and the countries behind it. This portfolio holds no country
     // the two conventions disagree about, so the disagreement table is a sentence.
     expect(html.match(/<table/g)).toHaveLength(2);
     expect(html).toContain("The two conventions agree for this portfolio");
-    expect(html).toContain("Export CSV");
+    // The download is an icon now; its accessible name carries the words.
+    expect(html).toContain("Download this table as CSV");
     expect(html).not.toMatch(/NaN|undefined/);
   });
 
@@ -323,27 +331,47 @@ describe("the four lenses render a worked portfolio", () => {
     expect(html).toContain('aria-sort="descending"');
     expect(html).toContain('aria-sort="none"');
     expect(html).toContain("Sorted by Weight, largest first");
-    expect(html).toContain("2026-06-30 · filed 2026-08-28 · 59 days");
+    // P-F-03: every column that needs explaining carries its own tip, named for its
+    // header, and the column holding the three dates is named after them.
+    for (const label of [
+      "Weight",
+      "Positions",
+      "Coverage",
+      "Holdings as of",
+      "Your top ten",
+      "Effective holdings",
+    ]) {
+      expect(html).toContain(`aria-label="About ${label}"`);
+    }
+    expect(html).not.toContain("Reporting period, filed");
+    // P-F-06: the cell reads as a date, not as three ISO strings; the filed year is
+    // dropped because it is the period's own year, and it is still filed-then-lag.
+    expect(html).toContain("Jun 30, 2026 · filed Aug 28 · 59 days");
     expect(html).toContain("80.0% covered");
     expect(html).toContain("partial 60.0%");
     expect(html).toContain("45.71%");
     expect(html).not.toMatch(/NaN|undefined/);
   });
 
-  it("overlap: a partial-band pair prints its number and says it is a floor", () => {
+  it("overlap: a partial-band pair prints its number and says it is a minimum", () => {
     const html = renderToStaticMarkup(<OverlapLens model={MODEL} />);
     expect(html).toContain("AAA and BBB hold 30.00% of their value");
     expect(html).toContain("30.00%");
-    expect(html).toContain("BBB is 60.0% covered, so this overlap is a floor.");
+    expect(html).toContain("Minimum: BBB is partly traced.");
     // The numbers stay in the table: the band qualifies a printed figure, it does
     // not replace one.
     expect(html).toContain("50.00%");
     expect(html).toContain("Companies in either");
     expect(html).not.toContain("not computed");
+    // The caption is still a real `<caption>` for a screen reader, hidden visually
+    // only (H9), and each column's meaning is a keyboard-reachable tip.
+    expect(html).toContain('class="visually-hidden"');
+    expect(html).toContain("Every pair of your funds, most overlap first.");
+    expect(html).toContain('aria-label="About Overlap"');
     expect(html).not.toMatch(/NaN|undefined/);
   });
 
-  it("overlap: a fully covered pair prints plainly, with no note", () => {
+  it("overlap: a fully covered pair prints plainly, with no note column", () => {
     const covered = FUNDS.map((document) =>
       document.ticker === BBB ? { ...document, coverage_pct: 80 } : document,
     );
@@ -351,7 +379,11 @@ describe("the four lenses render a worked portfolio", () => {
       <OverlapLens model={model({ ledger: LEDGER, funds: covered })} />,
     );
     expect(html).toContain("AAA and BBB hold 30.00% of their value");
-    expect(html).not.toContain("so this overlap is a floor");
+    expect(html).not.toContain("Minimum:");
+    // Nothing to qualify means no column to qualify in, and no chip either: both funds
+    // are in the full band.
+    expect(html).not.toContain(">Note<");
+    expect(html).not.toContain("covered</span>");
     expect(html).not.toMatch(/NaN|undefined/);
   });
 
@@ -364,7 +396,10 @@ describe("the four lenses render a worked portfolio", () => {
     );
     expect(html).toContain("No pair of your funds can be compared");
     expect(html).toContain("not computed");
-    expect(html).toContain("BBB is 41.2% covered, below the 60% floor.");
+    expect(html).toContain("Not compared: BBB is under 60% traced.");
+    // The percentage is still on screen: it is the chip in the fund's own cell, which
+    // the withheld band keeps (P-O-05).
+    expect(html).toContain("41.2% not covered");
     expect(html).not.toMatch(/NaN|undefined/);
   });
 
@@ -373,14 +408,64 @@ describe("the four lenses render a worked portfolio", () => {
     expect(html).toContain("77.8%");
     expect(html).toContain("80.0% covered");
     expect(html).toContain("partial 60.0%");
-    expect(html).toContain("Share positions with no company");
-    expect(html).toContain("Cash and derivative lines inside funds");
-    expect(html).toContain("Filed weight outside the holding schedules");
+    expect(html).toContain("Unmatched securities");
+    expect(html).toContain("Cash and derivatives in funds");
+    expect(html).toContain("Filing adjustment");
     expect(html).toContain("100.00%");
-    expect(html).toContain("In the partial band:");
-    expect(html).toContain("2026-05-31");
-    expect(html).toContain("59 days");
+    // The date cells are P-F-06's format, and the footer states the oldest period and
+    // the slowest filing in the same words.
+    expect(html).toContain("May 31, 2026 · filed Jul 1 · 31 days");
+    expect(html).toContain("oldest May 31, 2026 · slowest 59 days");
+    // The per-band prose is gone; the notes strip and `/methodology/#coverage` carry it.
+    expect(html).not.toContain("In the partial band");
+    // Both captions survive as sr-only `<caption>`s (H9), and the band rule is the
+    // coverage header's tip rather than a paragraph.
+    expect(html).toContain("Coverage by fund, least covered first.");
+    expect(html).toContain("Every part of your portfolio, adding to 100%.");
+    expect(html).toContain('aria-label="About Coverage"');
+    // The Count header carries the zero-basis-point rule now (P-Q-05). A tip's text is
+    // only in the DOM while it is open, so the trigger is what a static render proves.
+    expect(html).toContain('aria-label="About Count"');
     expect(html).not.toMatch(/NaN|undefined/);
+  });
+
+  it("quality: a row that prints as zero is not printed", () => {
+    // CN_ZERO_ROW: a fund-less portfolio holds no cash, and "Your cash 0.00% —" is a
+    // line of noise in a table whose job is to reconcile. "Named companies" and "Total"
+    // are never hidden this way.
+    const noCash = model({
+      ledger: withEffective({
+        ...LEDGERBase,
+        metrics: { ...LEDGERBase.metrics, cash_weight: 0 },
+      }),
+      funds: FUNDS,
+    });
+    const html = renderToStaticMarkup(<QualityLens model={noCash} />);
+    expect(html).not.toContain("Your cash");
+    expect(html).toContain("Named companies");
+    expect(html).toContain("Total");
+  });
+
+  it("quality: the count tip carries the zero-basis-point rule, in both forms", () => {
+    const mixed = model({
+      ledger: withEffective({
+        ...LEDGERBase,
+        unmapped: { ...UNMAPPED, positions: 34, positions_with_weight: 17 },
+      }),
+      funds: FUNDS,
+    });
+    const first = render(<QualityLens model={mixed} />);
+    fireEvent.click(screen.getByRole("button", { name: "About Count" }));
+    expect(screen.getByRole("tooltip").textContent).toBe(
+      "Positions that carry weight. 17 more round to zero and aren't counted.",
+    );
+    first.unmount();
+
+    // With nothing rounding to zero there is no clause to print: the sentence is the
+    // whole tip (P-Q-05's Z = 0 form).
+    render(<QualityLens model={MODEL} />);
+    fireEvent.click(screen.getByRole("button", { name: "About Count" }));
+    expect(screen.getByRole("tooltip").textContent).toBe("Positions that carry weight.");
   });
 
   it("a cash-only mix gets its own sentence, not 'No portfolio yet'", () => {
@@ -414,7 +499,9 @@ describe("the four lenses render a worked portfolio", () => {
       pendingFunds: [BBB],
     } as WorkspaceModel;
     const html = renderToStaticMarkup(<FundsLens model={pending} />);
-    expect(html).toContain("Waiting for filings");
+    // P-L-02: the title names the count and the body names the funds.
+    expect(html).toContain("Reading 1 filing…");
+    expect(html).toContain("Still loading:");
     expect(html).toContain(BBB);
     expect(html).not.toContain("<table");
 
@@ -480,9 +567,10 @@ describe("funds: the Effective holdings pair", () => {
   it("ends with the portfolio's own pair and says it is not an average", () => {
     const html = renderToStaticMarkup(<FundsLens model={MODEL} />);
     expect(html).toContain("Your portfolio");
-    expect(html).toContain(
-      "Not an average of the rows above. Companies held by more than one fund merge, which lowers both counts.",
-    );
+    // P-F-05: the sentence is the row header's tooltip now, so it is carried by a
+    // control with a name a reader can reach — not by a paragraph under the table.
+    expect(html).toContain("About Your portfolio");
+    expect(html).not.toContain("funds-portfolio-hint");
     // The ledger's own pair, for a reader who never hovers: 1.9 and 2.3.
     expect(html).toMatch(/>1\.9</);
     expect(html).toMatch(/>2\.3</);
