@@ -78,6 +78,11 @@ from typing import Iterable, Mapping, Sequence
 
 from . import release
 from .artifact import canonical_bytes, utc_now_iso
+#: The storage allowance has one definition, in `cost_ceilings`, so the prune and the
+#: upload gate cannot disagree about where the free tier ends.
+from .cost_ceilings import GB, R2_FREE_BYTES as FREE_TIER_BYTES
+from .cost_ceilings import R2_STORAGE_BUDGET
+from .cost_ceilings import assess_bucket, format_report, over_budget
 from .r2 import IMMUTABLE, ObjectEntry, R2Client, R2Error
 
 RELEASES_PREFIX = "releases/"
@@ -103,8 +108,6 @@ MASS_DELETE_FRACTION = 0.60
 #: One DeleteObjects request takes at most this many keys.
 DELETE_BATCH = 1000
 
-GB = 1_000_000_000
-FREE_TIER_BYTES = 10 * GB
 
 KEEP = "keep"
 STUB = "stub"
@@ -895,16 +898,21 @@ def print_plan(plan: Plan, *, counts_only: bool = False) -> None:
         + (f", {deferred} defer" if deferred else "")
         + f" — removes {plan.remove_objects:,} object(s) / {format_bytes(plan.remove_bytes)} "
         f"({plan.removal_fraction:.1%} of the {plan.considered_objects:,} considered objects); after ≈ "
-        f"{plan.after_gb:.3f} GB of the {FREE_TIER_BYTES // GB} GB free tier "
-        f"({plan.after_gb * GB / FREE_TIER_BYTES:.1%})"
+        f"{plan.after_gb:.3f} GB of the {R2_STORAGE_BUDGET / GB:.3f} GB budget "
+        f"({plan.after_bytes / R2_STORAGE_BUDGET:.1%}; the platform allowance is {FREE_TIER_BYTES // GB} GB)"
     )
     if deferred:
         print(
             f"  backlog: {deferred} release(s) deferred — the next run continues from a fresh listing "
             "(60% per run keeps the listing-bug guard meaningful)"
         )
-    if plan.after_bytes > FREE_TIER_BYTES:
-        print("  warning: that is over the free tier — the policy cannot keep up with the release size; check the listing")
+    if plan.after_bytes > R2_STORAGE_BUDGET:
+        # The same line `apply` refuses at, so `plan` cannot say "fine" and the next command say
+        # "REFUSED" — the independent review found the two thresholds disagreeing at 7.5 vs 10 GB.
+        print(
+            "  warning: this plan still leaves the bucket over the storage budget — `apply` will "
+            "exit 2 until the backlog is cleared; the policy cannot keep up with the release size"
+        )
 
 
 def print_apply_report(report: ApplyReport) -> None:
@@ -917,8 +925,8 @@ def print_apply_report(report: ApplyReport) -> None:
         after_bytes = report.after_bytes or 0
         print(
             f"  bucket after: {report.after_objects:,} objects / {format_bytes(after_bytes)} = "
-            f"{after_bytes / GB:.3f} GB of the {FREE_TIER_BYTES // GB} GB free tier "
-            f"({after_bytes / FREE_TIER_BYTES:.1%})"
+            f"{after_bytes / GB:.3f} GB of the {R2_STORAGE_BUDGET / GB:.3f} GB budget "
+            f"({after_bytes / R2_STORAGE_BUDGET:.1%}; the platform allowance is {FREE_TIER_BYTES // GB} GB)"
         )
 
 
@@ -1014,6 +1022,29 @@ def main(argv: list[str] | None = None, *, client: R2Client | None = None) -> in
         print("  a partial run is safe to repeat: the next plan is computed from a fresh listing")
         return 1
     print_apply_report(report)
+
+    # A prune that leaves the bucket over the budget has not done its job, and a green
+    # exit is how that went unnoticed for ten days in November 2026. The refusal is an
+    # exit status because the workflow's only read of this run is its status; `plan` is
+    # untouched, so the command that fixes the state always runs.
+    if report.after_bytes is None:
+        print(
+            "REFUSED: the bucket was not re-listed after this run, so its size is unknown. "
+            "A prune that cannot say what it left behind is a failure, not a pass.",
+            file=sys.stderr,
+        )
+        return 2
+    ceilings = assess_bucket(bytes=report.after_bytes)
+    print()
+    print(format_report(ceilings, heading="bucket after prune"))
+    if over_budget(ceilings):
+        print(
+            "REFUSED: the bucket is still over the storage budget after this prune. "
+            "That is a retention backlog or an oversized release, not a reason to raise the "
+            "line — run `plan` and read the decisions.",
+            file=sys.stderr,
+        )
+        return 2
     return 0
 
 

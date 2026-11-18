@@ -898,3 +898,39 @@ def test_apply_plan_workers_deletes_every_doomed_release(monkeypatch):
     assert "2026-10-29" in left
     assert "releases/2026-10-29/funds/T0.json" in fake.objects
     assert len(left) - 1 == plan.count(retention.DEFER)
+
+
+# -- the free-tier budget: a prune that leaves the bucket over it is a failure ------
+def test_cli_apply_reports_the_bucket_inside_the_ceiling(tmp_path, capsys, monkeypatch):
+    """A normal prune prints the post-state and exits 0 — the number is the evidence."""
+    monkeypatch.setattr(retention, "utc_today", lambda: TODAY)
+    fake = bucket(
+        ["2026-10-01", "2026-10-15", "2026-10-20", "2026-10-29", "2026-10-30"],
+        live="2026-10-29",
+        staged="2026-10-30",
+    )
+
+    assert retention.main(["apply", "--yes"], client=fake) == 0
+
+    printed = capsys.readouterr().out
+    assert "bucket after prune" in printed
+    assert "ok:" not in printed or "R2 storage, bucket after prune" in printed
+
+
+def test_cli_apply_refuses_a_bucket_that_is_still_over_budget(capsys, monkeypatch):
+    """The 2026-11-10 shape: a run that reports success while the bucket is still over.
+
+    The budget is shrunk to one byte rather than building a multi-gigabyte fake, so any
+    surviving object trips it. The exit status is what the workflow reads, which is the
+    point: a warning in a green job is how ten days passed unnoticed.
+    """
+    monkeypatch.setattr(retention, "utc_today", lambda: TODAY)
+    from pipeline import cost_ceilings
+
+    monkeypatch.setattr(cost_ceilings, "R2_STORAGE_BUDGET", 1)
+    fake = bucket(["2026-10-01", "2026-10-29", "2026-10-30"], live="2026-10-29", staged="2026-10-30")
+
+    assert retention.main(["apply", "--yes"], client=fake) == 2
+    captured = capsys.readouterr()
+    assert "REFUSED" in captured.err
+    assert "still over the storage budget" in captured.err
