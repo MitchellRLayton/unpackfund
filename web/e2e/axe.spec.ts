@@ -46,6 +46,18 @@ test.skip(!process.env.E2E_BASE_URL, "E2E_BASE_URL is not set");
 
 for (const state of STATES) {
   test(`axe: ${state.id}`, async ({ page }) => {
+    // The published data is read cross-origin from `data.unpackfund.com`. A cached copy of
+    // `latest/release.json` has been seen without an `access-control-allow-origin` header for
+    // the preview origin, which blocks every data page in a browser and says nothing about the
+    // page under test. So the gate fetches the data itself (no CORS in Node) and answers the
+    // page with the header, which makes the run depend on the page and not on that cache.
+    await page.route("https://data.unpackfund.com/**", async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        response,
+        headers: { ...response.headers(), "access-control-allow-origin": "*" },
+      });
+    });
     await page.goto(state.url);
     await page
       .locator(state.ready)

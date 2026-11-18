@@ -1,7 +1,5 @@
 {
-  "portfolio-example": [
-    "label-content-name-mismatch"
-  ],
+  "portfolio-example": ["label-content-name-mismatch"],
   "compare-filled": [],
   "compare-empty": [],
   "funds": [],
