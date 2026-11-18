@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-import { formatCount, formatIsoDate, formatShare } from "@/lib/format";
+import { formatCount, formatDateLong, formatShare } from "@/lib/format";
 import { encodeComparison } from "@/lib/fragment";
 import { writeComparison } from "@/lib/fragment-store";
 import { tallyOf } from "@/lib/holdings";
@@ -19,7 +19,9 @@ import {
 } from "@/lib/use-release";
 import { useComparison, type Side } from "@/lib/use-comparison";
 
+import { InfoTip } from "@/components/feedback/InfoTip";
 import { useProvider } from "@/components/lenses/provider-preference";
+import { Term } from "@/components/prose/Term";
 
 import styles from "./compare.module.css";
 import { MarketSplitChart } from "./MarketSplitChart";
@@ -28,7 +30,6 @@ import { OverlapTabs } from "./OverlapTabs";
 import {
   coverageGap,
   describePartial,
-  describeUncomparable,
   joinWithAnd,
   marketSplit,
   mixTotals,
@@ -251,12 +252,9 @@ export function CompareSurface() {
       <div className="stack stack--tight">
         <div className="answer">
           <p className="answer__sentence">{shortHeadline}</p>
+          {/* CN_COMPARE_NOT_100. The refusal's reasoning is methodology#overlap (MA-11). */}
           <p className="answer__note">
-            {mixTotals(shortSides)} A comparison runs on two whole mixes, and it is funds
-            only — cash and directly held stocks cannot fill a gap in a side. A short side
-            is not scaled up to fit: dividing it by its own total would answer a question
-            about a mix you do not hold. Bring each side to exactly 100% with Scale to
-            100%, or type the missing share.
+            {mixTotals(shortSides)} Scale to 100% to compare.
           </p>
         </div>
       </div>
@@ -264,15 +262,11 @@ export function CompareSurface() {
   } else if (gap.suppressed.length > 0) {
     result = (
       <div className="answer">
+        {/* CN_COMPARE_WITHHELD. Why a floor withholds the figure lives at
+            methodology#overlap (MA-12), not on every withheld page. */}
         <p className="answer__sentence">
-          These two mixes cannot be compared on overlap:{" "}
-          {describeUncomparable(gap.suppressed)}
-        </p>
-        <p className="answer__note">
-          The share is withheld rather than computed on the part of each fund that could
-          be traced: below 60%, that figure would describe a different mix. The same floor
-          hides those funds&apos; weights everywhere else on the site, so this page names
-          them instead of showing a table with holes in it.
+          Overlap withheld: {joinWithAnd(gap.suppressed.map((fund) => fund.ticker))}{" "}
+          {gap.suppressed.length === 1 ? "is" : "are"} under 60% traced.
         </p>
       </div>
     );
@@ -281,18 +275,15 @@ export function CompareSurface() {
       <div className="stack stack--tight">
         <div className="answer">
           <p className="answer__sentence">
-            These two mixes overlap by <strong>{formatShare(overlap.overlap)}</strong>:
-            that is the share of each mix held in the same companies.
+            These mixes <Term name="overlap">overlap</Term> by{" "}
+            <strong>{formatShare(overlap.overlap)}</strong>.
           </p>
           <p className="answer__note">
-            {formatCount(overlap.sharedCount)} companies are held on both sides, of{" "}
-            {formatCount(overlap.unionCount)} held across the two. Of Mix A&apos;s value,{" "}
-            {formatShare(overlap.ledgerA.metrics.resolved_weight)} resolved to a company,
-            and {formatShare(overlap.ledgerB.metrics.resolved_weight)} of Mix B&apos;s;
-            what did not resolve is reported as not placed, never spread across the rest.
-            {oldest
-              ? ` Oldest filing behind these numbers: ${formatIsoDate(oldest)}.`
-              : ""}
+            {formatCount(overlap.sharedCount)} shared of {formatCount(overlap.unionCount)}{" "}
+            companies · <Term name="coverage">Covered</Term>: A{" "}
+            {formatShare(overlap.ledgerA.metrics.resolved_weight)}, B{" "}
+            {formatShare(overlap.ledgerB.metrics.resolved_weight)}
+            {oldest ? ` · Oldest holdings ${formatDateLong(oldest)}` : ""}
           </p>
           {gap.partial.length > 0 ? (
             <p className="answer__note">{describePartial(gap.partial)}</p>
@@ -312,21 +303,21 @@ export function CompareSurface() {
           <h1 className="title">Compare two mixes</h1>
           <div className={styles.headActions}>
             <button type="button" className="btn btn--primary" onClick={copyLink}>
-              Copy link
+              Share
             </button>
+            <InfoTip label="Share">
+              Your comparison lives only in this link. Nothing is saved.
+            </InfoTip>
             <span className={styles.copyStatus} role="status">
               {copyState === "copied"
-                ? "Link copied."
+                ? "Link copied. Your comparison lives only in this link."
                 : copyState === "failed"
                   ? "Copy failed — the address bar holds the same link."
                   : ""}
             </span>
           </div>
         </div>
-        <p className="lede">
-          Two mixes of funds, and the companies they share. Every percentage is a share of
-          its whole mix, never of a fund.
-        </p>
+        <p className="lede">See which companies two mixes of funds share.</p>
       </header>
 
       <div className={styles.columns}>
@@ -392,27 +383,11 @@ export function CompareSurface() {
           <div className="empty">
             <h2 className="empty__title">Nothing to compare yet</h2>
             <p className="small muted">
-              A comparison is two mixes of funds and the companies they share. Fill Mix A
-              and Mix B above: one fund at a time, or a whole portfolio&apos;s funds at
-              once.
+              Add a fund to each mix, or start from your portfolio.
             </p>
-            <div className="ways-in">
-              <div className="way">
-                <p className="way__title">
-                  <Link href="/">Build a portfolio</Link>
-                </p>
-                <p className="small muted">
-                  Its funds arrive here as Mix A, at their shares of the whole portfolio.
-                </p>
-              </div>
-              <div className="way">
-                <p className="way__title">Type a ticker above</p>
-                <p className="small muted">
-                  Mix A and Mix B both take one fund at a time, with the share each one
-                  has of its mix.
-                </p>
-              </div>
-            </div>
+            <p className="small">
+              <Link href="/">Build a portfolio</Link>
+            </p>
           </div>
         ) : (
           result
@@ -433,43 +408,9 @@ export function CompareSurface() {
         )
       ) : null}
 
-      <details className={styles.method}>
-        <summary>How the overlap is worked out</summary>
-        <div className="prose">
-          <p>
-            The overlap is the smaller of each company&apos;s two weights, added up: for
-            every company both mixes hold, take the lower of its two percentages and add
-            them together. It is the share of each mix held in the same companies — a
-            statement about money, not about the number of funds. Two mixes can share no
-            fund at all and still hold the same companies.
-          </p>
-          <p>
-            Both mixes are looked through exactly as the X-Ray&apos;s ledger is: a
-            company&apos;s weight is the sum, over the funds that hold it, of the
-            fund&apos;s share of the mix times the company&apos;s weight in the fund. A
-            filed position that could not be matched to a company stays unmatched —
-            counted, reported, and never spread across the companies that did resolve.
-          </p>
-          <p>
-            Every percentage is a share of the whole mix. A side that does not total 100%
-            is refused rather than scaled: the overlap of an 88% mix is a sum over 88% of
-            its value, and printing that as the whole would understate it. Scale to 100%
-            makes the side whole and writes the result into the link.
-          </p>
-          <p>
-            Coverage bands are the X-Ray&apos;s: a fund with 60% to 70% of its weight
-            traced to companies is shown and marked as partly traced, and one below 60%
-            has its numbers withheld. If either mix holds such a fund, the overlap is
-            withheld too, and the sentence above names the funds — a share computed on the
-            traced part would describe a different mix.
-          </p>
-          <p>
-            Nothing is stored and nothing is sent anywhere: the comparison is the
-            page&apos;s URL fragment. That is why Copy link shares exactly what is on
-            screen, and why clearing the address bar clears the comparison.
-          </p>
-        </div>
-      </details>
+      <p className="small">
+        <Link href="/methodology/#overlap">How overlap is calculated</Link>
+      </p>
     </div>
   );
 }

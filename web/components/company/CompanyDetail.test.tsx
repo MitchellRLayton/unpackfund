@@ -105,9 +105,12 @@ describe("CompanyDetail", () => {
     renderDetail();
     expect(state.shown).toHaveBeenCalledTimes(1);
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByRole("heading").textContent).toBe("APPLE INC.");
+    const heading = within(dialog).getByRole("heading", { level: 2 });
+    expect(heading.textContent).toBe("APPLE INC.");
     expect(dialog.textContent).toContain("AAPL");
-    expect(dialog.textContent).toContain("c_0000320193");
+    // D-C-05: the internal id is not drawn, but stays on the heading as data.
+    expect(dialog.textContent).not.toContain("c_0000320193");
+    expect(heading.getAttribute("data-company-id")).toBe("c_0000320193");
   });
 
   it("lists the funds holding it, largest position first", () => {

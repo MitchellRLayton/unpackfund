@@ -37,7 +37,9 @@ import {
 import { write } from "@/lib/fragment-store";
 import {
   ATTRIBUTED_LABEL,
+  COVERAGE_POPOVER,
   IDENTIFIED_LABEL,
+  coverageChipText,
   coveragePair,
   coverageSentence,
   coverageSleeve,
@@ -170,33 +172,6 @@ function AmountField({
 }
 
 /**
- * The coverage chip's words, banded.
- *
- * The percentage is `formatCoveragePct`'s — the one rounding rule, untouched — and the
- * band is written after it as well as carried by the chip's colour, because "partial" and
- * "withheld" are facts a reader has to be able to see without colour vision.
- */
-function coverageChipText(coveragePct: number): string {
-  const pct = formatCoveragePct(coveragePct);
-  switch (coverageBand(coveragePct)) {
-    case "full":
-      return `${pct} covered`;
-    case "partial":
-      return `${pct} covered · partial`;
-    case "none":
-      return `${pct} covered · withheld`;
-  }
-}
-
-/**
- * What the coverage chip's tip says: the concept's one-sentence definition, which is the
- * same sentence `/glossary/` expands under `#coverage`, so the chip and the glossary
- * cannot describe the same number two ways.
- */
-const COVERAGE_TIP =
-  "Share of a fund's weight we can trace to named companies. 70% or more is full, 60–70% partial, under 60% withheld.";
-
-/**
  * One chip per qualifier: coverage, reporting period, or what kind of row this is.
  *
  * Coverage is two shares for a fund, not one, and the row carries both when the release
@@ -235,7 +210,7 @@ function RowChips({ entry, model }: { entry: PortfolioEntry; model: WorkspaceMod
           ? coverageChipText(fund.coverage_pct)
           : `${formatCoveragePct(pair.attributed)} ${ATTRIBUTED_LABEL}`}
         {pair.identified === null ? (
-          <InfoTip label="Coverage">{COVERAGE_TIP}</InfoTip>
+          <InfoTip label="Coverage">{COVERAGE_POPOVER}</InfoTip>
         ) : null}
       </span>
       {pair.identified === null ? null : (

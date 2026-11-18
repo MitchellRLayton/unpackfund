@@ -33,6 +33,7 @@ import {
   formatFreshnessShort,
   formatShare,
 } from "@/lib/format";
+import { COVERAGE_POPOVER } from "@/lib/coverage";
 import type { LensProps } from "@/components/workspace/types";
 
 import {
@@ -199,11 +200,7 @@ export function QualityLens({ model }: LensProps) {
                   Coverage
                   {/* `concepts.coverage.popover` (copy-spec.yaml:58): the same sentence
                       the coverage chip carries, so the band rule has one wording. */}
-                  <InfoTip label="Coverage">
-                    {
-                      "Share of a fund's weight we can trace to named companies. 70% or more is full, 60–70% partial, under 60% withheld."
-                    }
-                  </InfoTip>
+                  <InfoTip label="Coverage">{COVERAGE_POPOVER}</InfoTip>
                 </th>
                 <th scope="col">Holdings as of</th>
               </tr>

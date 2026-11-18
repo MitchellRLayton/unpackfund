@@ -248,6 +248,8 @@ export default function MethodologyPage() {
         Even a fund in the full band can leave up to 30% of its weight untraced, so every
         figure that depends on coverage is a floor rather than an exact value.
       </p>
+      <p>A low coverage figure is a limit of our matching, not a flaw in the fund.</p>
+
       <h3 id="identified">Identified, and attributed</h3>
       <p>
         A position can be known at two depths, and the site prints both numbers rather
@@ -456,6 +458,16 @@ export default function MethodologyPage() {
         In the Overlap lens a pair is compared only when both funds are at least 60%
         traced. When either fund is in the partial band (60% to under 70%), the pair is
         marked as a minimum.
+      </p>
+
+      <p>
+        On the Compare page, a side that does not total 100% is refused rather than scaled,
+        because the overlap of an 88% mix is a sum over 88% of its value. Scale to 100%
+        makes the side whole and writes the result into the link.
+      </p>
+      <p>
+        If either mix holds a fund under 60% traced, the Compare overlap is withheld and
+        the funds are named.
       </p>
 
       <h2 id="markets">Market tiers</h2>
@@ -706,6 +718,12 @@ export default function MethodologyPage() {
         holdco whose filing gives the listing venue, a dual-domiciled name — and none for
         a wrong code table.
       </p>
+      <p>
+        In the company directory, &lsquo;Held by&rsquo; counts the funds that report a
+        company. It is not a measure of size or popularity. A blank domicile means there
+        is no agreed answer, not a default.
+      </p>
+
       <h3 id="country-contested">When the vote cannot decide</h3>
       <p>
         A company the vote refuses is not left out of the Markets bar. The release

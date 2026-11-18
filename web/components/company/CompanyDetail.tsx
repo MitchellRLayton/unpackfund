@@ -30,19 +30,17 @@
 import { useEffect, useRef } from "react";
 
 import { flagEmoji } from "@/lib/country-flag";
-import { PROVIDER_NAMES, tierOf } from "@/lib/country-tier";
 import { formatCount, formatShare, formatWeightBp } from "@/lib/format";
 import { isCompanyId, type Ledger, type ReleaseDescriptor } from "@/lib/types";
 import { useCatalogue, useCompany } from "@/lib/use-release";
 
-import { useProvider } from "@/components/lenses/provider-preference";
+import { InfoTip } from "@/components/feedback/InfoTip";
 
 import styles from "./company.module.css";
 import {
   companyCountry,
   companyFundRows,
   holdingLine,
-  tierLabel,
   type CompanyRow,
 } from "./company-rows";
 
@@ -70,8 +68,6 @@ export function CompanyDetail({
   openCompany,
 }: CompanyDetailProps) {
   const companyId = rawId !== null && isCompanyId(rawId) ? rawId : null;
-  // The same convention the Markets lens shows: one choice, read from the URL.
-  const { provider } = useProvider();
 
   const shard = useCompany(release, companyId);
   // The catalogue is only read once a company is open, and only for the fund names
@@ -132,19 +128,21 @@ export function CompanyDetail({
       {companyId ? (
         <>
           <div className={styles.detailHead}>
-            <p className="eyebrow">Company</p>
+            {/* The internal id is not shown (D-C-05); it stays in the URL and here. */}
             <h2
               id="company-detail-title"
               ref={headingRef}
               tabIndex={-1}
+              data-company-id={companyId}
               className={`title title--sm ${styles.detailTitle}`}
             >
               {name}
             </h2>
-            <p className="row small muted">
-              {ticker ? <span className="chip chip--mono">{ticker}</span> : null}
-              <span className="mono">{companyId}</span>
-            </p>
+            {ticker ? (
+              <p className="row small muted">
+                <span className="chip chip--mono">{ticker}</span>
+              </p>
+            ) : null}
             <p className="row">
               <button
                 type="button"
@@ -166,8 +164,12 @@ export function CompanyDetail({
                       <span className="country-tag">
                         <span aria-hidden="true">{flagEmoji(country)}</span> {country}
                       </span>
-                    ) : (
+                    ) : shard.status === "ready" ? (
                       <span className="muted">not recorded</span>
+                    ) : (
+                      // Only a loaded shard can say the domicile is missing (D-C-08);
+                      // until then "not recorded" would be a claim we have not checked.
+                      <span className="muted">…</span>
                     )}
                   </span>
                 </div>
@@ -188,14 +190,6 @@ export function CompanyDetail({
                   </div>
                 ) : null}
               </div>
-
-              {country && tierLabel(tierOf(country, { provider }), provider) ? (
-                <p className="small muted">
-                  The tier comes from the release&apos;s {PROVIDER_NAMES[provider]}{" "}
-                  country classification:{" "}
-                  {tierLabel(tierOf(country, { provider }), provider)}.
-                </p>
-              ) : null}
 
               {holding ? (
                 <p className="answer__note">
@@ -221,29 +215,30 @@ export function CompanyDetail({
 
               {shard.status === "loading" ? (
                 <p className="small muted" role="status">
-                  Reading the funds that report this company…
+                  Loading…
                 </p>
               ) : null}
 
               {shard.status === "ready" ? (
                 <>
+                  <h3 className="title title--sm">
+                    Top {formatCount(shown.length)} of {formatCount(funds.length)} funds,
+                    by weight in fund
+                  </h3>
                   <div className="table-wrap">
                     <table className="table">
-                      <caption>
-                        The{" "}
-                        {funds.length <= shown.length
-                          ? `${formatCount(funds.length)} ${funds.length === 1 ? "fund" : "funds"}`
-                          : `${formatCount(shown.length)} largest of the ${formatCount(funds.length)} funds`}{" "}
-                        that report this company, ordered by how much of each fund it is.
-                        The weight is the fund&apos;s own filed basis points for this
-                        holding, so it says how much of that fund the company is — not how
-                        much of the company the fund owns.
+                      <caption className="visually-hidden">
+                        Funds holding {name}, largest weight first.
                       </caption>
                       <thead>
                         <tr>
                           <th scope="col">Fund</th>
                           <th scope="col" className="num">
                             Weight in fund
+                            <InfoTip label="Weight in fund">
+                              How much of the fund this company is. Not how much of the
+                              company the fund owns.
+                            </InfoTip>
                           </th>
                         </tr>
                       </thead>

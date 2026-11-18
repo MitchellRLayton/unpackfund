@@ -41,6 +41,7 @@ import { LensExport, LensProblem, LensSection, LensState } from "./lens-chrome";
 import { lensCsvName, marketsCsv } from "./lens-csv";
 import { lensGateState } from "./lens-gate";
 import {
+  MARKET_LONG,
   PROVIDER_SHORT,
   marketSplit,
   otherProvider,
@@ -60,18 +61,6 @@ const ROW_FILL: Record<MarketBucket, string> = {
   US: "rowbar__fill--us",
   DM: "rowbar__fill--dm",
   EM: "rowbar__fill--em",
-};
-
-/**
- * The tier's long name, for the tip behind its compact label.
- *
- * OD-04's wording (`PROMPT.md` §5.1, "long form in tooltips"): the label on screen is the
- * code, and the words are one keystroke away rather than repeated on every row.
- */
-const MARKET_LONG: Record<MarketBucket, string> = {
-  US: "United States",
-  DM: "Developed ex-US",
-  EM: "Emerging",
 };
 
 /** `concepts.market_tier.popover` — the Tier column's one explanation (R4). */

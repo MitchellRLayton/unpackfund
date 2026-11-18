@@ -6,6 +6,8 @@ import type { KeyboardEvent } from "react";
 import { formatCount, formatShare } from "@/lib/format";
 import type { Overlap, OverlapRow } from "@/lib/overlap";
 
+import { InfoTip } from "@/components/feedback/InfoTip";
+
 import styles from "./compare.module.css";
 import {
   onlyRows,
@@ -26,6 +28,14 @@ const TABS = [
   { id: "only-a", label: "Only in A" },
   { id: "only-b", label: "Only in B" },
 ] as const;
+
+/** C-08: what each column header's tip says. */
+const TIPS = {
+  a: "Share of Mix A.",
+  b: "Share of Mix B.",
+  both: "The smaller of the two weights. These add up to the overlap.",
+  through: "The funds each company comes from, by mix.",
+} as const;
 
 type TabIndex = 0 | 1 | 2;
 
@@ -71,6 +81,7 @@ export function OverlapTabs({
   const onlyA = useMemo(() => onlyRows(overlap.rows, "a"), [overlap]);
   const onlyB = useMemo(() => onlyRows(overlap.rows, "b"), [overlap]);
   const rows = [shared, onlyA, onlyB] as const;
+  const tabCount = [shared.length, onlyA.length, onlyB.length] as const;
   const current = rows[selected];
   const visible = expanded ? current : current.slice(0, PAGE);
 
@@ -109,14 +120,17 @@ export function OverlapTabs({
 
   const ariaSort = (key: OverlapSortKey) => (sort.key === key ? sort.direction : "none");
 
+  /** The sr-only caption (≤15 words, R2): which companies the table lists. */
   function caption(): string {
-    if (selected === 0) {
-      return `Both mixes hold ${formatCount(shared.length)} companies in common, of ${formatCount(overlap.unionCount)} held across the two. In both is the smaller of each company's two weights, and those are the numbers the overlap adds up. Sorted by ${OVERLAP_SORT_LABEL[sort.key]}, ${sort.direction === "descending" ? "largest first" : "smallest first"}.`;
-    }
-    if (selected === 1) {
-      return `Mix A holds ${formatCount(onlyA.length)} companies that Mix B does not. Weight is each company's share of Mix A. Largest first.`;
-    }
-    return `Mix B holds ${formatCount(onlyB.length)} companies that Mix A does not. Weight is each company's share of Mix B. Largest first.`;
+    if (selected === 0) return "Companies held in both mixes.";
+    return selected === 1
+      ? "Companies held only in Mix A."
+      : "Companies held only in Mix B.";
+  }
+
+  /** Said when a sort button is pressed: the visible arrow cannot be announced. */
+  function sortAnnouncement(): string {
+    return `Sorted by ${OVERLAP_SORT_LABEL[sort.key]}, ${sort.direction === "descending" ? "largest first" : "smallest first"}.`;
   }
 
   function emptySentence(): string {
@@ -151,7 +165,7 @@ export function OverlapTabs({
             onClick={() => select(index as TabIndex)}
             onKeyDown={(event) => onKeyDown(event, index as TabIndex)}
           >
-            {tab.label}
+            {tab.label} ({formatCount(tabCount[index] ?? 0)})
           </button>
         ))}
       </div>
@@ -165,15 +179,17 @@ export function OverlapTabs({
       >
         {/* `aria-live` because the order is the answer to a click: a screen reader
          * that activates a sort button otherwise hears nothing change, and the arrow
-         * is drawn in CSS where it cannot be announced. */}
-        <p className="small muted" aria-live="polite">
-          {caption()}
+         * is drawn in CSS where it cannot be announced. The sentence is spoken, not
+         * drawn (C-08 deletes the visible description lines). */}
+        <p className="visually-hidden" aria-live="polite">
+          {selected === 0 ? sortAnnouncement() : ""}
         </p>
         {visible.length === 0 ? (
           <p className="small">{emptySentence()}</p>
         ) : (
           <div className="table-wrap">
             <table className="table">
+              <caption className="visually-hidden">{caption()}</caption>
               <thead>
                 <tr>
                   <th scope="col">Company</th>
@@ -193,15 +209,25 @@ export function OverlapTabs({
                           >
                             {OVERLAP_SORT_LABEL[key]}
                           </button>
+                          {/* Beside the sort button, never inside it. */}
+                          <InfoTip label={OVERLAP_SORT_LABEL[key]} inline>
+                            {TIPS[key]}
+                          </InfoTip>
                         </th>
                       ))}
                     </>
                   ) : (
                     <th scope="col" className="num">
                       {selected === 1 ? "In Mix A" : "In Mix B"}
+                      <InfoTip label={selected === 1 ? "In Mix A" : "In Mix B"}>
+                        {selected === 1 ? TIPS.a : TIPS.b}
+                      </InfoTip>
                     </th>
                   )}
-                  <th scope="col">Held through</th>
+                  <th scope="col">
+                    Held through
+                    <InfoTip label="Held through">{TIPS.through}</InfoTip>
+                  </th>
                 </tr>
               </thead>
               <tbody>

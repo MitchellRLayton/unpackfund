@@ -21,7 +21,7 @@
  * field existed. No caller decides that for itself.
  */
 
-import { formatCoveragePct, coverageChip } from "./format";
+import { coverageBand, coverageChip, formatCoveragePct } from "./format";
 import type { AssetCategory, FundDocument } from "./types";
 
 /** The six asset classes, in the order the sleeve lists them. */
@@ -41,6 +41,36 @@ export const ASSET_CATEGORY_ORDER: readonly AssetCategory[] = [
  * uses the word "coverage" — the whole point of the change is that the second number
  * cannot be read as the first.
  */
+/**
+ * `concepts.coverage.popover` (copy-spec.yaml): the one sentence every coverage header and
+ * chip carries, so the band rule has a single wording. It is the same sentence `/glossary/`
+ * expands under `#coverage`.
+ */
+export const COVERAGE_POPOVER =
+  "Share of a fund's weight we can trace to named companies. 70% or more is full, 60–70% partial, under 60% withheld.";
+
+/** D-F-04: the Coverage header tip on `/funds/` adds the one thing a reader needs to hear. */
+export const COVERAGE_POPOVER_WITH_LIMIT = `${COVERAGE_POPOVER} A low figure is a limit of our matching, not a flaw in the fund.`;
+
+/**
+ * The coverage chip's words, banded.
+ *
+ * The percentage is `formatCoveragePct`'s — the one rounding rule, untouched — and the
+ * band is written after it as well as carried by the chip's colour, because "partial" and
+ * "withheld" are facts a reader has to be able to see without colour vision.
+ */
+export function coverageChipText(coveragePct: number): string {
+  const pct = formatCoveragePct(coveragePct);
+  switch (coverageBand(coveragePct)) {
+    case "full":
+      return `${pct} covered`;
+    case "partial":
+      return `${pct} covered · partial`;
+    case "none":
+      return `${pct} covered · withheld`;
+  }
+}
+
 export const ATTRIBUTED_LABEL = "attributed to companies";
 export const IDENTIFIED_LABEL = "of weight identified";
 

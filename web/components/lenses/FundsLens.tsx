@@ -38,6 +38,7 @@ import {
   formatFreshnessShort,
   formatShare,
 } from "@/lib/format";
+import { COVERAGE_POPOVER } from "@/lib/coverage";
 import { InfoTip } from "@/components/feedback/InfoTip";
 import { Term } from "@/components/prose/Term";
 import { TableScroll } from "@/components/TableScroll";
@@ -95,7 +96,7 @@ const COLUMNS: Array<{
     label: "Coverage",
     numeric: true,
     first: "descending",
-    tip: "Share of a fund's weight we can trace to named companies. 70% or more is full, 60–70% partial, under 60% withheld.",
+    tip: COVERAGE_POPOVER,
   },
   {
     key: "asOf",
