@@ -41,6 +41,19 @@ NPORT_FORMS = ("NPORT-P", "NPORT-P/A")
 #: every trust that holds a money-market fund.
 INDEX_WINDOWS = 3
 
+#: Documents one registrant may be read over before the walk concedes.
+#:
+#: ``INDEX_WINDOWS`` alone is not enough, and assuming it was is what dropped 41 funds on
+#: 2026-11-17. The window rests on "a trust files one N-PORT per series for the same
+#: period", which holds only while every series shares a fiscal year. EA Series Trust
+#: (CIK 1592900) has staggered year-ends: its N-PORTs carry **18 distinct `reportDate`
+#: values**, so the newest three periods covered barely a third of its 102 series and the
+#: rest looked like closed funds. Walking periods until every wanted series is found costs
+#: nothing extra for an ordinary registrant — the loop already stops the moment `wanted`
+#: empties — and this budget is what stops a genuinely dead 1,000-series trust from being
+#: read back to its inception.
+INDEX_DOCUMENT_BUDGET = 4000
+
 #: (cik, seriesId or "") → (accession, filingDate).
 _SERIES_INDEX: dict[tuple[str, str], tuple[str, str]] = {}
 #: accession → the seriesId that document declares (None for a unit investment
@@ -122,7 +135,7 @@ def candidates(cik: str) -> list[dict]:
     return rows
 
 
-def _windows(rows: list[dict], count: int) -> list[list[dict]]:
+def _windows(rows: list[dict], count: int | None) -> list[list[dict]]:
     """Candidates grouped into portfolio periods, newest first.
 
     ``reportDate`` — the period the holdings are for — is what groups a filing
@@ -135,7 +148,8 @@ def _windows(rows: list[dict], count: int) -> list[list[dict]]:
     for row in rows:
         key = str(row.get("reportDate") or row.get("filingDate") or "")
         periods.setdefault(key, []).append(row)
-    return [periods[key] for key in sorted(periods, reverse=True)[:count]]
+    ordered = sorted(periods, reverse=True)
+    return [periods[key] for key in (ordered if count is None else ordered[:count])]
 
 
 #: Series lookups that failed on an EDGAR rate limit, counted per process.
@@ -162,11 +176,12 @@ def reset_throttled_lookups() -> None:
 def index_registrant(cik: str, refs: Sequence[universe.FundRef]) -> int:
     """Read this registrant's newest filings until every wanted series is known.
 
-    The window is three quarters (``INDEX_BUDGET_FACTOR``): every fund that files
-    N-PORT files it quarterly, so a series with nothing in three quarters is a
-    closed fund or a money-market fund — MMFs report on N-MFP, not N-PORT, and no
-    amount of walking will find an N-PORT that does not exist. Reading a trust's
-    whole history to prove that costs the entire corpus for a handful of series.
+    Periods are walked newest-first and the walk stops the moment every wanted
+    series is known, so the common case costs what ``INDEX_WINDOWS`` says. It no
+    longer *assumes* three quarters is enough: that held for trusts where every
+    series shares a fiscal year, and stopped holding the day a 102-series trust
+    filed across eighteen staggered periods. A series still unfound after
+    ``INDEX_DOCUMENT_BUDGET`` documents is reported, not silently dropped.
 
     Returns how many documents that took. Callers may run several registrants at
     once: the index is keyed by CIK, so two threads only ever write their own keys.
@@ -180,8 +195,15 @@ def index_registrant(cik: str, refs: Sequence[universe.FundRef]) -> int:
         return 0
 
     fetched = 0
-    for period in _windows(candidates(cik), INDEX_WINDOWS):
+    # Every period, newest first. The loop stops as soon as `wanted` is empty, so an
+    # ordinary registrant reads exactly what it read before; only a trust whose series
+    # do not share a fiscal year walks further, and `INDEX_DOCUMENT_BUDGET` bounds it.
+    for period in _windows(candidates(cik), None):
+        if fetched >= INDEX_DOCUMENT_BUDGET:
+            break
         for row in period:
+            if fetched >= INDEX_DOCUMENT_BUDGET:
+                break
             accession = row["accessionNumber"]
             if accession not in _ACCESSION_SERIES:
                 try:

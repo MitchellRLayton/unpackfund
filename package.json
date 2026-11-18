@@ -14,6 +14,7 @@
     "lint": "pnpm --filter @unpackfund/web lint",
     "typecheck": "pnpm --filter @unpackfund/web typecheck",
     "test": "pnpm --filter @unpackfund/web test",
+    "test:invariants": "bash scripts/invariants.sh",
     "format": "pnpm --filter @unpackfund/web format",
     "check:determinism": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.checks",
     "pipeline:build": "cd pipeline && ../.venv/pipeline/bin/python -m pipeline.build",
