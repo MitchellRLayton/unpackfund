@@ -82,6 +82,9 @@ WARNING_ENUM = {
 }
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RELEASE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(\.\d+)?$")
+#: An N-MFP series id, and the two forms that make a series a money-market fund.
+MMFP_SERIES_RE = re.compile(r"^S\d{9}$")
+MMF_FORMS = ("N-MFP2", "N-MFP3")
 # A CUSIP is 3-digit issuer prefix + 5 alphanumeric + 1 check digit. Bounded so it
 # cannot match inside a 10-digit CIK or a series id. Non-US issuers may use letters
 # in the prefix, which this misses — hence the belt-and-braces key check.
@@ -1607,6 +1610,60 @@ def _check_budget(release_dir: Path, report: Report) -> None:
 RELEASE_SCHEMA_VERSION = 2
 
 
+
+def _check_mmf_aliases(release_dir: Path, funds: list[dict], report: Report) -> None:
+    """AU-2: the money-market alias list, and the one rule that keeps it honest.
+
+    A ticker in this list is a fund the release does **not** publish. The moment one also
+    appears as an N-PORT fund, the product has two answers for one ticker — a money
+    market row with no stocks and a real holdings document — so the release fails rather
+    than letting a consumer pick one.
+    """
+    path = release_dir / "mmf_aliases.json"
+    if not path.exists():
+        report.ok("mmf_aliases", "absent (no money-market aliases in this release)")
+        return
+    try:
+        document = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        report.fail("mmf_aliases", f"unreadable: {error}")
+        return
+    aliases = document.get("aliases")
+    if not isinstance(aliases, list) or not aliases:
+        report.fail("mmf_aliases.aliases", "missing or empty")
+        return
+
+    published = {fund["ticker"].upper() for fund in funds}
+    seen: set[str] = set()
+    for position, entry in enumerate(aliases):
+        label = f"mmf_aliases[{position}]"
+        if not isinstance(entry, dict):
+            report.fail(label, "not an object")
+            return
+        missing = [key for key in ("ticker", "series_id", "name", "latest_form") if key not in entry]
+        if missing:
+            report.fail(label, f"missing {missing}")
+            return
+        ticker = str(entry["ticker"])
+        if not TICKER_RE.match(ticker):
+            report.fail(f"{label}.ticker", ticker)
+        if ticker in seen:
+            report.fail(f"{label}.ticker", f"{ticker} appears twice")
+        seen.add(ticker)
+        if ticker.upper() in published:
+            report.fail(f"{label}.ticker", f"{ticker} is also a published N-PORT fund")
+        if not MMFP_SERIES_RE.match(str(entry["series_id"])):
+            report.fail(f"{label}.series_id", str(entry["series_id"]))
+        if entry["latest_form"] not in MMF_FORMS:
+            report.fail(f"{label}.latest_form", str(entry["latest_form"]))
+        if not isinstance(entry["name"], str) or not entry["name"].strip():
+            report.fail(f"{label}.name", repr(entry["name"]))
+        if "class_id" in entry and not isinstance(entry["class_id"], str):
+            report.fail(f"{label}.class_id", repr(entry["class_id"]))
+    if not report.failures:
+        report.ok("mmf_aliases", f"{len(aliases)} money-market ticker(s), none published")
+
+
 def _check_catalogue(release_dir: Path, manifest: dict, funds: list[dict], report: Report) -> None:
     """The pointer, the catalogue, and the reverse index must describe this release.
 
@@ -1993,6 +2050,7 @@ def validate(release_dir: Path) -> int:
     _check_fund_of_funds_release(funds, report)
     _check_identified_release(manifest, funds, report)
     _check_catalogue(release_dir, manifest, funds, report)
+    _check_mmf_aliases(release_dir, funds, report)
     _check_benchmarks(release_dir, funds, report)
     _check_company_countries(release_dir, report)
     _check_sizes(release_dir, report)

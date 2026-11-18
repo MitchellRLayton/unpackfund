@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { buildLedger } from "./aggregate";
+import { ledgerCsv } from "./export";
 import { buildOverlap } from "./overlap";
-import type { FundDocument, Holding } from "./types";
+import { splitPortfolio } from "./portfolio-weights";
+import type { FundDocument, Holding, PortfolioEntry } from "./types";
 
 /**
  * The AU-1 invariants that no existing test pins, plus the two the spec defers.
@@ -15,7 +18,7 @@ import type { FundDocument, Holding } from "./types";
  *   I-2  overlap symmetric, each term <= min      — here (symmetry is `overlap.test.ts`)
  *   I-3  overlap + onlyA = A's resolved weight    — `overlap.test.ts`
  *   I-4  Core <= Broad <= company count           — `effective-holdings.property.test.ts`
- *   I-5  percent and dollars modes agree          — not testable: no Dollars mode exists
+ *   I-5  percent and dollars modes agree          — here (the encoder/ledger boundary)
  *   I-6  row order changes nothing                — `effective-holdings.property.test.ts`
  *   I-7  flattening preserves total weight        — `pipeline/tests/test_fund_of_funds_gates.py`
  *   I-8  an account filter equals its rows alone  — deferred, WS-B (platform spec)
@@ -92,6 +95,65 @@ describe("I-2 — every overlap term is bounded by both sides' weight", () => {
     expect(result.overlap).toBeCloseTo(0.4, 12);
     expect(result.onlyA).toBeCloseTo(0.6, 12);
     expect(result.onlyB).toBeCloseTo(0.6, 12);
+  });
+});
+
+describe("I-5 — Percent and Dollars give byte-identical company CSV", () => {
+  // The conversion happens once, in `splitPortfolio` (portfolio-weights.ts): basis
+  // points over 10,000, or cents over their own total. So the invariant is tested at
+  // that boundary — two encodings of the same proportions must produce the same
+  // fractions, and therefore the same ledger and the same CSV bytes.
+  //
+  // The proportions are chosen so both modes divide the *same rational*: 6,000 bp of
+  // 10,000 and 900,000 cents of 1,500,000 are both exactly 3/5, and IEEE division is
+  // correctly rounded, so the fractions are identical bit for bit. That is the
+  // property the invariant rests on, not a tolerated difference.
+  const funds = [
+    fund("F", [holding("c_1", 5000), holding("c_2", 3000), holding("c_3", 2000)]),
+    fund("G", [holding("c_1", 2500), holding("c_4", 7500)]),
+  ];
+  const percent: PortfolioEntry[] = [
+    { kind: "fund", key: "F", amount: 6000 },
+    { kind: "fund", key: "G", amount: 4000 },
+  ];
+  const dollars: PortfolioEntry[] = [
+    { kind: "fund", key: "F", amount: 900_000 },
+    { kind: "fund", key: "G", amount: 600_000 },
+  ];
+
+  it("converts both modes to the same fractions", () => {
+    const fromPercent = splitPortfolio("bp", percent);
+    const fromDollars = splitPortfolio("usd", dollars);
+    expect(fromDollars.fundWeights).toEqual(fromPercent.fundWeights);
+    expect(fromDollars.invested).toEqual(fromPercent.invested);
+  });
+
+  it("produces the same ledger weights", () => {
+    const fromPercent = buildLedger({
+      funds,
+      weights: splitPortfolio("bp", percent).fundWeights,
+    });
+    const fromDollars = buildLedger({
+      funds,
+      weights: splitPortfolio("usd", dollars).fundWeights,
+    });
+    expect(fromDollars.rows.map((row) => row.weight)).toEqual(
+      fromPercent.rows.map((row) => row.weight),
+    );
+  });
+
+  it("writes byte-identical company CSV", () => {
+    const release = { as_of: "2026-11-17.1" };
+    const csvFrom = (mode: "bp" | "usd", entries: PortfolioEntry[]) =>
+      ledgerCsv(
+        buildLedger({ funds, weights: splitPortfolio(mode, entries).fundWeights }),
+        release,
+      );
+    const fromPercent = csvFrom("bp", percent);
+    const fromDollars = csvFrom("usd", dollars);
+    expect(fromDollars).toBe(fromPercent);
+    // Hand-check the shared weight survives: F 60% × 50% + G 40% × 25% = 40% of C1.
+    expect(fromPercent).toContain("c_1,Company c_1,C_1,40.00");
   });
 });
 

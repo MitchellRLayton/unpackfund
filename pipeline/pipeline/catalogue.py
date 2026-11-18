@@ -35,7 +35,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 from collections.abc import Mapping
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 
 from . import benchmarks as benchmarks_mod
 from . import company_countries as company_countries_mod
@@ -257,6 +257,7 @@ def write_release_objects(
     etf_classifier: str = "",
     benchmarks: Iterable[str] = benchmarks_mod.BENCHMARK_TICKERS,
     securities_source: dict | None = None,
+    mmf_aliases: Sequence[Mapping[str, str]] = (),
     countries: Mapping[str, str] | None = None,
     invalid_country_rows: int = 0,
     countries_fallback: Mapping[str, Any] | None = None,
@@ -345,6 +346,18 @@ def write_release_objects(
         sizes["companies/countries.json"] = len(countries_body)
         countries_entry = object_entry("companies/countries.json", countries_body)
 
+    # Money-market aliases (AU-2, docs/platform/automation-spec.yaml T-AU-2.2): the
+    # series that file N-MFP and never N-PORT. Optional by presence, like the benchmark,
+    # so a release that has none keeps the shape every consumer already reads.
+    mmf_entry: dict | None = None
+    if mmf_aliases:
+        mmf_body = encode({"schema_version": 1, "aliases": list(mmf_aliases)})
+        target = release_dir / "mmf_aliases.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(mmf_body)
+        sizes["mmf_aliases.json"] = len(mmf_body)
+        mmf_entry = object_entry("mmf_aliases.json", mmf_body)
+
     # The compact benchmark (ADR-0015): one fund's weights pre-rolled to companies,
     # so `/x` fetches 43 kB instead of 1.58 MB for the table's comparison column.
     # Written with this module's compact encoder, not the fund document's indented
@@ -416,6 +429,8 @@ def write_release_objects(
                if benchmark_entries else {}),
             **({"securities": securities_entry}
                if securities_entry is not None else {}),
+            **({"mmf_aliases": {"object": mmf_entry, "count": len(mmf_aliases)}}
+               if mmf_entry is not None else {}),
         },
     )
     release_payload = encode(release_document)
