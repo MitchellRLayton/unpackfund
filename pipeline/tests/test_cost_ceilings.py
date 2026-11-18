@@ -50,7 +50,7 @@ def test_steady_state_fits_the_headroom_budget_by_construction():
     # because `3 x MAX_RELEASE_BYTES <= R2_FREE_BYTES` still held with HEADROOM = 1.0, so the
     # 75 % policy could have been deleted and the suite stayed green.
     assert cc.R2_STORAGE_BUDGET == int(cc.R2_FREE_BYTES * cc.HEADROOM)
-    assert cc.MAX_RESIDENT_RELEASES * cc.MAX_RELEASE_BYTES <= cc.R2_STORAGE_BUDGET
+    assert cc.MAX_RESIDENT_RELEASES * cc.MAX_RELEASE_BYTES + cc.STUB_ALLOWANCE <= cc.R2_STORAGE_BUDGET
     assert cc.HEADROOM == 0.75  # the ADR's value, not just "some headroom"
     assert cc.R2_STORAGE_BUDGET == 7_500_000_000
     # The policy's own steady state (live + staged full, four stubs) is ~1.0 GB, well inside.
@@ -172,6 +172,8 @@ def test_cli_refuses_a_release_over_the_byte_line(tmp_path, monkeypatch):
     release_dir.mkdir()
     (release_dir / "manifest.json").write_bytes(b"x" * 3)
     # 3 bytes x 3 resident releases = 9: exactly on the line passes, one byte under refuses.
+    # Stub allowance zeroed so the arithmetic under test is the release bytes alone.
+    monkeypatch.setattr(cc, "STUB_ALLOWANCE", 0)
     monkeypatch.setattr(cc, "R2_STORAGE_BUDGET", 9)
     assert cc.main(["--release", str(release_dir)]) == 0
     monkeypatch.setattr(cc, "R2_STORAGE_BUDGET", 8)

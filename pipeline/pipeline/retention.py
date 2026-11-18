@@ -81,6 +81,7 @@ from .artifact import canonical_bytes, utc_now_iso
 #: The storage allowance has one definition, in `cost_ceilings`, so the prune and the
 #: upload gate cannot disagree about where the free tier ends.
 from .cost_ceilings import GB, R2_FREE_BYTES as FREE_TIER_BYTES
+from .cost_ceilings import R2_STORAGE_BUDGET
 from .cost_ceilings import assess_bucket, format_report, over_budget
 from .r2 import IMMUTABLE, ObjectEntry, R2Client, R2Error
 
@@ -897,16 +898,21 @@ def print_plan(plan: Plan, *, counts_only: bool = False) -> None:
         + (f", {deferred} defer" if deferred else "")
         + f" — removes {plan.remove_objects:,} object(s) / {format_bytes(plan.remove_bytes)} "
         f"({plan.removal_fraction:.1%} of the {plan.considered_objects:,} considered objects); after ≈ "
-        f"{plan.after_gb:.3f} GB of the {FREE_TIER_BYTES // GB} GB free tier "
-        f"({plan.after_gb * GB / FREE_TIER_BYTES:.1%})"
+        f"{plan.after_gb:.3f} GB of the {R2_STORAGE_BUDGET / GB:.3f} GB budget "
+        f"({plan.after_bytes / R2_STORAGE_BUDGET:.1%}; the platform allowance is {FREE_TIER_BYTES // GB} GB)"
     )
     if deferred:
         print(
             f"  backlog: {deferred} release(s) deferred — the next run continues from a fresh listing "
             "(60% per run keeps the listing-bug guard meaningful)"
         )
-    if plan.after_bytes > FREE_TIER_BYTES:
-        print("  warning: that is over the free tier — the policy cannot keep up with the release size; check the listing")
+    if plan.after_bytes > R2_STORAGE_BUDGET:
+        # The same line `apply` refuses at, so `plan` cannot say "fine" and the next command say
+        # "REFUSED" — the independent review found the two thresholds disagreeing at 7.5 vs 10 GB.
+        print(
+            "  warning: this plan still leaves the bucket over the storage budget — `apply` will "
+            "exit 2 until the backlog is cleared; the policy cannot keep up with the release size"
+        )
 
 
 def print_apply_report(report: ApplyReport) -> None:
@@ -919,8 +925,8 @@ def print_apply_report(report: ApplyReport) -> None:
         after_bytes = report.after_bytes or 0
         print(
             f"  bucket after: {report.after_objects:,} objects / {format_bytes(after_bytes)} = "
-            f"{after_bytes / GB:.3f} GB of the {FREE_TIER_BYTES // GB} GB free tier "
-            f"({after_bytes / FREE_TIER_BYTES:.1%})"
+            f"{after_bytes / GB:.3f} GB of the {R2_STORAGE_BUDGET / GB:.3f} GB budget "
+            f"({after_bytes / R2_STORAGE_BUDGET:.1%}; the platform allowance is {FREE_TIER_BYTES // GB} GB)"
         )
 
 

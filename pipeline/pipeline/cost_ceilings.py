@@ -23,7 +23,8 @@ Why the per-release ceiling is what it is: the prune policy keeps the live relea
 staged candidate in full, plus four quarterly archive stubs (ADR-0011 §4). `MAX_RESIDENT_RELEASES`
 is 3, one more than the policy can hold, so a release that passes this gate leaves headroom
 even if a rollback parent is kept by hand. The byte ceiling is therefore
-`R2_STORAGE_BUDGET / MAX_RESIDENT_RELEASES` (75 % of the allowance, split three ways); the object
+`(R2_STORAGE_BUDGET - STUB_ALLOWANCE) / MAX_RESIDENT_RELEASES` (75 % of the allowance, minus room
+for the archive stubs, split three ways); the object
 ceiling is a month's Class A budget divided by 30, which is the one-release-a-day cadence the
 arithmetic in ADR-0028 assumes.
 
@@ -97,8 +98,13 @@ R2_STORAGE_BUDGET = int(R2_FREE_BYTES * HEADROOM)
 #: Class A objects one release may write, at one release a day: 1M ops a month / 30 days.
 MAX_RELEASE_OBJECTS = R2_FREE_CLASS_A_OPS // 30
 
-#: Per-release bytes, so `MAX_RESIDENT_RELEASES` of them fit inside `R2_STORAGE_BUDGET`.
-MAX_RELEASE_BYTES = R2_STORAGE_BUDGET // MAX_RESIDENT_RELEASES
+#: Room for the four quarterly archive stubs the prune keeps (measured at ~4 MB each) so that
+#: `MAX_RESIDENT_RELEASES` maximum-size releases *plus* the stubs still fit the budget — without
+#: it, three releases at the limit exactly consumed the budget and the stubs had nothing.
+STUB_ALLOWANCE = 64 * MB
+
+#: Per-release bytes, so `MAX_RESIDENT_RELEASES` of them plus the stubs fit inside `R2_STORAGE_BUDGET`.
+MAX_RELEASE_BYTES = (R2_STORAGE_BUDGET - STUB_ALLOWANCE) // MAX_RESIDENT_RELEASES
 
 
 class CostCeilingError(RuntimeError):
@@ -156,8 +162,8 @@ def assess_release(*, objects: int, bytes: int) -> list[Ceiling]:
             "objects",
         ),
         Ceiling(
-            f"R2 storage, {MAX_RESIDENT_RELEASES} releases resident",
-            bytes * MAX_RESIDENT_RELEASES,
+            f"R2 storage, {MAX_RESIDENT_RELEASES} releases + archive stubs",
+            bytes * MAX_RESIDENT_RELEASES + STUB_ALLOWANCE,
             R2_STORAGE_BUDGET,
             "bytes",
         ),
