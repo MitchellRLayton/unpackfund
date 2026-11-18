@@ -51,7 +51,8 @@ def test_steady_state_fits_the_headroom_budget_by_construction():
     # 75 % policy could have been deleted and the suite stayed green.
     assert cc.R2_STORAGE_BUDGET == int(cc.R2_FREE_BYTES * cc.HEADROOM)
     assert cc.MAX_RESIDENT_RELEASES * cc.MAX_RELEASE_BYTES <= cc.R2_STORAGE_BUDGET
-    assert cc.HEADROOM < 1.0
+    assert cc.HEADROOM == 0.75  # the ADR's value, not just "some headroom"
+    assert cc.R2_STORAGE_BUDGET == 7_500_000_000
     # The policy's own steady state (live + staged full, four stubs) is ~1.0 GB, well inside.
     assert cc.MAX_RELEASE_BYTES >= GB
 

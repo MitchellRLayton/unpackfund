@@ -81,6 +81,7 @@ from .artifact import canonical_bytes, utc_now_iso
 #: The storage allowance has one definition, in `cost_ceilings`, so the prune and the
 #: upload gate cannot disagree about where the free tier ends.
 from .cost_ceilings import GB, R2_FREE_BYTES as FREE_TIER_BYTES
+from .cost_ceilings import assess_bucket, format_report, over_budget
 from .r2 import IMMUTABLE, ObjectEntry, R2Client, R2Error
 
 RELEASES_PREFIX = "releases/"
@@ -1015,6 +1016,29 @@ def main(argv: list[str] | None = None, *, client: R2Client | None = None) -> in
         print("  a partial run is safe to repeat: the next plan is computed from a fresh listing")
         return 1
     print_apply_report(report)
+
+    # A prune that leaves the bucket over the budget has not done its job, and a green
+    # exit is how that went unnoticed for ten days in November 2026. The refusal is an
+    # exit status because the workflow's only read of this run is its status; `plan` is
+    # untouched, so the command that fixes the state always runs.
+    if report.after_bytes is None:
+        print(
+            "REFUSED: the bucket was not re-listed after this run, so its size is unknown. "
+            "A prune that cannot say what it left behind is a failure, not a pass.",
+            file=sys.stderr,
+        )
+        return 2
+    ceilings = assess_bucket(bytes=report.after_bytes)
+    print()
+    print(format_report(ceilings, heading="bucket after prune"))
+    if over_budget(ceilings):
+        print(
+            "REFUSED: the bucket is still over the storage budget after this prune. "
+            "That is a retention backlog or an oversized release, not a reason to raise the "
+            "line — run `plan` and read the decisions.",
+            file=sys.stderr,
+        )
+        return 2
     return 0
 
 

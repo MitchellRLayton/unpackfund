@@ -30,10 +30,11 @@ arithmetic in ADR-0028 assumes.
 **What this gate cannot see, stated here so no reader assumes otherwise.** It judges one
 release at a time from the bytes it is about to publish; it does not read the bucket. A bucket
 already over the line — the 2026-11-10 incident — would accept a normal release, because the
-cause was a prune that deferred for ten days. Bucket state is guarded where it is known: the
-prune workflow (`prune.yml`, whose refusal is now a red run) and `pipeline.retention`'s plan,
-which prints and warns on the post-plan total. The two together are the enforcement; this
-module is the half that stops the growth. For the same reason the 33,333 figure is a
+cause was a prune that deferred for ten days. That state is `assess_bucket`'s question, asked by
+`pipeline.retention apply` after it re-lists the bucket: a prune that leaves it over the budget
+exits 2, so the workflow run is red rather than green-with-a-warning. The two halves are the
+enforcement — this module stops the growth, retention makes a backlog visible in the one channel
+a workflow reads. For the same reason the 33,333 figure is a
 30-day division: a 31-day month at one release a day is 1,033,323 objects, so the object line
 leaves the pointer puts, `next-id`'s listings and re-tries no room in a long month — see
 ADR-0028 §Residual gaps.
@@ -166,6 +167,17 @@ def assess_release(*, objects: int, bytes: int) -> list[Ceiling]:
 def assess_site(*, files: int) -> list[Ceiling]:
     """A built site against the Workers static-asset file cap."""
     return [Ceiling("Workers static-asset files", files, WORKERS_FREE_ASSET_FILES, "files")]
+
+
+def assess_bucket(*, bytes: int) -> list[Ceiling]:
+    """The bucket as it stands after a prune, against the storage budget.
+
+    This is the other half of the pair: `guard_release` stops one release from crossing
+    the line, and this refuses a prune that reports success while the bucket is still
+    over it — the shape of the 2026-11-10 failure, where a step printed a refusal into a
+    green job for ten days.
+    """
+    return [Ceiling("R2 storage, bucket after prune", bytes, R2_STORAGE_BUDGET, "bytes")]
 
 
 def over_budget(ceilings: list[Ceiling]) -> list[Ceiling]:
