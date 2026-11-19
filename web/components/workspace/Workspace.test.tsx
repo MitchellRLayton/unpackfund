@@ -370,14 +370,14 @@ describe("Workspace — the answer comes first", () => {
       entries: ENTRIES.slice(0, 2),
     });
 
-    // Nothing to tabulate, so the box falls back to the prose it replaced.
+    // Nothing is shown for a portfolio that is not whole: one sentence with the number,
+    // where the lenses would be, and no lens, table or action behind it.
     expect(container.querySelector(".summary-box")).toBeNull();
-    const answer = container.querySelector(".answer");
-    expect(answer?.textContent).toContain("Your percentages add up to 90.00%");
-    expect(answer?.textContent).toContain("accounting for nothing");
-    // The lens refuses for the same reason, in its own words.
-    expect(screen.getByText("The portfolio is not whole yet")).toBeTruthy();
+    expect(container.querySelector(".answer")).toBeNull();
+    expect(screen.getByText(/10\.00% of your portfolio has no holding yet/)).toBeTruthy();
+    expect(screen.queryByRole("tablist", { name: "Lenses" })).toBeNull();
     expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy share link" })).toBeNull();
   });
 
   it("waits rather than showing a table before the filings arrive", () => {
@@ -1111,5 +1111,124 @@ describe("Workspace — amounts are written as they are typed", () => {
     vi.mocked(model.portfolio.setAmount).mockClear();
     fireEvent.change(field, { target: { value: "" } });
     expect(model.portfolio.setAmount).not.toHaveBeenCalled();
+  });
+});
+
+describe("Workspace — nothing is shown until the portfolio is submitted", () => {
+  it("holds a whole portfolio back until Show results, then shows it", () => {
+    const view = renderWorkspace({ entries: ENTRIES.slice(0, 2) });
+    expect(screen.queryByRole("tablist", { name: "Lenses" })).toBeNull();
+
+    // The visitor fills the last gap by hand: whole now, but not submitted.
+    state.model = makeModel({ entries: ENTRIES, ledger: LEDGER });
+    view.rerender(<Workspace />);
+    expect(screen.queryByRole("tablist", { name: "Lenses" })).toBeNull();
+    expect(
+      screen.getByText(/Your 3 holdings total 100\.00%\. Press Show results/),
+    ).toBeTruthy();
+
+    // The form's own button and the placeholder's do the same thing.
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Show results" })[0] as HTMLElement,
+    );
+
+    expect(screen.getByRole("tablist", { name: "Lenses" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+  });
+
+  it("shows a whole portfolio that arrives in a link, which somebody already submitted", () => {
+    renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+
+    expect(screen.getByRole("tablist", { name: "Lenses" })).toBeTruthy();
+    expect(screen.queryByText(/Press Show results to see/)).toBeNull();
+  });
+
+  it("steps the results back when a submitted portfolio is edited", () => {
+    const view = renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+    expect(screen.getByRole("tablist", { name: "Lenses" })).toBeTruthy();
+
+    // 50/30/20 is still whole, but it is not the portfolio that was submitted.
+    state.model = makeModel({
+      entries: [
+        { kind: "fund", key: "VTI", amount: 5_000 },
+        { kind: "fund", key: "VXUS", amount: 3_000 },
+        { kind: "fund", key: "BND", amount: 2_000 },
+      ],
+      ledger: LEDGER,
+    });
+    view.rerender(<Workspace />);
+
+    expect(screen.queryByRole("tablist", { name: "Lenses" })).toBeNull();
+    expect(
+      screen.getByText(/Your 3 holdings total 100\.00%\. Press Show results/),
+    ).toBeTruthy();
+  });
+
+  it("keeps the results when only the order of the rows changes", () => {
+    const view = renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+
+    state.model = makeModel({ entries: [...ENTRIES].reverse(), ledger: LEDGER });
+    view.rerender(<Workspace />);
+
+    expect(screen.getByRole("tablist", { name: "Lenses" })).toBeTruthy();
+  });
+});
+
+describe("Workspace — a clean paste that totals 100% submits itself", () => {
+  async function pasteList(text: string) {
+    const view = renderWorkspace();
+    fireEvent.change(screen.getByLabelText("Holdings to paste, one per line"), {
+      target: { value: text },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^Add \d+ holdings?$/ }));
+    return view;
+  }
+
+  it("collapses to the list and shows the results, with the note carried over", async () => {
+    const view = await pasteList("VTI 60\nVXUS 30\nBND 10");
+    const { model } = view;
+    await waitFor(() => expect(model.portfolio.replace).toHaveBeenCalledWith(ENTRIES));
+
+    // The store (mocked here) now holds what was pasted.
+    state.model = makeModel({ entries: ENTRIES, ledger: LEDGER });
+    view.rerender(<Workspace />);
+
+    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    expect(screen.getByRole("tablist", { name: "Lenses" })).toBeTruthy();
+    expect(
+      screen.getByText(/Added 3 holdings\. Check the amounts against your own split/),
+    ).toBeTruthy();
+  });
+
+  it("stays open when a line is dropped, even if what was added totals 100%", async () => {
+    // The third line repeats the second, so the paste is not clean: something was left out.
+    const view = await pasteList("VTI 60\nVXUS 40\nVXUS 40");
+    await waitFor(() => expect(view.model.portfolio.replace).toHaveBeenCalled());
+
+    state.model = makeModel({
+      entries: [
+        { kind: "fund", key: "VTI", amount: 6_000 },
+        { kind: "fund", key: "VXUS", amount: 4_000 },
+      ],
+      ledger: LEDGER,
+    });
+    view.rerender(<Workspace />);
+
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("tablist", { name: "Lenses" })).toBeNull();
+    expect(
+      screen.getAllByRole("button", { name: "Show results" }).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("stays open when the list does not total 100%", async () => {
+    const view = await pasteList("VTI 60\nVXUS 30");
+    await waitFor(() => expect(view.model.portfolio.replace).toHaveBeenCalled());
+
+    state.model = makeModel({ entries: ENTRIES.slice(0, 2), ledger: LEDGER });
+    view.rerender(<Workspace />);
+
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("tablist", { name: "Lenses" })).toBeNull();
   });
 });

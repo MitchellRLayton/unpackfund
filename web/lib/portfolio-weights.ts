@@ -238,3 +238,20 @@ export function effectiveFundCount(fundWeights: Record<string, number>): number 
   // Renormalise: Σ (wᵢ/total)² = Σ wᵢ² / total².
   return (total * total) / sumSquares;
 }
+
+/**
+ * What a portfolio *is*, as a string: its unit and its holdings with their amounts, in a
+ * fixed order.
+ *
+ * The workspace shows results only for the portfolio the visitor submitted, so it has to
+ * recognise that portfolio again. Order is left out on purpose — dragging a row changes
+ * what the form looks like, not what is inside the funds — and everything else is in:
+ * change one amount, add a row or switch to dollars and the signature moves, so the
+ * results step back until "Show results" is pressed again.
+ */
+export function portfolioSignature(mode: EntryMode, entries: PortfolioEntry[]): string {
+  const rows = entries
+    .map((entry) => `${entry.kind}:${entry.key}:${entry.amount}`)
+    .sort();
+  return `${mode}|${rows.join(",")}`;
+}

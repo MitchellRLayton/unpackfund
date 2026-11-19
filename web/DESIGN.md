@@ -448,6 +448,16 @@ status indicator of the bar itself, blue completes it fully at 100% and red for 
   the sentence says the state in words in both cases, and `Workspace.test.tsx` pins all three states (whole, short,
   over) on the bar and on the ink.
 
+## Results appear only for a submitted portfolio (operator, 2026-11-18)
+
+Nothing from the ledger is drawn — no lens, table, metric, action or printed summary — until the visitor has submitted a
+**whole** portfolio: pressing _Show results_, or pasting a clean list that totals exactly 100% (every line added, none
+dropped), which submits itself and collapses the form. A link that arrives with a whole portfolio counts as submitted by
+whoever made it. In between, the results column is one card whose sentence carries the number (`10.00% of your portfolio
+has no holding yet…`, `Your 3 holdings total 100.00%. Press Show results…`). Submission is the portfolio's signature
+(`portfolioSignature`: unit plus holdings and amounts, row order ignored), so any later edit steps the results back until
+it is submitted again. An incomplete or unsubmitted portfolio is never drawn as a partial answer.
+
 ## Open questions — the operator's, not the agent's
 
 - [`open`] **Charts in `/x`.** The ledger is a table, and the fund pages now carry two bars (market split, Company
