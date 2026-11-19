@@ -382,3 +382,29 @@ def test_the_universe_is_unchanged_when_nothing_was_discovered(ticker_file):
     """The default is the old behaviour, so a build without a cache is not a surprise."""
     assert [ref.ticker for ref in universe.all_series()] == ["AAPW"]
     assert [ref.ticker for ref in universe.all_series({})] == ["AAPW"]
+
+
+MAGP_COVER = (
+    "PROSPECTUS Roundhill Magnificent Seven Plus ETF (MAGP) November 10, 2026 Roundhill "
+    "Magnificent Seven Plus ETF (the “Fund”) is a series of Roundhill ETF Trust. The Fund lists "
+    "and principally trades its shares on the Cboe BZX Exchange, Inc."
+)
+
+
+def test_a_bare_symbol_after_the_name_is_read_when_an_exchange_follows():
+    # The 2026-11-10 summary prospectus: no exchange inside the parentheses, the exchange
+    # in the next sentence. MAGP stayed unnamed for a week because only the older
+    # ``(Cboe – DRAM)`` shape was read.
+    assert discovery.symbol_from_cover(MAGP_COVER, "Roundhill Magnificent Seven Plus ETF") == (
+        "MAGP",
+        "cover",
+    )
+
+
+def test_a_bare_parenthesis_is_not_a_symbol_without_an_exchange_or_when_it_is_a_word():
+    name = "Example Growth ETF"
+    assert discovery.symbol_from_cover(f"{name} (EXGR) is a fund of the trust.", name)[0] is None
+    assert discovery.symbol_from_cover(f"{name} (ETF) lists on the Cboe BZX Exchange.", name)[0] is None
+    assert discovery.symbol_from_cover(f"{name} (the “Fund”) lists on the Cboe BZX Exchange.", name)[0] is None
+    # Not directly after the name: a symbol elsewhere in the sentence is not this fund's.
+    assert discovery.symbol_from_cover(f"{name} is not (ZZZ). It lists on Nasdaq.", name)[0] is None

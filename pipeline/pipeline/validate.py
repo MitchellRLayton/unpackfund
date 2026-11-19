@@ -27,6 +27,7 @@ from .gleif import is_issuer_id, is_sec_company_id, LEI_RE
 from .namespaces import COMPANY_ID_RE, is_security_id
 
 from . import paths
+from . import pending as pending_mod
 from . import sizes
 from . import benchmarks as benchmarks_mod
 from . import classification_generated
@@ -1390,6 +1391,34 @@ def _strings(node: Any):
         yield node
 
 
+def _check_pending(release_dir: Path, manifest: dict, funds: list, report: Report) -> None:
+    """``pending.json``: funds registered with the SEC that have filed no N-PORT yet.
+
+    Additive and build-time, like the size table: an absent file is a valid release, and
+    a present one is held to ``pending.validate_document`` — it names no ticker a release
+    publishes, states nothing a prospectus header does not, and recomputes its count.
+    """
+    path = release_dir / pending_mod.PENDING_FILE
+    if not path.is_file():
+        return
+    raw = path.read_bytes()
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        report.fail("pending.json", "pending.json is not valid JSON")
+        return
+    problems = pending_mod.validate_document(
+        body,
+        as_of=manifest.get("as_of", ""),
+        published={document.get("ticker") for document in funds},
+        size=len(raw),
+    )
+    for problem in problems:
+        report.fail("pending", problem)
+    if not problems:
+        report.ok("pending", f"{len(body.get('funds') or {}):,} funds without an N-PORT")
+
+
 def _check_sizes(release_dir: Path, report: Report) -> None:
     """``companies/sizes.json``: the size-band table, when the release published one.
 
@@ -2106,6 +2135,7 @@ def validate(release_dir: Path) -> int:
     _check_benchmarks(release_dir, funds, report)
     _check_company_countries(release_dir, report)
     _check_sizes(release_dir, report)
+    _check_pending(release_dir, manifest, funds, report)
     _check_cusip(release_dir, manifest, report)
     _check_lei(release_dir, manifest, report)
     _check_budget(release_dir, report)

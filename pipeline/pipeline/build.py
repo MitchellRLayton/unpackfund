@@ -52,12 +52,14 @@ from . import (
     classify,
     companies,
     company_countries,
+    discovery,
     figi,
     filings,
     fund_lookthrough,
     identifiers,
     manifest as manifest_mod,
     mmf,
+    pending,
     sec,
     securities,
     size_zones,
@@ -1035,6 +1037,7 @@ def build_release(
     share_map: figi.ShareClassMap | None = None,
     figi_cache: Path | None = None,
     isin_direct_join: bool = False,
+    pending_funds: bool = False,
 ) -> Path:
     started = time.monotonic()
     index = CompanyIndex.load()
@@ -1479,6 +1482,40 @@ def build_release(
                 f"{time.monotonic() - started_sizes:.0f}s — {zone_bits}"
             )
 
+    # Funds the SEC lists that have filed no N-PORT yet. Opt-in, because the scan reads
+    # a few thousand small SEC documents the first time it runs; the release is valid
+    # without it and the page generator without the object builds the pages it did
+    # before. A scan that cannot finish is logged and skipped, never a failed release:
+    # the funds it would name are not published either way.
+    pending_summary: dict | None = None
+    if pending_funds:
+        started_pending = time.monotonic()
+        try:
+            known = pending.known_nport_series(
+                (doc.get("fund_id", "") for doc in documents),
+                refs,
+                failures,
+                discovery.load().keys(),
+            )
+            found, scan_report = pending.run(
+                nport_known=known,
+                nport_absent=pending.absent_nport_series(refs, failures),
+            )
+            pending_doc = pending.document(found, as_of=release, report=scan_report)
+            _, pending_body = pending.write(pending_doc, release_dir)
+            pending_summary = {
+                "bytes": len(pending_body),
+                "sha256": artifact.sha256_hex(pending_body),
+                **scan_report,
+            }
+            _log(
+                f"pending funds: {len(found):,} without an N-PORT, "
+                f"{scan_report['skipped']} skipped, {scan_report['headers_unread']:,} "
+                f"prospectus headers still unread, {time.monotonic() - started_pending:.0f}s"
+            )
+        except (sec.SecError, OSError, ValueError) as error:
+            _log(f"pending funds: skipped ({type(error).__name__}: {error})")
+
     elapsed = time.monotonic() - started
     _log(
         f"manifest: {len(documents):,} funds, {document['company_count']:,} companies, "
@@ -1508,6 +1545,7 @@ def build_release(
         "release_object_sha256": browser_objects["release_sha256"],
         "browser_objects": browser_objects["sizes"],
         "size_buckets": size_summary,
+        "pending_funds": pending_summary,
         "elapsed_seconds": round(elapsed, 1),
         "workers": workers,
         "generated_at": document["generated_at"],
@@ -1631,6 +1669,12 @@ def main(argv: list[str] | None = None) -> int:
         "measuring what GLEIF jurisdiction and EDGAR incorporation are worth",
     )
     parser.add_argument(
+        "--pending-funds",
+        action="store_true",
+        help="also write pending.json: funds with an effective prospectus, a symbol and "
+        "no N-PORT yet (reads prospectus headers from EDGAR; first run is the slow one)",
+    )
+    parser.add_argument(
         "--no-size-buckets",
         action="store_true",
         help="skip the size-band table (zone percentiles); the control build for "
@@ -1700,6 +1744,7 @@ def main(argv: list[str] | None = None) -> int:
             size_buckets=not args.no_size_buckets,
             figi_cache=args.figi_cache,
             isin_direct_join=args.isin_direct_join,
+            pending_funds=args.pending_funds,
         )
     except (
         GateError,

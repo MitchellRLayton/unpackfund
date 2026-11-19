@@ -133,6 +133,10 @@ _TICKER_FIELD = re.compile(
     r"Ticker(?:\s+Symbol)?s?\s*[:\-–]\s*([A-Z][A-Z0-9.\-]{0,5})\b"
 )
 
+#: ``(MAGP)`` straight after the fund's name, and the exchange word that must follow it.
+_NAME_THEN_SYMBOL = re.compile(r"^\s*\(\s*([A-Z][A-Z0-9.\-]{0,5})\s*\)")
+_EXCHANGE_WORD = re.compile(r"\b(?:Cboe|CBOE|NYSE|Nasdaq|NASDAQ)\b")
+
 _SERIES_NAME = re.compile(rb"<seriesName>\s*([^<]{1,200}?)\s*</seriesName>")
 
 #: How far from the fund's name a ticker may sit and still be read as *its* ticker. Wide
@@ -473,6 +477,18 @@ def symbol_from_cover(text: str, name: str) -> tuple[str | None, str]:
             candidate = match.group(1).strip().upper()
             if candidate in _NOT_SYMBOLS or not _SYMBOL.match(candidate):
                 continue
+            return candidate, "cover"
+    # The newer summary-prospectus cover prints the symbol bare — ``Roundhill Magnificent
+    # Seven Plus ETF (MAGP)`` — and states the exchange in the sentence after it. A bare
+    # parenthesised symbol is corroborated only when it follows the name *directly* and an
+    # exchange is named within the next ``_NAME_WINDOW`` characters, so a name followed by
+    # ``(the "Fund")`` or ``(ETF)`` is never read as a ticker. It runs last, so every cover
+    # the patterns above already read gives the same answer as before.
+    tail = text[position + len(name) : position + len(name) + _NAME_WINDOW]
+    bare = _NAME_THEN_SYMBOL.match(tail)
+    if bare and _EXCHANGE_WORD.search(tail):
+        candidate = bare.group(1).upper()
+        if candidate not in _NOT_SYMBOLS and _SYMBOL.match(candidate):
             return candidate, "cover"
     return None, "no exchange line beside the fund's name"
 
