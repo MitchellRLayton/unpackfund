@@ -70,6 +70,7 @@ CPPAX,American Funds Preservation Portfolio,,,0.840,typesafe/jev-1.14,style-jev-
 AFMFX,American Mutual Fund,,,0.990,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 ISWN,Amplify BlackSwan ISWN ETF,,,0.910,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 CNBS,Amplify Seymour Cannabis ETF,,,0.600,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+THNR,Amplify Weight Loss Drug & Treatment ETF,u_s_health_care,below threshold,0.740,typesafe/jev-1.14-20261014,style-jev-2026-11-18.1-1795106192
 TRBF,Angel Oak Total Return ETF,,,0.980,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 NDOW,Anydrus Advantage ETF,,,0.990,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 AFDVX,Applied Finance Explorer Fund,,,0.890,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -272,6 +273,7 @@ QLMAGX,Franklin Templeton Moderately Conservative Model Portfolio,,,0.700,typesa
 FQCHX,Franklin Templeton SMACS Series CH,,,0.940,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 FQTEX,Franklin Templeton SMACS Series E,,,0.920,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 FGTHX,Franklin Templeton SMACS Series H,,,0.950,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+FGTIX,Franklin Templeton SMACS Series I,unknown,unknown name,0.960,typesafe/jev-1.14-20261014,style-jev-2026-11-18.1-1795106192
 FARX,Frontier Asset Absolute Return ETF,,,0.920,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 XNAV,FundX Aggressive ETF,,,0.820,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 XCOR,FundX ETF,unknown,unknown name,1.000,typesafe/jev-1.14-20261014,style-jev-2026-11-03.1-1793718825
@@ -583,7 +585,9 @@ RKCAX,Rockefeller Climate Solutions Fund,,,0.660,typesafe/jev-1.14,style-jev-202
 METV,Roundhill Ball Metaverse ETF,,,0.620,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 WEED,Roundhill Cannabis ETF,,,0.450,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 OZEM,Roundhill GLP-1 & Weight Loss ETF,u_s_health_care,below threshold,0.820,typesafe/jev-1.14-20261014,style-jev-2026-11-06.2-1794060350
+LOHA,Roundhill HALO ETF,unknown,unknown name,0.950,typesafe/jev-1.14-20261014,style-jev-2026-11-18.1-1795106192
 MAGS,Roundhill Magnificent Seven ETF,,,0.370,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+DRAM,Roundhill Memory ETF,u_s_technology,below threshold,0.800,typesafe/jev-1.14-20261014,style-jev-2026-11-18.1-1795106192
 BETZ,Roundhill Sports Betting & iGaming ETF,,,0.570,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 UX,Roundhill Uranium ETF,,,0.800,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 RAAFX,Royce Premier Fund,,,0.990,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
@@ -666,6 +670,7 @@ TARKX,Tarkio Fund,,,1.000,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 SATOX,Tax-Aware Overlay A Portfolio,,,0.980,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 SBTOX,Tax-Aware Overlay B Portfolio,,,0.930,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 ABSTX,Teberg Fund,,,1.000,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
+RYCHX,Technology Fund,u_s_technology,below threshold,0.820,typesafe/jev-1.14-20261014,style-jev-2026-11-18.1-1795106192
 RYCSX,Telecommunications Fund,,,0.410,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 VOLT,Tema Electrification ETF,,,0.500,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
 NASA,Tema Space Innovators ETF,,,0.420,typesafe/jev-1.14,style-jev-2026-10-30.8-1793419545
