@@ -9,6 +9,7 @@ import {
   entryLabel,
   equalise,
   followsEvenSplit,
+  portfolioSignature,
   isEqualSplit,
   splitPortfolio,
   USD_NOTIONAL_CENTS,
@@ -334,5 +335,22 @@ describe("the effective number of funds", () => {
     expect(effectiveFundCount({ A: 1 })).toBe(1);
     expect(effectiveFundCount({})).toBeNull();
     expect(effectiveFundCount({ A: 0 })).toBeNull();
+  });
+});
+
+describe("portfolioSignature", () => {
+  const a = entry("fund", "AAA", 6_000);
+  const b = entry("fund", "BBB", 4_000);
+
+  it("ignores the order of the rows", () => {
+    expect(portfolioSignature("bp", [a, b])).toBe(portfolioSignature("bp", [b, a]));
+  });
+
+  it("moves when an amount, a holding or the unit changes", () => {
+    const base = portfolioSignature("bp", [a, b]);
+    expect(portfolioSignature("bp", [a, entry("fund", "BBB", 3_999)])).not.toBe(base);
+    expect(portfolioSignature("bp", [a])).not.toBe(base);
+    expect(portfolioSignature("usd", [a, b])).not.toBe(base);
+    expect(portfolioSignature("bp", [a, entry("cash", "cash", 4_000)])).not.toBe(base);
   });
 });

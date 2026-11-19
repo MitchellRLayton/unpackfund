@@ -34,7 +34,9 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 
+import { portfolioSignature } from "@/lib/portfolio-weights";
 import { useWorkspace } from "@/lib/use-workspace";
+import type { PortfolioEntry } from "@/lib/types";
 
 import { useProvider } from "@/components/lenses/provider-preference";
 
@@ -45,6 +47,7 @@ import { EmptyState } from "./EmptyState";
 import { HoldingsChips, HoldingsCompact, HoldingsPane } from "./HoldingsPane";
 import { LensTabs } from "./LensTabs";
 import { PrintSummary } from "./PrintSummary";
+import { ResultsPlaceholder } from "./ResultsPlaceholder";
 import styles from "./Workspace.module.css";
 
 export function Workspace() {
@@ -63,10 +66,25 @@ export function Workspace() {
    * paint the open form for a frame first): a portfolio built by hand on this page stays
    * open until its owner says they are done.
    */
-  const [landedWhole, setLandedWhole] = useState<boolean | null>(null);
-  if (landedWhole === null && model.ready) {
-    setLandedWhole(hasEntries && model.complete);
+  const signature = portfolioSignature(model.portfolio.mode, model.portfolio.entries);
+  const [landed, setLanded] = useState<{ signature: string | null } | null>(null);
+  if (landed === null && model.ready) {
+    setLanded({ signature: hasEntries && model.complete ? signature : null });
   }
+  const landedWhole = landed !== null && landed.signature !== null;
+  /**
+   * Results are shown only for a portfolio the visitor has submitted: this is its
+   * signature, `undefined` until they submit, and then the link's own portfolio stands in
+   * (a shared link is a portfolio somebody already put forward). Pressing "Show results",
+   * or a clean paste that totals 100%, records the signature of what was on the page; any
+   * later edit moves the signature, so the results step back until it is submitted again.
+   */
+  const [submitted, setSubmitted] = useState<string | null | undefined>(undefined);
+  const submittedSignature =
+    submitted !== undefined ? submitted : (landed?.signature ?? null);
+  const resultsShown = hasEntries && model.complete && submittedSignature === signature;
+  /** A note the paste box leaves for the collapsed list: the pane that held it has gone. */
+  const [pasteNote, setPasteNote] = useState<string | null>(null);
   /**
    * The visitor's own choice, `null` until they make one. The pane is collapsed when they
    * pressed "Show results" (or Edit, to undo it), and otherwise as the link landed. In
@@ -82,11 +100,19 @@ export function Workspace() {
    * closes too, and focus moves to the results so a keyboard or screen-reader visitor
    * lands where the page changed rather than on a button that has just left.
    */
-  const showResults = useCallback(() => {
-    setPaneCollapsed(true);
-    setPaneOpen(false);
-    window.requestAnimationFrame(() => resultsRef.current?.focus());
-  }, []);
+  const showResults = useCallback(
+    (pasted?: { entries: PortfolioEntry[]; note: string }) => {
+      // A paste submits the list it just wrote, which the render in hand has not seen yet.
+      setSubmitted(
+        pasted ? portfolioSignature(model.portfolio.mode, pasted.entries) : signature,
+      );
+      setPasteNote(pasted?.note ?? null);
+      setPaneCollapsed(true);
+      setPaneOpen(false);
+      window.requestAnimationFrame(() => resultsRef.current?.focus());
+    },
+    [model.portfolio.mode, signature],
+  );
 
   /**
    * Show the pane, then run what the visitor actually asked for.
@@ -216,7 +242,14 @@ export function Workspace() {
             }`}
           >
             {paneCollapsed && hasEntries ? (
-              <HoldingsCompact model={model} onExpand={() => setPaneCollapsed(false)} />
+              <HoldingsCompact
+                model={model}
+                note={pasteNote}
+                onExpand={() => {
+                  setPasteNote(null);
+                  setPaneCollapsed(false);
+                }}
+              />
             ) : (
               <HoldingsPane model={model} onShowResults={showResults} />
             )}
@@ -255,13 +288,22 @@ export function Workspace() {
 
           {!hasEntries ? <EmptyState onReveal={revealPane} /> : null}
 
-          <LensTabs model={model} metrics={metrics} disabled={!hasEntries} />
+          {hasEntries && !resultsShown ? (
+            <ResultsPlaceholder
+              portfolio={model.portfolio}
+              onShowResults={() => showResults()}
+            />
+          ) : (
+            <>
+              <LensTabs model={model} metrics={metrics} disabled={!hasEntries} />
 
-          <ActionsRow model={model} />
+              <ActionsRow model={model} />
+            </>
+          )}
         </div>
       </div>
 
-      <PrintSummary model={model} answer={answer} />
+      {resultsShown ? <PrintSummary model={model} answer={answer} /> : null}
     </div>
   );
 }

@@ -34,6 +34,7 @@ import {
   tallyOf,
   type EntryDecision,
 } from "@/lib/holdings";
+import { isComplete } from "@/lib/fragment";
 import { write } from "@/lib/fragment-store";
 import {
   ATTRIBUTED_LABEL,
@@ -364,8 +365,10 @@ export function HoldingsPane({
 }: {
   model: WorkspaceModel;
   /** The visitor is done entering holdings: the workspace puts the pane away and brings
-   * the results into view. Only offered once the portfolio is whole (`model.complete`). */
-  onShowResults?: () => void;
+   * the results into view. The button only fires once the portfolio is whole
+   * (`model.complete`); a clean paste that totals 100% calls it too, with the list it just
+   * wrote (the workspace's render has not seen it yet) and a note for the collapsed list. */
+  onShowResults?: (pasted?: { entries: PortfolioEntry[]; note: string }) => void;
 }) {
   const { portfolio } = model;
   const releaseData = model.release.status === "ready" ? model.release.data : null;
@@ -554,9 +557,28 @@ export function HoldingsPane({
       additions.push({ kind: decision.kind, key: decision.key, amount: line.amount });
     }
     setPasting(false);
+    const next = [...entries, ...additions];
     if (additions.length > 0) {
-      portfolio.replace([...entries, ...additions]);
+      portfolio.replace(next);
       setPasteText("");
+    }
+    // A clean paste is a finished gesture, like opening a shared link: every line was
+    // added, nothing was dropped, and the list totals exactly 100%. Anything less stays
+    // open, because the pane is where the paste's problems are reported.
+    if (
+      onShowResults &&
+      additions.length > 0 &&
+      problems.length === 0 &&
+      usable.length === lines.length &&
+      isComplete(mode, next)
+    ) {
+      onShowResults({
+        entries: next,
+        note: `Added ${formatCount(additions.length)} ${
+          additions.length === 1 ? "holding" : "holdings"
+        }. Check the amounts against your own split before sharing the link.`,
+      });
+      return;
     }
     setMessage({
       tone: problems.length > 0 ? "warn" : "info",
@@ -576,6 +598,7 @@ export function HoldingsPane({
     entries,
     mode,
     model.release,
+    onShowResults,
     pasteText,
     portfolio,
     present,
@@ -1022,9 +1045,12 @@ export function HoldingsPane({
  */
 export function HoldingsCompact({
   model,
+  note,
   onExpand,
 }: {
   model: WorkspaceModel;
+  /** What the paste box had to say, kept for the reader now that its pane has gone. */
+  note?: string | null;
   onExpand: () => void;
 }) {
   const { entries, mode } = model.portfolio;
@@ -1045,6 +1071,7 @@ export function HoldingsCompact({
         </button>
       </div>
       <div className="panel__body">
+        {note ? <p className="small muted">{note}</p> : null}
         <ul className={styles.compactList}>
           {entries.map((entry) => (
             <li key={`${entry.kind}:${entry.key}`} className={styles.compactRow}>
