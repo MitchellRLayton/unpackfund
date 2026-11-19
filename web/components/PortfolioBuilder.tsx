@@ -29,10 +29,10 @@
  * there is a whole (2026-11-02, operator's instruction).
  *
  * **Adding a holding is not an edit to the holdings already there.** A new row arrives at
- * 0.00% and the amounts that were already typed are left alone; only a list that is still
- * the app's own even split keeps following its count (first fund 100%, second 50/50,
- * third 33.34/33.33/33.33). That is what `isEqualSplit` decides, and the notice a `kept`
- * add writes is the sentence that stops a 0.00% row from looking like a failed add.
+ * 0.00% and the amounts that were already typed are left alone, the first row included:
+ * the app no longer fills the form in (operator, 2026-11-18). The even split is one click
+ * away on the Equal weight button, and the notice a `kept` add writes is the sentence
+ * that stops a 0.00% row from looking like a failed add.
  */
 
 import Link from "next/link";

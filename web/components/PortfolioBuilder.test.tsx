@@ -68,12 +68,21 @@ afterEach(() => {
   cleanup();
 });
 
+/** Type a percentage into one row, as a visitor does: a new row arrives at 0.00%. */
+function typePercent(ticker: string, value: string): void {
+  const field = screen.getByLabelText(`Amount for ${ticker}, in percent`);
+  fireEvent.change(field, { target: { value } });
+  fireEvent.blur(field);
+}
+
 describe("PortfolioBuilder — Remove all", () => {
   it("empties the portfolio and offers the removed funds back", () => {
     render(<PortfolioBuilder />);
 
     fireEvent.click(screen.getByRole("button", { name: "Add QQQ" }));
     fireEvent.click(screen.getByRole("button", { name: "Add VTI" }));
+    typePercent("QQQ", "50");
+    typePercent("VTI", "50");
     // A chip also carries the ticker text, so the row is asserted by its control.
     expect(screen.getByRole("button", { name: "Remove QQQ" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Remove VTI" })).toBeTruthy();
@@ -169,6 +178,8 @@ describe("PortfolioBuilder — stocks, cash, and units", () => {
     render(<PortfolioBuilder />);
     fireEvent.click(screen.getByRole("button", { name: "Add QQQ" }));
     fireEvent.click(screen.getByRole("button", { name: "Add VTI" }));
+    typePercent("QQQ", "50");
+    typePercent("VTI", "50");
 
     fireEvent.click(screen.getByRole("button", { name: "Dollars" }));
     // 50/50 of $10,000: the split is unchanged and the unit is spelled out.
@@ -291,16 +302,15 @@ describe("PortfolioBuilder — adding a holding never re-weights the ones alread
     expect(screen.getByDisplayValue("0.00")).toBeTruthy();
   });
 
-  it("still splits a portfolio the app itself spread, so the default survives", () => {
+  it("never fills in an amount: every row arrives at 0.00%, the first included", () => {
     render(<PortfolioBuilder />);
     fireEvent.click(screen.getByRole("button", { name: "Add QQQ" }));
-    // One row at 100% is the app's own split, not a typed one: the second row halves it.
+    // A lone row used to be given 100%, and the second add halved it.
+    expect(screen.getByDisplayValue("0.00")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Add VTI" }));
-    expect(screen.getAllByDisplayValue("50.00")).toHaveLength(2);
-    // And so does the third, remainder included.
     fireEvent.click(screen.getByRole("button", { name: "Add VTV" }));
-    expect(screen.getByDisplayValue("33.34")).toBeTruthy();
-    expect(screen.getAllByDisplayValue("33.33")).toHaveLength(2);
+    expect(screen.getAllByDisplayValue("0.00")).toHaveLength(3);
+    expect(screen.queryByDisplayValue("33.34")).toBeNull();
   });
 });
 
@@ -309,7 +319,7 @@ describe("PortfolioBuilder — 100% is a statement, not a clamp", () => {
     render(<PortfolioBuilder />);
     fireEvent.click(screen.getByRole("button", { name: "Add QQQ" }));
     fireEvent.click(screen.getByRole("button", { name: "Add VTI" }));
-    // 50/50 by default. Drop VTI to 10 — 40% short, which is a normal state while
+    // Drop VTI to 10 — 40% short, which is a normal state while
     // editing — then put QQQ at 95, which makes 105%.
     fireEvent.change(screen.getByLabelText("Amount for VTI, in percent"), {
       target: { value: "10" },
@@ -341,6 +351,8 @@ describe("PortfolioBuilder — 100% is a statement, not a clamp", () => {
     render(<PortfolioBuilder />);
     fireEvent.click(screen.getByRole("button", { name: "Add QQQ" }));
     fireEvent.click(screen.getByRole("button", { name: "Add VTI" }));
+    typePercent("QQQ", "50");
+    typePercent("VTI", "50");
     // The sentence is always on screen in percent mode; its state is a class, so the
     // ink flips rather than the words appearing and disappearing.
     const gate = () => screen.getByText("The X-Ray opens at exactly 100%.");
