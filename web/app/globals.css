@@ -1655,6 +1655,28 @@ h3.subtitle {
   background: var(--surface);
 }
 
+/* A table outside `TableScroll` (the generated fund pages have no script to drive a rail)
+ * keeps its native scrollbar, drawn so it never fades: macOS hides overlay scrollbars
+ * until a scroll starts, which is the "no sign it scrolls" this rule answers. */
+.table-wrap:not(.table-scroll > .table-wrap) {
+  scrollbar-color: var(--graphite) var(--surface);
+}
+
+.table-wrap:not(.table-scroll > .table-wrap)::-webkit-scrollbar {
+  height: 0.75rem;
+}
+
+.table-wrap:not(.table-scroll > .table-wrap)::-webkit-scrollbar-track {
+  background: var(--surface);
+  border-top: 1px solid var(--rule);
+}
+
+.table-wrap:not(.table-scroll > .table-wrap)::-webkit-scrollbar-thumb {
+  background: var(--graphite);
+  border-radius: 999px;
+  border: 2px solid var(--surface);
+}
+
 /* A scroll box a keyboard can reach. Only the boxes that opt in are focusable, so
  * this rule is inert everywhere else. */
 .table-wrap:focus-visible {
@@ -1716,6 +1738,15 @@ h3.subtitle {
   background: var(--surface);
   box-shadow: 0 -2px 6px color-mix(in oklch, var(--ink) 8%, transparent);
   touch-action: none;
+}
+
+.table-scroll__rail--top {
+  /* Above the table, in the flow: it is there to say "this scrolls sideways" the moment
+   * the table is seen, including on a table too tall to show its own foot. */
+  position: static;
+  margin-top: 0;
+  margin-bottom: var(--space-1);
+  box-shadow: none;
 }
 
 .table-scroll__thumb {

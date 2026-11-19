@@ -21,6 +21,7 @@
  * load — the client router has nothing to render there.
  */
 
+import { TableScroll } from "@/components/TableScroll";
 import { useMemo, useState } from "react";
 
 import { COVERAGE_POPOVER_WITH_LIMIT, coverageChipText } from "@/lib/coverage";
@@ -284,7 +285,7 @@ export function FundsDirectory() {
             </div>
           ) : (
             <div className="stack">
-              <div className="table-wrap">
+              <TableScroll label="Funds">
                 <table className="table">
                   <caption className="visually-hidden">
                     Funds, {orderDescription(order)}.
@@ -346,7 +347,7 @@ export function FundsDirectory() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableScroll>
 
               <div className={styles.pager}>
                 <p className="small muted" role="status">

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { TableScroll } from "@/components/TableScroll";
 import { flagEmoji } from "@/lib/country-flag";
 
 /**
@@ -409,7 +410,7 @@ export default function DesignPage() {
           carrier of the fact. An untiered row is solid grey; an unknown country is
           dashed. A directly held row is tinted.
         </p>
-        <div className="table-wrap">
+        <TableScroll label="Table example">
           <table className="table">
             <caption className="small muted">
               Largest companies in the mix, by portfolio weight. Market tier is shown as a
@@ -463,7 +464,7 @@ export default function DesignPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       </section>
 
       <section className="stack stack--loose">

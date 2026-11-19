@@ -21,6 +21,7 @@
  * header, so no concept is explained twice (R4).
  */
 
+import { TableScroll } from "@/components/TableScroll";
 import { useMemo, useState } from "react";
 
 import { InfoTip } from "@/components/feedback/InfoTip";
@@ -263,7 +264,7 @@ export function QualityLens({ model }: LensProps) {
         title="Coverage by fund"
         action={<LensExport label="coverage and filing dates" onExport={exportQuality} />}
       >
-        <div className="table-wrap">
+        <TableScroll label="Coverage by fund">
           <table className="table">
             {/* The caption says what the table is and stays visually hidden (H9, R2);
                 each column's meaning is a one-line tip, and the band rule itself is on
@@ -365,11 +366,11 @@ export function QualityLens({ model }: LensProps) {
               </tr>
             </tfoot>
           </table>
-        </div>
+        </TableScroll>
       </LensSection>
 
       <LensSection title="Where your money is">
-        <div className="table-wrap">
+        <TableScroll label="Where your money is">
           <table className="table">
             {/* The caption is the table's name, visually hidden (H9, R2). What each row
                 is, and the two rules the numbers follow — a position that rounds to zero
@@ -448,7 +449,7 @@ export function QualityLens({ model }: LensProps) {
               </tr>
             </tfoot>
           </table>
-        </div>
+        </TableScroll>
       </LensSection>
     </div>
   );

@@ -12,6 +12,7 @@
  * touching this markup.
  */
 
+import { TableScroll } from "@/components/TableScroll";
 import { useMemo, useState } from "react";
 
 import { benchmarkDelta } from "@/lib/benchmark";
@@ -119,7 +120,7 @@ export function LedgerTable({
   const anyCountry = rows.some((entry) => Boolean(entry.country));
 
   return (
-    <div className="table-wrap">
+    <TableScroll label="Ledger">
       <table className="ledger">
         <caption>
           {paged
@@ -337,6 +338,6 @@ export function LedgerTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }

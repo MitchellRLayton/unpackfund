@@ -23,6 +23,7 @@
  * this lens states no concept twice (R4).
  */
 
+import { TableScroll } from "@/components/TableScroll";
 import Link from "next/link";
 import { useMemo } from "react";
 
@@ -215,7 +216,7 @@ export function OverlapLens({ model }: LensProps) {
         title="All pairs"
         action={<LensExport label="pairwise overlap" onExport={exportOverlap} />}
       >
-        <div className="table-wrap">
+        <TableScroll label="Overlap between your funds">
           <table className="table">
             {/* The definition of every column is on `/methodology/#overlap` and in each
                 header's tip, so the caption says what the table is for and nothing more
@@ -303,7 +304,7 @@ export function OverlapLens({ model }: LensProps) {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       </LensSection>
     </div>
   );

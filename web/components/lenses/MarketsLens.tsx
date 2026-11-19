@@ -28,6 +28,7 @@
  * tooltip's word are all text, so colour is still never the only carrier (H9).
  */
 
+import { TableScroll } from "@/components/TableScroll";
 import { useMemo } from "react";
 
 import { flagEmoji } from "@/lib/country-flag";
@@ -278,7 +279,7 @@ export function MarketsLens({ model }: LensProps) {
             <summary className="small muted">
               {moves.length} countries change under {PROVIDER_NAMES[other]}
             </summary>
-            <div className="table-wrap">
+            <TableScroll label="Markets, share of your money">
               <table className="table">
                 <caption className="visually-hidden">
                   Only the countries whose segment changes between the two conventions are
@@ -315,7 +316,7 @@ export function MarketsLens({ model }: LensProps) {
                   })}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           </details>
         )}
 
@@ -359,7 +360,7 @@ export function MarketsLens({ model }: LensProps) {
         title="By market"
         action={<LensExport label="markets by segment" onExport={exportMarkets} />}
       >
-        <div className="table-wrap">
+        <TableScroll label="Markets by fund">
           <table className="table">
             {/* A caption for a screen reader only (R2, H9): what the table is, and that
                 its total is the bar's denominator — the rows print every number. */}
@@ -400,14 +401,14 @@ export function MarketsLens({ model }: LensProps) {
               </tr>
             </tfoot>
           </table>
-        </div>
+        </TableScroll>
       </LensSection>
 
       <LensSection
         title="By country"
         action={<LensExport label="countries in your mix" onExport={exportMarkets} />}
       >
-        <div className="table-wrap">
+        <TableScroll label="Markets, detail">
           <table className="tier-edge table">
             {/* The tier convention, its vintage and the offshore rule are the Tier
                 header's tip and the glossary entry behind it (R4, H6). */}
@@ -471,7 +472,7 @@ export function MarketsLens({ model }: LensProps) {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       </LensSection>
     </div>
   );

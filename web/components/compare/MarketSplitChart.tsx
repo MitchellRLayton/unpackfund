@@ -1,5 +1,6 @@
 "use client";
 
+import { TableScroll } from "@/components/TableScroll";
 import { TIER_AS_OF, type Provider } from "@/lib/country-tier";
 import { formatDateLong, formatShare } from "@/lib/format";
 
@@ -103,7 +104,7 @@ export function MarketSplitChart({
             </p>
           ) : null}
 
-          <div className="table-wrap">
+          <TableScroll label="Market split">
             <table className="table">
               <caption className="visually-hidden">
                 Each mix by market, as a share of its weight.
@@ -136,7 +137,7 @@ export function MarketSplitChart({
                 </tr>
               </tfoot>
             </table>
-          </div>
+          </TableScroll>
         </div>
       </div>
     </section>

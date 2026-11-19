@@ -27,6 +27,7 @@
  * ledger twice for one page.
  */
 
+import { TableScroll } from "@/components/TableScroll";
 import { useEffect, useRef } from "react";
 
 import { flagEmoji } from "@/lib/country-flag";
@@ -242,7 +243,7 @@ export function CompanyDetail({
                     Top {formatCount(shown.length)} of {formatCount(funds.length)} funds,
                     by weight in fund
                   </h3>
-                  <div className="table-wrap">
+                  <TableScroll label="Funds holding this company">
                     <table className="table">
                       <caption className="visually-hidden">
                         Funds holding {name}, largest weight first.
@@ -274,7 +275,7 @@ export function CompanyDetail({
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </TableScroll>
 
                   {funds.length > shown.length ? (
                     <p className="small muted">

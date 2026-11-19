@@ -1,5 +1,6 @@
 "use client";
 
+import { TableScroll } from "@/components/TableScroll";
 import { useId, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 
@@ -187,7 +188,7 @@ export function OverlapTabs({
         {visible.length === 0 ? (
           <p className="small">{emptySentence()}</p>
         ) : (
-          <div className="table-wrap">
+          <TableScroll label="Overlap">
             <table className="table">
               <caption className="visually-hidden">{caption()}</caption>
               <thead>
@@ -259,7 +260,7 @@ export function OverlapTabs({
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         )}
 
         {current.length > PAGE && !expanded ? (
