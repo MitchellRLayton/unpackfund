@@ -92,8 +92,13 @@ def _series_symbols() -> dict[str, tuple[str, ...]]:
     """
     grouped: dict[str, list[str]] = {}
     for symbol, (_cik, series, _class_id) in _mf_map().items():
-        if series:
-            grouped.setdefault(series, []).append(symbol)
+        # Cleaned here, where the aliases are made: the SEC file carries a few parenthesised
+        # symbols (``(NWAGX)``) and a literal ``N/A``, and a raw symbol that is not a
+        # contract-shaped ticker fails the release's ``aliases.shape`` gate, which blocks the
+        # whole nightly. ``clean_symbol`` is the rule ``_primary_symbol`` already applies.
+        cleaned = clean_symbol(symbol)
+        if series and cleaned:
+            grouped.setdefault(series, []).append(cleaned)
     return {series: tuple(sorted(set(symbols))) for series, symbols in grouped.items()}
 
 
