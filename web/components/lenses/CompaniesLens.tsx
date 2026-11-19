@@ -54,6 +54,7 @@
  * it, because the table's description is still the caption's to give.
  */
 
+import { TableScroll } from "@/components/TableScroll";
 import { useMemo, useState } from "react";
 
 import { PAGE_SIZE, pageOf } from "@/components/directory/paging";
@@ -786,7 +787,7 @@ export function CompaniesLens({ model }: LensProps) {
             {styleHintText(styleGate)}
           </p>
         ) : null}
-        <div className="table-wrap">
+        <TableScroll label="Companies">
           <table className={`tier-edge table ${styles.compact}`}>
             {/*
               The caption is for a screen reader only (P-C-12): the table's shape, its
@@ -977,7 +978,7 @@ export function CompaniesLens({ model }: LensProps) {
               </tr>
             </tfoot>
           </table>
-        </div>
+        </TableScroll>
 
         {/*
           The method, under the table and closed by default (operator's instruction,
@@ -1001,7 +1002,7 @@ export function CompaniesLens({ model }: LensProps) {
               none of. A description of the benchmark, not a suggestion: nothing here is a
               recommendation to buy.
             </p>
-            <div className={`table-wrap ${styles.unownedTable}`}>
+            <TableScroll label="Companies you do not own" className={styles.unownedTable}>
               <table className="table">
                 <caption className="small muted">
                   Ranked by the company&rsquo;s weight in the style benchmark. &ldquo;Held
@@ -1045,7 +1046,7 @@ export function CompaniesLens({ model }: LensProps) {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
           </details>
         ) : null}
 

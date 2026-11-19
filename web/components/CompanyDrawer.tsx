@@ -19,6 +19,7 @@
  * badly.
  */
 
+import { TableScroll } from "@/components/TableScroll";
 import { useEffect, useRef } from "react";
 
 import { formatCount, formatShare } from "@/lib/format";
@@ -112,7 +113,7 @@ export function CompanyDrawer({
             </p>
           ) : (
             <>
-              <div className="table-wrap">
+              <TableScroll label="Company holdings">
                 <table className="ledger">
                   <caption>
                     Every fund in release {company.data.as_of} that holds this company,
@@ -145,7 +146,7 @@ export function CompanyDrawer({
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableScroll>
               <p className="muted drawer__note">
                 {formatCount(company.data.funds.length)}{" "}
                 {company.data.funds.length === 1 ? "fund holds" : "funds hold"} this

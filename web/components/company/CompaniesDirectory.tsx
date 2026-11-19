@@ -15,6 +15,7 @@
  * saves. The whole index is in memory; a page change is a slice.
  */
 
+import { TableScroll } from "@/components/TableScroll";
 import { useMemo, useState } from "react";
 
 import { flagEmoji } from "@/lib/country-flag";
@@ -228,7 +229,7 @@ export function CompaniesDirectory({
             </div>
           ) : (
             <div className="stack">
-              <div className="table-wrap">
+              <TableScroll label="Companies">
                 <table className="table">
                   <caption className="visually-hidden">
                     Companies, {companyOrderDescription(order)}.
@@ -311,7 +312,7 @@ export function CompaniesDirectory({
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableScroll>
 
               <div className={styles.pager}>
                 <p className="small muted" role="status">

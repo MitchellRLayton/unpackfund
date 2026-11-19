@@ -9,12 +9,15 @@
  * touchpad then has no way to move the table sideways at all, which is the report this
  * exists to answer.
  *
- * The rail is a second scrollbar that pins itself to the bottom of the viewport for as
+ * Two rails answer it. The bottom one pins itself to the bottom of the viewport for as
  * long as the table is on screen, so the control sits where the reader is looking
- * rather than where the table ends. It is a duplicate control, not a second scroll
- * box: it drives the same `scrollLeft` as the table, and the table's own box is
- * focusable so the arrow keys scroll it without the rail. That is also why the rail is
- * `aria-hidden` — a screen reader gets one scrollable region, not two.
+ * rather than where the table ends. The top one sits above the table, so a reader who
+ * has just arrived at a table too tall to show its own foot can see at once that it
+ * scrolls sideways. Both are shown only while the table overflows, and both are
+ * duplicate controls, not extra scroll boxes: each drives the same `scrollLeft` as the
+ * table, and the table's own box is focusable so the arrow keys scroll it without
+ * them. That is also why the rails are `aria-hidden` — a screen reader gets one
+ * scrollable region, not three.
  *
  * Nothing here computes a number the table shows. The only arithmetic is the thumb's
  * width and position, which are the scroll box's own geometry.
@@ -25,8 +28,10 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 
 interface Rail {
@@ -43,59 +48,18 @@ const NO_RAIL: Rail = { overflow: false, thumb: 1, offset: 0 };
 /** How far a click on the track moves the table: most of a screen, never all of it. */
 const PAGE_FRACTION = 0.8;
 
-export function TableScroll({
-  label,
-  children,
+/** One scrollbar for the box `boxRef` points at; the top and bottom rails are two of these. */
+function ScrollRail({
+  boxRef,
+  rail,
+  edge,
 }: {
-  /** The scrollable region's accessible name. */
-  label: string;
-  children: ReactNode;
+  boxRef: RefObject<HTMLDivElement | null>;
+  rail: Rail;
+  edge: "top" | "bottom";
 }) {
-  const boxRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
-  const [rail, setRail] = useState<Rail>(NO_RAIL);
   const drag = useRef<{ x: number; left: number } | null>(null);
-
-  const measure = useCallback(() => {
-    const box = boxRef.current;
-    if (!box) return;
-    const { scrollWidth, clientWidth, scrollLeft } = box;
-    // A sub-pixel difference is rounding, not something to scroll.
-    if (scrollWidth <= clientWidth + 1) {
-      setRail(NO_RAIL);
-      return;
-    }
-    setRail({
-      overflow: true,
-      thumb: clientWidth / scrollWidth,
-      offset: scrollLeft / scrollWidth,
-    });
-  }, []);
-
-  useEffect(() => {
-    const box = boxRef.current;
-    if (!box) return;
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(box);
-    // The table's own width changes when a column's content does, and the box's width
-    // does not move when that happens — so the table is observed too.
-    const table = box.firstElementChild;
-    if (table) observer.observe(table);
-    return () => observer.disconnect();
-  }, [measure]);
-
-  const onScroll = useCallback(() => {
-    const box = boxRef.current;
-    if (!box) return;
-    const { scrollWidth, clientWidth, scrollLeft } = box;
-    if (scrollWidth <= clientWidth + 1) return;
-    setRail({
-      overflow: true,
-      thumb: clientWidth / scrollWidth,
-      offset: scrollLeft / scrollWidth,
-    });
-  }, []);
 
   const onThumbPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     const box = boxRef.current;
@@ -140,11 +104,82 @@ export function TableScroll({
   };
 
   return (
-    <div className="table-scroll">
+    <div
+      className={`table-scroll__rail table-scroll__rail--${edge}`}
+      ref={trackRef}
+      aria-hidden="true"
+      onPointerDown={onTrackPointerDown}
+    >
+      <div
+        className="table-scroll__thumb"
+        style={{
+          width: `${rail.thumb * 100}%`,
+          marginLeft: `${rail.offset * 100}%`,
+        }}
+        onPointerDown={onThumbPointerDown}
+        onPointerMove={onThumbPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      />
+    </div>
+  );
+}
+
+export function TableScroll({
+  label,
+  children,
+  className,
+  style,
+}: {
+  /** The scrollable region's accessible name. */
+  label: string;
+  children: ReactNode;
+  /** Extra class on the outer wrapper, for spacing the table's caller owns. */
+  className?: string;
+  style?: CSSProperties;
+}) {
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const [rail, setRail] = useState<Rail>(NO_RAIL);
+
+  const measure = useCallback(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    const { scrollWidth, clientWidth, scrollLeft } = box;
+    // A sub-pixel difference is rounding, not something to scroll.
+    if (scrollWidth <= clientWidth + 1) {
+      setRail(NO_RAIL);
+      return;
+    }
+    setRail({
+      overflow: true,
+      thumb: clientWidth / scrollWidth,
+      offset: scrollLeft / scrollWidth,
+    });
+  }, []);
+
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    // The table's own width changes when a column's content does, and the box's width
+    // does not move when that happens — so the table is observed too.
+    const table = box.firstElementChild;
+    if (table) observer.observe(table);
+    return () => observer.disconnect();
+  }, [measure]);
+
+  return (
+    <div
+      className={className ? `table-scroll ${className}` : "table-scroll"}
+      style={style}
+    >
+      {rail.overflow ? <ScrollRail boxRef={boxRef} rail={rail} edge="top" /> : null}
       <div
         className="table-wrap"
         ref={boxRef}
-        onScroll={onScroll}
+        onScroll={measure}
         // Focusable so the arrow keys scroll it: a scroll box a keyboard cannot reach
         // is a scroll box half the readers cannot use (WCAG 2.1.1).
         tabIndex={0}
@@ -153,26 +188,7 @@ export function TableScroll({
       >
         {children}
       </div>
-      {rail.overflow ? (
-        <div
-          className="table-scroll__rail"
-          ref={trackRef}
-          aria-hidden="true"
-          onPointerDown={onTrackPointerDown}
-        >
-          <div
-            className="table-scroll__thumb"
-            style={{
-              width: `${rail.thumb * 100}%`,
-              marginLeft: `${rail.offset * 100}%`,
-            }}
-            onPointerDown={onThumbPointerDown}
-            onPointerMove={onThumbPointerMove}
-            onPointerUp={endDrag}
-            onPointerCancel={endDrag}
-          />
-        </div>
-      ) : null}
+      {rail.overflow ? <ScrollRail boxRef={boxRef} rail={rail} edge="bottom" /> : null}
     </div>
   );
 }

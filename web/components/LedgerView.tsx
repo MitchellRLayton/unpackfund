@@ -28,6 +28,7 @@
  * cannot drift the prose back up or quiet-delete a paragraph while tidying.
  */
 
+import { TableScroll } from "@/components/TableScroll";
 import Link from "next/link";
 import { Fragment, useMemo, useState } from "react";
 
@@ -627,7 +628,10 @@ export function LedgerView() {
 
         <details style={{ marginTop: "1.5rem" }}>
           <summary>Where each number comes from</summary>
-          <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
+          <TableScroll
+            label="Where each number comes from"
+            style={{ marginTop: "0.75rem" }}
+          >
             <table className="ledger">
               <caption>Each fund, its filing period, and its coverage.</caption>
               <thead>
@@ -675,7 +679,7 @@ export function LedgerView() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
           {/*
             The sentence that keeps the two shares apart. It ships only when the release
             measures identification at all — a release without `identified_pct` renders

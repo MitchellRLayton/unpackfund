@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { TableScroll } from "@/components/TableScroll";
 import Link from "next/link";
 
 import { ReadingLayout, type ReadingSection } from "@/components/prose/ReadingLayout";
@@ -203,7 +204,7 @@ export default function MethodologyPage() {
         the fund missing. A fund&rsquo;s own cash line counts against its coverage.
       </p>
       <p>Three bands decide what a fund page shows:</p>
-      <div className="table-wrap">
+      <TableScroll label="What a fund’s coverage decides">
         <table className="table">
           <caption>What a fund&rsquo;s coverage decides</caption>
           <thead>
@@ -233,7 +234,7 @@ export default function MethodologyPage() {
             </tr>
           </tbody>
         </table>
-      </div>
+      </TableScroll>
       <p>
         The thresholds are a product decision, not a statistical claim. Below 60%, a
         concentration figure would describe the part of the portfolio that could be read
@@ -505,7 +506,7 @@ export default function MethodologyPage() {
         Every other country maps the same way under both once FTSE&rsquo;s advanced and
         secondary emerging tiers are collapsed into one emerging tier.
       </p>
-      <div className="table-wrap">
+      <TableScroll label="Markets the two conventions sort differently">
         <table className="table">
           <caption>Markets the two conventions sort differently</caption>
           <thead>
@@ -606,7 +607,7 @@ export default function MethodologyPage() {
             </tr>
           </tbody>
         </table>
-      </div>
+      </TableScroll>
       <p>
         The table is this site&rsquo;s own transcription, written to each
         publisher&rsquo;s published criteria and checked against its announcements, with
