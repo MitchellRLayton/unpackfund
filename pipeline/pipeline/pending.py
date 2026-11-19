@@ -504,7 +504,7 @@ def run(
             ticker=series_id, cik=f"{int(newest.cik):010d}", series_id=series_id,
             resolved_by="pending",
         )
-    filings.prefetch(probe.values(), workers=8)
+    filings.prefetch(probe.values(), workers=8, since=filings.throttled_lookups())
     has_nport = {
         series_id: filings.has_nport(ref.cik, series_id) for series_id, ref in probe.items()
     }

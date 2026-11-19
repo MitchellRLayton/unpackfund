@@ -231,11 +231,19 @@ def prefetch(
     *,
     workers: int = 8,
     progress: Callable[[str], None] | None = None,
+    since: int = 0,
 ) -> dict[str, int]:
     """Index every registrant once, before any fund is built.
 
     Registrants are visited largest-first: a trust with 1,100 series dominates
     the wall clock, and starting it last would leave one thread holding the tail.
+
+    ``since`` is the throttle count the caller started from, so the budget judges this
+    call's own lookups. The build leaves it at 0 — its guard is the whole process, as
+    before. A second caller in the same process (the pending-fund scan, which runs after
+    the build's guard has already passed) passes ``throttled_lookups()`` as it was, or the
+    build's skips would be charged to it and an optional scan would refuse for a reason
+    that is not its own.
     """
     by_cik: dict[str, list[universe.FundRef]] = defaultdict(list)
     for ref in refs:
@@ -254,7 +262,7 @@ def prefetch(
     else:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             counts = list(pool.map(run, order))
-    skipped = throttled_lookups()
+    skipped = throttled_lookups() - since
     if skipped > THROTTLE_BUDGET:
         raise sec.SecError(
             f"EDGAR rate-limited {skipped:,} series lookups (budget {THROTTLE_BUDGET}); "

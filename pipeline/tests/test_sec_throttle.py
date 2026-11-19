@@ -153,3 +153,22 @@ class TestSeriesPeekSurvivesAThrottle:
         counts = filings.prefetch([_ref("1", "S000000001")])
         assert counts["documents"] == 1
         assert counts["skipped"] == 0
+
+    def test_a_later_caller_is_judged_on_its_own_throttled_lookups(self, monkeypatch):
+        # The build's guard passed with 20 skips; a second prefetch in the same process must
+        # not inherit them. 20 + 6 > 25 cumulatively, 6 on its own is within budget.
+        monkeypatch.setattr(filings, "THROTTLE_BUDGET", 25)
+        filings._throttled["count"] = 20
+
+        def six_throttles(cik):
+            filings._throttled["count"] += 6
+            return []
+
+        monkeypatch.setattr(filings, "candidates", six_throttles)
+        counts = filings.prefetch([_ref("1", "S000000001")], since=20)
+        assert counts["skipped"] == 6
+        # Its own budget still binds it.
+        filings._throttled["count"] = 20
+        monkeypatch.setattr(filings, "THROTTLE_BUDGET", 5)
+        with pytest.raises(sec.SecError, match="rate-limited 6 series lookups"):
+            filings.prefetch([_ref("2", "S000000002")], since=20)
