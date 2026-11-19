@@ -1740,15 +1740,6 @@ h3.subtitle {
   touch-action: none;
 }
 
-.table-scroll__rail--top {
-  /* Above the table, in the flow: it is there to say "this scrolls sideways" the moment
-   * the table is seen, including on a table too tall to show its own foot. */
-  position: static;
-  margin-top: 0;
-  margin-bottom: var(--space-1);
-  box-shadow: none;
-}
-
 .table-scroll__thumb {
   height: 0.5rem;
   border-radius: 999px;
