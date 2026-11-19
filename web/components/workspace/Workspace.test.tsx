@@ -1086,3 +1086,30 @@ describe("Workspace — Show results puts the form away", () => {
     expect(screen.getByRole("button", { name: "Remove VTI" })).toBeTruthy();
   });
 });
+
+describe("Workspace — amounts are written as they are typed", () => {
+  it("writes each keystroke through the store, with no blur needed", () => {
+    const { model } = renderWorkspace({ entries: ENTRIES.slice(0, 2), ledger: LEDGER });
+    const field = screen.getByLabelText("Amount for VTI, in percent");
+
+    fireEvent.change(field, { target: { value: "4" } });
+    expect(model.portfolio.setAmount).toHaveBeenLastCalledWith("fund", "VTI", 400);
+    fireEvent.change(field, { target: { value: "40" } });
+    expect(model.portfolio.setAmount).toHaveBeenLastCalledWith("fund", "VTI", 4_000);
+    // Half-typed text is written as what leaving the field would have written.
+    fireEvent.change(field, { target: { value: "12." } });
+    expect(model.portfolio.setAmount).toHaveBeenLastCalledWith("fund", "VTI", 1_200);
+  });
+
+  it("keeps the number a whole row is capped at, and writes nothing for an empty field", () => {
+    const { model } = renderWorkspace({ entries: ENTRIES.slice(0, 2), ledger: LEDGER });
+    const field = screen.getByLabelText("Amount for VTI, in percent");
+
+    fireEvent.change(field, { target: { value: "150" } });
+    expect(model.portfolio.setAmount).toHaveBeenLastCalledWith("fund", "VTI", 10_000);
+
+    vi.mocked(model.portfolio.setAmount).mockClear();
+    fireEvent.change(field, { target: { value: "" } });
+    expect(model.portfolio.setAmount).not.toHaveBeenCalled();
+  });
+});

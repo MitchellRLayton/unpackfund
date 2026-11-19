@@ -122,9 +122,15 @@ function lineStart(sentence: string): string {
 /**
  * The amount field: percent in `%` mode, dollars in `$` mode.
  *
- * The draft string is local so a half-typed "12." never round-trips through the URL as
- * 12. Both units are stored as hundredths (basis points, cents), so the parse is the
- * same multiply in both modes; only the ceiling and the suffix differ.
+ * It writes on every keystroke, so the total, the tally and "Show results" follow what
+ * is typed rather than waiting for the field to lose focus. Committing on blur made the
+ * button's state a step behind the visitor: they typed the last amount and pressed the
+ * button, the press blurred the field, the commit re-laid the page under the pointer,
+ * and the click never landed (2026-11-18). The draft string is still local, so the text
+ * on screen is what was typed until the field is left; a half-typed "12." writes 12,
+ * which is what leaving it would have written. Both units are stored as hundredths
+ * (basis points, cents), so the parse is the same multiply in both modes; only the
+ * ceiling and the suffix differ.
  */
 function AmountField({
   label,
@@ -140,10 +146,9 @@ function AmountField({
   const [draft, setDraft] = useState<string | null>(null);
   const value = draft ?? (amount / 100).toFixed(2);
 
-  const commit = (text: string) => {
+  const write = (text: string) => {
     const cleaned = text.replace(/[^0-9.]/g, "");
     const parsed = Number(cleaned);
-    setDraft(null);
     if (cleaned.length === 0 || !Number.isFinite(parsed)) return;
     const ceiling = mode === "bp" ? 100 : 1_000_000;
     const clamped = Math.max(0, Math.min(ceiling, parsed));
@@ -157,12 +162,15 @@ function AmountField({
       className={`field__input ${styles.amountInput}`}
       aria-label={mode === "bp" ? `${label}, in percent` : `${label}, in dollars`}
       value={value}
-      onChange={(event) => setDraft(event.target.value)}
-      onBlur={(event) => commit(event.target.value)}
+      onChange={(event) => {
+        setDraft(event.target.value);
+        write(event.target.value);
+      }}
+      onBlur={() => setDraft(null)}
       onKeyDown={(event) => {
         if (event.key === "Enter") {
           event.preventDefault();
-          commit(event.currentTarget.value);
+          setDraft(null);
         } else if (event.key === "Escape") {
           setDraft(null);
         }
