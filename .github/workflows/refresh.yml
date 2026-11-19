@@ -301,6 +301,7 @@ jobs:
           python -m pipeline.build --universe all \
             --out ../artifacts --workers 8 --progress-every 1000 \
             --release-id ${{ steps.allocate.outputs.id }} \
+            --pending-funds \
             ${EXTRA[@]+"${EXTRA[@]}"}
 
       - name: Keep the documents for tomorrow
