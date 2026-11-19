@@ -278,8 +278,24 @@ jobs:
           # unmapped today, so they change published numbers; those ship as a staged release the
           # owner compares first (H-CV7), never as a side effect of the nightly. If the cache is
           # missing the build refuses (a coverage drop must not be published quietly).
-          EXTRA=()
+          #
+          # Two ways to use them. A shadow dispatch always does (and refuses without a cache). The
+          # nightly does only when the repository variable COVERAGE_RUNGS is "on" (off by default:
+          # the operator's switch, set once the staged comparison is approved) *and* this run's cache
+          # step succeeded; if the cache step failed the night still builds, without the rungs, and
+          # says so, so a failed OpenFIGI step can never cost the night.
+          USE_RUNGS=false
           if [ "${{ inputs.shadow }}" = "true" ]; then
+            USE_RUNGS=true
+          elif [ "${{ vars.COVERAGE_RUNGS }}" = "on" ]; then
+            if [ "${{ steps.figi.outcome }}" = "success" ]; then
+              USE_RUNGS=true
+            else
+              echo "::warning::COVERAGE_RUNGS is on but the OpenFIGI cache step did not succeed; building without the coverage rungs tonight"
+            fi
+          fi
+          EXTRA=()
+          if [ "$USE_RUNGS" = "true" ]; then
             EXTRA+=(--figi-cache "$RUNNER_TEMP/figi_cache_v1.jsonl" --isin-direct-join)
           fi
           python -m pipeline.build --universe all \
