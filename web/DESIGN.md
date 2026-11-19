@@ -4,6 +4,36 @@
 so the next session inherits the reasoning instead of re-deriving it, and so a replacement has something concrete to
 replace.
 
+## The operator's principles, and the button contract (2026-11-18)
+
+The operator restated the principles on 2026-11-18; they are kept here, short, so a session building any control reads
+them. Colour values are **not** repeated: `app/globals.css` is the only record (a pasted hex table from the first design
+thread is a generation behind it), and later threads superseded three details — the interface and headings now use the
+"cozy modern" faces (Fraunces for headings, Plus Jakarta Sans for the interface, Newsreader for long reading), coral
+`#f18b71` is the favicon's accent and not a UI colour, and the diversification bands are a five-step ramp that is always
+printed with its label.
+
+1. **Answer first:** every view opens with one sentence that includes a number.
+2. **Describe, never prescribe:** no advice verbs, on a button as much as in prose.
+3. **"Actionable" is a next step inside the tool:** compare, open, share, export, add, show results.
+4. **Limits are content:** coverage and filing dates sit beside the numbers they qualify, at the same weight.
+5. **One portfolio, many lenses,** switched in place. 6. **Zero setup, zero trace:** all state lives in the URL.
+6. **Fast for experts, kind to beginners.**
+7. **Colour carries meaning only:** the market tiers own the hues; everything else is ink, paper or grey.
+
+**Buttons and controls** (gated by `web/lib/buttons.test.ts`, which reads every stylesheet):
+
+- **Three looks, in `globals.css`:** `.btn` (surface, hairline border), `.btn--primary` (ink fill, paper text — the one
+  action that finishes the task in its block: _Add_, _Show results_), `.btn--quiet` (text only, graphite). `.btn--sm`
+  is the 12 px size. A pressed toggle is `aria-pressed="true"`, which paints the same ink fill; never a second class.
+- **Neutral tokens only.** A control is painted from `--ink`, `--paper`, `--surface`, `--graphite`, `--rule*`, `--wash*`.
+  Never a tier, band, `--whole`, `--delta-*` or `--accent` (which aliases the US tier's blue), and never a literal.
+  Red (`--alert*`) is for errors, with an icon and words; a destructive button is quiet, not red.
+- **Type from the scale** (`--text-12` … `--text-40`); corners `--radius`; focus is the global 2 px ink ring.
+- **A disabled primary says why.** `aria-disabled`, not `disabled`, where the reason is a sentence the visitor has to
+  reach (Show results, beside the allocation tally).
+- Label a button with the verb for what it does in the tool. No "should", "buy", "sell", "rebalance".
+
 ## What the page has to do
 
 Show a number the visitor can check. Everything below follows from that: the ledger is a document, not a dashboard. No
