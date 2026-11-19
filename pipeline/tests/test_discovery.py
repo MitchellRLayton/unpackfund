@@ -408,3 +408,59 @@ def test_a_bare_parenthesis_is_not_a_symbol_without_an_exchange_or_when_it_is_a_
     assert discovery.symbol_from_cover(f"{name} (the “Fund”) lists on the Cboe BZX Exchange.", name)[0] is None
     # Not directly after the name: a symbol elsewhere in the sentence is not this fund's.
     assert discovery.symbol_from_cover(f"{name} is not (ZZZ). It lists on Nasdaq.", name)[0] is None
+
+
+# The three covers that kept RSIT, MATE and GMIX unnamed (measured 2026-11-19), reduced to the
+# lines that matter. Each is the raw HTML text a prospectus yields, entities included.
+RSIT_COVER = (
+    "SUMMARY PROSPECTUS Return Stacked &#174; International Stocks &amp; Managed Futures ETF "
+    "Trading Symbol: RSIT Listed on Cboe BZX Exchange, Inc. Summary Prospectus May 5, 2026"
+)
+MATE_COVER = (
+    "MAN ACTIVE TREND ENHANCED ETF Man Active Trend Enhanced ETF MAN ACTIVE TREND ENHANCED ETF "
+    "&#8211; MATE (Nasdaq Stock Market LLC) Summary Prospectus December 13, 2025"
+)
+GMIX_COVER = (
+    "2026 Summary Prospectus BlackRock ETF Trust &#149; iShares Macro AlphaBeta Active "
+    "ETF&#8194;|&#8194;GMIX&#8194;|&#8194; NYSE ARCA Before you invest, you may want to review"
+)
+
+
+def test_a_registered_mark_in_the_cover_does_not_hide_the_name():
+    # The filed name has the mark glued on, the cover prints it spaced and as an entity.
+    text = discovery._text(RSIT_COVER)
+    assert discovery.symbol_from_cover(
+        text, "Return Stacked® International Stocks & Managed Futures ETF"
+    ) == ("RSIT", "cover")
+    # ``(R)`` is the same mark in a plain-text filing.
+    assert discovery.symbol_from_cover(
+        text, "Return Stacked (R) International Stocks & Managed Futures ETF"
+    ) == ("RSIT", "cover")
+
+
+def test_a_symbol_after_a_dash_and_before_the_exchange_is_read_from_a_later_mention():
+    # The name's first occurrence is a heading with nothing beside it; the symbol sits on the
+    # third mention.
+    assert discovery.symbol_from_cover(
+        discovery._text(MATE_COVER), "Man Active Trend Enhanced ETF"
+    ) == ("MATE", "cover")
+
+
+def test_a_symbol_between_bars_before_the_exchange_is_read_once_entities_are_decoded():
+    assert discovery.symbol_from_cover(
+        discovery._text(GMIX_COVER), "iShares Macro AlphaBeta Active ETF"
+    ) == ("GMIX", "cover")
+
+
+def test_a_separator_is_not_enough_without_the_exchange_right_after_the_symbol():
+    name = "Example Growth ETF"
+    # Prose after a dash, a bar with no exchange, and a word that is not a symbol.
+    assert discovery.symbol_from_cover(f"{name} – EXGR is the ticker. It trades on Nasdaq.", name)[0] is None
+    assert discovery.symbol_from_cover(f"{name} | EXGR | Summary Prospectus", name)[0] is None
+    assert discovery.symbol_from_cover(f"{name} – ETF (Nasdaq Stock Market LLC)", name)[0] is None
+    # A different fund's line is not this one's.
+    assert discovery.symbol_from_cover(f"Other Fund ETF | OTHR | NYSE ARCA {name} summary", name)[0] is None
+
+
+def test_text_decodes_numeric_and_named_entities():
+    assert discovery._text("A&#8194;|&#8194;B &ndash; C &amp; D&nbsp;E") == "A | B – C & D E"

@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import calendar
 import csv
+import html
 import io
 import json
 import re
@@ -136,6 +137,23 @@ _TICKER_FIELD = re.compile(
 #: ``(MAGP)`` straight after the fund's name, and the exchange word that must follow it.
 _NAME_THEN_SYMBOL = re.compile(r"^\s*\(\s*([A-Z][A-Z0-9.\-]{0,5})\s*\)")
 _EXCHANGE_WORD = re.compile(r"\b(?:Cboe|CBOE|NYSE|Nasdaq|NASDAQ)\b")
+
+#: ``iShares Macro AlphaBeta Active ETF | GMIX | NYSE ARCA`` and ``MAN ACTIVE TREND
+#: ENHANCED ETF – MATE (Nasdaq Stock Market LLC)`` — a separator after the name, the symbol,
+#: and the exchange *immediately* after it. Stricter than the bare form above, because a
+#: dash or a bar after a name is also ordinary prose: the exchange has to follow at once.
+_NAME_SEP_SYMBOL = re.compile(
+    r"^\s*[|·•–—\-:]\s*([A-Z][A-Z0-9.\-]{0,5})\s*(?:[|·•–—\-,(]\s*)?"
+    r"(?:the\s+)?(?:Cboe|CBOE|NYSE|Nasdaq|NASDAQ)\b"
+)
+
+#: Registered and trademark marks, which a filed series name and a cover print differently
+#: (``Return Stacked® International`` against ``Return Stacked ® International``).
+_MARKS = re.compile(r"\s*(?:[®™℠©]|\(\s*[Rr]\s*\))\s*")
+
+#: Occurrences of the fund's name tried per document. A summary prospectus prints the name
+#: as a heading, then again beside the ticker; the first one is not always the cover line.
+_MAX_NAME_HITS = 25
 
 _SERIES_NAME = re.compile(rb"<seriesName>\s*([^<]{1,200}?)\s*</seriesName>")
 
@@ -451,11 +469,16 @@ def _remember(
     )
 
 
-def _text(html: str) -> str:
-    text = re.sub(r"<[^>]+>", " ", html)
-    text = text.replace("&nbsp;", " ").replace("&#160;", " ").replace("&amp;", "&")
-    text = text.replace("&ndash;", "–").replace("&mdash;", "—").replace("&rsquo;", "'")
+def _text(document: str) -> str:
+    # Every named and numeric entity: a cover that separates name, ticker and exchange with
+    # ``&#8194;|&#8194;`` is unreadable until the en spaces are real characters.
+    text = html.unescape(re.sub(r"<[^>]+>", " ", document))
     return re.sub(r"\s+", " ", text)
+
+
+def _fold(value: str) -> str:
+    """``value`` without registered/trademark marks, whitespace collapsed."""
+    return re.sub(r"\s+", " ", _MARKS.sub(" ", value)).strip()
 
 
 def symbol_from_cover(text: str, name: str) -> tuple[str | None, str]:
@@ -468,28 +491,48 @@ def symbol_from_cover(text: str, name: str) -> tuple[str | None, str]:
     """
     if not name:
         return None, "the filing names no series"
-    position = text.lower().find(name.lower())
-    if position < 0:
+    # Marks are folded out of both sides: the filed name is ``Return Stacked® International``
+    # and the cover prints ``Return Stacked ® International`` (or ``(R)``).
+    text, name = _fold(text), _fold(name)
+    lowered, needle = text.lower(), name.lower()
+    positions: list[int] = []
+    start = lowered.find(needle)
+    while start >= 0 and len(positions) < _MAX_NAME_HITS:
+        positions.append(start)
+        start = lowered.find(needle, start + len(needle))
+    if not positions:
         return None, "the document does not name this series"
-    window = text[max(0, position - _NAME_WINDOW) : position + len(name) + _NAME_WINDOW]
-    for pattern in (_EXCHANGE_LINE, _TRADING_SYMBOL, _TICKER_FIELD):
-        for match in pattern.finditer(window):
-            candidate = match.group(1).strip().upper()
-            if candidate in _NOT_SYMBOLS or not _SYMBOL.match(candidate):
-                continue
-            return candidate, "cover"
-    # The newer summary-prospectus cover prints the symbol bare — ``Roundhill Magnificent
-    # Seven Plus ETF (MAGP)`` — and states the exchange in the sentence after it. A bare
-    # parenthesised symbol is corroborated only when it follows the name *directly* and an
-    # exchange is named within the next ``_NAME_WINDOW`` characters, so a name followed by
-    # ``(the "Fund")`` or ``(ETF)`` is never read as a ticker. It runs last, so every cover
-    # the patterns above already read gives the same answer as before.
-    tail = text[position + len(name) : position + len(name) + _NAME_WINDOW]
-    bare = _NAME_THEN_SYMBOL.match(tail)
-    if bare and _EXCHANGE_WORD.search(tail):
-        candidate = bare.group(1).upper()
-        if candidate not in _NOT_SYMBOLS and _SYMBOL.match(candidate):
-            return candidate, "cover"
+    # The name is tried where it first appears and then wherever else it does: a summary
+    # prospectus prints it as a heading with no ticker beside it, and again on the line that
+    # carries the symbol. Each occurrence is judged by the same window, so a cover the first
+    # occurrence already reads gives the same answer as before.
+    for position in positions:
+        window = text[max(0, position - _NAME_WINDOW) : position + len(name) + _NAME_WINDOW]
+        for pattern in (_EXCHANGE_LINE, _TRADING_SYMBOL, _TICKER_FIELD):
+            for match in pattern.finditer(window):
+                candidate = match.group(1).strip().upper()
+                if candidate in _NOT_SYMBOLS or not _SYMBOL.match(candidate):
+                    continue
+                return candidate, "cover"
+    # The newer summary-prospectus covers print the symbol straight after the name:
+    # ``Roundhill Magnificent Seven Plus ETF (MAGP)`` with the exchange in the sentence after
+    # it; ``… ETF | GMIX | NYSE ARCA``; ``… ETF – MATE (Nasdaq Stock Market LLC)``. Each is
+    # corroborated only when the symbol follows the name *directly* and an exchange is named
+    # with it (at once for a separator, within ``_NAME_WINDOW`` for a parenthesis), so a name
+    # followed by ``(the "Fund")`` or ``(ETF)`` is never read as a ticker. These run last, so
+    # every cover the patterns above already read is unchanged.
+    for position in positions:
+        tail = text[position + len(name) : position + len(name) + _NAME_WINDOW]
+        bare = _NAME_THEN_SYMBOL.match(tail)
+        if bare and _EXCHANGE_WORD.search(tail):
+            candidate = bare.group(1).upper()
+            if candidate not in _NOT_SYMBOLS and _SYMBOL.match(candidate):
+                return candidate, "cover"
+        sep = _NAME_SEP_SYMBOL.match(tail)
+        if sep:
+            candidate = sep.group(1).upper()
+            if candidate not in _NOT_SYMBOLS and _SYMBOL.match(candidate):
+                return candidate, "cover"
     return None, "no exchange line beside the fund's name"
 
 
@@ -516,7 +559,7 @@ def resolve_symbol(
     """
     if not name:
         return None, None, "the filing names no series"
-    quoted = urllib.parse.quote(f'"{name}"')
+    quoted = urllib.parse.quote(f'"{_fold(name)}"')
     # Ask for the form that carries a cover, in the order that finds it fastest. The
     # unfiltered query is the fallback, and it is the one that needs care: it returns
     # exhibits and other funds' prospectuses, and its first page is ranked by relevance
