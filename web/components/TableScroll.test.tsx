@@ -176,7 +176,7 @@ describe("TableScroll", () => {
     expect(box.scrollLeft).toBe(0);
   });
 
-  it("draws a rail above the table and one below, and both track the table", () => {
+  it("draws exactly one rail, after the table, so only one bar is ever in view", () => {
     render(
       <TableScroll label="Your funds">
         <table />
@@ -186,37 +186,8 @@ describe("TableScroll", () => {
     geometry(box, 0);
     fireEvent.scroll(box);
 
-    const top = document.querySelector(".table-scroll__rail--top");
-    const bottom = document.querySelector(".table-scroll__rail--bottom");
-    expect(top).not.toBeNull();
-    expect(bottom).not.toBeNull();
-    // Top rail first in the document, bottom rail last: the table sits between them.
-    expect(box.previousElementSibling).toBe(top);
-    expect(box.nextElementSibling).toBe(bottom);
-
-    box.scrollLeft = 300;
-    fireEvent.scroll(box);
-    const margins = Array.from(
-      document.querySelectorAll<HTMLElement>(".table-scroll__thumb"),
-    ).map((t) => t.style.marginLeft);
-    expect(margins).toEqual(["30%", "30%"]);
-  });
-
-  it("drags the table from the top rail's thumb too", () => {
-    render(
-      <TableScroll label="Your funds">
-        <table />
-      </TableScroll>,
-    );
-    const box = screen.getByRole("region");
-    geometry(box, 0);
-    fireEvent.scroll(box);
-    const track = document.querySelector<HTMLElement>(".table-scroll__rail--top");
-    Object.defineProperty(track, "clientWidth", { configurable: true, value: 400 });
-    const topThumb = track!.querySelector<HTMLElement>(".table-scroll__thumb")!;
-    fireEvent.pointerDown(topThumb, { pointerId: 1, clientX: 0 });
-    fireEvent.pointerMove(topThumb, { pointerId: 1, clientX: 120 });
-    // Track 400, thumb 160, usable 240; 120 px of thumb is half of the 600 px of travel.
-    expect(box.scrollLeft).toBe(300);
+    expect(document.querySelectorAll(".table-scroll__rail")).toHaveLength(1);
+    expect(box.nextElementSibling).toBe(rail());
+    expect(box.previousElementSibling).toBeNull();
   });
 });

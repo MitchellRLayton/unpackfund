@@ -9,15 +9,15 @@
  * touchpad then has no way to move the table sideways at all, which is the report this
  * exists to answer.
  *
- * Two rails answer it. The bottom one pins itself to the bottom of the viewport for as
+ * The rail is a second scrollbar that pins itself to the bottom of the viewport for as
  * long as the table is on screen, so the control sits where the reader is looking
- * rather than where the table ends. The top one sits above the table, so a reader who
- * has just arrived at a table too tall to show its own foot can see at once that it
- * scrolls sideways. Both are shown only while the table overflows, and both are
- * duplicate controls, not extra scroll boxes: each drives the same `scrollLeft` as the
- * table, and the table's own box is focusable so the arrow keys scroll it without
- * them. That is also why the rails are `aria-hidden` — a screen reader gets one
- * scrollable region, not three.
+ * rather than where the table ends. On a short table it rests just under the table. It
+ * is deliberately the only bar: a second one above the table put two scrollbars in the
+ * viewport at once, and it is shown only while the table overflows, never faded out on
+ * idle, so it stays the cue that the table scrolls sideways. It is a duplicate control,
+ * not a second scroll box: it drives the same `scrollLeft` as the table, and the
+ * table's own box is focusable so the arrow keys scroll it without the rail. That is
+ * also why the rail is `aria-hidden` — a screen reader gets one scrollable region.
  *
  * Nothing here computes a number the table shows. The only arithmetic is the thumb's
  * width and position, which are the scroll box's own geometry.
@@ -48,15 +48,13 @@ const NO_RAIL: Rail = { overflow: false, thumb: 1, offset: 0 };
 /** How far a click on the track moves the table: most of a screen, never all of it. */
 const PAGE_FRACTION = 0.8;
 
-/** One scrollbar for the box `boxRef` points at; the top and bottom rails are two of these. */
+/** The rail for the box `boxRef` points at. */
 function ScrollRail({
   boxRef,
   rail,
-  edge,
 }: {
   boxRef: RefObject<HTMLDivElement | null>;
   rail: Rail;
-  edge: "top" | "bottom";
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const drag = useRef<{ x: number; left: number } | null>(null);
@@ -105,7 +103,7 @@ function ScrollRail({
 
   return (
     <div
-      className={`table-scroll__rail table-scroll__rail--${edge}`}
+      className="table-scroll__rail"
       ref={trackRef}
       aria-hidden="true"
       onPointerDown={onTrackPointerDown}
@@ -175,7 +173,6 @@ export function TableScroll({
       className={className ? `table-scroll ${className}` : "table-scroll"}
       style={style}
     >
-      {rail.overflow ? <ScrollRail boxRef={boxRef} rail={rail} edge="top" /> : null}
       <div
         className="table-wrap"
         ref={boxRef}
@@ -188,7 +185,7 @@ export function TableScroll({
       >
         {children}
       </div>
-      {rail.overflow ? <ScrollRail boxRef={boxRef} rail={rail} edge="bottom" /> : null}
+      {rail.overflow ? <ScrollRail boxRef={boxRef} rail={rail} /> : null}
     </div>
   );
 }
