@@ -1037,6 +1037,15 @@ def test_the_release_contract_names_every_input_the_pages_read(tmp_path: Path):
     assert fund_pages.FUNDS_FILE.format(ticker="AVUV") == "funds/AVUV.json"
     assert fund_pages.COUNTRIES_FILE == "companies/countries.json"
     assert fund_pages.SIZES_FILE == "companies/sizes.json"
+    assert fund_pages.PENDING_FILE == "pending.json"
+    # Absent by presence, like the size table: a release before the pending object has none.
+    assert fund_pages.missing_release_inputs(release, ["AVUV"]) == {
+        "required": [],
+        "optional": ["pending.json"],
+    }
+    (release / fund_pages.PENDING_FILE).write_text(
+        json.dumps({"kind": "pending_funds", "funds": {}}), encoding="utf-8"
+    )
     assert fund_pages.missing_release_inputs(release, ["AVUV"]) == {"required": [], "optional": []}
 
     # The optional inputs are optional in the page: drop the country map and the page
@@ -1547,3 +1556,84 @@ def test_the_repository_root_is_the_one_with_the_app_in_it():
 
     assert (root / "web" / "app" / "globals.css").is_file()
     assert (root / "pnpm-workspace.yaml").is_file()
+
+
+# --- pending funds: registered, no N-PORT yet ------------------------------------------
+
+PENDING_MN = {
+    "series_id": "S000108244",
+    "name": "Corgi MANGOS ETF",
+    "registrant": "Corgi ETF Trust I",
+    "symbol_source": "sec_ticker_file:company_tickers_mf",
+    "first_prospectus_filed": "2026-09-29",
+    "latest_prospectus": {
+        "form": "497",
+        "filed_at": "2026-10-23",
+        "accession": "0002078265-26-000459",
+        "source_url": "https://www.sec.gov/Archives/edgar/data/2078265/000207826526000459/",
+    },
+    "fiscal_year_end": "1231",
+    "first_report": {
+        "earliest_period_end": "2026-09-30",
+        "earliest_due_by": "2026-11-29",
+        "latest_due_by": "2027-03-01",
+    },
+}
+
+
+def _write_pending(release: Path, funds: dict) -> None:
+    (release / fund_pages.PENDING_FILE).write_text(
+        json.dumps({"schema_version": 1, "kind": "pending_funds", "funds": funds}),
+        encoding="utf-8",
+    )
+
+
+def test_a_pending_fund_gets_a_page_that_says_what_the_filings_state_and_no_more(tmp_path: Path):
+    from tests.conftest import write_release
+
+    release = write_release(tmp_path, [fund()], release_id="2026-11-19.1")
+    _write_pending(release, {"MN": PENDING_MN})
+    out = tmp_path / "out"
+    summary = fund_pages.build(release, out, indexable=True)
+    page = (out / "f" / "MN" / "index.html").read_text()
+
+    assert summary["pending_pages"] == 1 and summary["pages"] == 1
+    assert "Corgi MANGOS ETF" in page and "S000108244" in page
+    # The dates are the 60-day rule's, printed in the site's long form.
+    assert "Nov 29, 2026" in page and "Mar 1, 2027" in page
+    assert "does not say that MN is trading" in page
+    # Nothing a filing has not stated: no weights table, no look-through action.
+    assert "Largest holdings" not in page and "Look through this fund" not in page
+    # A placeholder is never indexed, even when the site is: thin pages rank worse than none.
+    assert '<meta name="robots" content="noindex, follow">' in page
+    # And it is not advertised: the sitemap lists published funds only.
+    assert "/f/MN/" not in (out / "sitemap.xml").read_text()
+
+
+def test_a_published_ticker_beats_a_stale_pending_row(tmp_path: Path):
+    from tests.conftest import write_release
+
+    release = write_release(tmp_path, [fund()], release_id="2026-11-19.1")
+    _write_pending(release, {"AVUV": {**PENDING_MN, "name": "Stale Pending Row"}})
+    out = tmp_path / "out"
+    summary = fund_pages.build(release, out)
+    assert summary["pending_pages"] == 0
+    assert "Stale Pending Row" not in (out / "f" / "AVUV" / "index.html").read_text()
+
+
+def test_a_pending_document_of_another_kind_is_ignored(tmp_path: Path):
+    from tests.conftest import write_release
+
+    release = write_release(tmp_path, [fund()], release_id="2026-11-19.1")
+    (release / fund_pages.PENDING_FILE).write_text(
+        json.dumps({"kind": "something_else", "funds": {"MN": PENDING_MN}}), encoding="utf-8"
+    )
+    assert fund_pages.load_pending(release) == {}
+
+
+def test_a_pending_ticker_that_is_not_a_path_segment_is_dropped(tmp_path: Path):
+    from tests.conftest import write_release
+
+    release = write_release(tmp_path, [fund()], release_id="2026-11-19.1")
+    _write_pending(release, {"../evil": PENDING_MN, "MN": PENDING_MN})
+    assert list(fund_pages.load_pending(release)) == ["MN"]

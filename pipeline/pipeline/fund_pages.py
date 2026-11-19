@@ -78,7 +78,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import classification_generated
+from . import classification_generated, pending
 from . import sizes
 from .artifact import sha256_hex
 from .paths import REPO_ROOT
@@ -112,6 +112,7 @@ FUNDS_DIR = "funds"
 FUNDS_FILE = f"{FUNDS_DIR}/{{ticker}}.json"
 COUNTRIES_FILE = "companies/countries.json"
 SIZES_FILE = "companies/sizes.json"
+PENDING_FILE = pending.PENDING_FILE
 
 
 @dataclass(frozen=True)
@@ -166,6 +167,12 @@ RELEASE_INPUTS: tuple[ReleaseInput, ...] = (
         False,
         "the release's market-cap table; without it a fund page draws no size bar "
         "and states no inferred mandate",
+    ),
+    ReleaseInput(
+        PENDING_FILE,
+        False,
+        "funds registered with the SEC that have filed no N-PORT yet; without it "
+        "they have no page, which is what a release before this object did",
     ),
 )
 
@@ -1213,6 +1220,35 @@ def topbar(model: dict, title: str) -> str:
     )
 
 
+def site_footer(source: str) -> str:
+    """The legal footer every fund page ends with; ``source`` names the SEC form read.
+
+    One copy, because the disclaimer wording is not a thing two renderers may drift on.
+    """
+    return f"""<footer class="site-footer">
+  <div class="shell site-footer__inner">
+    <p class="notice-line"><strong>Not investment advice.</strong> UnpackFund shows what funds
+    hold, from public SEC filings. It is not a recommendation to buy, hold or sell anything, and
+    the operator is not a registered investment adviser.
+    <a href="/disclaimer/">Read the full disclaimer</a>.</p>
+    <p class="notice-line">Holdings come from quarterly filings and typically describe a
+    portfolio <strong>60 to 150 days</strong> old; they can be wrong. Verify anything that
+    matters against this fund's own documents.</p>
+    <p class="notice-line">Source: SEC EDGAR ({source}). No SEC seal or logo is used, and the
+    SEC has not reviewed or endorsed this site. UnpackFund is not affiliated with any fund
+    issuer.</p>
+    <nav class="footer-links" aria-label="About this site">
+      <a href="/methodology/">Methodology</a>
+      <a href="/about/">About</a>
+      <a href="/glossary/">Glossary</a>
+      <a href="/disclaimer/">Disclaimer</a>
+      <a href="/privacy/">Privacy</a>
+      <a href="/terms/">Terms</a>
+    </nav>
+  </div>
+</footer>"""
+
+
 def render_page(
     fund: dict,
     *,
@@ -1739,28 +1775,7 @@ def render_page(
 
   </div>
 </main>
-<footer class="site-footer">
-  <div class="shell site-footer__inner">
-    <p class="notice-line"><strong>Not investment advice.</strong> UnpackFund shows what funds
-    hold, from public SEC filings. It is not a recommendation to buy, hold or sell anything, and
-    the operator is not a registered investment adviser.
-    <a href="/disclaimer/">Read the full disclaimer</a>.</p>
-    <p class="notice-line">Holdings come from quarterly filings and typically describe a
-    portfolio <strong>60 to 150 days</strong> old; they can be wrong. Verify anything that
-    matters against this fund's own documents.</p>
-    <p class="notice-line">Source: SEC EDGAR (Form N-PORT). No SEC seal or logo is used, and the
-    SEC has not reviewed or endorsed this site. UnpackFund is not affiliated with any fund
-    issuer.</p>
-    <nav class="footer-links" aria-label="About this site">
-      <a href="/methodology/">Methodology</a>
-      <a href="/about/">About</a>
-      <a href="/glossary/">Glossary</a>
-      <a href="/disclaimer/">Disclaimer</a>
-      <a href="/privacy/">Privacy</a>
-      <a href="/terms/">Terms</a>
-    </nav>
-  </div>
-</footer>
+{site_footer("Form N-PORT")}
 </div>
 </div>
 </div>
@@ -1928,6 +1943,150 @@ def robots_txt() -> str:
     )
 
 
+def load_pending(release_dir: Path) -> dict[str, dict]:
+    """``pending.json``'s funds, keyed by ticker, or ``{}`` when the release has none."""
+    path = release_dir / PENDING_FILE
+    if not path.is_file():
+        return {}
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError:
+        return {}
+    if document.get("kind") != "pending_funds":
+        return {}
+    return {
+        ticker: row
+        for ticker, row in (document.get("funds") or {}).items()
+        if SAFE_TICKER.match(ticker)
+    }
+
+
+def render_pending_page(
+    ticker: str,
+    fund: dict,
+    *,
+    release_id: str | None = None,
+) -> str:
+    """A fund the SEC lists but that has not filed its first N-PORT.
+
+    Says what the filings state and nothing else: no holdings, no weights, no fee, and
+    no claim that the fund trades — a prospectus is effective before a fund lists and the
+    SEC publishes no first-trade date. The page is ``noindex`` even when the site is
+    indexable: it is a placeholder for a page that will exist, and a thin page that a
+    search engine ranks is worse than a missing one.
+    """
+    symbol = _esc(ticker)
+    name = _esc(fund["name"])
+    registrant = _esc(fund.get("registrant") or "")
+    prospectus = fund["latest_prospectus"]
+    window = fund["first_report"]
+    earliest = _esc(long_date(window["earliest_due_by"]))
+    latest = _esc(long_date(window["latest_due_by"]))
+    page_title = f"{symbol} — {name}: no holdings filed yet"
+    page_description = (
+        f"{ticker} ({fund['name']}) is registered with the SEC but has not filed a portfolio "
+        "report, so its holdings are not available yet."
+    )
+    page_url = f"{SITE}/f/{ticker}/"
+    model = nav_model()
+    social = _social_meta(page_title, page_description, page_url)
+    source = (
+        f'<a href="{_esc(prospectus["source_url"])}" rel="nofollow noopener">'
+        f'{_esc(prospectus["form"])} on SEC EDGAR</a>'
+    )
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{page_title}</title>
+<meta name="description" content="{_esc(page_description)}">
+<link rel="canonical" href="{page_url}">
+{social}<meta name="robots" content="noindex, follow">
+<link rel="preload" href="/fonts/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/{CSS_NAME}">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="app-shell" data-page="funds">
+{sidebar(model, release_id)}
+<div class="app-body">
+{topbar(model, "Funds")}
+<div class="app-main">
+<main id="main" class="shell page">
+  <div class="stack stack--loose">
+
+    <div class="stack stack--tight">
+      <p class="eyebrow">Fund — no holdings filed yet</p>
+      <h1 class="title">{name}</h1>
+      <div class="row">
+        <span class="chip chip--mono">{symbol}</span>
+        <span class="chip">{registrant}</span>
+        <span class="chip">Awaiting first N-PORT</span>
+      </div>
+      <p class="lede">{symbol} is registered with the SEC, but it has not filed a portfolio
+      report yet, so there is nothing to look through.</p>
+    </div>
+
+    <section aria-labelledby="answer-heading">
+      <h2 id="answer-heading" class="visually-hidden">The short answer</h2>
+      <div class="answer">
+        <p class="answer__sentence">We cannot show what {symbol} owns, because the fund has not
+        filed it.</p>
+        <p class="muted small doc-note">A fund reports its holdings to the SEC on Form N-PORT,
+        once a quarter, within 60 days after the quarter ends. {symbol}&rsquo;s first report is
+        expected between <strong>{earliest}</strong> and <strong>{latest}</strong>. This page
+        will show its holdings once it is filed.</p>
+      </div>
+    </section>
+
+    <section aria-labelledby="filing-heading" class="stack stack--tight">
+      <h2 id="filing-heading" class="title--sm">What the SEC filings show</h2>
+      <div class="doc-grid">
+        <div class="card">
+          <p class="eyebrow">Newest prospectus</p>
+          <p class="subtitle doc-value">{_esc(long_date(prospectus["filed_at"]))}</p>
+          <p class="muted tiny">{source}</p>
+        </div>
+        <div class="card">
+          <p class="eyebrow">First prospectus we saw</p>
+          <p class="subtitle doc-value">{_esc(long_date(fund["first_prospectus_filed"]))}</p>
+          <p class="muted tiny">within the last five months of filings</p>
+        </div>
+        <div class="card">
+          <p class="eyebrow">SEC series</p>
+          <p class="subtitle doc-value">{_esc(fund["series_id"])}</p>
+          <p class="muted tiny">the fund&rsquo;s identifier in EDGAR</p>
+        </div>
+      </div>
+      <p class="muted small doc-note">A prospectus becomes effective before a fund lists, and the
+      SEC publishes no first-trade date, so this page does not say that {symbol} is trading.
+      Check the fund&rsquo;s own site for that. The ticker comes from the SEC&rsquo;s fund ticker
+      file or from the fund&rsquo;s own prospectus.</p>
+    </section>
+
+    <section aria-labelledby="why-heading" class="stack stack--tight">
+      <h2 id="why-heading" class="title--sm">Why a new fund has no page yet</h2>
+      <p class="muted small doc-note">This site reads holdings from the fund&rsquo;s own Form
+      N-PORT and from nothing else. The form covers a fiscal quarter and is due 60 days after
+      it ends, so a fund that starts just after a quarter closes can take about five months to
+      file its first one. The window above applies that rule to the fund&rsquo;s fiscal year
+      ({_esc(window["earliest_period_end"])} is the first quarter end after its prospectus), and
+      is an estimate, not a filing.</p>
+    </section>
+
+  </div>
+</main>
+{site_footer("prospectus filings; Form N-PORT once filed")}
+</div>
+</div>
+</div>
+</body>
+</html>
+"""
+
+
 def build(
     release_dir: Path,
     out_dir: Path,
@@ -2021,6 +2180,17 @@ def build(
         else:
             bands["not-covered"] += 1
 
+    # Funds the SEC lists that have filed no N-PORT. A fund the release publishes always
+    # wins its ticker: a pending row for a published ticker is stale, not a second page.
+    pending_pages = 0
+    for ticker, row in load_pending(release_dir).items():
+        if ticker in catalogue or (only is not None and ticker not in {t.upper() for t in only}):
+            continue
+        target = out_dir / "f" / ticker / "index.html"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(render_pending_page(ticker, row, release_id=release_id), encoding="utf-8")
+        pending_pages += 1
+
     # One flag flips the package: page-level `noindex`, the sitemap, and robots.
     # A site that is `noindex` but advertises a sitemap tells a crawler two
     # different things, so these three move together or not at all.
@@ -2032,6 +2202,7 @@ def build(
 
     return {
         "pages": written,
+        "pending_pages": pending_pages,
         "sitemap": sitemap_written,
         "robots": robots_written,
         "skipped": skipped,

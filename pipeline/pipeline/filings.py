@@ -269,6 +269,16 @@ def prefetch(
     }
 
 
+def has_nport(cik: str, series_id: str) -> bool:
+    """Whether ``prefetch`` found any N-PORT for this series — ``resolve``'s own test.
+
+    ``pending`` asks this question without building the fund: a series with no N-PORT
+    filing at all is one the product cannot X-ray yet, which is different from one whose
+    filing the build then refuses.
+    """
+    return (cik, series_id) in _SERIES_INDEX
+
+
 def resolve(ref: universe.FundRef) -> FoundFiling:
     """The newest indexed filing for ``ref``, read from the document cache."""
     key = (ref.cik, ref.series_id or "")
