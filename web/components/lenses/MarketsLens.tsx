@@ -219,7 +219,7 @@ export function MarketsLens({ model }: LensProps) {
                 <button
                   key={option}
                   type="button"
-                  className={`btn btn--sm${option === provider ? "btn--primary" : ""}`}
+                  className="btn btn--sm"
                   aria-pressed={option === provider}
                   onClick={() => setProvider(option)}
                 >

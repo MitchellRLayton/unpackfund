@@ -1126,13 +1126,18 @@ h3.subtitle {
   border-color: var(--rule);
 }
 
-.btn--primary {
+/* A pressed toggle and the primary action are the same ink-on-paper fill: one rule, so a
+ * switch cannot depend on a second class being spelled right (`aria-pressed` is what
+ * assistive technology reads, and now what the eye reads too). */
+.btn--primary,
+.btn[aria-pressed="true"] {
   background: var(--ink);
   border-color: var(--ink);
   color: var(--paper);
 }
 
-.btn--primary:hover {
+.btn--primary:hover,
+.btn[aria-pressed="true"]:hover {
   background: color-mix(in oklch, var(--ink) 88%, var(--paper));
 }
 
