@@ -42,3 +42,21 @@ def test_every_alias_passes_the_release_gate_shape(fund_file):
         for symbol in series_symbols:
             assert TICKER_RE.match(symbol), symbol
             assert not re.search(r"[()/\s]", symbol)
+
+
+def test_the_widened_universe_cleans_symbols_the_same_way(fund_file, monkeypatch):
+    """``all_series`` is the path the nightly builds from; it built ``symbols`` raw while only the
+    primary ticker was cleaned, which is what failed the release gate on 2026-11-19."""
+    monkeypatch.setattr(universe, "_overrides", lambda: {})
+    refs = {ref.series_id: ref for ref in universe.all_series({})}
+    assert refs["S000000001"].symbols == ("NWAFX", "NWAGX", "NWAHX")
+    assert refs["S000000001"].ticker == "NWAFX"
+    for ref in refs.values():
+        for symbol in ref.symbols:
+            assert TICKER_RE.match(symbol), symbol
+
+
+def test_clean_symbols_is_one_rule_for_both_builders():
+    assert universe.clean_symbols(["(NWAGX)", "nwagx", " NWAHX ", "N/A", "", "VOO"]) == (
+        "NWAGX", "NWAHX", "VOO")
+    assert universe.clean_symbols([]) == ()

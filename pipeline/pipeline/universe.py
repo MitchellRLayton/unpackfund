@@ -23,7 +23,7 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Mapping
+from typing import TYPE_CHECKING, Iterable, Mapping
 
 from . import sec
 
@@ -92,14 +92,10 @@ def _series_symbols() -> dict[str, tuple[str, ...]]:
     """
     grouped: dict[str, list[str]] = {}
     for symbol, (_cik, series, _class_id) in _mf_map().items():
-        # Cleaned here, where the aliases are made: the SEC file carries a few parenthesised
-        # symbols (``(NWAGX)``) and a literal ``N/A``, and a raw symbol that is not a
-        # contract-shaped ticker fails the release's ``aliases.shape`` gate, which blocks the
-        # whole nightly. ``clean_symbol`` is the rule ``_primary_symbol`` already applies.
-        cleaned = clean_symbol(symbol)
-        if series and cleaned:
-            grouped.setdefault(series, []).append(cleaned)
-    return {series: tuple(sorted(set(symbols))) for series, symbols in grouped.items()}
+        if series:
+            grouped.setdefault(series, []).append(symbol)
+    # Cleaned through the same helper the widened universe uses (``clean_symbols``).
+    return {series: clean_symbols(symbols) for series, symbols in grouped.items()}
 
 
 @lru_cache(maxsize=1)
@@ -177,6 +173,17 @@ def clean_symbol(symbol: str) -> str | None:
     """A contract-shaped ticker, or ``None`` when the row carries no usable one."""
     candidate = symbol.strip().upper().strip("()").strip()
     return candidate if SYMBOL_PATTERN.fullmatch(candidate) else None
+
+
+def clean_symbols(symbols: Iterable[str]) -> tuple[str, ...]:
+    """Every usable, contract-shaped symbol in ``symbols``: cleaned, de-duplicated, sorted.
+
+    The one place a series' share-class symbols become a ``FundRef.symbols`` tuple, so the alias
+    set is cleaned the same way on both ways of building a universe. A raw symbol that is not a
+    contract-shaped ticker (``(NWAGX)``, ``N/A``) would otherwise reach ``aliases.json`` and fail the
+    release's blocking ``aliases.shape`` gate.
+    """
+    return tuple(sorted({cleaned for symbol in symbols if (cleaned := clean_symbol(symbol))}))
 
 
 def _primary_symbol(symbols: list[str]) -> str | None:
@@ -257,7 +264,7 @@ def all_series(discovered: Mapping[str, "Discovered"] | None = None) -> list[Fun
                 cik=str(entry["cik"]),
                 series_id=entry["series"] or None,  # type: ignore[arg-type]
                 resolved_by=str(entry["source"]),
-                symbols=tuple(sorted(symbols)),
+                symbols=clean_symbols(symbols),
             )
         )
     # One artifact per file name: two series claiming the same ticker would write
