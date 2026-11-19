@@ -47,16 +47,15 @@ export interface PortfolioState {
   /** Percentage mode only: how far past 100% the entries are, in basis points. */
   overBp: number;
   /**
-   * Append one entry, and say which of the three things happened to the amounts that
-   * were already there: `split` (the app spread every row evenly, because the list was
-   * still its own even split), `kept` (nothing moved; the new row arrived at 0), or
-   * `noop` (that holding is already in the portfolio).
+   * Append one entry at 0, leaving every amount already there alone, and say what
+   * happened: `kept` (the row was added at 0) or `noop` (that holding is already in the
+   * portfolio).
    */
   add: (kind: EntryKind, key: string) => AddOutcome;
   /**
-   * Drop one entry, under the same rule `add` follows: a list the app itself spread
-   * evenly is re-spread over what remains, so removing one row of five equal rows
-   * returns the other four to 100%; a list weighted by hand keeps every amount.
+   * Drop one entry. A list that is exactly the even split (from the Equal weight button
+   * or the example) is re-spread over what remains, so removing one row of five equal
+   * rows returns the other four to 100%; a list weighted by hand keeps every amount.
    */
   remove: (kind: EntryKind, key: string) => void;
   /**
@@ -75,8 +74,8 @@ export interface PortfolioState {
   setMode: (mode: EntryMode) => void;
   /**
    * Put a whole portfolio back, amounts included. The one caller is the builder's
-   * Undo after "Remove all": `add` would re-equalise the weights, and an undo that
-   * returns a different portfolio is not an undo.
+   * Undo after "Remove all", and the paste box: both write amounts the visitor already
+   * chose, so they cannot go through `add`, which adds one row at 0.
    */
   replace: (entries: PortfolioEntry[]) => void;
 }
@@ -87,13 +86,11 @@ function isSame(entry: PortfolioEntry, kind: EntryKind, key: string): boolean {
 }
 
 /**
- * What `add` did to the amounts that were already in the portfolio.
- *
- * Three states rather than a boolean: "the rows were re-split" and "the rows were left
- * alone" are both successful adds, and a caller that confuses them either announces a
- * re-split that did not happen or stays silent about a 0.00% row that needs a number.
+ * What `add` did: `kept` is a new row at 0 with every other amount untouched, `noop` is a
+ * holding that was already there. A caller that treats them alike either stays silent
+ * about a 0.00% row that needs a number or announces an add that did not happen.
  */
-export type AddOutcome = "split" | "kept" | "noop";
+export type AddOutcome = "kept" | "noop";
 
 /**
  * The largest amount an entry may carry in the current mode.
@@ -114,18 +111,14 @@ export function usePortfolio(): PortfolioState {
   const add = useCallback(
     (kind: EntryKind, key: string): AddOutcome => {
       if (entries.some((entry) => isSame(entry, kind, key))) return "noop";
-      const next: PortfolioEntry[] = [...entries, { kind, key, amount: 0 }];
-      // The even split is the default only for a portfolio the app itself spread —
-      // empty, or still exactly the split `equalise` would produce. A set the visitor
-      // weighted by hand keeps every amount it has, because moving a number they typed
-      // is silent data loss: "I added a fund and my whole portfolio reset to equal
-      // weights" (operator, 2026-11-02). Whole is not the test — `60/40` is whole and
-      // is still the visitor's, which is why the check is `followsEvenSplit`, not a
-      // total. Cash and stocks additionally start at zero: guessing a dollar amount is
-      // guessing money.
-      const followSplit = entries.length === 0 || followsEvenSplit(mode, entries);
-      write({ mode, entries: followSplit ? equaliseEntries(next) : next });
-      return followSplit ? "split" : "kept";
+      // A new row always arrives at zero. The app used to spread the whole evenly across
+      // a list it had itself spread (the first row at 100%, the second halving it), which
+      // filled in the form for the visitor; the operator turned that off (2026-11-18), so
+      // the amounts on screen are only ever ones the visitor typed or asked for with the
+      // Equal weight button. Cash and stocks start at zero for the same reason: guessing
+      // a dollar amount is guessing money.
+      write({ mode, entries: [...entries, { kind, key, amount: 0 }] });
+      return "kept";
     },
     [entries, mode],
   );

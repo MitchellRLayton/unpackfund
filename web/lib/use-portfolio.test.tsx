@@ -14,11 +14,12 @@ import { usePortfolio, type AddOutcome, type PortfolioState } from "./use-portfo
  * state a visitor arrives in — and asserts the URL as well as the hook, because those
  * two agreeing is the whole contract.
  *
- * What is pinned here is the operator's complaint of 2026-11-11: removing one of five
- * equal rows left the remaining four at 20% each — 80%, and nothing rescaled them.
- * `add` and `remove` now follow one rule, decided by one predicate: a list the app
- * itself spread evenly is re-spread, and a list the visitor weighted by hand keeps
- * every amount it has. `equalise` is the way back to the even split.
+ * What is pinned here: `add` never fills an amount in (a new row arrives at 0 and no other
+ * row moves — the operator turned the automatic even split off on 2026-11-18), while
+ * `remove` still re-spreads a list that is exactly the even split, which only the Equal
+ * weight button or the example can now produce (the operator's complaint of 2026-11-11:
+ * removing one of five equal rows left the other four at 80%). A list weighted by hand
+ * keeps every amount it has. `equalise` is the way back to the even split.
  *
  * One mutation per `act`: each writer closes over the entries of its own render, so
  * two writes inside one `act` block would both read the same stale list and the second
@@ -35,6 +36,27 @@ function addFunds(hook: Hook, keys: readonly string[]): void {
       hook.current.add("fund", key);
     });
   }
+}
+
+/** Add funds and give each the amount it is paired with, as a visitor typing would. */
+function addWeighted(hook: Hook, rows: readonly (readonly [string, number])[]): void {
+  addFunds(
+    hook,
+    rows.map(([key]) => key),
+  );
+  for (const [key, amount] of rows) {
+    act(() => {
+      hook.current.setAmount("fund", key, amount);
+    });
+  }
+}
+
+/** Add funds, then press Equal weight: the only way left to get the even split. */
+function addEvenly(hook: Hook, keys: readonly string[]): void {
+  addFunds(hook, keys);
+  act(() => {
+    hook.current.equalise();
+  });
 }
 
 const amounts = (hook: Hook): number[] =>
@@ -57,23 +79,52 @@ afterEach(() => {
 });
 
 describe("adding funds", () => {
-  it("splits five funds evenly: 2,000bp each, 10,000 in total", () => {
+  it("adds every fund at 0bp: nothing is filled in until the visitor does it", () => {
     const view = renderHook(() => usePortfolio());
 
     addFunds(view.result, ["VTI", "VXUS", "BND", "VNQ", "GLD"]);
 
-    expect(amounts(view.result)).toEqual([2_000, 2_000, 2_000, 2_000, 2_000]);
-    expect(view.result.current.total).toBe(10_000);
-    expect(view.result.current.complete).toBe(true);
+    expect(amounts(view.result)).toEqual([0, 0, 0, 0, 0]);
+    expect(view.result.current.total).toBe(0);
+    expect(view.result.current.unallocatedBp).toBe(10_000);
+    expect(view.result.current.complete).toBe(false);
     // The URL is the portfolio: the numbers on screen are the ones a reload sees.
-    expect(stored()).toEqual([2_000, 2_000, 2_000, 2_000, 2_000]);
+    expect(stored()).toEqual([0, 0, 0, 0, 0]);
+  });
+
+  it("leaves a row the visitor typed alone when the next fund arrives", () => {
+    const view = renderHook(() => usePortfolio());
+    addWeighted(view.result, [["VTI", 10_000]]);
+
+    let outcome: AddOutcome = "noop";
+    act(() => {
+      outcome = view.result.current.add("fund", "VXUS");
+    });
+
+    // A single row at 100% used to be halved by the second add.
+    expect(outcome).toBe("kept");
+    expect(amounts(view.result)).toEqual([10_000, 0]);
+    expect(view.result.current.complete).toBe(true);
+  });
+
+  it("says a holding already in the portfolio is a no-op, and writes nothing", () => {
+    const view = renderHook(() => usePortfolio());
+    addWeighted(view.result, [["VTI", 4_000]]);
+
+    let outcome: AddOutcome = "kept";
+    act(() => {
+      outcome = view.result.current.add("fund", "VTI");
+    });
+
+    expect(outcome).toBe("noop");
+    expect(amounts(view.result)).toEqual([4_000]);
   });
 });
 
 describe("removing a row", () => {
   it("re-spreads an even split: four rows at 2,500bp, back to 10,000", () => {
     const view = renderHook(() => usePortfolio());
-    addFunds(view.result, ["VTI", "VXUS", "BND", "VNQ", "GLD"]);
+    addEvenly(view.result, ["VTI", "VXUS", "BND", "VNQ", "GLD"]);
 
     act(() => {
       view.result.current.remove("fund", "BND");
@@ -94,10 +145,10 @@ describe("removing a row", () => {
 
   it("leaves hand-set amounts alone when a fund is added, and the new row arrives at 0", () => {
     const view = renderHook(() => usePortfolio());
-    addFunds(view.result, ["VTI", "VXUS"]);
-    act(() => {
-      view.result.current.setAmount("fund", "VTI", 4_000);
-    });
+    addWeighted(view.result, [
+      ["VTI", 4_000],
+      ["VXUS", 5_000],
+    ]);
 
     let outcome: AddOutcome = "noop";
     act(() => {
@@ -113,10 +164,11 @@ describe("removing a row", () => {
 
   it("leaves every amount alone when a hand-weighted portfolio loses a row", () => {
     const view = renderHook(() => usePortfolio());
-    addFunds(view.result, ["VTI", "VXUS", "BND"]); // 3,334 / 3,333 / 3,333
-    act(() => {
-      view.result.current.setAmount("fund", "VXUS", 1_000);
-    });
+    addWeighted(view.result, [
+      ["VTI", 3_334],
+      ["VXUS", 1_000],
+      ["BND", 3_333],
+    ]);
 
     act(() => {
       view.result.current.remove("fund", "BND");
@@ -159,13 +211,12 @@ describe("removing a row", () => {
 describe("equalise", () => {
   it("returns a hand-weighted set to exactly 10,000, spread evenly", () => {
     const view = renderHook(() => usePortfolio());
-    addFunds(view.result, ["VTI", "VXUS", "BND", "VNQ"]); // 2,500 each
-    act(() => {
-      view.result.current.setAmount("fund", "VTI", 4_000);
-    });
-    act(() => {
-      view.result.current.setAmount("fund", "VXUS", 1_000);
-    });
+    addWeighted(view.result, [
+      ["VTI", 4_000],
+      ["VXUS", 1_000],
+      ["BND", 2_500],
+      ["VNQ", 2_500],
+    ]);
     // Whole, but the visitor's — not an even split, so nothing rescales it by itself.
     expect(view.result.current.total).toBe(10_000);
 
@@ -181,10 +232,11 @@ describe("equalise", () => {
 
   it("brings a short set back to 10,000 too", () => {
     const view = renderHook(() => usePortfolio());
-    addFunds(view.result, ["VTI", "VXUS", "BND"]); // 3,334 / 3,333 / 3,333
-    act(() => {
-      view.result.current.setAmount("fund", "VTI", 1_000);
-    });
+    addWeighted(view.result, [
+      ["VTI", 1_000],
+      ["VXUS", 3_333],
+      ["BND", 3_333],
+    ]);
     expect(view.result.current.total).toBe(7_666);
     expect(view.result.current.complete).toBe(false);
 
@@ -199,7 +251,7 @@ describe("equalise", () => {
 
   it("writes nothing in dollar mode: those amounts are the visitor's money", () => {
     const view = renderHook(() => usePortfolio());
-    addFunds(view.result, ["VTI", "VXUS"]); // 5,000bp each
+    addEvenly(view.result, ["VTI", "VXUS"]); // 5,000bp each
     act(() => {
       view.result.current.setMode("usd");
     });

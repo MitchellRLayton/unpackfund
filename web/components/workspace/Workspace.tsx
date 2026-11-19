@@ -32,7 +32,7 @@
  * - a failed load is a sentence, never an empty table.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { useWorkspace } from "@/lib/use-workspace";
 
@@ -53,15 +53,40 @@ export function Workspace() {
   // one the Markets lens is showing: one choice, read from the URL, in both places.
   const { provider } = useProvider();
   const [paneOpen, setPaneOpen] = useState(false);
-  /**
-   * The wide layout's collapse. Expanded on first load, in memory only — the brief's
-   * rule is that nothing is remembered between visits except the address bar, and a
-   * collapsed pane is a view preference, not portfolio state.
-   */
-  const [paneCollapsed, setPaneCollapsed] = useState(false);
-
   // One definition, on the model: cash is an entry even though it is not a holding.
   const hasEntries = model.hasEntries;
+
+  /**
+   * A link that arrives with a whole portfolio is a visitor who wants the results, not
+   * the form, so the pane starts collapsed. Decided once, in the render that first sees
+   * the fragment (React's own pattern for state derived from a prop; an effect would
+   * paint the open form for a frame first): a portfolio built by hand on this page stays
+   * open until its owner says they are done.
+   */
+  const [landedWhole, setLandedWhole] = useState<boolean | null>(null);
+  if (landedWhole === null && model.ready) {
+    setLandedWhole(hasEntries && model.complete);
+  }
+  /**
+   * The visitor's own choice, `null` until they make one. The pane is collapsed when they
+   * pressed "Show results" (or Edit, to undo it), and otherwise as the link landed. In
+   * memory only — the brief's rule is that nothing is remembered between visits except
+   * the address bar, and a collapsed pane is a view preference, not portfolio state.
+   */
+  const [paneChoice, setPaneCollapsed] = useState<boolean | null>(null);
+  const paneCollapsed = paneChoice ?? landedWhole ?? false;
+  const resultsRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * "Show results": put the form away and bring the answer into view. The phone's drawer
+   * closes too, and focus moves to the results so a keyboard or screen-reader visitor
+   * lands where the page changed rather than on a button that has just left.
+   */
+  const showResults = useCallback(() => {
+    setPaneCollapsed(true);
+    setPaneOpen(false);
+    window.requestAnimationFrame(() => resultsRef.current?.focus());
+  }, []);
 
   /**
    * Show the pane, then run what the visitor actually asked for.
@@ -193,15 +218,17 @@ export function Workspace() {
             {paneCollapsed && hasEntries ? (
               <HoldingsCompact model={model} onExpand={() => setPaneCollapsed(false)} />
             ) : (
-              <HoldingsPane
-                model={model}
-                onCollapse={hasEntries ? () => setPaneCollapsed(true) : undefined}
-              />
+              <HoldingsPane model={model} onShowResults={showResults} />
             )}
           </div>
         </div>
 
-        <div className="stack stack--loose">
+        <div
+          ref={resultsRef}
+          id="results-region"
+          tabIndex={-1}
+          className={`stack stack--loose ${styles.results}`}
+        >
           {model.fundsError ? (
             <div className="notice notice--alert" role="alert">
               <div>

@@ -352,12 +352,12 @@ function HoldingRows({
 
 export function HoldingsPane({
   model,
-  onCollapse,
+  onShowResults,
 }: {
   model: WorkspaceModel;
-  /** Present when the pane can shrink to the compact list. Absent on a phone, where
-   * the chip bar above it is already the compact list. */
-  onCollapse?: () => void;
+  /** The visitor is done entering holdings: the workspace puts the pane away and brings
+   * the results into view. Only offered once the portfolio is whole (`model.complete`). */
+  onShowResults?: () => void;
 }) {
   const { portfolio } = model;
   const releaseData = model.release.status === "ready" ? model.release.data : null;
@@ -482,8 +482,7 @@ export function HoldingsPane({
       }
       setInput("");
       setActive(-1);
-      const outcome = portfolio.add(decision.kind, decision.key);
-      if (outcome === "noop") {
+      if (portfolio.add(decision.kind, decision.key) === "noop") {
         setMessage({
           tone: "info",
           title: `${decision.label} is already in your portfolio`,
@@ -499,9 +498,7 @@ export function HoldingsPane({
             : `${decision.label} added${decision.resolved ? ` — ${decision.resolved}` : ""}`,
         body:
           decision.body ??
-          (outcome === "split"
-            ? "The app spread the whole evenly across the rows; set the amounts to your own."
-            : "Set its amount. It arrived at 0.00% so nothing was assumed about your money."),
+          "Set its amount. It arrived at 0.00% so nothing was assumed about your money.",
       });
     },
     [catalog, model.release, portfolio, present, tickers.status],
@@ -687,17 +684,6 @@ export function HoldingsPane({
               {EXAMPLE_CHIP}
               <InfoTip label="Example">{EXAMPLE_LABEL}</InfoTip>
             </span>
-          ) : null}
-          {onCollapse ? (
-            <button
-              type="button"
-              className={`btn btn--sm ${styles.collapseControl}`}
-              aria-expanded={true}
-              aria-controls="holdings-pane-region"
-              onClick={onCollapse}
-            >
-              Collapse
-            </button>
           ) : null}
           <div className={styles.mode} role="group" aria-label="How amounts are entered">
             <button
@@ -914,7 +900,7 @@ export function HoldingsPane({
               </span>
             </div>
           ) : null}
-          <p className="small muted">
+          <p id="holdings-tally" className="small muted">
             {mode === "bp" ? (
               <span
                 className={`num tally__gate ${
@@ -939,6 +925,24 @@ export function HoldingsPane({
               </>
             )}
           </p>
+          {entries.length > 0 && onShowResults ? (
+            // The finish gesture. Results already follow the numbers live, so this does
+            // not gate the data: it says "I am done typing" and puts the form away. It
+            // stays focusable while the portfolio is not whole (`aria-disabled`, not
+            // `disabled`) so the sentence above it, which says what is missing, is what a
+            // keyboard or screen-reader visitor reaches.
+            <button
+              type="button"
+              className="btn btn--primary"
+              aria-disabled={model.complete ? undefined : true}
+              aria-describedby={model.complete ? undefined : "holdings-tally"}
+              onClick={() => {
+                if (model.complete) onShowResults();
+              }}
+            >
+              Show results
+            </button>
+          ) : null}
           {entries.length > 0 && mode === "bp" ? (
             <div className={styles.helpers}>
               {portfolio.unallocatedBp > 0 ? (

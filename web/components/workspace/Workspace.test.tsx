@@ -310,6 +310,11 @@ afterEach(() => {
   saved.length = 0;
 });
 
+/** A whole portfolio opens collapsed; the tests that read the form press Edit first. */
+function openPane(): void {
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+}
+
 describe("Workspace — the answer comes first", () => {
   it("carries the answer as five numbers in the strip, not a paragraph", () => {
     const { container } = renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
@@ -516,6 +521,7 @@ describe("Workspace — the companies table", () => {
 describe("Workspace — the holdings pane and the lenses", () => {
   it("shows each fund's coverage and reporting period on its row", () => {
     const { container } = renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+    openPane();
 
     expect(screen.getByRole("button", { name: "Remove VTI" })).toBeTruthy();
     // The total is now one figure and its unit, so it is read as two nodes rather than
@@ -529,6 +535,7 @@ describe("Workspace — the holdings pane and the lenses", () => {
 
   it("colours the total's bar and its validator by whether the portfolio is whole", () => {
     const wholeRender = renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+    openPane();
 
     // Whole: the bar wears the completed state, and the sentence is the green one.
     expect(wholeRender.container.querySelector(".meter__fill--whole")).not.toBeNull();
@@ -1015,5 +1022,67 @@ describe("Workspace — the docked lens strip", () => {
     for (const tab of within(strip).getAllByRole("tab")) {
       expect(tab.getAttribute("title")).toBe("Add a holding to open this lens");
     }
+  });
+});
+
+describe("Workspace — Show results puts the form away", () => {
+  it("starts collapsed for a link that already carries a whole portfolio", () => {
+    renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+
+    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Show results" })).toBeNull();
+    // Collapsed shows the same weights, only smaller, and the results are already up.
+    expect(screen.getByRole("tablist", { name: "Lenses" })).toBeTruthy();
+  });
+
+  it("starts open for a portfolio that is not whole yet, with the button held back", () => {
+    const { model } = renderWorkspace({ entries: ENTRIES.slice(0, 1), ledger: LEDGER });
+
+    const button = screen.getByRole("button", { name: "Show results" });
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    // The reason is the sentence above it, reachable from the button.
+    const reason = document.getElementById(button.getAttribute("aria-describedby") ?? "");
+    expect(reason?.textContent).toContain("40.00% unallocated");
+
+    fireEvent.click(button);
+
+    // Nothing happened: still the full form, same portfolio.
+    expect(screen.getByRole("button", { name: "Show results" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(model.portfolio.replace).not.toHaveBeenCalled();
+  });
+
+  it("starts open for an empty portfolio, with no button to press", () => {
+    renderWorkspace();
+
+    expect(screen.queryByRole("button", { name: "Show results" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  });
+
+  it("collapses to the compact list and moves focus to the results", async () => {
+    const { container } = renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+    openPane();
+    expect(screen.queryByRole("button", { name: "Collapse" })).toBeNull();
+    const button = screen.getByRole("button", { name: "Show results" });
+    expect(button.getAttribute("aria-disabled")).toBeNull();
+
+    fireEvent.click(button);
+
+    expect(screen.queryByRole("button", { name: "Show results" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(container.querySelector("#results-region")),
+    );
+  });
+
+  it("brings the form back, amounts intact, when Edit is pressed", () => {
+    renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+    openPane();
+    fireEvent.click(screen.getByRole("button", { name: "Show results" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    expect(screen.getByRole("button", { name: "Show results" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Remove VTI" })).toBeTruthy();
   });
 });

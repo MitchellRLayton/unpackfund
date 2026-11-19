@@ -268,6 +268,12 @@
   gap: var(--space-2);
 }
 
+/* Focus lands here after "Show results"; the region is a landing spot, not a control, so it
+   * carries no ring of its own. */
+.results:focus {
+  outline: none;
+}
+
 .helpers {
   display: flex;
   gap: var(--space-1);
