@@ -426,7 +426,7 @@ def _symbol_for(
     cache: dict[str, dict],
     resolve_budget: list[int],
 ) -> tuple[str | None, str]:
-    """A series' ticker from the SEC fund ticker file, else its own cover — once."""
+    """A series' ticker from the SEC fund ticker file, else its own cover."""
     ref = refs.get(series_id)
     if ref is not None:
         return ref.ticker, f"sec_ticker_file:{ref.resolved_by}"
@@ -437,7 +437,12 @@ def _symbol_for(
         return None, "resolution budget spent; retried next run"
     resolve_budget[0] -= 1
     symbol, source, note = discovery.resolve_symbol(series_id, cik, name)
-    cache[series_id] = {"symbol": symbol, "source": source, "note": note}
+    # Only a success is remembered. A failure is retried on the next run, bounded by
+    # ``resolve_limit``: a fund this scan names is days old, and a cover the reader did not
+    # understand yesterday may be one a fixed rule reads today (MAGP stayed unnamed for a
+    # week behind a remembered failure until the cover rule learned its shape).
+    if symbol:
+        cache[series_id] = {"symbol": symbol, "source": source, "note": note}
     return symbol, source or note
 
 
@@ -449,13 +454,19 @@ def run(
     resolve_limit: int = 100,
     root: Path | None = None,
     nport_known: set[str] | None = None,
+    nport_absent: set[str] | None = None,
+    only_series: set[str] | None = None,
 ) -> tuple[list[PendingFund], dict]:
     """Scan the window, decide, and return ``(pending funds, report)``.
 
     ``nport_known`` is the set of series already known to have an N-PORT (the build's
-    published series and the discovery cache); a candidate in it is skipped without a
-    lookup. Every other candidate is checked against its registrant's filings, which is
-    the test the build itself applies.
+    published series and the discovery cache) and ``nport_absent`` the set already known
+    to have none (the funds the build attempted and could not find one for). Neither costs
+    a lookup. Every other candidate — a series the build never saw, like a fund the SEC
+    ticker file does not list yet — is checked against its registrant's filings, which
+    is the test the build itself applies. That test is the expensive one: proving an
+    absence walks a registrant's N-PORT filings, so it is spent only where nothing else
+    already answers.
     """
     today = today or date.today()
     window = [today - timedelta(days=offset) for offset in range(1, days + 1)]
@@ -467,7 +478,10 @@ def run(
     save_headers(headers, root)
 
     by_series = candidate_series(headers.values(), window_start=window_start)
+    if only_series is not None:  # a diagnostic: decide these series and no others
+        by_series = {sid: rows for sid, rows in by_series.items() if sid in only_series}
     skip_known = set(nport_known or ())
+    skip_absent = set(nport_absent or ()) - skip_known
     survivors = {sid: rows for sid, rows in by_series.items() if sid not in skip_known}
 
     discovered = discovery.load(root)
@@ -484,7 +498,7 @@ def run(
     for series_id, rows in survivors.items():
         newest = rows[-1]
         name = dict(newest.series).get(series_id, "")
-        if is_money_market(name):
+        if is_money_market(name) or series_id in skip_absent:
             continue
         probe[series_id] = universe.FundRef(
             ticker=series_id, cik=f"{int(newest.cik):010d}", series_id=series_id,
@@ -496,12 +510,16 @@ def run(
     }
     for series_id in skip_known & set(by_series):
         has_nport[series_id] = True
+    for series_id in skip_absent & set(survivors):
+        has_nport[series_id] = False
 
     symbol_cache = _load_symbols(root)
     budget = [max(0, resolve_limit)]
     symbols: dict[str, tuple[str | None, str]] = {}
     for series_id, rows in survivors.items():
-        if has_nport.get(series_id, False) or series_id not in probe:
+        if has_nport.get(series_id, False) or (
+            series_id not in probe and series_id not in skip_absent
+        ):
             continue
         newest = rows[-1]
         symbols[series_id] = _symbol_for(
@@ -694,6 +712,18 @@ def known_nport_series(
     return known
 
 
+def absent_nport_series(
+    refs: Iterable[universe.FundRef], failures: Iterable[Mapping[str, str]]
+) -> set[str]:
+    """Series the build attempted and found no N-PORT for — ``run``'s ``nport_absent``."""
+    series_of = {ref.ticker: ref.series_id for ref in refs if ref.series_id}
+    return {
+        series_of[row["ticker"]]
+        for row in failures
+        if "has no N-PORT filing" in (row.get("error") or "") and row.get("ticker") in series_of
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
@@ -701,13 +731,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--days", type=int, default=DEFAULT_WINDOW_DAYS)
     parser.add_argument("--read-limit", type=int, default=DEFAULT_READ_LIMIT)
     parser.add_argument("--resolve-limit", type=int, default=100)
+    parser.add_argument(
+        "--series",
+        nargs="+",
+        default=None,
+        metavar="S000000000",
+        help="decide only these series (a diagnostic: checks one fund end to end)",
+    )
     parser.add_argument("--as-of", default=date.today().isoformat())
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args(argv)
 
     started = datetime.now()
     pending, report = run(
-        days=args.days, read_limit=args.read_limit, resolve_limit=args.resolve_limit
+        days=args.days,
+        read_limit=args.read_limit,
+        resolve_limit=args.resolve_limit,
+        only_series=set(args.series) if args.series else None,
     )
     report["seconds"] = round((datetime.now() - started).total_seconds(), 1)
     print(json.dumps(report, indent=1))

@@ -292,3 +292,34 @@ def test_write_is_deterministic_and_compact(tmp_path):
     assert first == second and b"\n" not in first
     compact = json.dumps(json.loads(first), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     assert first == compact.encode()
+
+
+def test_absent_nport_series_is_exactly_the_no_filing_failures():
+    from pipeline import universe
+
+    refs = [
+        universe.FundRef(ticker="LEV", cik="1", series_id="S000000001", resolved_by="x"),
+        universe.FundRef(ticker="NEW", cik="1", series_id="S000000002", resolved_by="x"),
+    ]
+    failures = [
+        {"ticker": "LEV", "error": "GateError: leverage"},
+        {"ticker": "NEW", "error": "NoFilingError: NEW: series 'S000000002' has no N-PORT filing in the newest 9"},
+        {"ticker": "GONE", "error": "NoFilingError: has no N-PORT filing"},
+    ]
+    assert pending.absent_nport_series(refs, failures) == {"S000000002"}
+
+
+def test_a_symbol_that_could_not_be_read_is_retried_and_one_that_could_is_remembered(monkeypatch):
+    calls = []
+
+    def fake(series_id, cik, name):
+        calls.append(series_id)
+        return ("MAGP", "cover:x", "cover") if series_id == "S000106451" else (None, None, "no line")
+
+    monkeypatch.setattr(pending.discovery, "resolve_symbol", fake)
+    cache: dict = {}
+    for _ in range(2):
+        pending._symbol_for("S000106451", "1", "n", refs={}, cache=cache, resolve_budget=[9])
+        pending._symbol_for("S000109999", "1", "n", refs={}, cache=cache, resolve_budget=[9])
+    assert calls == ["S000106451", "S000109999", "S000109999"]  # the success was not re-read
+    assert set(cache) == {"S000106451"}

@@ -1497,7 +1497,10 @@ def build_release(
                 failures,
                 discovery.load().keys(),
             )
-            found, scan_report = pending.run(nport_known=known)
+            found, scan_report = pending.run(
+                nport_known=known,
+                nport_absent=pending.absent_nport_series(refs, failures),
+            )
             pending_doc = pending.document(found, as_of=release, report=scan_report)
             _, pending_body = pending.write(pending_doc, release_dir)
             pending_summary = {
