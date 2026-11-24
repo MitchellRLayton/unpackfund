@@ -323,3 +323,44 @@ def test_a_symbol_that_could_not_be_read_is_retried_and_one_that_could_is_rememb
         pending._symbol_for("S000109999", "1", "n", refs={}, cache=cache, resolve_budget=[9])
     assert calls == ["S000106451", "S000109999", "S000109999"]  # the success was not re-read
     assert set(cache) == {"S000106451"}
+
+
+# --- a published page owns its ticker (the 2026-11-22 nightly failed on QRVLX) -------------
+
+
+def _two_pending():
+    headers = [
+        header("c-1", "485BPOS", "2026-09-29", [("S000108244", "Corgi MANGOS ETF")],
+               cik="2078265", registrant="Corgi ETF Trust I"),
+        header("c-2", "485BPOS", "2026-09-30", [("S000108245", "Corgi PAPAYA ETF")],
+               cik="2078265", registrant="Corgi ETF Trust I"),
+    ]
+    funds, _ = pending.build_pending(
+        pending.candidate_series(headers, window_start="2026-06-22"),
+        has_nport={},
+        symbols={"S000108244": ("MN", "sec_ticker_file:company_tickers_mf"),
+                 "S000108245": ("PP", "sec_ticker_file:company_tickers_mf")},
+    )
+    return funds
+
+
+def test_a_pending_row_whose_ticker_a_published_page_owns_is_dropped_and_counted():
+    kept, shadowed = pending.drop_published(_two_pending(), ["MN", "AVUV"])
+    assert [fund.ticker for fund in kept] == ["PP"]
+    assert [fund.ticker for fund in shadowed] == ["MN"]
+
+
+def test_nothing_is_dropped_when_no_published_ticker_collides():
+    funds = _two_pending()
+    kept, shadowed = pending.drop_published(funds, ["AVUV"])
+    assert kept == funds and shadowed == []
+
+
+def test_the_filtered_document_passes_the_release_gate_that_refused_the_unfiltered_one():
+    funds = _two_pending()
+    unfiltered = pending.document(funds, as_of="2026-11-24.1")
+    assert any("published fund" in p for p in pending.validate_document(
+        unfiltered, as_of="2026-11-24.1", published=["MN"], size=900))
+    kept, _ = pending.drop_published(funds, ["MN"])
+    filtered = pending.document(kept, as_of="2026-11-24.1")
+    assert pending.validate_document(filtered, as_of="2026-11-24.1", published=["MN"], size=900) == []
