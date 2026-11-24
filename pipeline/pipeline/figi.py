@@ -25,6 +25,17 @@ What this module is, and is not
   OpenFIGI ``name`` and ``ticker`` are "Related Security Descriptions" with no public-domain
   grant (ToS §3) and are never read, stored or published.
 
+SEDOL as a second lookup key
+----------------------------
+
+A row with no ISIN (many international rows carry only a SEDOL, in ``identifiers/other``) may still be a
+known share line. OpenFIGI accepts ``ID_SEDOL`` as well as ``ID_ISIN``, so the same cache answers both. A
+SEDOL is licensed by LSEG, so it is an **internal lookup key only** (owner approval 2026-11-24): it is
+keyed by HMAC under its own ``sedol:`` prefix, never stored in the clear, never published. The ISIN is
+always asked first: an ISIN answer that is accepted wins, and an ISIN OpenFIGI *did* name but refused (a
+``Mutual Fund``) is final — a SEDOL is never used to overturn it. Only when the ISIN is absent or unmatched is
+the row's SEDOL used, and then every SEDOL the filing gives must agree on one share-class FIGI.
+
 What is accepted
 ----------------
 
@@ -122,9 +133,25 @@ def pepper_from_env(environ: Mapping[str, str] | None = None) -> bytes:
     return encoded
 
 
-def cache_key(pepper: bytes, isin: str) -> str:
-    """``HMAC-SHA256(pepper, "isin:" + ISIN)``, 32 hex characters. Never reversible without the pepper."""
-    digest = hmac.new(pepper, b"isin:" + isin.strip().upper().encode("ascii"), hashlib.sha256)
+KIND_ISIN = "isin"
+KIND_SEDOL = "sedol"
+#: kind → the OpenFIGI ``idType``, and the check that a value is worth sending.
+_ID_TYPES = {KIND_ISIN: "ID_ISIN", KIND_SEDOL: "ID_SEDOL"}
+_VALIDATORS: dict[str, Callable[[str | None], bool]] = {
+    KIND_ISIN: identifiers.valid_isin,
+    KIND_SEDOL: identifiers.valid_sedol,
+}
+
+
+def cache_key(pepper: bytes, value: str, kind: str = KIND_ISIN) -> str:
+    """``HMAC-SHA256(pepper, kind + ":" + VALUE)``, 32 hex characters. Never reversible without the pepper.
+
+    The ``kind`` prefix keeps the two namespaces apart, and leaves every ISIN key byte-identical to the
+    one written before SEDOLs were asked, so the cache already in R2 stays valid.
+    """
+    digest = hmac.new(
+        pepper, f"{kind}:".encode() + value.strip().upper().encode("ascii"), hashlib.sha256
+    )
     return digest.hexdigest()[:32]
 
 
@@ -139,7 +166,7 @@ def security_id(share_class_figi: str) -> str:
 
 @dataclass(frozen=True)
 class Answer:
-    """What OpenFIGI said about one ISIN — only the public-domain fields."""
+    """What OpenFIGI said about one ISIN or SEDOL — only the public-domain fields."""
 
     status: str
     fetched_at: str
@@ -235,12 +262,43 @@ class ShareClassMap:
             return None
         return self._answers.get(cache_key(self._pepper, isin))
 
+    def answer_for_sedol(self, sedol: str | None) -> Answer | None:
+        """The cached answer for a SEDOL, or ``None`` when it was never asked or is not a SEDOL."""
+        if not sedol or not identifiers.valid_sedol(sedol):
+            return None
+        return self._answers.get(cache_key(self._pepper, sedol, KIND_SEDOL))
+
     def security_for(self, isin: str | None) -> str | None:
         """The ``f_`` id of the ISIN's share line, or ``None`` unless the answer is accepted."""
         answer = self.answer_for(isin)
         if answer is None or not answer.accepted():
             return None
         return security_id(answer.share_class_figi)  # type: ignore[arg-type]
+
+    def security_for_row(self, isin: str | None, sedols: Iterable[str] = ()) -> str | None:
+        """The ``f_`` id of a holding's share line from its ISIN, else from its SEDOL(s), else ``None``.
+
+        1. An accepted ISIN answer decides.
+        2. An ISIN OpenFIGI *named* but refused (``Mutual Fund``, a warrant …) is final: the row is
+           not the company, and a SEDOL must not argue with that.
+        3. Otherwise (no ISIN, or an ISIN with no match) the SEDOLs are tried. Those that OpenFIGI
+           named and the layer accepts must all share one share-class FIGI. A SEDOL OpenFIGI named
+           and the layer refused vetoes the row, and two accepted SEDOLs that disagree refuse it.
+        """
+        isin_answer = self.answer_for(isin)
+        if isin_answer is not None and isin_answer.status == STATUS_OK:
+            return self.security_for(isin)
+        figis: set[str] = set()
+        for sedol in sedols:
+            answer = self.answer_for_sedol(sedol)
+            if answer is None or answer.status != STATUS_OK:
+                continue
+            if not answer.accepted():
+                return None
+            figis.add(str(answer.share_class_figi))
+        if len(figis) != 1:
+            return None
+        return security_id(next(iter(figis)))
 
     def stats(self) -> dict[str, int]:
         """Counts only — never a key, an ISIN or a FIGI."""
@@ -289,13 +347,13 @@ class ShareClassMap:
                 raise FigiError(f"{path.name} line {number} is not a cache record") from error
         return cls(answers, pepper, sha256=hashlib.sha256(body).hexdigest())
 
-    def merge(self, answers: Mapping[str, Answer]) -> None:
-        """Fold fresh answers (keyed by ISIN) in, replacing any older ones."""
-        for isin, answer in answers.items():
-            self._answers[cache_key(self._pepper, isin)] = answer
+    def merge(self, answers: Mapping[str, Answer], kind: str = KIND_ISIN) -> None:
+        """Fold fresh answers (keyed by the ISIN or SEDOL asked) in, replacing any older ones."""
+        for value, answer in answers.items():
+            self._answers[cache_key(self._pepper, value, kind)] = answer
 
-    def needs_asking(self, isin: str, today: str) -> bool:
-        answer = self._answers.get(cache_key(self._pepper, isin))
+    def needs_asking(self, value: str, today: str, kind: str = KIND_ISIN) -> bool:
+        answer = self._answers.get(cache_key(self._pepper, value, kind))
         return answer is None or answer.expired(today)
 
 
@@ -307,6 +365,8 @@ class RefreshStats:
     candidates: int = 0
     already_cached: int = 0
     asked: int = 0
+    sedol_candidates: int = 0
+    sedols_asked: int = 0
     requests: int = 0
     ok: int = 0
     no_match: int = 0
@@ -316,6 +376,7 @@ class RefreshStats:
 
 def refresh(
     isins: Iterable[str],
+    sedols: Iterable[str] = (),
     *,
     cache_path: Path,
     pepper: bytes,
@@ -329,7 +390,7 @@ def refresh(
     clock: Callable[[], float] = time.monotonic,
     progress: Callable[[str], None] | None = None,
 ) -> RefreshStats:
-    """Ask OpenFIGI about every ISIN the cache does not already answer, and write the cache.
+    """Ask OpenFIGI about every ISIN and SEDOL the cache does not already answer, and write the cache.
 
     Only uncached or expired ISINs are sent (H-CV6), so a second run with nothing new makes
     **zero** requests. A batch that still fails after ``identifiers.MAX_ATTEMPTS`` is counted and
@@ -346,12 +407,20 @@ def refresh(
 
     cache = ShareClassMap.load(cache_path, pepper) if cache_path.exists() else ShareClassMap.empty(pepper)
     candidates = sorted({isin.strip().upper() for isin in isins if identifiers.valid_isin(isin)})
-    stats = RefreshStats(candidates=len(candidates))
+    sedol_candidates = sorted(
+        {sedol.strip().upper() for sedol in sedols if identifiers.valid_sedol(sedol)}
+    )
+    stats = RefreshStats(candidates=len(candidates), sedol_candidates=len(sedol_candidates))
     todo = [isin for isin in candidates if cache.needs_asking(isin, today)]
+    sedol_todo = [
+        sedol for sedol in sedol_candidates if cache.needs_asking(sedol, today, KIND_SEDOL)
+    ]
     stats.already_cached = len(candidates) - len(todo)
     if limit is not None:
         todo = todo[: int(limit)]
+        sedol_todo = sedol_todo[: int(limit)]
     stats.asked = len(todo)
+    stats.sedols_asked = len(sedol_todo)
 
     headers = {
         "Accept": "application/json",
@@ -360,10 +429,12 @@ def refresh(
         "X-OPENFIGI-APIKEY": api_key,
     }
     throttle = identifiers.Throttle(identifiers.interval_seconds(rpm), clock=clock, sleep=sleep)
-    batches = identifiers.batch(todo, jobs_per_request)
+    batches = [
+        (KIND_ISIN, chunk) for chunk in identifiers.batch(todo, jobs_per_request)
+    ] + [(KIND_SEDOL, chunk) for chunk in identifiers.batch(sedol_todo, jobs_per_request)]
 
-    for number, chunk in enumerate(batches, 1):
-        body = identifiers._request_body(chunk)
+    for number, (kind, chunk) in enumerate(batches, 1):
+        body = identifiers._request_body(chunk, _ID_TYPES[kind])
         payload = None
         for attempt in range(1, identifiers.MAX_ATTEMPTS + 1):
             throttle.wait()
@@ -399,7 +470,7 @@ def refresh(
                     sleep(identifiers.FALLBACK_RETRY_S)
                     continue
                 break
-            cache.merge(answers)
+            cache.merge(answers, kind)
             stats.ok += sum(1 for answer in answers.values() if answer.status == STATUS_OK)
             stats.no_match += sum(1 for answer in answers.values() if answer.status == STATUS_NO_MATCH)
             break
@@ -455,13 +526,17 @@ def verify_cache_shape(path: Path) -> int:
     return count
 
 
-def collect_isins(
+def collect_identifiers(
     spec: str = "all",
     *,
     workers: int = 8,
     progress: Callable[[str], None] | None = None,
-) -> list[str]:
-    """Every valid ISIN of a long equity row in the latest filing of every fund in the universe.
+) -> tuple[list[str], list[str]]:
+    """Every valid ISIN, and every valid SEDOL, of a long equity row in the latest filings of the universe.
+
+    SEDOLs are collected for every such row, not only the ISIN-less ones: whether an ISIN is answered is
+    known only after the refresh, and ``ShareClassMap.security_for_row`` lets an ISIN answer win. A
+    SEDOL is a lookup key and goes no further than the cache's HMAC (owner approval 2026-11-24).
 
     The cache refresh has to run *before* the build (the build never calls the network, H-CV5), and
     which rows the ladder leaves unmapped is only known after the build. So the question asked is the
@@ -480,37 +555,53 @@ def collect_isins(
     refs = build.resolve_universe(spec)
     filings.prefetch(refs, workers=workers, progress=progress)
 
-    def one(ref) -> set[str] | None:
+    def one(ref) -> tuple[set[str], set[str]] | None:
         try:
             found = filings.latest(ref)
         except Exception:  # noqa: BLE001 - one unreadable filing must not stop the night
             return None
         isins: set[str] = set()
+        sedols: set[str] = set()
         for holding in found.filing.holdings:
             if (
-                holding.isin
-                and (holding.balance or 0) > 0
+                (holding.balance or 0) > 0
                 and (holding.val_usd or 0) > 0
                 and classify.classify(
                     holding.asset_cat, holding.issuer_cat, holding.is_derivative
                 ).category
                 == classify.EQUITY
-                and identifiers.valid_isin(holding.isin)
             ):
-                isins.add(holding.isin.strip().upper())
-        return isins
+                if holding.isin and identifiers.valid_isin(holding.isin):
+                    isins.add(holding.isin.strip().upper())
+                sedols.update(s for s in holding.sedols if identifiers.valid_sedol(s))
+        return isins, sedols
 
     collected: set[str] = set()
+    collected_sedols: set[str] = set()
     skipped = 0
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         for result in pool.map(one, refs):
             if result is None:
                 skipped += 1
             else:
-                collected |= result
+                collected |= result[0]
+                collected_sedols |= result[1]
     if progress is not None:
-        progress(f"figi: {len(collected):,} equity ISINs from {len(refs) - skipped:,} funds ({skipped} unreadable)")
-    return sorted(collected)
+        progress(
+            f"figi: {len(collected):,} equity ISINs and {len(collected_sedols):,} SEDOLs "
+            f"from {len(refs) - skipped:,} funds ({skipped} unreadable)"
+        )
+    return sorted(collected), sorted(collected_sedols)
+
+
+def collect_isins(
+    spec: str = "all",
+    *,
+    workers: int = 8,
+    progress: Callable[[str], None] | None = None,
+) -> list[str]:
+    """The ISINs half of :func:`collect_identifiers`."""
+    return collect_identifiers(spec, workers=workers, progress=progress)[0]
 
 
 def pull(
@@ -561,15 +652,18 @@ def push(cache: Path, *, client: Any = None) -> int:
 # --- command line --------------------------------------------------------------
 
 
-def _read_isins(path: Path) -> list[str]:
+def _read_ids(path: Path) -> tuple[list[str], list[str]]:
+    """``(isins, sedols)`` from a JSON list / one-per-line file (ISINs only) or ``{"isins", "sedols"}``."""
     text = path.read_text()
     try:
         payload = json.loads(text)
     except ValueError:
-        return [line.strip() for line in text.splitlines() if line.strip()]
+        return [line.strip() for line in text.splitlines() if line.strip()], []
+    sedols: list[str] = []
     if isinstance(payload, dict):
+        sedols = [str(value) for value in payload.get("sedols") or []]
         payload = payload.get("isins") or payload.get("values") or []
-    return [str(value) for value in payload]
+    return [str(value) for value in payload], sedols
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -596,10 +690,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # These three need neither the key nor the pepper: no ISIN is read from, or written to, a cache.
         if args.command == "collect":
-            isins = collect_isins(args.universe, workers=args.workers, progress=log)
+            isins, sedols = collect_identifiers(args.universe, workers=args.workers, progress=log)
             args.out.parent.mkdir(parents=True, exist_ok=True)
-            args.out.write_text(json.dumps(isins))
-            print(json.dumps({"isins": len(isins)}))
+            args.out.write_text(json.dumps({"isins": isins, "sedols": sedols}))
+            print(json.dumps({"isins": len(isins), "sedols": len(sedols)}))
             return 0
         if args.command == "pull":
             found = pull(args.out)
@@ -616,8 +710,10 @@ def main(argv: list[str] | None = None) -> int:
             cache = ShareClassMap.load(args.cache, pepper)
             print(json.dumps({**cache.stats(), "sha256": cache.sha256}, sort_keys=True))
             return 0
+        isins, sedols = _read_ids(args.isins)
         outcome = refresh(
-            _read_isins(args.isins),
+            isins,
+            sedols,
             cache_path=args.cache,
             pepper=pepper,
             api_key=os.environ.get(identifiers.KEY_ENV) or None,
