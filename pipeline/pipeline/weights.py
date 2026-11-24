@@ -515,7 +515,8 @@ def build_vector(
                 company_id, rung = identity.resolve_direct(_isin_key(holding.isin))
             # R7 — OpenFIGI names the ISIN as an equity share line (``figi.ShareClassMap``): the row
             # gets an ``f_`` id, which merges across funds by the same ISIN and counts toward
-            # coverage with its share disclosed (``security_matched_pct``). Longs only.
+            # coverage with its share disclosed (``security_matched_pct``). Longs only. The ISIN decides when
+            # OpenFIGI names it; a row with no ISIN falls back to its SEDOL (an internal key, never shown).
             if (
                 company_id is None
                 and share_map is not None
@@ -523,7 +524,7 @@ def build_vector(
                 and fraction > 0
                 and (holding.balance or 0) > 0
             ):
-                security = share_map.security_for(holding.isin)
+                security = share_map.security_for_row(holding.isin, holding.sedols)
                 if security is not None:
                     company_id, rung = security, RUNG_FIGI
                     # Its filed ticker is a *local* listing code, the same misreading the issuer

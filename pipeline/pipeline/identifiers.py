@@ -206,6 +206,30 @@ class TransportError(IdentifierError):
     """The request never produced a status line (DNS, TLS, timeout, reset)."""
 
 
+# --- SEDOL validation ------------------------------------------------------
+
+#: A SEDOL: six characters from digits and consonants (no vowels since 2004), then a check digit.
+SEDOL_RE = re.compile(r"\A[0-9B-DF-HJ-NP-TV-Z]{6}[0-9]\Z")
+_SEDOL_WEIGHTS = (1, 3, 1, 7, 3, 9, 1)
+
+
+def valid_sedol(value: str | None) -> bool:
+    """True for a well-formed SEDOL: shape **and** the weighted check digit (LSEG's rule).
+
+    Each character's value (a digit is itself, ``B`` = 11 … ``Z`` = 35) is multiplied by its weight
+    ``1, 3, 1, 7, 3, 9, 1`` and the sum must be a multiple of 10. Used only to refuse a code that is
+    not a SEDOL before it is sent anywhere; a SEDOL is an internal lookup key and is never published.
+    """
+    text = (value or "").strip().upper()
+    if SEDOL_RE.match(text) is None:
+        return False
+    total = sum(
+        weight * (int(char) if char.isdigit() else ord(char) - 55)
+        for weight, char in zip(_SEDOL_WEIGHTS, text)
+    )
+    return total % 10 == 0
+
+
 # --- ISIN validation -------------------------------------------------------
 
 
@@ -867,9 +891,12 @@ def resolved_isins(payload: Any, isins: list[str]) -> dict[str, dict[str, Any]]:
     return resolved
 
 
-def _request_body(isins: list[str]) -> bytes:
-    """The JSON job array for one batch. Order is preserved; it is the response's key."""
-    return json.dumps([{"idType": "ID_ISIN", "idValue": isin} for isin in isins]).encode()
+def _request_body(isins: list[str], id_type: str = "ID_ISIN") -> bytes:
+    """The JSON job array for one batch. Order is preserved; it is the response's key.
+
+    ``id_type`` is OpenFIGI's own name for the identifier (``ID_ISIN`` by default, ``ID_SEDOL``).
+    """
+    return json.dumps([{"idType": id_type, "idValue": value} for value in isins]).encode()
 
 
 def harvest(

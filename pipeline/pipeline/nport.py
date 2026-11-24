@@ -119,6 +119,11 @@ class Holding:
     #: working — the field is additive. Populated from the ``value`` attribute,
     #: which is where every filing measured (2026-11-04) actually puts it.
     other_ids: tuple[str, ...] = ()
+    #: The ``identifiers/other`` values the filing itself labels ``otherDesc="SEDOL"``: 7 characters,
+    #: upper-cased, **unvalidated** (``identifiers.valid_sedol`` checks the digit). A SEDOL is licensed
+    #: by LSEG, so like ``cusip``/``isin`` it is an internal lookup key only and never reaches a
+    #: published artifact (owner approval 2026-11-24, internal lookups only).
+    sedols: tuple[str, ...] = ()
 
 
 @dataclass
@@ -196,6 +201,7 @@ def parse(xml: bytes) -> NportFiling:
                     # assetCat and payoffProfile are both optional in practice.
                     is_derivative=_find(row, "derivativeInfo") is not None,
                     other_ids=_other_ids(identifiers),
+                    sedols=_sedols(identifiers),
                 )
             )
 
@@ -258,6 +264,23 @@ def _other_ids(identifiers: ET.Element | None) -> tuple[str, ...]:
             continue
         value = cleaned.upper()
         if value not in values:
+            values.append(value)
+    return tuple(values)
+
+
+def _sedols(identifiers: ET.Element | None) -> tuple[str, ...]:
+    """Values the filing labels ``otherDesc="SEDOL"``, 7 alphanumerics, de-duplicated, in filed order.
+
+    The label is the evidence that a 7-character code *is* a SEDOL: an unlabelled one could be any
+    internal code that happens to pass a check digit, so it is never guessed from the value alone.
+    """
+    values: list[str] = []
+    for node in _children(identifiers, "other"):
+        if (node.get("otherDesc") or "").strip().upper() != "SEDOL":
+            continue
+        cleaned = _none_if_placeholder(_text(node) or node.get("value"))
+        value = (cleaned or "").strip().upper()
+        if len(value) == 7 and value.isalnum() and value not in values:
             values.append(value)
     return tuple(values)
 
