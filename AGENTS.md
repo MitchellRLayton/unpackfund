@@ -167,6 +167,12 @@ Body (optional) explains *why*, wrapped at 72.
 attributable to one session and one worktree. The contract, the wrapper and the
 enforcement are in §Commit provenance above; do not hand-write the block.
 
+## Front-end work
+
+Before changing anything under `web/app` or `web/components`, read `web/DESIGN.md`. Its rules 1–3 and 6 are
+correctness, not taste. Its §*Build rules for agents* section (motion, chrome anti-patterns, copy, assets) is the
+checklist a UI change is verified against, including the browser check at 1280×800, 375×812 and a 320 px nav.
+
 ## Hard rules — do not break these
 
 - **Never commit secrets.** `.env`, `.env.*` (except `.env.example`), tokens,
