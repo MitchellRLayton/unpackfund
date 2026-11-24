@@ -458,6 +458,73 @@ has no holding yet…`, `Your 3 holdings total 100.00%. Press Show results…`).
 (`portfolioSignature`: unit plus holdings and amounts, row order ignored), so any later edit steps the results back until
 it is submitted again. An incomplete or unsubmitted portfolio is never drawn as a partial answer.
 
+## Build rules for agents (adopted 2026-11-24)
+
+Cherry-picked from the `gemini-frontend-design` skill in
+[google-gemini/demolab](https://github.com/google-gemini/demolab/blob/main/skills/gemini-frontend-design/SKILL.md)
+(Apache-2.0). Only the rules that fit a content-first data tool and that the sections above do not already settle are
+here. Where that skill disagrees with an operator decision recorded above, the operator's decision stands; the
+disagreements are listed at the end of this section so that no session "fixes" them.
+
+### Motion
+
+The sections above say nothing about motion, so this is the whole policy.
+
+- **Transitions run 140–240 ms on an ease-out curve.** Nothing on the site animates for longer.
+- **Animate only `transform`, `opacity` or `clip-path`.** Never a layout property (`width`, `height`, `margin`,
+  `padding`, `top`/`left`): on a 1,269-row ledger a reflow is a visible stall. If the allocation meter ever animates, it
+  animates `transform: scaleX()`, not `width`.
+- **Never `transition: all`.** Name the property that moves.
+- **No idle or looping animation.** No pulsing dot, no shimmer that runs until data arrives. A loading state is static
+  text or a static placeholder.
+- **`prefers-reduced-motion: reduce` turns every transition and animation off.** A component that animates without a
+  reduced-motion branch is a defect, not a polish item.
+
+### Chrome anti-patterns
+
+Rule 4 (quiet chrome) already implies these. They are listed one per line so that a review can point at a specific line.
+
+- No eyebrow labels, kickers, or decorative badges above a heading. A chip on this site carries a fact (coverage band,
+  fund attribution) or it does not exist.
+- No numbered heading prefixes (`01`, `II.`) unless the content is a real sequence.
+- No fake live or scroll cues (`LIVE`, a pulsing dot, `Scroll ↓`). The data is a dated release, and the freshness strip
+  says which one.
+- No nested cards. A surface sits on the page, never on another surface.
+- No button walls, and no stacked primary + secondary + ghost trio. One primary action per view wears the accent
+  (rule 4). Everything else is a link or a plain control.
+- No three-across card rows, no 50/50 split layouts, no decorative imagery. Content-first means the first screen is the
+  tool.
+
+### Copy and assets
+
+- **Sentence case** for every label, button, heading and column header: `Your weight`, not `Your Weight`.
+- **No filler copy.** Each sentence on a page states a fact about the data or tells the reader what to do.
+- **Prose in the UI face holds to 65ch.** Long-form keeps its own 68ch measure (see the type paragraph under _Charts and
+  the size-band ramp_).
+- **Never guess an external image URL, and never hardcode an absolute local path.** An image is a file in `public/`,
+  inline SVG, or CSS. Nothing is fetched from a third party at run time.
+
+### Verify before calling a UI change done
+
+Every change under `web/app` or `web/components` ends with the built export open in a real browser at **1280×800** and
+**375×812**, plus the nav at **320 px** wide. Check for text that collides or clips, page-level horizontal overflow (a
+table's own scroll box is excepted, since `TableScroll` handles it), the header rules above, and the reduced-motion
+branch. Fix everything found in one pass, then check once more. Prefer a Playwright screenshot in `e2e/` over a manual
+look when the change is worth keeping fixed.
+
+### Considered and not adopted
+
+These rules from the skill conflict with decisions recorded above. They stay as decided until the operator says
+otherwise.
+
+- _At most two font families._ The site ships three (Fraunces, Plus Jakarta Sans, Newsreader) under the 2026-11-17
+  direction.
+- _At most three body sizes, four for dense tables._ The scale has seven steps, `--text-12` … `--text-40`.
+- _No text under 13 px above the fold._ The ledger is set at 12–14 px by design (density, rule 4).
+- _One-line top nav with a dominant wordmark._ Superseded by the planned left-sidebar migration.
+- _No em-dashes in generated copy._ Copy style is the operator's call.
+- _Hero composition, kinetic type, generated imagery._ Not applicable: the site has no hero (_What the page has to do_).
+
 ## Open questions — the operator's, not the agent's
 
 - [`open`] **Charts in `/x`.** The ledger is a table, and the fund pages now carry two bars (market split, Company
