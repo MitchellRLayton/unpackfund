@@ -547,6 +547,27 @@ def run(
     return pending, report
 
 
+def drop_published(
+    pending: Iterable[PendingFund], published_tickers: Iterable[str]
+) -> tuple[list[PendingFund], list[PendingFund]]:
+    """Split ``pending`` into what may ship and what a published page already owns.
+
+    A ticker has one page. When the prospectus scan names a symbol that a *published* fund
+    already uses (a fund that re-registered under a new series, say, while the old series'
+    N-PORT is still the published page), the published fund keeps the ticker and the pending
+    row is dropped. ``validate_document`` refuses the opposite, and was right to: the nightly
+    of 2026-11-22 failed on one such symbol (``QRVLX``, FPA Queens Road Value Fund) and every
+    later nightly failed with it, so no release staged. Returns ``(kept, shadowed)``, both in
+    the input order; the caller counts ``shadowed`` instead of dropping it silently.
+    """
+    taken = set(published_tickers)
+    kept: list[PendingFund] = []
+    shadowed: list[PendingFund] = []
+    for fund in pending:
+        (shadowed if fund.ticker in taken else kept).append(fund)
+    return kept, shadowed
+
+
 def document(pending: list[PendingFund], *, as_of: str, report: Mapping | None = None) -> dict:
     """The release object: ``pending.json``, keyed by ticker, deterministic."""
     funds: dict[str, dict] = {}

@@ -1501,11 +1501,17 @@ def build_release(
                 nport_known=known,
                 nport_absent=pending.absent_nport_series(refs, failures),
             )
+            # A published page owns its ticker: a pending row for the same symbol is dropped, and
+            # counted, so a re-registered series cannot fail the whole release's gate.
+            found, shadowed = pending.drop_published(
+                found, (doc.get("ticker") for doc in documents)
+            )
             pending_doc = pending.document(found, as_of=release, report=scan_report)
             _, pending_body = pending.write(pending_doc, release_dir)
             pending_summary = {
                 "bytes": len(pending_body),
                 "sha256": artifact.sha256_hex(pending_body),
+                "shadowed_by_published": len(shadowed),
                 **scan_report,
             }
             _log(
