@@ -136,3 +136,20 @@ def test_fee_rows_keep_fee_forms_inside_the_window_newest_first():
     ]
     picked = probe._fee_rows(rows, since="2025-05-25")
     assert [r["accessionNumber"] for r in picked] == ["d", "b"]
+
+
+def test_a_truncated_body_is_retried_then_returned(monkeypatch):
+    import http.client
+
+    calls = []
+
+    def flaky(url, **kwargs):
+        calls.append(url)
+        if len(calls) == 1:
+            raise http.client.IncompleteRead(b"x" * 9348, 1)
+        return b"ok"
+
+    monkeypatch.setattr(probe.sec, "fetch", flaky)
+    monkeypatch.setattr(probe.time, "sleep", lambda s: None)
+    assert probe._fetch("https://www.sec.gov/x") == b"ok"
+    assert len(calls) == 2

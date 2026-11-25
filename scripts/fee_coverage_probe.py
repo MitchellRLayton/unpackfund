@@ -33,6 +33,7 @@ second run reads the cache and costs nothing.
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import re
 import sys
@@ -277,6 +278,24 @@ def load_funds(catalogue_path: Path) -> list[Fund]:
     return funds
 
 
+#: A body cut short mid-read (``http.client.IncompleteRead``) escapes ``sec.fetch``'s retry
+#: loop, which catches ``OSError`` and HTTP status errors only. Seen once on the full run
+#: (registrant 550, a 9,349-byte instance one byte short). Retried here; a persistent one is
+#: counted as a filing error, never silently read as "no fees".
+TRANSIENT = (http.client.HTTPException,)
+
+
+def _fetch(url: str, *, as_json: bool = False, tries: int = 3, **kwargs):
+    for attempt in range(tries):
+        try:
+            return sec.fetch_json(url, **kwargs) if as_json else sec.fetch(url, **kwargs)
+        except TRANSIENT:
+            if attempt == tries - 1:
+                raise
+            time.sleep(2 ** attempt)
+    raise AssertionError("unreachable")
+
+
 def _instance_facts(cik: int, row: Mapping[str, Any]) -> tuple[dict | None, str]:
     """The filing's fee facts and where they came from: ``instance`` or ``inline``.
 
@@ -284,15 +303,15 @@ def _instance_facts(cik: int, row: Mapping[str, Any]) -> tuple[dict | None, str]
     primary document carries the facts.
     """
     directory = sec.filing_dir_url(cik, str(row.get("accessionNumber") or ""))
-    index = sec.fetch_json(directory + "index.json")
+    index = _fetch(directory + "index.json", as_json=True)
     items = _index_items(index) if isinstance(index, dict) else []
     name = _instance_name(items)
     if name is not None:
-        return parse_instance(sec.fetch(directory + name)), "instance"
+        return parse_instance(_fetch(directory + name)), "instance"
     if row.get("isInlineXBRL"):
         primary = _primary_name(items, dict(row))
         if primary is not None:
-            return parse_instance(sec.fetch(directory + primary)), "inline"
+            return parse_instance(_fetch(directory + primary)), "inline"
     return None, "none"
 
 
@@ -309,7 +328,7 @@ def _fee_rows(rows: Iterable[Mapping[str, Any]], since: str = "") -> list[dict]:
 
 def _older_page(name: str) -> list[dict]:
     """One of ``filings.files``: the same columns as ``recent``, without the wrapper."""
-    page = sec.fetch_json(f"https://data.sec.gov/submissions/{name}")
+    page = _fetch(f"https://data.sec.gov/submissions/{name}", as_json=True)
     return _recent_rows({"filings": {"recent": page}})
 
 
@@ -328,7 +347,7 @@ def probe_registrant(
     (one walked 2020 filings of ~10 MB each for a single unmatched class).
     """
     stats = Counter()
-    submissions = sec.fetch_json(sec.submissions_url(cik), max_age=sec.INDEX_MAX_AGE_S)
+    submissions = _fetch(sec.submissions_url(cik), as_json=True, max_age=sec.INDEX_MAX_AGE_S)
     rows = _fee_rows(_recent_rows(submissions), since)
     older = [
         f["name"]
@@ -358,7 +377,7 @@ def probe_registrant(
         walked += 1
         try:
             facts, basis = _instance_facts(cik, row)
-        except (sec.SecError, ET.ParseError) as error:
+        except (sec.SecError, ET.ParseError, *TRANSIENT) as error:
             stats["filing_errors"] += 1
             stats[f"error:{type(error).__name__}"] += 1
             continue
