@@ -193,6 +193,23 @@
   --band-3: oklch(52% 0.14 85);
   --band-4: oklch(44% 0.1 195);
   --band-5: oklch(32% 0.09 150);
+  /* The "From your funds" bar: one hue per fund, so the segments of a row tell apart
+   * (operator, 2026-11-24: the all-grey bar was "not easily obvious"). A fund keeps one
+   * slot for the whole table — its position in the visitor's holdings, modulo eight — so
+   * DFUS is the same colour on every row, and the fund's name beside the bar wears a dot
+   * in the same hue, so the colour is reinforcement and never the only key. Any two funds
+   * can sit side by side in a bar, so the gate in `lib/theme.test.ts` holds every pair
+   * apart, not only neighbours in this list, and every slot clears 3:1 on both row
+   * backgrounds. The slots alternate deep and light so that the first few — the ones
+   * a small portfolio uses — are the furthest apart. */
+  --fund-1: oklch(45% 0.15 255);
+  --fund-2: oklch(64% 0.15 65);
+  --fund-3: oklch(42% 0.11 165);
+  --fund-4: oklch(50% 0.17 345);
+  --fund-5: oklch(30% 0.06 260);
+  --fund-6: oklch(62% 0.1 210);
+  --fund-7: oklch(58% 0.17 35);
+  --fund-8: oklch(40% 0.12 300);
 
   /* ---- State ----------------------------------------------------------- */
   /* Errors only, always with an icon and words. */
@@ -311,6 +328,14 @@
     --band-3: oklch(84% 0.13 85);
     --band-4: oklch(66% 0.1 195);
     --band-5: oklch(58% 0.1 150);
+    --fund-1: oklch(68% 0.14 255);
+    --fund-2: oklch(80% 0.14 70);
+    --fund-3: oklch(62% 0.11 165);
+    --fund-4: oklch(64% 0.17 345);
+    --fund-5: oklch(92% 0.03 90);
+    --fund-6: oklch(74% 0.11 210);
+    --fund-7: oklch(62% 0.17 30);
+    --fund-8: oklch(56% 0.12 300);
 
     --alert: oklch(68% 0.17 30);
     --alert-ink: oklch(78% 0.14 30);
@@ -959,6 +984,85 @@ h3.subtitle {
   }
 
   .app-shell:not([data-page="portfolio"]) .app-sidebar__foot {
+    align-items: center;
+  }
+}
+
+/* ---- Folded by the visitor, 80rem and wider ------------------------------ */
+
+/* The sidebar's fold button (operator, 2026-11-24). Only on the wide layout, where the
+ * full column is the default; below 80rem the shell already chooses the rail or the
+ * drawer by itself. The fold is a view preference in localStorage (`lib/nav-collapse`).
+ * Fund pages are static documents with no React, so they render no button and never
+ * fold. */
+.app-sidebar__fold {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--graphite);
+  cursor: pointer;
+}
+
+.app-sidebar__fold:hover {
+  color: var(--ink);
+  border-color: var(--rule-strong);
+}
+
+@media (min-width: 80rem) {
+  .app-sidebar__fold {
+    display: inline-flex;
+  }
+
+  /* The same rail as 64-80rem above, repeated because CSS cannot OR a media condition
+   * with an attribute into one rule. The head stacks, so the monogram and the button
+   * both fit the 4rem column. */
+  .app-shell[data-nav="collapsed"] {
+    grid-template-columns: var(--sidebar-rail) minmax(0, 1fr);
+  }
+
+  .app-shell[data-nav="collapsed"] .app-sidebar {
+    padding-inline: var(--space-2);
+    align-items: center;
+  }
+
+  .app-shell[data-nav="collapsed"] .app-sidebar__head {
+    flex-direction: column;
+  }
+
+  .app-shell[data-nav="collapsed"] .app-sidebar__brand-full,
+  .app-shell[data-nav="collapsed"] .app-nav__label,
+  .app-shell[data-nav="collapsed"] .app-nav__text,
+  .app-shell[data-nav="collapsed"] .app-sidebar__release,
+  .app-shell[data-nav="collapsed"] .app-nav--legal {
+    display: none;
+  }
+
+  .app-shell[data-nav="collapsed"] .app-sidebar__brand-mark {
+    display: inline;
+    font-size: var(--text-16);
+  }
+
+  .app-shell[data-nav="collapsed"] .app-nav__link {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .app-shell[data-nav="collapsed"] .app-sidebar__search .search-trigger {
+    justify-content: center;
+  }
+
+  .app-shell[data-nav="collapsed"] .app-sidebar__search .search-trigger__label,
+  .app-shell[data-nav="collapsed"] .app-sidebar__search .kbd {
+    display: none;
+  }
+
+  .app-shell[data-nav="collapsed"] .app-sidebar__foot {
     align-items: center;
   }
 }

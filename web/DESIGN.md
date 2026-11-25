@@ -458,6 +458,34 @@ has no holding yet…`, `Your 3 holdings total 100.00%. Press Show results…`).
 (`portfolioSignature`: unit plus holdings and amounts, row order ignored), so any later edit steps the results back until
 it is submitted again. An incomplete or unsubmitted portfolio is never drawn as a partial answer.
 
+## Workspace polish (operator's instructions, 2026-11-24)
+
+Four small changes from one request, each with the check that holds it:
+
+- **A difference prints `%`, not `pp`.** `Change vs VT` reads `-2.92%`, reversing OD-05's `pp`: every other
+  number in the table is a percent and `pp` read as jargon. The value is still percentage points — your
+  weight minus the benchmark's — and the column's tooltip and the method note say so in words; the sign is
+  always printed so the number cannot be read as a level. One formatter, `formatSignedDelta` in
+  `lib/format.ts`. The CSV keeps its `change_vs_*_pp` header, which is a data contract, not a display.
+- **The "From your funds" bar has one hue per fund** (rule 6 — it shipped as one grey). `--fund-1` … `--fund-8`
+  in `app/globals.css`; a fund's slot is its position in the visitor's holdings list, so a fund wears one
+  colour on every row, and slots repeat past eight. The fund's name under the bar carries a dot in the same
+  hue, so the bar reads like a chart with its legend and the name stays the fact. Any two funds can sit side
+  by side, so `lib/theme.test.ts` holds **every** pair apart (dE 20 uncorrected, 10 after simulated
+  deuteranopia, protanopia and tritanopia) and every slot at 3:1 on both row backgrounds, in both schemes.
+  The floors are lower than the geography edges' because eight fills that each clear 3:1 on cream cannot
+  all stay 25 apart after simulation; the printed name and the 1px gap carry what the hue cannot.
+- **The sidebar folds to its icon rail on the visitor's click**, from 80 rem up, where the full column is the
+  default (below that the shell already picks the rail or the drawer). The choice is a view preference in
+  `localStorage` (`lib/nav-collapse.ts`), never portfolio state. Fund pages ship no React, so they show no
+  button and never fold. Every rail link carries an `aria-label`, because the rail hides its text with
+  `display: none`.
+- **Results open with the lens tabs at full size.** "Show results" used to `focus()` the results, and the
+  browser's own scroll put them at y = 0 — behind the sticky top bar — so the tabs docked before the visitor
+  had scrolled. Focus now moves without scrolling, and `components/workspace/scroll.ts` lands the results just
+  under the bar; the tabs dock only when the visitor scrolls past them. Measured at 1440×900 on a 12-fund
+  portfolio: strip top 0 px (docked) before, 65 px under a 57 px bar after.
+
 ## Build rules for agents (adopted 2026-11-24)
 
 Cherry-picked from the `gemini-frontend-design` skill in

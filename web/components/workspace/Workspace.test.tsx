@@ -739,7 +739,7 @@ describe("Workspace — the holdings pane and the lenses", () => {
     expect(cells[0]).toBe("1");
     expect(cells[2]).toBe("21.00%");
     expect(cells[3]).toBe("20.00%");
-    expect(cells[4]).toBe("+1.00 pp");
+    expect(cells[4]).toBe("+1.00%");
 
     benchmarked.unmount();
 
@@ -765,17 +765,51 @@ describe("Workspace — the holdings pane and the lenses", () => {
     ).not.toContain("percentage points");
   });
 
+  it("gives each fund one hue for the whole table, repeated as a dot beside its name", () => {
+    renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+    const panel = screen.getByRole("tabpanel");
+
+    // Every segment names its fund in its title; a fund's segments share one slot on
+    // every row, and two funds never share one (the example has fewer than eight).
+    const slotByFund = new Map<string, Set<string>>();
+    for (const segment of panel.querySelectorAll<HTMLElement>(".rowbar__fill[title]")) {
+      const fund = segment.title.split(":")[0] as string;
+      if (fund.endsWith("(direct)")) continue;
+      const slot = segment.dataset.fundSlot;
+      expect(slot).toMatch(/^[1-8]$/);
+      slotByFund.set(fund, (slotByFund.get(fund) ?? new Set()).add(slot as string));
+    }
+    expect(slotByFund.size).toBeGreaterThan(1);
+    for (const slots of slotByFund.values()) expect(slots.size).toBe(1);
+    const distinct = new Set([...slotByFund.values()].map((slots) => [...slots][0]));
+    expect(distinct.size).toBe(slotByFund.size);
+
+    // The legend: each named fund carries a hidden dot in the same slot as its segment.
+    const dots = panel.querySelectorAll<HTMLElement>(
+      '[aria-hidden="true"][data-fund-slot]',
+    );
+    expect(dots.length).toBeGreaterThan(0);
+    for (const dot of dots) {
+      const name = dot.nextElementSibling?.textContent ?? "";
+      expect(slotByFund.get(name)?.has(dot.dataset.fundSlot as string)).toBe(true);
+    }
+  });
+
   it("prints the difference with its sign and its colour, and no colour at zero", () => {
     renderWorkspace({ entries: ENTRIES, ledger: BENCHMARKED });
 
     const panel = within(screen.getByRole("tabpanel"));
 
     // Above the benchmark: green, and the sign says so on its own.
-    expect(panel.getByText("+1.00 pp").className).toBe("delta delta--up");
+    expect(panel.getByText("+1.00%").className).toBe("delta delta--up");
     // Below it: red.
-    expect(panel.getByText("-32.00 pp").className).toBe("delta delta--down");
+    expect(panel.getByText("-32.00%").className).toBe("delta delta--down");
     // Exactly level: the bracket is the whole answer, with no side to colour.
-    expect(panel.getByText("0.00 pp").className).toBe("delta");
+    // `0.00%` is also a weight elsewhere in the table, so it is read from the delta cells.
+    const level = Array.from(
+      screen.getByRole("tabpanel").querySelectorAll<HTMLElement>(".delta"),
+    ).filter((cell) => cell.textContent === "0.00%");
+    expect(level.map((cell) => cell.className)).toEqual(["delta"]);
   });
 
   it("exports every company, not the page", () => {

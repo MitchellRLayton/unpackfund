@@ -311,7 +311,7 @@ describe("the style columns' sort", () => {
     // Against the blend: c_abc is held at 50% and carries 5% of it, so it is the most
     // overweight (0.45); then c_def (0.30 − 0.067 = 0.233); then c_ghi (0.20 − 0.10 = 0.10).
     expect(companyOrder()).toEqual(["C_ABC", "C_DEF", "C_GHI"]);
-    expect(styleCells("C_GHI")).toEqual({ bench: "8.00%", delta: "+12.00 pp" });
+    expect(styleCells("C_GHI")).toEqual({ bench: "8.00%", delta: "+12.00%" });
 
     // Pick one class. US small value holds nothing of c_ghi and 10% of c_abc, so the style
     // numbers themselves move — which is the whole point of the picker.
@@ -324,8 +324,8 @@ describe("the style columns' sort", () => {
       .getByText(/Benchmark composition/)
       .closest("[data-style-definitions]");
     expect(definitions?.textContent).toContain("US Small Cap Value — showing");
-    expect(styleCells("C_GHI")).toEqual({ bench: "0.00%", delta: "+20.00 pp" });
-    expect(styleCells("C_ABC")).toEqual({ bench: "10.00%", delta: "+40.00 pp" });
+    expect(styleCells("C_GHI")).toEqual({ bench: "0.00%", delta: "+20.00%" });
+    expect(styleCells("C_ABC")).toEqual({ bench: "10.00%", delta: "+40.00%" });
   });
 
   it("shows the blend by default and offers every class the gate selected", () => {
