@@ -186,6 +186,73 @@ def test_the_refusal_keeps_negative_waivers_and_recoupments_and_refuses_scale_er
     assert fees.refusal(0.0, None, None) is None  # a zero fee is a fee
 
 
+@pytest.mark.parametrize(
+    "total, net, waiver",
+    [
+        (0.0084, 0.0080, 0.04),  # CCRRX: a waiver of 0.04 for 0.04%, passes the 10% ceiling
+        (0.0079, 0.0070, -0.09),  # DAEIX
+        (0.0057, None, -0.0069),  # JNDVX: a waiver larger than the whole fee
+    ],
+)
+def test_a_waiver_larger_than_the_fee_is_refused_whatever_the_ceiling(total, net, waiver):
+    assert fees.refusal(total, net, waiver) == "waiver-out-of-range"
+
+
+def test_a_waiver_equal_to_the_fee_is_a_full_waiver_not_an_error():
+    assert fees.refusal(0.0304, 0.0, -0.0304) is None  # ACBEX
+    assert fees.refusal(0.0050, None, 0.0050) is None  # the boundary, not over it
+
+
+def test_a_stated_zero_waiver_beside_a_lower_net_is_two_facts_that_disagree():
+    assert fees.refusal(0.0135, 0.0, -0.0) == "net-contradicts-waiver"  # USBNX
+    assert fees.refusal(0.0135, 0.0, 0.0) == "net-contradicts-waiver"
+    # No waiver fact at all is not a contradiction: other fee reductions exist (ABVIX).
+    assert fees.refusal(0.0070, 0.0065, None) is None
+    # A zero fee with a zero net is consistent.
+    assert fees.refusal(0.0, 0.0, 0.0) is None
+
+
+def test_the_one_basis_point_boundary_does_not_flip_on_a_float_bit():
+    """63 of 1,000 grid points where net exceeds total by exactly 1 bp were refused."""
+    refused = [
+        total
+        for total in (round(i / 10_000, 4) for i in range(1, 999))
+        if fees.refusal(total, round(total + 0.0001, 4), None) is not None
+    ]
+    assert refused == []
+    assert fees.refusal(0.0100, 0.0102, None) == "net-above-total"  # 2 bp is over
+
+
+def test_a_decimal_comma_is_unreadable_never_a_hundred_times_too_big():
+    doc = _inline(
+        '<ix:nonFraction name="oef:ExpensesOverAssets" contextRef="a1" format="ixt:num-comma-decimal" scale="-2">0,05</ix:nonFraction>',
+        '<ix:nonFraction name="oef:NetExpensesOverAssets" contextRef="a1" format="ixt:numdotdecimal" scale="-2">0.05</ix:nonFraction>',
+    )
+    _, found = fees.fees_for(fees.parse_instance(doc), S1, A)
+    assert found.resolved("total") == ("unreadable", None)
+    assert found.resolved("net") == ("ok", 0.0005)
+
+
+@pytest.mark.parametrize(
+    "net, waiver, basis, ok",
+    [
+        (0.0075, -0.0015, "stated-net", True),
+        (None, None, "no-waiver-stated", True),
+        (None, 0.0, "no-waiver-stated", True),
+        (None, -0.002, "waiver-without-net", True),
+        (None, -0.002, "waiver-unresolved", True),
+        (None, None, "waiver-unresolved", True),
+        (None, -0.002, "no-waiver-stated", False),  # hides a stated waiver
+        (None, None, "waiver-without-net", False),  # says a waiver that is not there
+        (0.0075, None, "no-waiver-stated", False),  # hides a stated net
+        (0.0075, None, "waiver-unresolved", False),
+        (None, None, "stated-net", False),
+    ],
+)
+def test_basis_must_agree_with_the_numbers_it_labels(net, waiver, basis, ok):
+    assert (fees.basis_problem(net, waiver, basis) is None) is ok
+
+
 def test_a_positive_waiver_that_does_not_reconcile_is_not_a_recoupment():
     assert fees.refusal(0.0100, 0.0125, 0.0010) == "net-above-total"
 
@@ -218,6 +285,19 @@ def test_basis_says_what_the_filing_says_about_a_waiver(net, waiver, basis):
 # --- the walk -----------------------------------------------------------------
 
 
+def _filing_of(*specs: tuple[str | None, str | None, str]) -> fees.Filing:
+    """A parsed filing with one total per ``(series, class, total)`` context."""
+    contexts = "".join(_context(f"x{i}", series, cls) for i, (series, cls, _total) in enumerate(specs))
+    facts = "".join(
+        f'<oef:ExpensesOverAssets contextRef="x{i}" unitRef="pure" decimals="4">{total}</oef:ExpensesOverAssets>'
+        for i, (_series, _cls, total) in enumerate(specs)
+    )
+    return fees.parse_filing(
+        f'<?xml version="1.0"?><xbrl xmlns="http://www.xbrl.org/2003/instance" xmlns:oef="http://xbrl.sec.gov/oef/2025" '
+        f'xmlns:xbrldi="http://xbrl.org/2006/xbrldi">{contexts}{facts}</xbrl>'.encode()
+    )
+
+
 def _filing_rows(*rows: tuple[str, str]) -> list[dict]:
     return [
         {"form": "485BPOS", "filingDate": filed, "accessionNumber": accession, "isXBRL": 1}
@@ -229,7 +309,7 @@ def _filing_rows(*rows: tuple[str, str]) -> list[dict]:
 def walk(monkeypatch):
     """Drive ``registrant_fees`` over ``filings``: accession → facts, or an exception."""
 
-    def run(filings: dict, rows: list[dict], wants, *, filed_by="2026-11-25"):
+    def run(filings: dict, rows: list[dict], wants, *, filed_by="2026-11-25", series_count=None):
         monkeypatch.setattr(sec, "fetch_json", lambda url, **kw: {"filings": {"recent": {}, "files": []}})
         monkeypatch.setattr(xbrl, "recent_rows", lambda submissions: rows)
 
@@ -240,7 +320,7 @@ def walk(monkeypatch):
             return got, "instance", f"https://www.sec.gov/Archives/edgar/data/{cik}/{row['accessionNumber']}/x_htm.xml"
 
         monkeypatch.setattr(fees, "_instance_facts", read)
-        return fees.registrant_fees(1, wants, filed_by=filed_by, since="2025-01-01")
+        return fees.registrant_fees(1, wants, filed_by=filed_by, since="2025-01-01", series_count=series_count)
 
     return run
 
@@ -296,6 +376,25 @@ def test_a_class_found_only_in_an_older_filing_keeps_its_own_fee(walk):
         [fees.Want("ZZZ", S1, "C000000013")],
     )
     assert result.rows["ZZZ"]["filed_at"] == "2026-05-01"
+
+
+def test_a_filing_with_no_series_axis_is_credited_only_to_a_single_series_registrant(walk):
+    """An unpublished sibling's fee must not become the published series' fee."""
+    filing = _filing_of((None, None, "0.0100"))
+    rows = _filing_rows(("0001", "2026-04-28"))
+    wants = [fees.Want("AAA", S1, None)]
+    # The SEC lists two series for this registrant, one unpublished: no credit.
+    out = walk({"0001": filing}, rows, wants, series_count=2)
+    assert out.rows == {} and out.bands["AAA"] == "series-not-tagged"
+    # One series: the filing is that series'.
+    out = walk({"0001": filing}, rows, wants, series_count=1)
+    assert out.rows["AAA"]["total"] == 0.01
+
+
+def test_a_series_less_filing_that_also_names_series_is_not_credited_to_a_single_series(walk):
+    filing = _filing_of((None, None, "0.0100"), (S2, None, "0.0200"))
+    out = walk({"0001": filing}, _filing_rows(("0001", "2026-04-28")), [fees.Want("AAA", S1, None)], series_count=1)
+    assert out.rows == {}
 
 
 def test_a_class_in_no_filing_has_its_reason(walk):
@@ -402,6 +501,43 @@ def test_an_override_fills_a_hole_but_never_replaces_a_filing(monkeypatch):
     assert release.overridden == 1 and release.bands == {}
 
 
+@pytest.mark.parametrize(
+    "band, filled",
+    [
+        ("no-xbrl-filing", True),
+        ("no-fee-filing", True),
+        ("series-not-tagged", True),
+        ("net-above-total", False),  # the filing spoke and was refused
+        ("total-ambiguous", False),
+        ("total-absent", False),
+        ("newer-filing-unread", False),  # a filing exists that we could not read
+        ("registrant-unavailable", False),  # an outage, not an absence
+        ("class-not-in-filing", False),
+    ],
+)
+def test_an_override_fills_only_where_the_filings_did_not_speak(monkeypatch, band, filled):
+    def registrant(cik, wants, **kw):
+        result = fees.RegistrantResult()
+        result.bands["SPY"] = band
+        return result
+
+    monkeypatch.setattr(fees, "registrant_fees", registrant)
+    release = fees.collect({1: [fees.Want("SPY", S2, None)]}, filed_by="2026-11-25", overrides={"SPY": _row(0.000945)})
+    assert ("SPY" in release.by_series.get(S2, {})) is filled
+    assert release.overridden == int(filled)
+    assert ("SPY" in release.missing) is not filled
+
+
+def test_the_override_file_may_not_become_the_pipeline():
+    wants = {1: [fees.Want(f"T{i:03d}", S1, None) for i in range(400)]}
+    too_many = {f"T{i:03d}": _row() for i in range(21)}  # 5% of 400 is 20; the floor is 10
+    with pytest.raises(ValueError, match="exceed 5%"):
+        fees.apply_overrides(fees.ReleaseFees(), wants, too_many)
+    fees.apply_overrides(fees.ReleaseFees(), wants, {f"T{i:03d}": _row() for i in range(20)})
+    # A small build may carry a few overrides whatever the share says.
+    fees.apply_overrides(fees.ReleaseFees(), {1: [fees.Want("SPY", S2, None)]}, {"SPY": _row()})
+
+
 def test_the_override_file_is_held_to_the_same_rules(tmp_path):
     header = "ticker,class_id,total,net,waiver,basis,prospectus_date,filed_at,form,source_url\n"
     good = "SPY,,0.000945,,,no-waiver-stated,,2026-01-27,485BPOS,https://www.sec.gov/Archives/edgar/data/1/x.htm\n"
@@ -449,6 +585,37 @@ def test_every_listed_class_of_a_series_is_wanted_from_its_registrant(monkeypatc
         1: [fees.Want("AAA", S1, A), fees.Want("AAAX", S1, B), fees.Want("NEW", S1, None)],
         884394: [fees.Want("SPY", "CIK0000884394", None)],
     }
+
+
+def test_a_symbol_the_release_does_not_publish_for_the_fund_is_not_wanted(monkeypatch):
+    """The alias map drops a symbol another series owns; the validator would reject its fee row."""
+    monkeypatch.setattr(
+        build.universe,
+        "_mf_map",
+        lambda: {"AAA": ("0000000001", S1, A), "TAKEN": ("0000000001", S1, B), "AAAX": ("0000000001", S1, C)},
+    )
+    one = build.FundBuild(ticker="AAA", document={"fund_id": S1}, payload=b"", ref_symbols=("AAA", "TAKEN", "AAAX"), cik=1)
+    other = build.FundBuild(ticker="TAKEN", document={"fund_id": S2}, payload=b"", cik=1)
+    wants = build._fee_wants([one, other])
+    assert [w.ticker for w in wants[1]] == ["AAA", "AAAX", "TAKEN"]
+    assert {w.ticker: w.series_id for w in wants[1]}["TAKEN"] == S2  # its own page, not AAA's
+
+
+def test_a_registrants_series_count_comes_from_every_series_the_sec_lists(monkeypatch):
+    monkeypatch.setattr(
+        build.universe,
+        "_mf_map",
+        lambda: {"A": ("0000000001", S1, A), "B": ("0000000001", S2, B), "C": ("0000000002", S1, C)},
+    )
+    assert build._registrant_series_counts() == {1: 2, 2: 1}
+
+
+def test_a_release_id_that_is_not_a_date_cannot_be_read_point_in_time():
+    assert build._fee_cutoff("2026-11-16.1") == "2026-11-16"
+    assert build._fee_cutoff("2026-11-16") == "2026-11-16"
+    for bad in ("rehearsal", "latest", ""):
+        with pytest.raises(ValueError, match="--no-fees"):
+            build._fee_cutoff(bad)
 
 
 def test_the_fees_sit_after_net_assets_in_the_documents_fixed_order():
@@ -576,6 +743,17 @@ def test_a_fund_that_stated_a_fee_and_now_states_none_is_a_warning(tmp_path):
     report = _review(tmp_path, _doc(AAA=_row()), _doc())
     assert report.rules["fee_lost"] == 1
     assert _review(tmp_path / "b", _doc(), _doc()).rules["fee_lost"] == 0
+
+
+def test_a_fund_that_loses_some_of_its_class_fees_is_a_warning_naming_them(tmp_path):
+    parent = _doc(AAA=_row(), AAAX=_row(0.0009), AAAY=_row(0.0011))
+    current = _doc(AAA=_row())
+    report = _review(tmp_path, parent, current)
+    (finding,) = [f for f in report.findings if f["rule"] == "fee_lost"]
+    assert "2 of 3" in finding["detail"] and "AAAX, AAAY" in finding["detail"]
+    assert (finding["before"], finding["after"]) == (3, 1)
+    # A class gained is not a loss.
+    assert _review(tmp_path / "b", _doc(AAA=_row()), _doc(AAA=_row(), AAAX=_row())).rules["fee_lost"] == 0
 
 
 def test_a_fee_read_from_a_filing_over_13_months_old_is_info(tmp_path):

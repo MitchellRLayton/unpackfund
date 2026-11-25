@@ -42,9 +42,9 @@ The rules, and why each threshold is the number it is:
    total otherwise, moving more than a quarter of a percentage point between releases.
    Funds cut and raise fees, but rarely by that much on one filing; a change that large
    is more often a scale error or a different class answering than a price change.
-10. ``fee_lost`` (warn) — a fund that stated a fee in the parent and states none now: a
-    registrant's filings went unreadable or the walk stopped short, and the page would
-    quietly say "not stated" for a fee it showed yesterday.
+10. ``fee_lost`` (warn) — a fund that stated a fee on a class in the parent and does not
+    now, for any class (a registrant's filings went unreadable or the walk stopped short,
+    and the page would quietly say "not stated" for a fee it showed yesterday).
 11. ``fee_stale`` (info) — a fee read from a filing more than 13 months before the
     release. A prospectus must be refreshed within 16 months, so this is the one-to-
     three-month window where a fee cut may already exist in a supplement we did not read.
@@ -501,14 +501,24 @@ def _check_fee_jump(current: FundSnapshot, parent: FundSnapshot) -> list[dict[st
 
 
 def _check_fee_lost(current: FundSnapshot, parent: FundSnapshot) -> dict[str, Any] | None:
-    if current.fees or not parent.fees:
+    """One finding per fund that stated a fee on a class in the parent and does not now.
+
+    All of them or some: a registrant whose newest filing went unreadable loses every class
+    at once, but a walk that stopped short or a mis-keyed class loses one of five, and the
+    page then says "not stated" for a fee it showed yesterday. A retired class looks the
+    same, which is why this is a warning and not a gate.
+    """
+    now = {symbol for symbol, _bp, _filed in current.fees}
+    lost = sorted(symbol for symbol, _bp, _filed in parent.fees if symbol not in now)
+    if not lost:
         return None
+    shown = ", ".join(lost[:5]) + (f" and {len(lost) - 5} more" if len(lost) > 5 else "")
     return _finding(
         current,
         "fee_lost",
-        f"stated a fee on {len(parent.fees)} class(es) in the parent and states none now",
+        f"stated a fee on {len(lost)} of {len(parent.fees)} parent class(es) that it no longer states: {shown}",
         len(parent.fees),
-        0,
+        len(parent.fees) - len(lost),
     )
 
 

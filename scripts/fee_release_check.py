@@ -71,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
         workers=args.workers,
         log=lambda message: print(message, flush=True),
         overrides=fees.load_overrides(),
+        series_counts=build._registrant_series_counts(),
     )
     print(f"walk took {time.monotonic() - started:.0f}s", flush=True)
 
@@ -82,9 +83,9 @@ def main(argv: list[str] | None = None) -> int:
     summary["gzip_after"] = sum(len(gzip.compress(b.payload)) for b in builds)
     summary["largest_added"] = max(len(b.payload) - sizes[b.ticker] for b in builds)
 
-    aliases = {
-        symbol: b.ticker for b in builds for symbol in b.ref_symbols if symbol != b.ticker
-    }
+    # The release's own alias map, so a fee row for a symbol the release does not publish for
+    # the fund fails here as it would in the validator.
+    aliases = build._alias_map(builds)
     report = validate.Report()
     for b in builds:
         validate._check_fees(b.document, args.filed_by, aliases, report)

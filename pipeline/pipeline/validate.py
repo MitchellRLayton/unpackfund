@@ -1403,7 +1403,8 @@ def _check_fees(document: dict, release_date: str, aliases: dict[str, str], repo
 
     * a class is a ticker this fund owns, as itself or as an alias that resolves to it —
       so a fee can never be shown against another fund's page;
-    * the ``basis`` agrees with what is stated (``stated-net`` ⇔ a net is present);
+    * the ``basis`` agrees with what is stated (``fees.basis_problem``: a net is present only
+      under ``stated-net``, and a stated waiver rules out ``no-waiver-stated``);
     * ``filed_at`` is not after the release's own date (point in time) and the source is
       an https SEC URL, so a fee always says where it was read and when.
     """
@@ -1440,8 +1441,10 @@ def _check_fees(document: dict, release_date: str, aliases: dict[str, str], repo
             report.fail(f"{where}.range", f"{why}: total={row['total']!r} net={row['net']!r} waiver={row['waiver']!r}")
         if row["basis"] not in fees_mod.BASES:
             report.fail(f"{where}.basis", f"{row['basis']!r} is not one of {fees_mod.BASES}")
-        elif (row["basis"] == fees_mod.BASIS_STATED_NET) != (row["net"] is not None):
-            report.fail(f"{where}.basis", f"{row['basis']!r} disagrees with net={row['net']!r}")
+        else:
+            problem = fees_mod.basis_problem(row["net"], row["waiver"], row["basis"])
+            if problem:
+                report.fail(f"{where}.basis", problem)
         if row["class_id"] is not None and not re.fullmatch(r"C\d{9}", str(row["class_id"])):
             report.fail(f"{where}.class_id", repr(row["class_id"]))
         filed = str(row["filed_at"] or "")

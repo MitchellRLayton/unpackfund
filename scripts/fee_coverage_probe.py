@@ -52,6 +52,7 @@ from pipeline.fees import (  # noqa: E402
     ELEMENTS,
     EPS,
     FEE_CEILING,
+    LOOKBACK_DAYS,
     NET_OVER_TOTAL,
     UNREADABLE,
     ClassFees,
@@ -432,7 +433,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--registrants", type=int, default=0, help="only the N largest registrants by assets (0 = all)")
     parser.add_argument("--max-filings", type=int, default=150, help="XBRL fee filings walked per registrant")
     parser.add_argument(
-        "--window-days", type=int, default=548,
+        "--window-days", type=int, default=LOOKBACK_DAYS,
         help="read only filings this many days before the release date (548 ≈ 18 months, past the 16-month update rule)",
     )
     parser.add_argument("--max-pages", type=int, default=3, help="older submissions pages read per registrant")

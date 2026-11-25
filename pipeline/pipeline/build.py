@@ -1031,16 +1031,51 @@ def _fee_wants(builds: list[FundBuild]) -> dict[int, list[fees.Want]]:
     wanted: nobody can type it, and the filing walk is keyed by what we can show.
     """
     mf = universe._mf_map()
+    aliases = _alias_map(builds)
     wants: dict[int, list[fees.Want]] = {}
     for build in builds:
         series = str(build.document.get("fund_id") or "")
         if build.cik is None or not series:
             continue
         for symbol in build.ref_symbols or (build.ticker,):
+            # A symbol the release does not publish for this fund (another series owns the
+            # ticker, or the alias was dropped) has no page to show a fee on, and the
+            # validator would reject its row.
+            if symbol != build.ticker and aliases.get(symbol) != build.ticker:
+                continue
             mapped = mf.get(symbol)
             class_id = mapped[2] if mapped and mapped[1] == series else None
             wants.setdefault(build.cik, []).append(fees.Want(symbol, series, class_id or None))
     return wants
+
+
+def _fee_cutoff(release: str) -> str:
+    """The date a release's fees are read as of: its own, from its id (``2026-11-16.1``).
+
+    Not the wall clock. The fee walk is point in time on ``filed``, and a cutoff of "today"
+    would let a rebuild of the same release read a filing the original could not, changing
+    its bytes: a release id that is not a date cannot promise that, so the build stops and
+    names the way out.
+    """
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}(\.\d+)?", release):
+        raise ValueError(
+            f"release id {release!r} does not start with a date, so its fees cannot be read "
+            "point in time; name the release YYYY-MM-DD[.n] or pass --no-fees"
+        )
+    return release[:10]
+
+
+def _registrant_series_counts() -> dict[int, int]:
+    """cik → how many series the SEC ticker file lists for it, published or not.
+
+    The fee walk credits a filing that carries no series axis to the wanted series only
+    for a single-series registrant; counting just the published series would call a
+    two-series trust with one published fund "single" and credit it its sibling's fee.
+    """
+    by_cik: dict[int, set[str]] = {}
+    for cik, series, _class_id in universe._mf_map().values():
+        by_cik.setdefault(int(cik), set()).add(series)
+    return {cik: len(series) for cik, series in by_cik.items()}
 
 
 def _with_fees(document: dict, rows: dict[str, dict]) -> dict:
@@ -1330,13 +1365,14 @@ def build_release(
     fee_summary: dict | None = None
     if fee_walk and builds:
         started_fees = time.monotonic()
-        filed_by = release[:10] if re.fullmatch(r"\d{4}-\d{2}-\d{2}(\.\d+)?", release) else time.strftime("%Y-%m-%d", time.gmtime())
+        filed_by = _fee_cutoff(release)
         found_fees = fees.collect(
             _fee_wants(builds),
             filed_by=filed_by,
             workers=workers,
             log=_log if progress_every else None,
             overrides=fees.load_overrides(),
+            series_counts=_registrant_series_counts(),
         )
         fee_summary = _attach_fees(builds, found_fees)
         _log(

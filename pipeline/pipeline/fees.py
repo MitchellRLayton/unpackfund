@@ -77,6 +77,9 @@ UNREADABLE = "unreadable"
 FEE_CEILING = 0.10
 #: Net may exceed total by at most this, unless a stated positive waiver reconciles it.
 NET_OVER_TOTAL = 1e-4
+#: Float slop for the comparisons above: 0.0123 + 0.0001 is not exactly 0.0124 in binary, and a
+#: boundary the filing states to four decimals must not flip on the last bit.
+_SLOP = 1e-9
 
 #: A fund must update its prospectus within 16 months (Securities Act §10(a)(3)), so a fee
 #: table older than ~18 months is stale by definition and the walk stops there.
@@ -169,9 +172,13 @@ def _class_key(dims: Iterable[tuple[str, str]]) -> str | None:
 def _inline_value(element: ET.Element) -> float | None:
     if element.get(xbrl.XSI_NIL) == "true":
         return None
-    if (element.get("format") or "").endswith(("fixed-zero", "fixedzero")):
+    fmt = (element.get("format") or "").lower().replace("-", "")
+    if fmt.endswith("fixedzero"):
         # "None" or "—" in the fee table, tagged as a zero.
         return 0.0
+    if fmt.endswith(("numcommadecimal", "numspacecomma", "numcommaspace")):
+        # "0,05" is a decimal comma there; xbrl.number would read it as 5, a 100x error.
+        return None
     value = xbrl.number(
         "".join(element.itertext()),
         scale=xbrl.scale(element),
@@ -277,12 +284,17 @@ def classes_without_series(facts: Mapping[FACT_KEY, ClassFees]) -> set[str]:
 # --- the rules a published fee must satisfy -----------------------------------
 
 
+def _over(value: float, bound: float) -> bool:
+    """``value > bound``, with the float slop that a 4-decimal fact needs."""
+    return value > bound + _SLOP
+
+
 def is_recoupment(total: float | None, net: float | None, waiver: float | None) -> bool:
     """Net above total because a positive waiver (a recoupment) is stated and reconciles."""
     return (
         None not in (total, net, waiver)
         and waiver > EPS
-        and abs(total + waiver - net) <= NET_OVER_TOTAL
+        and not _over(abs(total + waiver - net), NET_OVER_TOTAL)
     )
 
 
@@ -291,10 +303,21 @@ def refusal(total: float | None, net: float | None, waiver: float | None) -> str
     for name, value in (("total", total), ("net", net)):
         if value is not None and not 0 <= value < FEE_CEILING:
             return f"{name}-out-of-range"
-    if waiver is not None and abs(waiver) >= FEE_CEILING:
-        return "waiver-out-of-range"
-    if net is not None and total is not None and net > total + NET_OVER_TOTAL and not is_recoupment(total, net, waiver):
-        return "net-above-total"
+    recoupment = is_recoupment(total, net, waiver)
+    if waiver is not None:
+        if abs(waiver) >= FEE_CEILING:
+            return "waiver-out-of-range"
+        # A waiver cannot take back more than the fund charges: a 100x scale error on a waiver
+        # (0.04 for 0.04%) passes the ceiling above and is caught here. Never rescaled.
+        if total is not None and _over(abs(waiver), total) and not recoupment:
+            return "waiver-out-of-range"
+    if net is not None and total is not None:
+        if _over(net, total + NET_OVER_TOTAL) and not recoupment:
+            return "net-above-total"
+        # The filing states "no waiver" and a lower net in the same breath (USBNX: net 0 beside a
+        # 1.35% total and a waiver of -0): two facts that disagree, so neither is published.
+        if waiver is not None and abs(waiver) <= EPS and _over(total - net, NET_OVER_TOTAL):
+            return "net-contradicts-waiver"
     return None
 
 
@@ -320,6 +343,24 @@ def basis_for(net: tuple[str, float | None], waiver: tuple[str, float | None]) -
     if waiver_state == "ok" and waiver_value is not None and abs(waiver_value) > EPS:
         return BASIS_WAIVER_NO_NET
     return BASIS_NO_WAIVER
+
+
+def basis_problem(net: float | None, waiver: float | None, basis: str) -> str | None:
+    """Why ``basis`` contradicts the row's own numbers, or ``None``. The validator uses this.
+
+    ``waiver-unresolved`` says the filing's own facts could not be read, which the numbers
+    cannot contradict; the other three each say something checkable about net and waiver.
+    """
+    if basis == BASIS_STATED_NET:
+        return None if net is not None else "stated-net without a net"
+    if net is not None:
+        return f"{basis!r} on a row that states net={net!r}"
+    stated_waiver = waiver is not None and abs(waiver) > EPS
+    if basis == BASIS_NO_WAIVER and stated_waiver:
+        return f"no-waiver-stated beside waiver={waiver!r}"
+    if basis == BASIS_WAIVER_NO_NET and not stated_waiver:
+        return f"waiver-without-net with waiver={waiver!r}"
+    return None
 
 
 # --- the walk -----------------------------------------------------------------
@@ -435,6 +476,7 @@ def registrant_fees(
     since: str,
     max_filings: int = 150,
     max_pages: int = 3,
+    series_count: int | None = None,
 ) -> RegistrantResult:
     """Walk one registrant's fee filings newest-first until every wanted class has one.
 
@@ -442,6 +484,11 @@ def registrant_fees(
     an annual prospectus can sit just before it, so older pages are read — lazily, only
     while a class is still unmatched — up to ``max_pages``. Nothing filed before
     ``since`` is read.
+
+    ``series_count`` is how many series the SEC ticker file lists for this registrant,
+    published or not. A filing with no series axis is credited to the wanted series only
+    when that count is 1: counting just the published series (the default, for callers that
+    have nothing better) would hand an unpublished sibling's fee to the published one.
     """
     result = RegistrantResult()
     stats = result.stats
@@ -455,7 +502,9 @@ def registrant_fees(
     xbrl_rows = [r for r in rows if r.get("isXBRL") or r.get("isInlineXBRL")]
 
     pending = {w.ticker: w for w in wants if w.series_id}
-    single_series = len({w.series_id for w in wants}) == 1
+    single_series = (
+        series_count == 1 if series_count is not None else len({w.series_id for w in wants}) == 1
+    )
     partial: dict[str, str] = {}
     walked = position = pages_read = 0
     # The newest fee filing we could not read. The walk is newest-first, so every fee
@@ -492,7 +541,7 @@ def registrant_fees(
         for ticker, want in list(pending.items()):
             if want.series_id in tagged or (want.class_id and want.class_id in class_only):
                 key_series: str | None = want.series_id
-            elif single_series and None in tagged:
+            elif single_series and tagged == {None}:
                 key_series = None
             else:
                 continue
@@ -570,6 +619,7 @@ def collect(
     workers: int = 1,
     log: Callable[[str], None] | None = None,
     overrides: Mapping[str, Mapping[str, Any]] | None = None,
+    series_counts: Mapping[int, int] | None = None,
 ) -> ReleaseFees:
     """Walk every registrant and gather its classes' fees.
 
@@ -583,7 +633,13 @@ def collect(
 
     def one(cik: int) -> tuple[int, RegistrantResult | None]:
         try:
-            return cik, registrant_fees(cik, wants_by_cik[cik], filed_by=filed_by, since=since)
+            return cik, registrant_fees(
+                cik,
+                wants_by_cik[cik],
+                filed_by=filed_by,
+                since=since,
+                series_count=(series_counts or {}).get(cik),
+            )
         except (sec.SecError, ET.ParseError):
             return cik, None
 
@@ -610,6 +666,18 @@ def collect(
     return release
 
 
+#: The bands where the filings did not speak at all, the only holes a reviewed row may fill.
+#: A refusal (a range error, an ambiguous total), a nil total, an unread newer filing and an
+#: unreachable registrant are the filings' answer, or a transient one: an override must not
+#: paper over any of them.
+OVERRIDE_FILLS = ("no-fee-filing", "no-xbrl-filing", "series-not-tagged")
+#: The skill's bound on the override file, as a share of the classes wanted.
+OVERRIDE_SHARE = 0.05
+#: A build of a handful of tickers (``--tickers``, a fixture) may carry a few overrides whatever
+#: the share says; the bound is for the universe.
+OVERRIDE_FLOOR = 10
+
+
 def apply_overrides(
     release: ReleaseFees,
     wants_by_cik: Mapping[int, Sequence[Want]],
@@ -617,13 +685,20 @@ def apply_overrides(
 ) -> None:
     """Reviewed rows for classes the filings cannot answer (SPY: a unit trust with no XBRL).
 
-    An override only fills a hole: a class the filings answered keeps the filing's fee, so
-    a reviewed row can never outlive the filing that supersedes it.
+    An override only fills a hole the filings left open (``OVERRIDE_FILLS``): a class the
+    filings answered keeps the filing's fee, and a class they refused or could not be read
+    for stays without one, so a reviewed row can never outlive or mask the filing's own word.
+    More overrides than ``OVERRIDE_SHARE`` of the classes wanted stops the build: the file
+    would have become the pipeline (fund-reference-extraction §2.4).
     """
     wanted = {want.ticker: want for group in wants_by_cik.values() for want in group}
+    if len(overrides) > max(OVERRIDE_FLOOR, OVERRIDE_SHARE * len(wanted)):
+        raise ValueError(
+            f"{len(overrides)} fee overrides exceed {OVERRIDE_SHARE:.0%} of {len(wanted)} classes wanted"
+        )
     for ticker, row in overrides.items():
         want = wanted.get(ticker)
-        if want is None or ticker in release.by_series.get(want.series_id, {}):
+        if want is None or release.missing.get(ticker) not in OVERRIDE_FILLS:
             continue
         release.by_series.setdefault(want.series_id, {})[ticker] = dict(row)
         release.missing.pop(ticker, None)
