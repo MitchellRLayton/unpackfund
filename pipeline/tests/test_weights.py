@@ -447,6 +447,7 @@ def _us_index() -> companies.CompanyIndex:
             "1": {"cik_str": 893538, "ticker": "SM", "title": "SM Energy Co"},
             "2": {"cik_str": 863436, "ticker": "BHE", "title": "BENCHMARK ELECTRONICS INC"},
             "3": {"cik_str": 1792580, "ticker": "OVV", "title": "Ovintiv Inc."},
+            "4": {"cik_str": 918541, "ticker": "NNBR", "title": "NN INC"},
         }
     )
 
@@ -498,3 +499,24 @@ def test_a_us_row_with_a_shared_word_keeps_its_ticker_match():
     )
     assert vector.holdings[0].company_id == company_id(893538)
     assert vector.rung_counts["ticker"] == 1
+
+
+NN_LEI = "724500OHYNDT9OY6Q215"
+
+
+def test_a_foreign_group_is_not_the_us_company_it_shares_a_stem_with():
+    """``NN Group N.V.`` equals ``NN INC`` only once ``group`` is dropped from the name."""
+    holdings = [
+        _holding("NN Group NV", 50.0, ticker="NN", lei=NN_LEI, inv_country="NL"),
+        _holding("NN Group N.V.", 50.0, lei=NN_LEI, inv_country="NL"),
+    ]
+    issuers = _issuers([_entity(NN_LEI, "NN GROUP N.V.")])
+    vector = weights.build_vector(holdings, _us_index(), 100.0, lag_days=10, issuers=issuers)
+    assert {h.company_id for h in vector.holdings} == {gleif.issuer_id(NN_LEI)}
+
+
+def test_a_us_row_keeps_a_name_match_that_dropped_group():
+    """Only a non-US row is asked for a second opinion."""
+    holdings = [_holding("NN Group Inc", 100.0, ticker="NNBR", inv_country="US")]
+    vector = weights.build_vector(holdings, _us_index(), 100.0, lag_days=10)
+    assert vector.holdings[0].company_id == company_id(918541)

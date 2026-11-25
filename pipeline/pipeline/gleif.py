@@ -192,6 +192,7 @@ class Resolution:
     company_id: str
     name: str
     rung: str
+    jurisdiction: str | None = None
 
 
 RUNG_LEI = "lei_issuer"
@@ -321,7 +322,7 @@ class IssuerIndex:
                 if entity.category == "FUND":
                     self._refuse("fund_entity")
                     return None
-                return Resolution(entity.company_id, entity.name, RUNG_LEI)
+                return Resolution(entity.company_id, entity.name, RUNG_LEI, entity.jurisdiction)
             self._refuse("no_gleif_record")
             return None
         if isin:
@@ -336,7 +337,7 @@ class IssuerIndex:
             if entity.category == "FUND":
                 self._refuse("fund_entity")
                 return None
-            return Resolution(entity.company_id, entity.name, RUNG_ISIN_LEI)
+            return Resolution(entity.company_id, entity.name, RUNG_ISIN_LEI, entity.jurisdiction)
         self._refuse("no_identifier")
         return None
 

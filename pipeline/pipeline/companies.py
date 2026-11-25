@@ -103,6 +103,9 @@ _LEGAL_SUFFIXES = re.compile(
     r"holdings?|group|the|sa|nv|ag|se|oyj|ab|as|spa|reit|trust|fund|"
     r"class\s+[a-z]|cl\s+[a-z]|series\s+[a-z0-9]+)\b"
 )
+#: Words ``normalize_name`` drops that still say *which* company: ``NN Group NV`` and
+#: ``NN Inc`` normalize to the same key, and are different companies.
+_DROPPED_IDENTITY = re.compile(r"\b(group|holdings?)\b")
 _RUNG_TICKER = "ticker"
 _RUNG_NAME = "name_exact"
 _RUNG_ISIN = "isin_corroborated"
@@ -138,6 +141,7 @@ ALL_RUNGS = (
 RUNG_ISIN_DIRECT = _RUNG_ISIN_DIRECT
 RUNG_FIGI = _RUNG_FIGI
 RUNG_TICKER = _RUNG_TICKER
+RUNG_NAME = _RUNG_NAME
 #: The rungs that resolve a row into the foreign-issuer namespace (``l_``).
 ISSUER_RUNGS = (_RUNG_LEI_ISSUER, _RUNG_ISIN_LEI_ISSUER)
 #: The rungs that come from the corroborated-identity table rather than from a
@@ -164,6 +168,13 @@ def normalize_name(name: str) -> str:
     text = re.sub(r"[^a-z0-9 ]+", " ", text)
     text = _LEGAL_SUFFIXES.sub(" ", text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+def dropped_identity_words(name: str) -> frozenset[str]:
+    """``group`` / ``holding`` as the raw name spells them, before normalization removes them."""
+    return frozenset(
+        word.rstrip("s") for word in _DROPPED_IDENTITY.findall(name.lower().replace(".", ""))
+    )
 
 
 #: Words that carry no identity: they are legal form, or the fund wrapper.
@@ -530,6 +541,17 @@ class CompanyIndex:
             if hit:
                 return hit, _RUNG_NAME
         return None, _RUNG_NONE
+
+    def match_dropped_words(self, company_id: str | None, name: str | None) -> bool:
+        """Whether a name match leaned on a word ``normalize_name`` removed.
+
+        ``NN Group N.V.`` equals ``NN INC`` only because ``group`` is dropped. For a
+        foreign row that is not proof; the row's own LEI/ISIN should decide.
+        """
+        if company_id is None or not name:
+            return False
+        title = self.title_by_id.get(company_id, "")
+        return dropped_identity_words(name) != dropped_identity_words(title)
 
     def corroboration(
         self, company_id: str | None, rung: str, name: str | None
