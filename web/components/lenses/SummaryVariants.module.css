@@ -1,0 +1,229 @@
+/* PROTOTYPE — prototype/results-summary. Tokens only, from globals.css. */
+
+.variantBar {
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-4);
+  transform: translateX(-50%);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 999px;
+  font-size: var(--text-12);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+  max-width: calc(100vw - 2rem);
+}
+.variantTitle {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.variantQuestion {
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.variantLink {
+  color: var(--paper);
+  text-decoration: none;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+.variantLink[aria-current="true"] {
+  background: var(--paper);
+  color: var(--ink);
+}
+.variantLink:not([aria-current="true"]) {
+  border-color: color-mix(in oklch, var(--paper) 40%, transparent);
+}
+
+.link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+.line {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-14);
+}
+.method {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-12);
+  color: var(--graphite);
+}
+.risk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+}
+
+.bars {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.barRow {
+  display: grid;
+  grid-template-columns: 12rem minmax(0, 1fr) 4rem;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-14);
+}
+.barLabel {
+  color: var(--graphite);
+}
+.barValue {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.track {
+  display: block;
+  height: 0.6rem;
+  background: var(--wash);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.fill {
+  display: block;
+  height: 100%;
+  background: var(--graphite);
+  border-radius: 999px;
+}
+.fillYou {
+  background: var(--accent);
+}
+
+.more {
+  margin-top: var(--space-3);
+}
+.more > summary {
+  cursor: pointer;
+  font-size: var(--text-14);
+  color: var(--graphite);
+}
+
+/* A — stat cards */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+.cardLabel {
+  font-size: var(--text-12);
+  color: var(--graphite);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.cardValue {
+  font-size: var(--text-28);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.cardValue .risk {
+  font-size: var(--text-20);
+}
+.cardSub {
+  font-size: var(--text-12);
+  color: var(--graphite);
+}
+.cardsWrap {
+  margin-bottom: var(--space-2);
+}
+
+/* B — sentence + chart */
+.chartWrap {
+  padding-bottom: var(--space-2);
+}
+.headline {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-20);
+}
+.chips {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.chip {
+  font-size: var(--text-12);
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+/* C — question rows */
+.rows {
+  border-top: 1px solid var(--rule);
+}
+.row {
+  border-bottom: 1px solid var(--rule);
+}
+.rowHead {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  padding: var(--space-3) 0;
+  cursor: pointer;
+  list-style: none;
+}
+.rowHead::-webkit-details-marker {
+  display: none;
+}
+.rowHead::before {
+  content: "▸";
+  color: var(--graphite);
+}
+.row[open] > .rowHead::before {
+  content: "▾";
+}
+.rowQ {
+  flex: 1;
+  color: var(--graphite);
+  font-size: var(--text-14);
+}
+.rowA {
+  font-size: var(--text-16);
+  text-align: right;
+}
+.rowBody {
+  padding: 0 0 var(--space-3);
+}
+
+@media (max-width: 40rem) {
+  .cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .barRow {
+    grid-template-columns: 7rem minmax(0, 1fr) 3rem;
+  }
+  .variantQuestion {
+    display: none;
+  }
+}

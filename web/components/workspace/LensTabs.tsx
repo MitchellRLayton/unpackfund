@@ -51,6 +51,7 @@ import type { Lens } from "@/lib/view-fragment";
 import { useWorkspaceActions } from "./actions";
 import { InfoTip } from "@/components/feedback/InfoTip";
 import { NotesStrip } from "./NotesStrip";
+import { useSummaryVariant } from "@/components/lenses/SummaryVariants";
 import type { LensMetric } from "./metrics";
 import { LENS_TABS } from "./types";
 import styles from "./Workspace.module.css";
@@ -145,6 +146,7 @@ export function LensTabs({
   /** True when there is no portfolio: the tabs are inert and say why. */
   disabled?: boolean;
 }) {
+  const variant = useSummaryVariant();
   const stripRef = useRef<HTMLDivElement | null>(null);
   const dockRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -476,7 +478,8 @@ export function LensTabs({
 
       {/* Directly under the metric strip, on every lens. Renders nothing when no
        * condition fires. */}
-      <NotesStrip model={model} />
+      {/* PROTOTYPE: in a variant the Companies lens renders the notes on its table. */}
+      {variant && model.lens === "companies" ? null : <NotesStrip model={model} />}
 
       {/* P-E-08: the sentence is no longer a paragraph under the strip. It is the tabs'
        * description, so a screen reader still hears why they are inert, and each tab

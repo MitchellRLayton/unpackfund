@@ -83,6 +83,8 @@ import { ConcentrationLine } from "./ConcentrationLine";
 import styles from "./CompaniesLens.module.css";
 import { CellNote, LensExport, LensProblem, LensSection, LensState } from "./lens-chrome";
 import { EffectiveHoldingsSummary } from "./EffectiveHoldingsSummary";
+import { SummaryVariants, useSummaryVariant, VariantBar } from "./SummaryVariants";
+import { NotesStrip } from "@/components/workspace/NotesStrip";
 import { companiesCsv, lensCsvName } from "./lens-csv";
 import { lensGateState } from "./lens-gate";
 import { nextSort, sortBy, TIER_WORD, type SortState } from "./lens-math";
@@ -370,6 +372,7 @@ export function CompaniesLens({ model }: LensProps) {
   const chooseSort = (next: SortState<CompanySortKey>) =>
     setSortFor({ key: portfolioKey, sort: next });
   const [query, setQuery] = useState("");
+  const variant = useSummaryVariant();
   // Pages are 1-based and clamped on the way out, so a filter that shortens the list while
   // the reader is on page 40 shows the last page instead of an empty table.
   const [page, setPage] = useState(1);
@@ -575,27 +578,62 @@ export function CompaniesLens({ model }: LensProps) {
     );
   };
 
+  const filterField = (
+    <div className="field">
+      <label className="field__label visually-hidden" htmlFor="companies-filter">
+        Filter companies
+      </label>
+      <input
+        id="companies-filter"
+        className="field__input"
+        type="search"
+        value={query}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          resetPage();
+        }}
+        placeholder="Filter by name or ticker"
+        autoComplete="off"
+        spellCheck={false}
+      />
+    </div>
+  );
+
   return (
     <div className="stack">
       <LensProblem model={model} />
       {/* The one fact the old "What you own" card carried that no metric tab shows:
        * the ten largest share and the largest name. It belongs at the top of the lens
        * it describes, not in a card above the tabs. */}
-      <ConcentrationLine ledger={ledger} />
-      {/*
-        First in the lens, above the filter, because it is the portfolio's answer rather
-        than a note about the table: a reader who opens this tab is asking "what do I own",
-        and a summary that sits below the filter box — where it started — needs a scroll
-        to find and reads as table chrome.
-      */}
-      <EffectiveHoldingsSummary
-        effective={ledger.effective}
-        rows={ledger.rows}
-        benchmark={model.benchmark}
-        fundCount={Object.keys(model.split.fundWeights).length}
-        directCount={model.split.direct.length}
-        onSeeOverlap={() => model.setLens("overlap")}
-      />
+      <VariantBar />
+      {variant ? (
+        <SummaryVariants
+          variant={variant}
+          ledger={ledger}
+          benchmark={model.benchmark}
+          fundCount={Object.keys(model.split.fundWeights).length}
+          directCount={model.split.direct.length}
+          onSeeOverlap={() => model.setLens("overlap")}
+        />
+      ) : (
+        <>
+          <ConcentrationLine ledger={ledger} />
+          {/*
+            First in the lens, above the filter, because it is the portfolio's answer rather
+            than a note about the table: a reader who opens this tab is asking "what do I own",
+            and a summary that sits below the filter box — where it started — needs a scroll
+            to find and reads as table chrome.
+          */}
+          <EffectiveHoldingsSummary
+            effective={ledger.effective}
+            rows={ledger.rows}
+            benchmark={model.benchmark}
+            fundCount={Object.keys(model.split.fundWeights).length}
+            directCount={model.split.direct.length}
+            onSeeOverlap={() => model.setLens("overlap")}
+          />
+        </>
+      )}
 
       {suppressed.length > 0 ? (
         <p className="notice notice--quiet" role="status">
@@ -608,24 +646,7 @@ export function CompaniesLens({ model }: LensProps) {
         </p>
       ) : null}
 
-      <div className="field">
-        <label className="field__label visually-hidden" htmlFor="companies-filter">
-          Filter companies
-        </label>
-        <input
-          id="companies-filter"
-          className="field__input"
-          type="search"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            resetPage();
-          }}
-          placeholder="Filter by name or ticker"
-          autoComplete="off"
-          spellCheck={false}
-        />
-      </div>
+      {variant ? null : filterField}
 
       <LensSection
         title="Your companies"
@@ -646,6 +667,12 @@ export function CompaniesLens({ model }: LensProps) {
               )} companies`}{" "}
           · {formatShare(totalWeight)} of your portfolio traced to a company
         </p>
+        {variant ? (
+          <>
+            <NotesStrip model={model} />
+            {filterField}
+          </>
+        ) : null}
         {/*
           Which fund the two comparison columns are against. A display preference in the
           query string, exactly one at a time, defaulting to VT; the same picker shape the
