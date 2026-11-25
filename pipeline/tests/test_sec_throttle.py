@@ -13,6 +13,7 @@ wide build sees 429s it did not cause. Two behaviours are load-bearing:
 from __future__ import annotations
 
 import email.utils
+import http.client
 import io
 import urllib.error
 from pathlib import Path
@@ -101,6 +102,79 @@ class TestFetch:
         monkeypatch.setattr(sec.urllib.request, "urlopen", always_throttled)
         with pytest.raises(sec.SecError, match="HTTP 429"):
             sec.fetch("https://www.sec.gov/y")
+
+    def test_a_truncated_body_is_retried_then_returned(self, monkeypatch):
+        """``IncompleteRead`` is an ``HTTPException``, not an ``OSError``: it once escaped the loop."""
+        calls = {"n": 0}
+
+        def flaky(request, timeout=0):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise http.client.IncompleteRead(b"x" * 9348, 1)
+            return _ok()
+
+        monkeypatch.setattr(sec.urllib.request, "urlopen", flaky)
+        assert sec.fetch("https://www.sec.gov/z") == b'<?xml version="1.0"?><x/>'
+        assert calls["n"] == 2
+
+    def test_a_body_that_stays_truncated_is_a_sec_error_not_a_crash(self, monkeypatch):
+        def always(request, timeout=0):
+            raise http.client.IncompleteRead(b"", 1)
+
+        monkeypatch.setattr(sec.urllib.request, "urlopen", always)
+        with pytest.raises(sec.SecError, match="IncompleteRead"):
+            sec.fetch("https://www.sec.gov/w")
+
+    def test_a_truncated_gzip_body_is_retried_then_returned(self, monkeypatch):
+        """``gzip.decompress`` raises ``EOFError`` (an ``Exception``, not an ``OSError``)."""
+        import gzip as _gzip
+
+        calls = {"n": 0}
+        good = _gzip.compress(b'<?xml version="1.0"?><x/>')
+
+        class Response:
+            headers = {"Content-Encoding": "gzip", "Content-Type": "text/xml"}
+
+            def __init__(self, body):
+                self._body = body
+
+            def read(self):
+                return self._body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        def flaky(request, timeout=0):
+            calls["n"] += 1
+            return Response(good[:-8] if calls["n"] == 1 else good)
+
+        monkeypatch.setattr(sec.urllib.request, "urlopen", flaky)
+        assert sec.fetch("https://www.sec.gov/g") == b'<?xml version="1.0"?><x/>'
+        assert calls["n"] == 2
+
+    def test_a_gzip_body_that_stays_truncated_is_a_sec_error(self, monkeypatch):
+        import gzip as _gzip
+
+        bad = _gzip.compress(b"<x/>" * 50)[:-8]
+
+        class Response:
+            headers = {"Content-Encoding": "gzip"}
+
+            def read(self):
+                return bad
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        monkeypatch.setattr(sec.urllib.request, "urlopen", lambda request, timeout=0: Response())
+        with pytest.raises(sec.SecError, match="EOFError"):
+            sec.fetch("https://www.sec.gov/h")
 
     def test_a_throttle_is_no_longer_given_four_tries(self):
         assert sec.DEFAULT_TRIES > 4

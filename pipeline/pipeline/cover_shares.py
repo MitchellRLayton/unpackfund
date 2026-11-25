@@ -41,7 +41,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from . import sec
+from . import sec, xbrl
 
 #: The dei element that carries the cover-page count, matched on its local name.
 DEI_FACT = "EntityCommonStockSharesOutstanding"
@@ -85,72 +85,10 @@ class CoverShares:
 
 
 @dataclass(frozen=True)
-class _Context:
-    """What a fact's context says: when it was true, and which class it is for."""
-
-    date: str
-    dims: tuple[str, ...]
-    """Sorted ``dimension=member`` pairs; empty means the context is undimensioned."""
-
-
-@dataclass(frozen=True)
 class _Fact:
     value: float
     date: str
     dims: tuple[str, ...]
-
-
-def _split(tag: str) -> tuple[str, str]:
-    """``{namespace}local`` → ``(namespace, local)``; a bare tag has no namespace."""
-    if tag.startswith("{"):
-        namespace, _, local = tag[1:].partition("}")
-        return namespace, local
-    return "", tag
-
-
-def _contexts(root: ET.Element) -> dict[str, _Context]:
-    """Every ``xbrli:context`` in the document, keyed by its id.
-
-    Inline XBRL keeps its contexts in an ``<ix:header>`` inside the same HTML, so
-    one walk serves both shapes.
-    """
-    found: dict[str, _Context] = {}
-    for element in root.iter():
-        _, local = _split(element.tag)
-        if local != "context":
-            continue
-        identifier = (element.get("id") or "").strip()
-        if not identifier:
-            continue
-        found[identifier] = _Context(
-            date=_context_date(element), dims=_context_dims(element)
-        )
-    return found
-
-
-def _context_date(element: ET.Element) -> str:
-    """The period end: ``endDate`` for a duration, ``instant`` for a point in time."""
-    instant = ""
-    for child in element.iter():
-        _, local = _split(child.tag)
-        if local == "endDate":
-            return (child.text or "").strip()
-        if local == "instant" and not instant:
-            instant = (child.text or "").strip()
-    return instant
-
-
-def _context_dims(element: ET.Element) -> tuple[str, ...]:
-    """The context's dimensions — a share class is one ``explicitMember``."""
-    members: list[str] = []
-    for child in element.iter():
-        _, local = _split(child.tag)
-        if local not in ("explicitMember", "typedMember"):
-            continue
-        dimension = (child.get("dimension") or "").strip()
-        member = (child.text or "").strip()
-        members.append(f"{dimension}={member}")
-    return tuple(sorted(members))
 
 
 def _is_dei_fact_name(name: str | None) -> bool:
@@ -166,53 +104,23 @@ def _is_dei_fact_name(name: str | None) -> bool:
     return local == DEI_FACT and "dei" in prefix.lower()
 
 
-def _number(text: str, *, scale: int = 0, negative: bool = False) -> float | None:
-    """A displayed number as a float: commas and spaces out, ``scale`` applied.
-
-    Inline XBRL writes the value the way a reader sees it — ``1,234`` with
-    ``scale="6"`` meaning 1,234,000,000 — so the display text is not the number.
-    """
-    cleaned = "".join(text.replace(",", "").replace("\u00a0", " ").split())
-    if not cleaned:
-        return None
-    try:
-        value = float(cleaned)
-    except ValueError:
-        return None
-    if scale:
-        try:
-            value *= 10.0**scale
-        except OverflowError:
-            return None
-    if negative:
-        value = -value
-    return value if math.isfinite(value) else None
-
-
-def _scale(element: ET.Element) -> int:
-    try:
-        return int((element.get("scale") or "").strip())
-    except ValueError:
-        return 0
-
-
-def _facts(root: ET.Element, contexts: dict[str, _Context]) -> tuple[list[_Fact], str]:
+def _facts(root: ET.Element, contexts: dict[str, xbrl.Context]) -> tuple[list[_Fact], str]:
     """Every dei share-count fact in the document, plus which shape it came from."""
     facts: list[_Fact] = []
     inline = False
     for element in root.iter():
-        namespace, local = _split(element.tag)
+        namespace, local = xbrl.split(element.tag)
         if local == "nonFraction":
             inline = True
             if not _is_dei_fact_name(element.get("name")):
                 continue
-            value = _number(
+            value = xbrl.number(
                 "".join(element.itertext()),
-                scale=_scale(element),
+                scale=xbrl.scale(element),
                 negative=(element.get("sign") or "").strip() == "-",
             )
         elif local == DEI_FACT and "dei" in namespace.lower():
-            value = _number("".join(element.itertext()))
+            value = xbrl.number("".join(element.itertext()))
         else:
             continue
         if value is None or value <= 0:
@@ -301,7 +209,7 @@ def parse_cover(xml_bytes: bytes) -> tuple[float, str, int, str] | None:
         root = ET.fromstring(xml_bytes)
     except ET.ParseError:
         return None
-    contexts = _contexts(root)
+    contexts = xbrl.contexts(root)
     facts, basis = _facts(root, contexts)
     if not facts:
         return None
@@ -317,20 +225,11 @@ def parse_cover(xml_bytes: bytes) -> tuple[float, str, int, str] | None:
 # --- the filing that carries it ---------------------------------------------
 
 
-def _recent_rows(submissions: dict) -> list[dict]:
-    """``filings.recent`` as rows — EDGAR serves it column-oriented."""
-    recent = (submissions.get("filings") or {}).get("recent") or {}
-    columns = {name: values for name, values in recent.items() if isinstance(values, list)}
-    if not columns:
-        return []
-    return [dict(zip(columns, values)) for values in zip(*columns.values())]
-
-
 def _latest_cover_filing(submissions: dict) -> dict | None:
     """The newest 10-K or 10-Q row, by filing date then accession."""
     best: dict | None = None
     best_key = ("", "")
-    for row in _recent_rows(submissions):
+    for row in xbrl.recent_rows(submissions):
         if str(row.get("form") or "").strip() not in COVER_FORMS:
             continue
         accession = str(row.get("accessionNumber") or "").strip()
@@ -340,43 +239,6 @@ def _latest_cover_filing(submissions: dict) -> dict | None:
         if best is None or key > best_key:
             best, best_key = row, key
     return best
-
-
-def _index_items(document: dict) -> list[dict]:
-    """The filing directory's file list, from ``index.json``."""
-    directory = document.get("directory")
-    if not isinstance(directory, dict):
-        return []
-    items = directory.get("item")
-    if not isinstance(items, list):
-        return []
-    return [item for item in items if isinstance(item, dict) and item.get("name")]
-
-
-def _instance_name(items: Sequence[dict]) -> str | None:
-    """The XBRL instance document, if the filing has one.
-
-    Two labels name the same file: the ``*_htm.xml`` name EDGAR gives it, and the
-    ``XBRL INSTANCE`` / ``EX-101.INS`` type it is filed under.
-    """
-    for item in items:
-        name = str(item.get("name") or "")
-        kind = str(item.get("type") or "").strip().lower()
-        if name.lower().endswith("_htm.xml") or "xbrl instance" in kind or kind == "ex-101.ins":
-            return name
-    return None
-
-
-def _primary_name(items: Sequence[dict], filing: dict) -> str | None:
-    """The primary ``.htm`` document: the one the submission names, else the first."""
-    names = [str(item.get("name") or "") for item in items]
-    wanted = str(filing.get("primaryDocument") or "").strip()
-    if wanted and wanted in names:
-        return wanted
-    for name in names:
-        if name.lower().endswith((".htm", ".html")):
-            return name
-    return None
 
 
 def _cover(cik: int, parsed: tuple[float, str, int, str]) -> CoverShares:
@@ -405,9 +267,9 @@ def latest_cover_shares(cik: int) -> CoverShares | None:
 
     directory = sec.filing_dir_url(cik, accession)
     index = sec.fetch_json(directory + "index.json")
-    items = _index_items(index) if isinstance(index, dict) else []
+    items = xbrl.index_items(index) if isinstance(index, dict) else []
 
-    instance = _instance_name(items)
+    instance = xbrl.instance_name(items)
     if instance is not None:
         parsed = parse_cover(sec.fetch(directory + instance))
         if parsed is not None:
@@ -416,7 +278,7 @@ def latest_cover_shares(cik: int) -> CoverShares | None:
     # No instance, or an instance that states no count: the primary document is
     # the same filing in Inline XBRL, so it is the fallback rather than a second
     # source.
-    primary = _primary_name(items, filing)
+    primary = xbrl.primary_name(items, filing)
     if primary is None:
         return None
     parsed = parse_cover(sec.fetch(directory + primary))

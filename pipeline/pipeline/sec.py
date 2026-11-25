@@ -28,6 +28,7 @@ import calendar
 import email.utils
 import gzip
 import hashlib
+import http.client
 import json
 import os
 import random
@@ -35,6 +36,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zlib
 from pathlib import Path
 from threading import Lock
 
@@ -217,7 +219,19 @@ def fetch(
                 if wait is not None:
                     time.sleep(wait)
                     continue
-        except (urllib.error.URLError, TimeoutError, OSError) as error:
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            OSError,
+            http.client.HTTPException,
+            EOFError,
+            zlib.error,
+        ) as error:
+            # ``HTTPException`` is not an ``OSError``: ``IncompleteRead`` (a body cut one
+            # byte short, seen once on the 2026-11-25 fee walk) escaped this loop and
+            # killed a 1,156-registrant run. A truncated body is a transient fault, and so is
+            # a truncated gzip stream: ``gzip.decompress`` raises ``EOFError`` (or ``zlib.error``
+            # when the bytes are corrupt), neither an ``OSError``.
             last_error = error
             if attempt == tries - 1:
                 raise SecError(f"{type(error).__name__} for {url}") from error

@@ -33,7 +33,6 @@ second run reads the cache and costs nothing.
 from __future__ import annotations
 
 import argparse
-import http.client
 import json
 import re
 import sys
@@ -48,198 +47,34 @@ from typing import Any, Iterable, Mapping
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "pipeline"))
 
-from pipeline import sec  # noqa: E402
-from pipeline.cover_shares import (  # noqa: E402
-    _index_items,
-    _instance_name,
-    _number,
-    _primary_name,
-    _recent_rows,
-    _scale,
-    _split,
+from pipeline import sec, xbrl  # noqa: E402
+from pipeline.fees import (  # noqa: E402
+    ELEMENTS,
+    EPS,
+    FEE_CEILING,
+    LOOKBACK_DAYS,
+    NET_OVER_TOTAL,
+    UNREADABLE,
+    ClassFees,
+    _fee_rows,
+    _instance_facts as _read_filing,
+    classes_without_series,
+    fees_for,
+    is_recoupment as _is_recoupment,
+    parse_instance,
+    refusal,
+    series_in,
 )
 from pipeline.universe import _mf_map  # noqa: E402
 
-#: Filings whose fee table the oef taxonomy tags. 485BPOS is the effective registration
-#: statement; a 497 can restate the fee table in a supplement.
-FEE_FORMS = ("485BPOS", "497")
-
-OEF_PREFIX = "http://xbrl.sec.gov/oef/"
-XSI_NIL = "{http://www.w3.org/2001/XMLSchema-instance}nil"
-
-#: oef local name → our field name.
-ELEMENTS = {
-    "ExpensesOverAssets": "total",
-    "NetExpensesOverAssets": "net",
-    "FeeWaiverOrReimbursementOverAssets": "waiver",
-}
-
-_SERIES = re.compile(r"S\d{9}")
-_CLASS = re.compile(r"C\d{9}")
 _CIK_IN_URL = re.compile(r"/edgar/data/(\d+)/")
 
-#: Two values closer than this are the same fee (the facts carry 4 decimals).
-EPS = 5e-5
-
-#: A fact whose text is not a number. Kept apart from nil: "not stated" and "could not
-#: read" are different findings (review R7).
-UNREADABLE = "unreadable"
-
-#: Phase 1's validator bounds (plan, amended after review R2): total and net in [0, 0.10);
-#: the waiver may carry either sign, and its size is bounded by the same ceiling.
-FEE_CEILING = 0.10
-#: Net may exceed total by at most this, unless a stated positive waiver reconciles it.
-NET_OVER_TOTAL = 1e-4
-
-
-# --- parsing one instance ----------------------------------------------------
-
-
-@dataclass
-class ClassFees:
-    """Every value one share class's contexts carry, per field."""
-
-    values: dict[str, set] = field(default_factory=lambda: defaultdict(set))
-
-    def add(self, name: str, value: float | str | None) -> None:
-        self.values[name].add(value)
-
-    def resolved(self, name: str) -> tuple[str, float | None]:
-        """``(state, value)``: ``absent`` · ``nil`` · ``unreadable`` · ``ok`` · ``ambiguous``."""
-        seen = self.values.get(name)
-        if not seen:
-            return "absent", None
-        numbers = sorted(v for v in seen if isinstance(v, float))
-        if UNREADABLE in seen:
-            return ("ambiguous" if numbers else "unreadable"), None
-        if not numbers:
-            return "nil", None
-        if numbers[-1] - numbers[0] > EPS:
-            return "ambiguous", None
-        return "ok", numbers[0]
-
-
-def _member(dims: Iterable[tuple[str, str]], axis: str, pattern: re.Pattern) -> str | None:
-    for dimension, member in dims:
-        if dimension.endswith(axis):
-            found = pattern.search(member)
-            if found:
-                return found.group(0)
-    return None
-
-
-def _class_key(dims: Iterable[tuple[str, str]]) -> str | None:
-    """The ``C…`` id, ``None`` when the context has no ``ClassAxis`` at all, and
-    ``?<member>`` when it has one we cannot read as a class id.
-
-    The last case must not collapse into ``None``: a series-level key answers for any
-    class of the series through the ``series`` match (review R3, GARIX tags its class as
-    ``S000040832Member``).
-    """
-    for dimension, member in dims:
-        if dimension.endswith("ClassAxis"):
-            found = _CLASS.search(member)
-            return found.group(0) if found else f"?{member}"
-    return None
-
-
-def parse_instance(xml_bytes: bytes) -> dict[tuple[str | None, str | None], ClassFees]:
-    """``(series_id, class_id) → ClassFees`` for every oef fee fact in an instance.
-
-    ``None`` in the key means the context has no such axis: a single-series registrant
-    omits ``LegalEntityAxis``, a single-class series may omit ``ClassAxis``.
-    """
-    root = ET.fromstring(xml_bytes)
-    contexts: dict[str, tuple[tuple[str, str], ...]] = {}
-    for element in root.iter():
-        _, local = _split(element.tag)
-        if local != "context" or not element.get("id"):
-            continue
-        dims = []
-        for child in element.iter():
-            _, child_local = _split(child.tag)
-            if child_local == "explicitMember":
-                dims.append(((child.get("dimension") or "").strip(), (child.text or "").strip()))
-        contexts[element.get("id").strip()] = tuple(dims)
-
-    found: dict[tuple[str | None, str | None], ClassFees] = defaultdict(ClassFees)
-    for element in root.iter():
-        namespace, local = _split(element.tag)
-        if local == "nonFraction":
-            # Inline XBRL: the concept is the ``name`` attribute, and the text is the
-            # displayed figure — ``0.40`` with ``scale="-2"`` is 0.0040.
-            prefix, _, concept = (element.get("name") or "").rpartition(":")
-            name = ELEMENTS.get(concept) if "oef" in prefix.lower() else None
-            if name is None:
-                continue
-            value = _inline_value(element)
-            if value is None and element.get(XSI_NIL) != "true":
-                value = UNREADABLE
-        else:
-            name = ELEMENTS.get(local)
-            if name is None or not namespace.startswith(OEF_PREFIX):
-                continue
-            if element.get(XSI_NIL) == "true":
-                value = None
-            else:
-                try:
-                    value = float((element.text or "").strip())
-                except ValueError:
-                    value = UNREADABLE
-        dims = contexts.get((element.get("contextRef") or "").strip(), ())
-        key = (_member(dims, "LegalEntityAxis", _SERIES), _class_key(dims))
-        found[key].add(name, value)
-    return dict(found)
-
-
-def _inline_value(element: ET.Element) -> float | None:
-    if element.get(XSI_NIL) == "true":
-        return None
-    if (element.get("format") or "").endswith(("fixed-zero", "fixedzero")):
-        # "None" or "—" in the fee table, tagged as a zero.
-        return 0.0
-    value = _number(
-        "".join(element.itertext()),
-        scale=_scale(element),
-        negative=(element.get("sign") or "").strip() == "-",
-    )
-    return None if value is None else round(value, 8)
-
-
-def fees_for(
-    facts: Mapping[tuple[str | None, str | None], ClassFees],
-    series_id: str,
-    class_id: str | None,
-) -> tuple[str, ClassFees | None]:
-    """The facts for one published class: ``(match, fees)``.
-
-    ``match`` says how the class was found — ``class`` (exact series and class),
-    ``class-no-series`` (class axis only), ``series-single-class`` (the series has one
-    class in the filing and the published class is unknown or untagged), ``series``
-    (series-level facts, no class axis) — or ``none``.
-    """
-    if class_id and (series_id, class_id) in facts:
-        return "class", facts[(series_id, class_id)]
-    if class_id and (None, class_id) in facts:
-        return "class-no-series", facts[(None, class_id)]
-    if (series_id, None) in facts:
-        return "series", facts[(series_id, None)]
-    in_series = [key for key in facts if key[0] == series_id and key[1] and not key[1].startswith("?")]
-    if len(in_series) == 1 and class_id is None:
-        return "series-single-class", facts[in_series[0]]
-    return "none", None
-
-
-def series_in(facts: Mapping[tuple[str | None, str | None], ClassFees]) -> set[str | None]:
-    return {key[0] for key, fees in facts.items() if fees.values.get("total")}
-
-
-def classes_without_series(facts: Mapping[tuple[str | None, str | None], ClassFees]) -> set[str]:
-    """Classes tagged with a total but no ``dei:LegalEntityAxis`` member."""
-    return {
-        key[1] for key, fees in facts.items()
-        if key[0] is None and key[1] and not key[1].startswith("?") and fees.values.get("total")
-    }
+# Parsing, matching and the validator's rules live in ``pipeline.fees`` — one definition,
+# shared with the release build. This script keeps only what a measurement needs and
+# production does not: ``Result`` per fund, the stale-prospectus signal, the report. Its
+# registrant walk is the measured one (phase 0); ``fees.registrant_fees`` is the
+# production walk, which adds a point-in-time bound and withholds a fee behind an
+# unreadable newer filing.
 
 
 # --- the walk ---------------------------------------------------------------
@@ -315,64 +150,19 @@ def load_funds(catalogue_path: Path) -> list[Fund]:
     return funds
 
 
-#: A body cut short mid-read (``http.client.IncompleteRead``) escapes ``sec.fetch``'s retry
-#: loop, which catches ``OSError`` and HTTP status errors only. Seen once on the full run
-#: (registrant 550, a 9,349-byte instance one byte short). Retried here; a persistent one is
-#: counted as a filing error, never silently read as "no fees".
-TRANSIENT = (http.client.HTTPException,)
+def _older_page(name: str) -> list[dict]:
+    page = sec.fetch_json(f"https://data.sec.gov/submissions/{name}")
+    return xbrl.recent_rows({"filings": {"recent": page}})
 
 
-def _fetch(url: str, *, as_json: bool = False, tries: int = 3, **kwargs):
-    for attempt in range(tries):
-        try:
-            return sec.fetch_json(url, **kwargs) if as_json else sec.fetch(url, **kwargs)
-        except TRANSIENT:
-            if attempt == tries - 1:
-                raise
-            time.sleep(2 ** attempt)
-    raise AssertionError("unreachable")
+def _fetch(url: str, *, as_json: bool = False, **kwargs):
+    return sec.fetch_json(url, **kwargs) if as_json else sec.fetch(url, **kwargs)
 
 
 def _instance_facts(cik: int, row: Mapping[str, Any]) -> tuple[dict | None, str]:
-    """The filing's fee facts and where they came from: ``instance`` or ``inline``.
-
-    A filing flagged XBRL with no ``*_htm.xml`` beside it is Inline XBRL only, and its
-    primary document carries the facts.
-    """
-    directory = sec.filing_dir_url(cik, str(row.get("accessionNumber") or ""))
-    index = _fetch(directory + "index.json", as_json=True)
-    items = _index_items(index) if isinstance(index, dict) else []
-    name = _instance_name(items)
-    primary = _primary_name(items, dict(row)) if row.get("isInlineXBRL") else None
-    if name is not None:
-        try:
-            return parse_instance(_fetch(directory + name)), "instance"
-        except (sec.SecError, *TRANSIENT):
-            # index.json can list an instance that is not served (an iShares 485BPOS
-            # returned 404 for its *_htm.xml): the inline primary carries the same facts.
-            if primary is None:
-                raise
-            return parse_instance(_fetch(directory + primary)), "inline-fallback"
-    if primary is not None:
-        return parse_instance(_fetch(directory + primary)), "inline"
-    return None, "none"
-
-
-def _fee_rows(rows: Iterable[Mapping[str, Any]], since: str = "") -> list[dict]:
-    """Fee-form rows filed on or after ``since``, newest first."""
-    picked = [
-        dict(r)
-        for r in rows
-        if r.get("form") in FEE_FORMS and str(r.get("filingDate") or "") >= since
-    ]
-    picked.sort(key=lambda r: (str(r.get("filingDate") or ""), str(r.get("accessionNumber"))), reverse=True)
-    return picked
-
-
-def _older_page(name: str) -> list[dict]:
-    """One of ``filings.files``: the same columns as ``recent``, without the wrapper."""
-    page = _fetch(f"https://data.sec.gov/submissions/{name}", as_json=True)
-    return _recent_rows({"filings": {"recent": page}})
+    """The filing's fee facts and where they came from — ``fees._instance_facts`` less the URL."""
+    filing, basis, _url = _read_filing(cik, row)
+    return (filing.facts if filing is not None else None), basis
 
 
 def probe_registrant(
@@ -391,7 +181,7 @@ def probe_registrant(
     """
     stats = Counter()
     submissions = _fetch(sec.submissions_url(cik), as_json=True, max_age=sec.INDEX_MAX_AGE_S)
-    rows = _fee_rows(_recent_rows(submissions), since)
+    rows = _fee_rows(xbrl.recent_rows(submissions), since, "9999-12-31")
     older = [
         f["name"]
         for f in (submissions.get("filings") or {}).get("files", [])
@@ -413,7 +203,7 @@ def probe_registrant(
         if position >= len(xbrl_rows):
             if pages_read >= min(max_pages, len(older)):
                 break
-            page_rows = _fee_rows(_older_page(older[pages_read]), since)
+            page_rows = _fee_rows(_older_page(older[pages_read]), since, "9999-12-31")
             pages_read += 1
             rows.extend(page_rows)
             xbrl_rows.extend(r for r in page_rows if r.get("isXBRL") or r.get("isInlineXBRL"))
@@ -423,7 +213,7 @@ def probe_registrant(
         walked += 1
         try:
             facts, basis = _instance_facts(cik, row)
-        except (sec.SecError, ET.ParseError, *TRANSIENT) as error:
+        except (sec.SecError, ET.ParseError) as error:
             stats["filing_errors"] += 1
             stats[f"error:{type(error).__name__}"] += 1
             unread = unread or str(row.get("accessionNumber"))
@@ -514,26 +304,15 @@ def _rate(part: Iterable[Result], whole: list[Result]) -> dict[str, Any]:
     }
 
 
+
+
 def is_recoupment(r: Result) -> bool:
-    """Net above total because a positive waiver (a recoupment) is stated and reconciles."""
-    return (
-        None not in (r.total, r.net, r.waiver)
-        and r.waiver > EPS
-        and abs(r.total + r.waiver - r.net) <= NET_OVER_TOTAL
-    )
+    return _is_recoupment(r.total, r.net, r.waiver)
 
 
 def phase1_refusal(r: Result) -> str | None:
     """Why phase 1's validator would publish no fee for a covered class, or ``None``."""
-    for name in ("total", "net"):
-        value = getattr(r, name)
-        if value is not None and not 0 <= value < FEE_CEILING:
-            return f"{name}-out-of-range"
-    if r.waiver is not None and abs(r.waiver) >= FEE_CEILING:
-        return "waiver-out-of-range"
-    if r.net is not None and r.total is not None and r.net > r.total + NET_OVER_TOTAL and not is_recoupment(r):
-        return "net-above-total"
-    return None
+    return refusal(r.total, r.net, r.waiver)
 
 
 def summarise(results: list[Result]) -> dict[str, Any]:
@@ -654,7 +433,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--registrants", type=int, default=0, help="only the N largest registrants by assets (0 = all)")
     parser.add_argument("--max-filings", type=int, default=150, help="XBRL fee filings walked per registrant")
     parser.add_argument(
-        "--window-days", type=int, default=548,
+        "--window-days", type=int, default=LOOKBACK_DAYS,
         help="read only filings this many days before the release date (548 ≈ 18 months, past the 16-month update rule)",
     )
     parser.add_argument("--max-pages", type=int, default=3, help="older submissions pages read per registrant")

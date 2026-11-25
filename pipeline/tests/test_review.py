@@ -401,6 +401,9 @@ def test_severity_is_declared_once_per_rule():
         "filed_before_asof": "blocker",
         "fund_disappeared": "warn",
         "new_fund": "info",
+        "fee_jump": "warn",
+        "fee_lost": "warn",
+        "fee_stale": "info",
     }
     assert set(review.SEVERITY_ORDER) == {"blocker", "warn", "info"}
 
@@ -444,6 +447,7 @@ def test_thresholds_name_their_units():
         "holdings_double_factor",
         "holdings_half_factor",
         "top10_jump_bp",
+        "fee_jump_bp",
     }
 
 
