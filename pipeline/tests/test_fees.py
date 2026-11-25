@@ -212,6 +212,15 @@ def test_a_stated_zero_waiver_beside_a_lower_net_is_two_facts_that_disagree():
     assert fees.refusal(0.0, 0.0, 0.0) is None
 
 
+def test_a_waiver_that_cannot_raise_a_fee_leaves_no_room_for_net_above_total():
+    """LYRIX: total 0.98%, net 0.99%, waiver -0.02%. The 1 bp slack is for facts with no waiver."""
+    assert fees.refusal(0.0098, 0.0099, -0.0002) == "net-above-total"
+    assert fees.refusal(0.0098, 0.0099, 0.0) == "net-above-total"
+    assert fees.refusal(0.0098, 0.0099, None) is None  # no waiver fact: the rounding tolerance
+    assert fees.refusal(0.0098, 0.0098, -0.0002) is None  # equal is not above
+    assert fees.refusal(0.0123, 0.0125, 0.0002) is None  # a recoupment still reconciles
+
+
 def test_the_one_basis_point_boundary_does_not_flip_on_a_float_bit():
     """63 of 1,000 grid points where net exceeds total by exactly 1 bp were refused."""
     refused = [
@@ -389,6 +398,13 @@ def test_a_filing_with_no_series_axis_is_credited_only_to_a_single_series_regist
     # One series: the filing is that series'.
     out = walk({"0001": filing}, rows, wants, series_count=1)
     assert out.rows["AAA"]["total"] == 0.01
+
+
+def test_a_count_of_one_does_not_give_two_wanted_series_the_same_undimensioned_fee(walk):
+    filing = _filing_of((None, None, "0.0150"))
+    wants = [fees.Want("AAA", S1, None), fees.Want("BBB", S2, None)]
+    out = walk({"0001": filing}, _filing_rows(("0001", "2026-04-28")), wants, series_count=1)
+    assert out.rows == {}
 
 
 def test_a_series_less_filing_that_also_names_series_is_not_credited_to_a_single_series(walk):
@@ -754,6 +770,16 @@ def test_a_fund_that_loses_some_of_its_class_fees_is_a_warning_naming_them(tmp_p
     assert (finding["before"], finding["after"]) == (3, 1)
     # A class gained is not a loss.
     assert _review(tmp_path / "b", _doc(AAA=_row()), _doc(AAA=_row(), AAAX=_row())).rules["fee_lost"] == 0
+
+
+def test_a_fee_move_is_judged_on_the_unrounded_basis_points(tmp_path):
+    """5.0 -> 30.4 bp is 25.4, over the threshold; whole-bp rounding made it exactly 25."""
+    report = _review(tmp_path, _doc(AAA=_row(0.00050)), _doc(AAA=_row(0.00304)))
+    (finding,) = [f for f in report.findings if f["rule"] == "fee_jump"]
+    assert (finding["before"], finding["after"]) == (5, 30.4)
+    assert "+25.4 bp" in finding["detail"]
+    exactly = _review(tmp_path / "b", _doc(AAA=_row(0.0005)), _doc(AAA=_row(0.0030)))
+    assert exactly.rules["fee_jump"] == 0  # exactly 25 bp is not over
 
 
 def test_a_fee_read_from_a_filing_over_13_months_old_is_info(tmp_path):

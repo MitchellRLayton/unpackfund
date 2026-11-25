@@ -165,7 +165,7 @@ class FundSnapshot:
     holdings: int
     top10_bp: int | None
     residual_bp: int
-    fees: tuple[tuple[str, int, str], ...] = ()
+    fees: tuple[tuple[str, float, str], ...] = ()
     """``(class ticker, headline fee in bp, filed_at)`` for every class that states one."""
 
     @classmethod
@@ -194,13 +194,16 @@ class FundSnapshot:
             total_bp += weight
         metrics = document.get("metrics") or {}
         top10 = metrics.get("top10_pct") if isinstance(metrics, dict) else None
-        stated: list[tuple[str, int, str]] = []
+        stated: list[tuple[str, float, str]] = []
         block = document.get("fees")
         classes = block.get("classes") if isinstance(block, dict) else None
         for symbol, row in sorted((classes or {}).items()):
             fee = fees_mod.headline(row) if isinstance(row, dict) else None
             if isinstance(fee, (int, float)) and not isinstance(fee, bool):
-                stated.append((str(symbol), round(fee * 10_000), str(row.get("filed_at") or "")))
+                # Basis points to two places, whole numbers kept whole: rounding each fee to a whole
+                # bp before comparing made a 5.0 -> 30.4 bp move read as exactly 25 and slip under.
+                bp = round(fee * 10_000, 2)
+                stated.append((str(symbol), int(bp) if bp == int(bp) else bp, str(row.get("filed_at") or "")))
         return cls(
             ticker=str(ticker),
             # The join key is ``fund_id``: a ticker can be reassigned between funds,
@@ -491,7 +494,7 @@ def _check_fee_jump(current: FundSnapshot, parent: FundSnapshot) -> list[dict[st
                 _finding(
                     current,
                     "fee_jump",
-                    f"{symbol} stated fee moved {bp - before[symbol]:+,} bp "
+                    f"{symbol} stated fee moved {round(bp - before[symbol], 2):+,} bp "
                     f"({before[symbol] / 100:.2f}% → {bp / 100:.2f}%), over the {threshold} bp threshold",
                     before[symbol],
                     bp,

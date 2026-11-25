@@ -312,7 +312,11 @@ def refusal(total: float | None, net: float | None, waiver: float | None) -> str
         if total is not None and _over(abs(waiver), total) and not recoupment:
             return "waiver-out-of-range"
     if net is not None and total is not None:
-        if _over(net, total + NET_OVER_TOTAL) and not recoupment:
+        # The 1 bp tolerance is for rounding between independent facts. A stated waiver that cannot
+        # raise a fee (zero or negative) leaves no room for net above total at all (LYRIX: total
+        # 0.98%, net 0.99%, waiver -0.02%).
+        no_markup = waiver is not None and waiver <= EPS
+        if _over(net, total + (0.0 if no_markup else NET_OVER_TOTAL)) and not recoupment:
             return "net-above-total"
         # The filing states "no waiver" and a lower net in the same breath (USBNX: net 0 beside a
         # 1.35% total and a waiver of -0): two facts that disagree, so neither is published.
@@ -502,9 +506,11 @@ def registrant_fees(
     xbrl_rows = [r for r in rows if r.get("isXBRL") or r.get("isInlineXBRL")]
 
     pending = {w.ticker: w for w in wants if w.series_id}
-    single_series = (
-        series_count == 1 if series_count is not None else len({w.series_id for w in wants}) == 1
-    )
+    # A filing with no series axis belongs to the wanted series only when it is the registrant's
+    # one series *and* the only series wanted: either alone is not enough (a count of 1 with two
+    # wanted series would give both the same undimensioned fee).
+    wanted_series = len({w.series_id for w in wants})
+    single_series = wanted_series == 1 and (series_count is None or series_count == 1)
     partial: dict[str, str] = {}
     walked = position = pages_read = 0
     # The newest fee filing we could not read. The walk is newest-first, so every fee
