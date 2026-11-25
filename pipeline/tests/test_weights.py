@@ -428,3 +428,73 @@ def test_category_coverage_handles_a_class_with_no_weight():
     assert weights.category_coverage(rows)["equity"] == 100.0
     assert weights.category_coverage(rows)["debt"] == 0.0
     assert weights.category_coverage(rows)["cash"] is None
+
+
+# --- a foreign local symbol is not a US listing ------------------------------
+
+#: Release 2026-11-24.2: three foreign rows sat under US companies because their home
+#: symbol matched an EDGAR ticker and one name word matched too. The LEIs are the
+#: filings' own.
+NEXT_LEI = "213800WQD8ECPZP9PH98"
+SM_INV_LEI = "254900YB8UATFP21AF80"
+BHARAT_LEI = "335800HS8AOTM9W1F335"
+
+
+def _us_index() -> companies.CompanyIndex:
+    return companies.CompanyIndex.from_document(
+        {
+            "0": {"cik_str": 1852131, "ticker": "NXT", "title": "Nextpower Inc."},
+            "1": {"cik_str": 893538, "ticker": "SM", "title": "SM Energy Co"},
+            "2": {"cik_str": 863436, "ticker": "BHE", "title": "BENCHMARK ELECTRONICS INC"},
+            "3": {"cik_str": 1792580, "ticker": "OVV", "title": "Ovintiv Inc."},
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "ticker", "lei", "country", "gleif_name"),
+    [
+        ("Next PLC", "NXT", NEXT_LEI, "GB", "NEXT PLC"),
+        ("SM Investments Corp", "SM PM", SM_INV_LEI, "PH", "SM INVESTMENTS CORPORATION"),
+        ("Bharat Electronics Ltd", "BHE", BHARAT_LEI, "IN", "BHARAT ELECTRONICS LIMITED"),
+    ],
+)
+def test_a_foreign_row_s_lei_overrules_a_shared_word_ticker_match(
+    name, ticker, lei, country, gleif_name
+):
+    """``Next``/``Nextpower`` share a prefix and ``SM``/``Electronics`` a word: not identity."""
+    holdings = [_holding(name, 100.0, ticker=ticker, lei=lei, inv_country=country)]
+    issuers = _issuers([_entity(lei, gleif_name)])
+    evidence = companies.IdentityEvidence()
+    vector = weights.build_vector(
+        holdings, _us_index(), 100.0, lag_days=10, issuers=issuers, evidence=evidence
+    )
+    assert vector.holdings[0].company_id == gleif.issuer_id(lei)
+    assert vector.rung_counts["ticker"] == 0
+    # The wrong answer never becomes evidence another fund could inherit.
+    assert not evidence.lei and not evidence.isin
+
+
+def test_a_foreign_row_whose_lei_names_the_same_company_keeps_it():
+    """Ovintiv's LEI is Ovintiv's: a Canadian-filed row stays the US registrant."""
+    lei = "2549003MEX7YMKLGI239"
+    holdings = [_holding("Ovintiv Inc", 100.0, ticker="OVV", lei=lei, inv_country="CA")]
+    issuers = _issuers([_entity(lei, "OVINTIV INC.")])
+    vector = weights.build_vector(
+        holdings, _us_index(), 100.0, lag_days=10, issuers=issuers
+    )
+    assert vector.holdings[0].company_id == company_id(1792580)
+    assert vector.rung_counts["ticker"] == 1
+
+
+def test_a_us_row_with_a_shared_word_keeps_its_ticker_match():
+    """The rule is about foreign symbols: a US row's distinctive match is untouched."""
+    holdings = [
+        _holding("SM Energy Company", 100.0, ticker="SM", lei=SM_INV_LEI, inv_country="US")
+    ]
+    issuers = _issuers([_entity(SM_INV_LEI, "SM INVESTMENTS CORPORATION")])
+    vector = weights.build_vector(
+        holdings, _us_index(), 100.0, lag_days=10, issuers=issuers
+    )
+    assert vector.holdings[0].company_id == company_id(893538)
+    assert vector.rung_counts["ticker"] == 1

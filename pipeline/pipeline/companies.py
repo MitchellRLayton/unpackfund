@@ -137,6 +137,7 @@ ALL_RUNGS = (
 #: Public names for the two rungs a caller outside this module has to say out loud.
 RUNG_ISIN_DIRECT = _RUNG_ISIN_DIRECT
 RUNG_FIGI = _RUNG_FIGI
+RUNG_TICKER = _RUNG_TICKER
 #: The rungs that resolve a row into the foreign-issuer namespace (``l_``).
 ISSUER_RUNGS = (_RUNG_LEI_ISSUER, _RUNG_ISIN_LEI_ISSUER)
 #: The rungs that come from the corroborated-identity table rather than from a
