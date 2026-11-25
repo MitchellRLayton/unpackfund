@@ -51,6 +51,7 @@ import type { Lens } from "@/lib/view-fragment";
 import { useWorkspaceActions } from "./actions";
 import { InfoTip } from "@/components/feedback/InfoTip";
 import { NotesStrip } from "./NotesStrip";
+import { scrollBelowTopBar } from "./scroll";
 import type { LensMetric } from "./metrics";
 import { LENS_TABS } from "./types";
 import styles from "./Workspace.module.css";
@@ -226,14 +227,7 @@ export function LensTabs({
     (id: Lens) => {
       model.setLens(id);
       const panel = panelRef.current;
-      if (!panel) return;
-      const bar = document.querySelector(".app-topbar");
-      const barHeight = bar ? bar.getBoundingClientRect().height : 0;
-      const top = panel.getBoundingClientRect().top + window.scrollY - barHeight - 8;
-      const reduce =
-        typeof window.matchMedia === "function" &&
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      window.scrollTo({ top, behavior: reduce ? "auto" : "smooth" });
+      if (panel) scrollBelowTopBar(panel);
     },
     [model],
   );

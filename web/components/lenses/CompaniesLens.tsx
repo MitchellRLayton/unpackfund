@@ -40,7 +40,7 @@
  *    maintain by hand.
  *
  * The benchmark columns are the comparison, not a second holding: `benchmarkDelta` and
- * `formatSignedPp` are ADR-0015's one place where two displayed weights are subtracted,
+ * `formatSignedDelta` are ADR-0015's one place where two displayed weights are subtracted,
  * the sign is always printed, and a release with no benchmark drops both columns rather
  * than printing a column of zeros. Which fund supplies the weights is the reader's choice
  * (`?bench=`), one at a time, defaulting to VT; both headings and the exported file name it.
@@ -74,7 +74,7 @@ import {
   formatCount,
   formatPct1,
   formatShare,
-  formatSignedPp,
+  formatSignedDelta,
 } from "@/lib/format";
 import type { LedgerRow, LedgerSource } from "@/lib/types";
 import type { LensProps } from "@/components/workspace/types";
@@ -149,7 +149,7 @@ function columnsFor(benchmarkTicker: string): Column[] {
       numeric: true,
       first: "descending",
       benchmark: true,
-      tip: `Your weight minus ${benchmarkTicker}'s weight.`,
+      tip: `Your weight minus ${benchmarkTicker}'s weight, in percentage points.`,
     },
     // POC: `Style bench.` keeps a short header so the table width is stable (§9.2); the
     // class name lives in the caption and the tooltip.
@@ -259,6 +259,33 @@ function sourceLabel(source: LedgerSource): string {
   return source.kind === "fund" ? source.ref : `${source.ref} (direct)`;
 }
 
+/** How many fund hues the palette has (`--fund-1` … `--fund-8` in `globals.css`). */
+const FUND_SLOTS = 8;
+
+/**
+ * Each fund's colour slot, from its position in the visitor's own holdings list.
+ *
+ * Keyed on the portfolio rather than on the row, so a fund wears one hue on every row of
+ * the table — DFUS is the same blue in the first row and the five-hundredth. Past eight
+ * funds the slots repeat; the name and dot beside the bar are what identify a fund, and
+ * the hue only has to tell neighbouring segments apart.
+ */
+function fundSlots(
+  entries: readonly { kind: string; key: string }[],
+): Map<string, number> {
+  const slots = new Map<string, number>();
+  for (const entry of entries) {
+    if (entry.kind !== "fund" || slots.has(entry.key)) continue;
+    slots.set(entry.key, (slots.size % FUND_SLOTS) + 1);
+  }
+  return slots;
+}
+
+/** A source's slot, or `undefined` for a direct holding, which draws the neutral fill. */
+function slotOf(slots: Map<string, number>, source: LedgerSource): number | undefined {
+  return source.kind === "fund" ? slots.get(source.ref) : undefined;
+}
+
 /**
  * Where each segment starts and ends, as fractions of the row's whole width.
  *
@@ -286,11 +313,19 @@ function barSegments(
  *
  * The filled part's length is the weight on the table's shared scale; inside it, each
  * segment's width is that fund's share of the position, so the segments always add up to
- * the fill. A 1px `--paper` border is the only thing separating one fund from the next:
- * colour is reserved for the market tier, the coverage band and the benchmark difference,
- * and two greys here would be a distinction with no legend.
+ * the fill. Each segment wears its fund's hue (operator, 2026-11-24: the all-grey bar was
+ * "not easily obvious"), the list under the bar repeats it as a dot beside the fund's
+ * name, and a 1px `--paper` border still separates one segment from the next.
  */
-function FundBar({ row, maxWeight }: { row: LedgerRow; maxWeight: number }) {
+function FundBar({
+  row,
+  maxWeight,
+  slots,
+}: {
+  row: LedgerRow;
+  maxWeight: number;
+  slots: Map<string, number>;
+}) {
   const fill = maxWeight > 0 ? Math.max(0, row.weight) / maxWeight : 0;
   const sources = sourcesOf(row);
   const segments = barSegments(sources);
@@ -303,7 +338,8 @@ function FundBar({ row, maxWeight }: { row: LedgerRow; maxWeight: number }) {
         return (
           <span
             key={`${source.kind}:${source.ref}`}
-            className="rowbar__fill"
+            className={`rowbar__fill ${styles.segment}`}
+            data-fund-slot={slotOf(slots, source)}
             style={{
               left: `${segment.left * fill * 100}%`,
               width: `${segment.width * fill * 100}%`,
@@ -326,7 +362,7 @@ function FundBar({ row, maxWeight }: { row: LedgerRow; maxWeight: number }) {
  * wraps instead, and the page is short enough to take the height (this is why the table is
  * paginated rather than windowed).
  */
-function SourceList({ row }: { row: LedgerRow }) {
+function SourceList({ row, slots }: { row: LedgerRow; slots: Map<string, number> }) {
   const sources = sourcesOf(row);
   if (sources.length === 0) return <CellNote>no source</CellNote>;
 
@@ -334,6 +370,11 @@ function SourceList({ row }: { row: LedgerRow }) {
     <ul className={styles.sources} aria-label={`Funds holding ${row.name}`}>
       {sources.map((source) => (
         <li className={styles.source} key={`${source.kind}:${source.ref}`}>
+          <span
+            className={styles.sourceDot}
+            data-fund-slot={slotOf(slots, source)}
+            aria-hidden="true"
+          />
           <span className={styles.sourceName}>{sourceLabel(source)}</span>{" "}
           <span className={styles.sourceWeight}>{formatShare(source.weight)}</span>
         </li>
@@ -380,6 +421,12 @@ export function CompaniesLens({ model }: LensProps) {
     if (!ledger) return 0;
     return ledger.rows.reduce((max, row) => Math.max(max, row.weight), 0);
   }, [ledger]);
+
+  // One hue per fund for the whole table, in the order the visitor listed them.
+  const slots = useMemo(
+    () => fundSlots(model.portfolio.entries),
+    [model.portfolio.entries],
+  );
 
   // The style gate's verdict lives on the model; `state` is non-null only when the flag is
   // on, the gate passed and the member benchmarks are loaded.
@@ -930,7 +977,7 @@ export function CompaniesLens({ model }: LensProps) {
                           "—"
                         ) : (
                           <span className={deltaInkClass(delta)}>
-                            {formatSignedPp(delta)}
+                            {formatSignedDelta(delta)}
                           </span>
                         )}
                       </td>
@@ -943,7 +990,7 @@ export function CompaniesLens({ model }: LensProps) {
                             "—"
                           ) : (
                             <span className={deltaInkClass(styleDelta)}>
-                              {formatSignedPp(styleDelta)}
+                              {formatSignedDelta(styleDelta)}
                             </span>
                           )}
                         </td>
@@ -954,8 +1001,8 @@ export function CompaniesLens({ model }: LensProps) {
                       {row.held_directly ? <CellNote>plus direct</CellNote> : null}
                     </td>
                     <td className={styles.fromFunds}>
-                      <FundBar row={row} maxWeight={maxWeight} />
-                      <SourceList row={row} />
+                      <FundBar row={row} maxWeight={maxWeight} slots={slots} />
+                      <SourceList row={row} slots={slots} />
                     </td>
                   </tr>
                 );
@@ -1086,7 +1133,7 @@ export function CompaniesLens({ model }: LensProps) {
               company&rsquo;s weight inside {benchmark.ticker}&rsquo;s own portfolio: not
               a share of your mix, and not how much of {benchmark.ticker} you hold. The
               change is your weight minus {benchmark.ticker}&rsquo;s, in percentage points
-              — -1.20 pp means you hold 1.20 points less of the company than{" "}
+              — -1.20% means you hold 1.20 percentage points less of the company than{" "}
               {benchmark.ticker} does. It is green above zero and red below it, with no
               colour at exactly zero, and the sign is always printed, so the colour is
               emphasis and never the only reading. A company {benchmark.ticker} does not

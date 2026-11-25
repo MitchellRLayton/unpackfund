@@ -28,7 +28,20 @@ import { useKnownRelease } from "@/lib/use-release";
 import { Icon } from "./Icon";
 import { SearchPalette } from "./SearchPalette";
 
-export function Sidebar() {
+/** Chevrons for the fold button: pointing left folds the column, pointing right opens it. */
+const FOLD_ICON = {
+  collapse: "M14.5 6.5 9 12l5.5 5.5",
+  expand: "M9.5 6.5 15 12l-5.5 5.5",
+};
+
+export function Sidebar({
+  collapsed = false,
+  onToggle,
+}: {
+  /** Folded to the icon rail by the visitor (wide screens only; see `lib/nav-collapse`). */
+  collapsed?: boolean;
+  onToggle?: () => void;
+}) {
   const pathname = usePathname();
   const release = useKnownRelease();
 
@@ -41,6 +54,19 @@ export function Sidebar() {
             UF
           </span>
         </Link>
+        {onToggle ? (
+          <button
+            type="button"
+            className="app-sidebar__fold"
+            onClick={onToggle}
+            aria-controls="app-nav"
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            <Icon d={collapsed ? FOLD_ICON.expand : FOLD_ICON.collapse} />
+          </button>
+        ) : null}
         <button
           type="button"
           className="app-sidebar__close"
@@ -67,6 +93,10 @@ export function Sidebar() {
                     className="app-nav__link"
                     href={item.href}
                     aria-current={matches(item, pathname) ? "page" : undefined}
+                    // The rail hides the text with `display: none`, which also drops it
+                    // from the accessibility tree; the label keeps the link named.
+                    aria-label={item.label}
+                    title={collapsed ? item.label : undefined}
                   >
                     {item.icon ? <Icon d={item.icon} className="app-nav__icon" /> : null}
                     <span className="app-nav__text">{item.label}</span>
