@@ -780,6 +780,9 @@ def test_a_fee_move_is_judged_on_the_unrounded_basis_points(tmp_path):
     assert "+25.4 bp" in finding["detail"]
     exactly = _review(tmp_path / "b", _doc(AAA=_row(0.0005)), _doc(AAA=_row(0.0030)))
     assert exactly.rules["fee_jump"] == 0  # exactly 25 bp is not over
+    # Two-decimal bp subtract with float noise: 32.02 - 7.02 is 25.000000000000004.
+    noisy = _review(tmp_path / "c", _doc(AAA=_row(0.000702)), _doc(AAA=_row(0.003202)))
+    assert noisy.rules["fee_jump"] == 0
 
 
 def test_a_fee_read_from_a_filing_over_13_months_old_is_info(tmp_path):

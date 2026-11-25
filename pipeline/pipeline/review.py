@@ -489,7 +489,8 @@ def _check_fee_jump(current: FundSnapshot, parent: FundSnapshot) -> list[dict[st
     threshold = int(THRESHOLDS["fee_jump_bp"])
     findings = []
     for symbol, bp, _filed in current.fees:
-        if symbol in before and abs(bp - before[symbol]) > threshold:
+        # Rounded: two-decimal bp values subtract with float noise (32.02 - 7.02 is 25.000000000000004).
+        if symbol in before and round(abs(bp - before[symbol]), 2) > threshold:
             findings.append(
                 _finding(
                     current,
