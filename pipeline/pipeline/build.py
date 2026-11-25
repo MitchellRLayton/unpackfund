@@ -39,6 +39,7 @@ import argparse
 import hashlib
 import itertools
 import json
+import re
 import sys
 import time
 from collections.abc import Mapping
@@ -53,6 +54,7 @@ from . import (
     companies,
     company_countries,
     discovery,
+    fees,
     figi,
     filings,
     fund_lookthrough,
@@ -182,6 +184,9 @@ class FundBuild:
     #: Rows whose ``invCountry`` was present but not an alpha-2 code. Published as the
     #: object's ``invalid_rows`` so a release cannot hide what it discarded.
     invalid_country_rows: int = 0
+    #: The registrant, so the fee walk (``fees.collect``) can group a release's series by
+    #: the trust whose prospectuses state their fees.
+    cik: int | None = None
 
 
 @dataclass(frozen=True)
@@ -613,6 +618,7 @@ def build_fund(
         series_lei=filing.series_lei,
         countries=_countries,
         invalid_country_rows=_invalid_country_rows,
+        cik=int(ref.cik) if str(ref.cik).isdigit() else None,
     )
 
 
@@ -1016,6 +1022,82 @@ def _flatten_fund_of_funds(
     return stats
 
 
+def _fee_wants(builds: list[FundBuild]) -> dict[int, list[fees.Want]]:
+    """Every share class of every published series, grouped by the registrant to ask.
+
+    A series is a portfolio and its symbols are its share classes, so a fee is wanted for
+    each symbol the SEC ticker file lists for the series — Vanguard's Admiral 0.04% and
+    Investor 0.14% are different answers to one fund page. A class with no ticker is not
+    wanted: nobody can type it, and the filing walk is keyed by what we can show.
+    """
+    mf = universe._mf_map()
+    wants: dict[int, list[fees.Want]] = {}
+    for build in builds:
+        series = str(build.document.get("fund_id") or "")
+        if build.cik is None or not series:
+            continue
+        for symbol in build.ref_symbols or (build.ticker,):
+            mapped = mf.get(symbol)
+            class_id = mapped[2] if mapped and mapped[1] == series else None
+            wants.setdefault(build.cik, []).append(fees.Want(symbol, series, class_id or None))
+    return wants
+
+
+def _with_fees(document: dict, rows: dict[str, dict]) -> dict:
+    """A fund document carrying its stated fees after ``net_assets``.
+
+    Additive to fund schema 1, the same pattern as ``net_assets``: a document without the
+    field is valid, which is what lets the web bundle ship before the release that carries
+    it, and absence means "no fee stated for any class" (the summary says why per class).
+    Positional rather than appended, because the document's key order is fixed and hashed.
+    """
+    published: dict = {}
+    for key, value in document.items():
+        published[key] = value
+        if key == "net_assets":
+            published["fees"] = fees.document_fees(rows)
+    if "fees" not in published:
+        published["fees"] = fees.document_fees(rows)
+    return published
+
+
+def _attach_fees(builds: list[FundBuild], found: "fees.ReleaseFees") -> dict:
+    """Put each series' fees on its document and say what the release now covers.
+
+    The fee is an addition, never a reason to lose a fund: a document that the fees would
+    push over the per-fund ceiling keeps its holdings and goes without them, and the
+    summary counts it. Re-serialising is cheap (the payload is rebuilt once per fund).
+    """
+    with_fees = oversize = 0
+    assets_all = assets_with = 0.0
+    for build in builds:
+        rows = found.by_series.get(str(build.document.get("fund_id") or ""))
+        size = build.document.get("net_assets") or 0
+        assets_all += size
+        if not rows:
+            continue
+        document = _with_fees(build.document, rows)
+        payload = artifact.canonical_bytes(document)
+        if len(payload) > MAX_FUND_BYTES:
+            oversize += 1
+            continue
+        build.document, build.payload = document, payload
+        with_fees += 1
+        assets_with += size
+    return {
+        "funds": with_fees,
+        "of_funds": len(builds),
+        "pct_assets": round(100 * assets_with / assets_all, 1) if assets_all else None,
+        "classes_wanted": found.classes_wanted,
+        "classes_found": found.classes_found,
+        "overridden": found.overridden,
+        "missing_by_band": dict(sorted(found.bands.items())),
+        "registrants_unavailable": len(found.unavailable),
+        "oversize_dropped": oversize,
+        "filings": dict(sorted(found.stats.items())),
+    }
+
+
 def build_release(
     refs: list[universe.FundRef],
     *,
@@ -1038,6 +1120,7 @@ def build_release(
     figi_cache: Path | None = None,
     isin_direct_join: bool = False,
     pending_funds: bool = False,
+    fee_walk: bool = True,
 ) -> Path:
     started = time.monotonic()
     index = CompanyIndex.load()
@@ -1239,6 +1322,32 @@ def build_release(
         )
     else:
         lookthrough_stats = {}
+    # The fees each fund's prospectus states, per share class. After the flatten, which
+    # rebuilds a wrapper's document field by field and knows nothing about a fee; before the
+    # write below, so the bytes that are hashed are the bytes that are published. Point in
+    # time: only filings filed on or before the release's own date are read, so rebuilding a
+    # release later cannot change a fee.
+    fee_summary: dict | None = None
+    if fee_walk and builds:
+        started_fees = time.monotonic()
+        filed_by = release[:10] if re.fullmatch(r"\d{4}-\d{2}-\d{2}(\.\d+)?", release) else time.strftime("%Y-%m-%d", time.gmtime())
+        found_fees = fees.collect(
+            _fee_wants(builds),
+            filed_by=filed_by,
+            workers=workers,
+            log=_log if progress_every else None,
+            overrides=fees.load_overrides(),
+        )
+        fee_summary = _attach_fees(builds, found_fees)
+        _log(
+            f"fees: {fee_summary['classes_found']:,}/{fee_summary['classes_wanted']:,} classes, "
+            f"{fee_summary['funds']:,}/{fee_summary['of_funds']:,} funds "
+            f"({fee_summary['pct_assets']}% of assets), {fee_summary['overridden']} overridden, "
+            f"missing {fee_summary['missing_by_band'] or '{}'} in "
+            f"{time.monotonic() - started_fees:.1f}s"
+        )
+    else:
+        _log("fees: disabled (--no-fees)")
     files: list[dict] = []
     rung_totals: dict[str, int] = {}
     cat_totals: dict[str, int] = {}
@@ -1552,6 +1661,7 @@ def build_release(
         "browser_objects": browser_objects["sizes"],
         "size_buckets": size_summary,
         "pending_funds": pending_summary,
+        "fees": fee_summary,
         "elapsed_seconds": round(elapsed, 1),
         "workers": workers,
         "generated_at": document["generated_at"],
@@ -1681,6 +1791,12 @@ def main(argv: list[str] | None = None) -> int:
         "no N-PORT yet (reads prospectus headers from EDGAR; first run is the slow one)",
     )
     parser.add_argument(
+        "--no-fees",
+        action="store_true",
+        help="do not read the stated expense ratios (485BPOS/497 XBRL); the control build, "
+        "and the one that needs no fee walk of EDGAR",
+    )
+    parser.add_argument(
         "--no-size-buckets",
         action="store_true",
         help="skip the size-band table (zone percentiles); the control build for "
@@ -1751,6 +1867,7 @@ def main(argv: list[str] | None = None) -> int:
             figi_cache=args.figi_cache,
             isin_direct_join=args.isin_direct_join,
             pending_funds=args.pending_funds,
+            fee_walk=not args.no_fees,
         )
     except (
         GateError,

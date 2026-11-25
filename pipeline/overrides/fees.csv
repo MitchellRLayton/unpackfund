@@ -1,0 +1,12 @@
+# Reviewed expense ratios for classes the filings cannot answer (pipeline/fees.py reads this).
+# A row fills a hole only: a class whose own filing states a fee keeps the filing's number.
+# Every row is held to the same rules as a fee read from a filing (fees.refusal), needs a
+# filed_at and an https sec.gov source_url, and is bounded to 5% of the universe by the
+# skill fund-reference-extraction §2.4. Values are fractions: 0.000945 is 0.0945%.
+#
+# SPY is a unit investment trust and tags no XBRL (0 of 8 filings, skill §1), and it is
+# 1.9% of all published assets. Source: the "Fees and Expenses of the Trust" table, "Total
+# 0.0945 %" (trustee 0.0492 + S&P license 0.0301 + marketing 0.0132 + other 0.0020). The
+# table states no net figure and no waiver, so net and waiver stay blank. Read 2026-11-25.
+ticker,class_id,total,net,waiver,basis,prospectus_date,filed_at,form,source_url
+SPY,,0.000945,,,no-waiver-stated,,2026-01-26,485BPOS,https://www.sec.gov/Archives/edgar/data/884394/000119312526022316/d77353d485bpos.htm

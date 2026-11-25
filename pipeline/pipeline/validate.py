@@ -26,6 +26,7 @@ from .identifiers import LICENSED_ID_RE, is_licensed
 from .gleif import is_issuer_id, is_sec_company_id, LEI_RE
 from .namespaces import COMPANY_ID_RE, is_security_id
 
+from . import fees as fees_mod
 from . import paths
 from . import pending as pending_mod
 from . import sizes
@@ -1391,6 +1392,84 @@ def _strings(node: Any):
         yield node
 
 
+def _check_fees(document: dict, release_date: str, aliases: dict[str, str], report: Report) -> None:
+    """The stated expense ratios on one fund document (T-0052 phase 1).
+
+    ``fees`` is additive to schema 1: absent is valid and means no class states a fee.
+    Present, every class row is held to the same rules the build applies
+    (``fees.refusal``: total and net in [0, 10%), a waiver either sign and under 10%, net
+    not above total unless a stated recoupment reconciles it), because a fee the build
+    would have refused must not reach a page by another route. Beyond the numbers:
+
+    * a class is a ticker this fund owns, as itself or as an alias that resolves to it —
+      so a fee can never be shown against another fund's page;
+    * the ``basis`` agrees with what is stated (``stated-net`` ⇔ a net is present);
+    * ``filed_at`` is not after the release's own date (point in time) and the source is
+      an https SEC URL, so a fee always says where it was read and when.
+    """
+    ticker = document.get("ticker", "?")
+    if "fees" not in document:
+        return
+    block = document["fees"]
+    if not isinstance(block, dict) or set(block) != {"classes"} or not isinstance(block["classes"], dict):
+        report.fail(f"{ticker}.fees", "expected {'classes': {TICKER: row}}")
+        return
+    classes = block["classes"]
+    if not classes:
+        report.fail(f"{ticker}.fees", "present but empty; absent means no fee is stated")
+    if list(classes) != sorted(classes):
+        report.fail(f"{ticker}.fees.order", "classes are not in ticker order")
+    for symbol, row in classes.items():
+        where = f"{ticker}.fees.{symbol}"
+        if not TICKER_RE.match(symbol) or (symbol != ticker and aliases.get(symbol) != ticker):
+            report.fail(where, "not this fund's ticker or an alias that resolves to it")
+        if not isinstance(row, dict) or list(row) != list(fees_mod.ROW_KEYS):
+            report.fail(where, f"keys must be {list(fees_mod.ROW_KEYS)}")
+            continue
+        for name in ("total", "net", "waiver"):
+            value = row[name]
+            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))):
+                report.fail(f"{where}.{name}", f"{value!r} is not a number or null")
+        if row["total"] is None:
+            report.fail(f"{where}.total", "a class with no total publishes no fee")
+            continue
+        if any(isinstance(row[name], bool) or (row[name] is not None and not isinstance(row[name], (int, float))) for name in ("total", "net", "waiver")):
+            continue
+        why = fees_mod.refusal(row["total"], row["net"], row["waiver"])
+        if why is not None:
+            report.fail(f"{where}.range", f"{why}: total={row['total']!r} net={row['net']!r} waiver={row['waiver']!r}")
+        if row["basis"] not in fees_mod.BASES:
+            report.fail(f"{where}.basis", f"{row['basis']!r} is not one of {fees_mod.BASES}")
+        elif (row["basis"] == fees_mod.BASIS_STATED_NET) != (row["net"] is not None):
+            report.fail(f"{where}.basis", f"{row['basis']!r} disagrees with net={row['net']!r}")
+        if row["class_id"] is not None and not re.fullmatch(r"C\d{9}", str(row["class_id"])):
+            report.fail(f"{where}.class_id", repr(row["class_id"]))
+        filed = str(row["filed_at"] or "")
+        if not DATE_RE.match(filed):
+            report.fail(f"{where}.filed_at", f"{row['filed_at']!r} is not a date")
+        elif release_date and filed > release_date:
+            report.fail(f"{where}.filed_at", f"{filed} is after the release date {release_date}")
+        if row["prospectus_date"] is not None and not DATE_RE.match(str(row["prospectus_date"])):
+            report.fail(f"{where}.prospectus_date", repr(row["prospectus_date"]))
+        if not str(row["source_url"] or "").startswith("https://www.sec.gov/"):
+            report.fail(f"{where}.source_url", "not an https SEC URL")
+        if row["form"] not in fees_mod.FEE_FORMS:
+            report.fail(f"{where}.form", repr(row["form"]))
+
+
+def _check_fees_release(release_dir: Path, funds: list[dict], report: Report) -> None:
+    """Every fund's fees, against the release's own date and its alias map."""
+    release_date = release_dir.name[:10] if DATE_RE.match(release_dir.name[:10]) else ""
+    aliases: dict[str, str] = {}
+    alias_path = release_dir / "aliases.json"
+    if alias_path.exists():
+        aliases = json.loads(alias_path.read_text()).get("targets") or {}
+    for document in funds:
+        _check_fees(document, release_date, aliases, report)
+    carrying = sum(1 for document in funds if "fees" in document)
+    report.ok("fees", f"{carrying:,} of {len(funds):,} funds state at least one class fee")
+
+
 def _check_pending(release_dir: Path, manifest: dict, funds: list, report: Report) -> None:
     """``pending.json``: funds registered with the SEC that have filed no N-PORT yet.
 
@@ -2135,6 +2214,7 @@ def validate(release_dir: Path) -> int:
     _check_benchmarks(release_dir, funds, report)
     _check_company_countries(release_dir, report)
     _check_sizes(release_dir, report)
+    _check_fees_release(release_dir, funds, report)
     _check_pending(release_dir, manifest, funds, report)
     _check_cusip(release_dir, manifest, report)
     _check_lei(release_dir, manifest, report)

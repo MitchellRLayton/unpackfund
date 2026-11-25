@@ -38,6 +38,16 @@ The rules, and why each threshold is the number it is:
 8. ``new_fund`` (info) — the release is wider than its parent. Informational by
    design: growing the universe is the expected direction, and a rule that warns
    about it would train the reader to ignore the report.
+9. ``fee_jump`` (warn, 25 bp) — a class's stated expense ratio, net when stated and the
+   total otherwise, moving more than a quarter of a percentage point between releases.
+   Funds cut and raise fees, but rarely by that much on one filing; a change that large
+   is more often a scale error or a different class answering than a price change.
+10. ``fee_lost`` (warn) — a fund that stated a fee in the parent and states none now: a
+    registrant's filings went unreadable or the walk stopped short, and the page would
+    quietly say "not stated" for a fee it showed yesterday.
+11. ``fee_stale`` (info) — a fee read from a filing more than 13 months before the
+    release. A prospectus must be refreshed within 16 months, so this is the one-to-
+    three-month window where a fee cut may already exist in a supplement we did not read.
 
 Units. Weights and coverage are compared in basis points, because that is the
 unit the thresholds and the artifact's ``weight_bp`` are already in; the published
@@ -89,6 +99,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+from . import fees as fees_mod
 from . import paths
 from .artifact import utc_now_iso
 
@@ -105,6 +116,7 @@ THRESHOLDS: dict[str, float] = {
     "holdings_double_factor": 2.0,
     "holdings_half_factor": 0.5,
     "top10_jump_bp": 1_500.0,
+    "fee_jump_bp": 25.0,
 }
 
 #: Rule → severity, declared once. This is the severity mapping: a finding cannot
@@ -118,13 +130,23 @@ RULE_SEVERITY: dict[str, str] = {
     "filed_before_asof": "blocker",
     "fund_disappeared": "warn",
     "new_fund": "info",
+    "fee_jump": "warn",
+    "fee_lost": "warn",
+    "fee_stale": "info",
 }
 
 #: Report order: blockers first, then the severity order the gate uses.
 SEVERITY_ORDER: dict[str, int] = {"blocker": 0, "warn": 1, "info": 2}
 
 #: The rules that need a parent document to compare against.
-COMPARATIVE_RULES = ("coverage_drop", "nav_residual", "holdings_jump", "top10_jump")
+COMPARATIVE_RULES = (
+    "coverage_drop",
+    "nav_residual",
+    "holdings_jump",
+    "top10_jump",
+    "fee_jump",
+    "fee_lost",
+)
 
 
 class ReviewError(RuntimeError):
@@ -143,6 +165,8 @@ class FundSnapshot:
     holdings: int
     top10_bp: int | None
     residual_bp: int
+    fees: tuple[tuple[str, int, str], ...] = ()
+    """``(class ticker, headline fee in bp, filed_at)`` for every class that states one."""
 
     @classmethod
     def from_document(cls, document: dict[str, Any], path: Path) -> "FundSnapshot":
@@ -170,6 +194,13 @@ class FundSnapshot:
             total_bp += weight
         metrics = document.get("metrics") or {}
         top10 = metrics.get("top10_pct") if isinstance(metrics, dict) else None
+        stated: list[tuple[str, int, str]] = []
+        block = document.get("fees")
+        classes = block.get("classes") if isinstance(block, dict) else None
+        for symbol, row in sorted((classes or {}).items()):
+            fee = fees_mod.headline(row) if isinstance(row, dict) else None
+            if isinstance(fee, (int, float)) and not isinstance(fee, bool):
+                stated.append((str(symbol), round(fee * 10_000), str(row.get("filed_at") or "")))
         return cls(
             ticker=str(ticker),
             # The join key is ``fund_id``: a ticker can be reassigned between funds,
@@ -182,6 +213,7 @@ class FundSnapshot:
             holdings=len(rows),
             top10_bp=round(top10 * 100) if isinstance(top10, (int, float)) else None,
             residual_bp=total_bp - BP_PER_UNIT,
+            fees=tuple(stated),
         )
 
 
@@ -448,6 +480,59 @@ def _check_filed_before_as_of(current: FundSnapshot) -> dict[str, Any] | None:
     )
 
 
+def _check_fee_jump(current: FundSnapshot, parent: FundSnapshot) -> list[dict[str, Any]]:
+    """One finding per class whose stated fee moved more than the threshold."""
+    before = {symbol: bp for symbol, bp, _ in parent.fees}
+    threshold = int(THRESHOLDS["fee_jump_bp"])
+    findings = []
+    for symbol, bp, _filed in current.fees:
+        if symbol in before and abs(bp - before[symbol]) > threshold:
+            findings.append(
+                _finding(
+                    current,
+                    "fee_jump",
+                    f"{symbol} stated fee moved {bp - before[symbol]:+,} bp "
+                    f"({before[symbol] / 100:.2f}% → {bp / 100:.2f}%), over the {threshold} bp threshold",
+                    before[symbol],
+                    bp,
+                )
+            )
+    return findings
+
+
+def _check_fee_lost(current: FundSnapshot, parent: FundSnapshot) -> dict[str, Any] | None:
+    if current.fees or not parent.fees:
+        return None
+    return _finding(
+        current,
+        "fee_lost",
+        f"stated a fee on {len(parent.fees)} class(es) in the parent and states none now",
+        len(parent.fees),
+        0,
+    )
+
+
+def _check_fee_stale(current: FundSnapshot, release_date: date | None) -> dict[str, Any] | None:
+    """The oldest filing a class's fee was read from, when it is over the stale window."""
+    if release_date is None:
+        return None
+    oldest: tuple[date, str] | None = None
+    for symbol, _bp, filed in current.fees:
+        day = _parse(filed)
+        if day is not None and (oldest is None or day < oldest[0]):
+            oldest = (day, symbol)
+    if oldest is None or (release_date - oldest[0]).days <= fees_mod.STALE_DAYS:
+        return None
+    return _finding(
+        current,
+        "fee_stale",
+        f"{oldest[1]}'s fee was read from a filing dated {oldest[0].isoformat()}, "
+        f"{(release_date - oldest[0]).days} days before the release (over {fees_mod.STALE_DAYS})",
+        oldest[0].isoformat(),
+        release_date.isoformat(),
+    )
+
+
 # -- the run ----------------------------------------------------------------
 
 
@@ -467,12 +552,16 @@ def review(
     parent_dir = _resolve(parent) if parent is not None else None
     parent_funds = load_funds(parent_dir) if parent_dir is not None else None
 
+    # The release's own date is its directory name's date part (``2026-11-25.2``): the day
+    # whose filings it may state, and the clock the stale-fee rule reads.
+    release_date = _parse(release_dir.name[:10])
     findings: list[dict[str, Any]] = []
     for fund_id, current in release_funds.items():
         previous = parent_funds.get(fund_id) if parent_funds is not None else None
         candidates = [
             _check_filed_before_as_of(current),
             _check_as_of_regression(current, previous),
+            _check_fee_stale(current, release_date),
         ]
         if previous is not None:
             candidates += [
@@ -480,6 +569,8 @@ def review(
                 _check_nav_residual(current, previous),
                 _check_holdings_jump(current, previous),
                 _check_top10_jump(current, previous),
+                _check_fee_lost(current, previous),
+                *_check_fee_jump(current, previous),
             ]
         findings.extend(finding for finding in candidates if finding is not None)
 
