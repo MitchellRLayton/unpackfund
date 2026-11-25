@@ -125,3 +125,14 @@ def test_summary_rates_by_count_and_by_assets():
     assert summary["net_differs_from_total"]["funds"] == 1
     assert summary["waiver_sign"] == {"negative": 1}
     assert summary["largest_uncovered"][0]["ticker"] == "BIG"
+
+
+def test_fee_rows_keep_fee_forms_inside_the_window_newest_first():
+    rows = [
+        {"form": "485BPOS", "filingDate": "2024-01-02", "accessionNumber": "a"},
+        {"form": "497", "filingDate": "2026-03-01", "accessionNumber": "b"},
+        {"form": "N-CSR", "filingDate": "2026-04-01", "accessionNumber": "c"},
+        {"form": "485BPOS", "filingDate": "2026-05-01", "accessionNumber": "d"},
+    ]
+    picked = probe._fee_rows(rows, since="2025-05-25")
+    assert [r["accessionNumber"] for r in picked] == ["d", "b"]

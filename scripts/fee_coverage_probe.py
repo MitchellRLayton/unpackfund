@@ -36,9 +36,11 @@ import argparse
 import json
 import re
 import sys
+import time
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -294,9 +296,13 @@ def _instance_facts(cik: int, row: Mapping[str, Any]) -> tuple[dict | None, str]
     return None, "none"
 
 
-def _fee_rows(rows: Iterable[Mapping[str, Any]]) -> list[dict]:
-    """Fee-form rows, newest first."""
-    picked = [dict(r) for r in rows if r.get("form") in FEE_FORMS]
+def _fee_rows(rows: Iterable[Mapping[str, Any]], since: str = "") -> list[dict]:
+    """Fee-form rows filed on or after ``since``, newest first."""
+    picked = [
+        dict(r)
+        for r in rows
+        if r.get("form") in FEE_FORMS and str(r.get("filingDate") or "") >= since
+    ]
     picked.sort(key=lambda r: (str(r.get("filingDate") or ""), str(r.get("accessionNumber"))), reverse=True)
     return picked
 
@@ -308,18 +314,27 @@ def _older_page(name: str) -> list[dict]:
 
 
 def probe_registrant(
-    cik: int, funds: list[Fund], max_filings: int, max_pages: int = 3
+    cik: int, funds: list[Fund], max_filings: int, max_pages: int = 3, since: str = ""
 ) -> tuple[list[Result], dict]:
     """Walk one registrant's fee filings newest-first until every fund has a filing.
 
     ``recent`` holds at most about a year for a busy trust (iShares: 2,522 filings back
     to 2025-11-21), and an annual prospectus can sit just before it, so older pages
     are read — lazily, only while a fund is still unmatched — up to ``max_pages``.
+
+    Nothing filed before ``since`` is read. A fund must update its prospectus within
+    16 months (Securities Act §10(a)(3)), so an older fee table is stale by
+    definition, and walking to it cost the first full run hours on a few trusts
+    (one walked 2020 filings of ~10 MB each for a single unmatched class).
     """
     stats = Counter()
     submissions = sec.fetch_json(sec.submissions_url(cik), max_age=sec.INDEX_MAX_AGE_S)
-    rows = _fee_rows(_recent_rows(submissions))
-    older = [f["name"] for f in (submissions.get("filings") or {}).get("files", []) if f.get("name")]
+    rows = _fee_rows(_recent_rows(submissions), since)
+    older = [
+        f["name"]
+        for f in (submissions.get("filings") or {}).get("files", [])
+        if f.get("name") and str(f.get("filingTo") or "9999") >= since
+    ]
     xbrl_rows = [r for r in rows if r.get("isXBRL") or r.get("isInlineXBRL")]
 
     pending = {f.ticker: f for f in funds if f.series_id}
@@ -333,7 +348,7 @@ def probe_registrant(
         if position >= len(xbrl_rows):
             if pages_read >= min(max_pages, len(older)):
                 break
-            page_rows = _fee_rows(_older_page(older[pages_read]))
+            page_rows = _fee_rows(_older_page(older[pages_read]), since)
             pages_read += 1
             rows.extend(page_rows)
             xbrl_rows.extend(r for r in page_rows if r.get("isXBRL") or r.get("isInlineXBRL"))
@@ -479,7 +494,7 @@ def markdown(summary: Mapping[str, Any], meta: Mapping[str, Any]) -> str:
         "# Fee coverage probe",
         "",
         f"Release `{meta['release']}` · {meta['funds']:,} funds · {meta['registrants']:,} registrants · "
-        f"{meta['filings_walked']:,} filings walked (cap {meta['max_filings']}/registrant)",
+        f"{meta['filings_walked']:,} filings walked (cap {meta['max_filings']}/registrant, filed since {meta['since']})",
         "",
         f"- **Total (gross) stated:** {rate('total_stated')}",
         f"- **Net tagged:** {rate('net_tagged')}",
@@ -527,10 +542,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--catalogue", type=Path, required=True, help="a release's catalogue.json, with funds/ beside it")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--registrants", type=int, default=0, help="only the N largest registrants by assets (0 = all)")
-    parser.add_argument("--max-filings", type=int, default=250, help="XBRL fee filings walked per registrant")
+    parser.add_argument("--max-filings", type=int, default=150, help="XBRL fee filings walked per registrant")
+    parser.add_argument(
+        "--window-days", type=int, default=548,
+        help="read only filings this many days before the release date (548 ≈ 18 months, past the 16-month update rule)",
+    )
     parser.add_argument("--max-pages", type=int, default=3, help="older submissions pages read per registrant")
     args = parser.parse_args(argv)
 
+    release = json.loads(args.catalogue.read_text()).get("as_of")
+    since = (date.fromisoformat(str(release)[:10]) - timedelta(days=args.window_days)).isoformat()
     funds = load_funds(args.catalogue)
     by_cik: dict[int | None, list[Fund]] = defaultdict(list)
     for fund in funds:
@@ -541,23 +562,31 @@ def main(argv: list[str] | None = None) -> int:
 
     results: list[Result] = []
     stats = Counter()
+    started = time.monotonic()
     for done, cik in enumerate(order, 1):
         try:
-            rows, registrant_stats = probe_registrant(cik, by_cik[cik], args.max_filings, args.max_pages)
+            rows, registrant_stats = probe_registrant(
+                cik, by_cik[cik], args.max_filings, args.max_pages, since
+            )
         except sec.SecError as error:
             rows = [_result(f, "registrant-error", None) for f in by_cik[cik]]
             registrant_stats = {"registrant_errors": 1}
-            print(f"  cik {cik}: {error}", file=sys.stderr)
+            print(f"  cik {cik}: {error}", file=sys.stderr, flush=True)
         results.extend(rows)
         stats.update(registrant_stats)
-        if done % 50 == 0:
-            print(f"{done}/{len(order)} registrants, {stats['filings_walked']} filings", file=sys.stderr)
+        if done % 25 == 0 or done == len(order):
+            print(
+                f"{done}/{len(order)} registrants · {stats['filings_walked']} filings · "
+                f"{time.monotonic() - started:,.0f} s",
+                file=sys.stderr, flush=True,
+            )
     if not args.registrants:
         results.extend(_result(f, "no-cik", None) for f in by_cik.get(None, []))
 
     summary = summarise(results)
     meta = {
-        "release": json.loads(args.catalogue.read_text()).get("as_of"),
+        "release": release,
+        "since": since,
         "funds": len(results),
         "registrants": len(order),
         "filings_walked": stats["filings_walked"],
