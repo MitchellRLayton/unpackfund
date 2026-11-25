@@ -208,6 +208,11 @@ def series_in(facts: Mapping[tuple[str | None, str | None], ClassFees]) -> set[s
     return {key[0] for key, fees in facts.items() if fees.values.get("total")}
 
 
+def classes_without_series(facts: Mapping[tuple[str | None, str | None], ClassFees]) -> set[str]:
+    """Classes tagged with a total but no ``dei:LegalEntityAxis`` member."""
+    return {key[1] for key, fees in facts.items() if key[0] is None and key[1] and fees.values.get("total")}
+
+
 # --- the walk ---------------------------------------------------------------
 
 
@@ -386,11 +391,16 @@ def probe_registrant(
             continue
         stats[f"read_{basis}"] += 1
         tagged = series_in(facts)
+        # Some trusts (T. Rowe Price) tag the class axis with no series axis at all, so a
+        # filing whose series list lacks the fund can still carry its class.
+        class_only = classes_without_series(facts)
         for ticker, fund in list(pending.items()):
-            series = fund.series_id if fund.series_id in tagged else None
-            if series is None and not (single_series and None in tagged):
+            if fund.series_id in tagged or (fund.class_id and fund.class_id in class_only):
+                key_series = fund.series_id
+            elif single_series and None in tagged:
+                key_series = None
+            else:
                 continue
-            key_series = fund.series_id if series else None
             match, fees = fees_for(facts, key_series, fund.class_id)
             if fees is None:
                 # The series is in this filing but not the published class. Keep walking:

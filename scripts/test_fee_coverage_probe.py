@@ -153,3 +153,27 @@ def test_a_truncated_body_is_retried_then_returned(monkeypatch):
     monkeypatch.setattr(probe.time, "sleep", lambda s: None)
     assert probe._fetch("https://www.sec.gov/x") == b"ok"
     assert len(calls) == 2
+
+
+CLASS_ONLY = f"""<?xml version="1.0"?>
+<xbrl xmlns="http://www.xbrl.org/2003/instance" xmlns:oef="http://xbrl.sec.gov/oef/2025"
+      xmlns:xbrldi="http://xbrl.org/2006/xbrldi">
+  {_context("k1", None, A)}
+  <oef:ExpensesOverAssets contextRef="k1" unitRef="pure" decimals="4">0.0049</oef:ExpensesOverAssets>
+</xbrl>
+""".encode()
+
+
+def test_a_class_tagged_without_its_series_is_still_found(monkeypatch):
+    facts = probe.parse_instance(CLASS_ONLY)
+    assert probe.series_in(facts) == {None}
+    assert probe.classes_without_series(facts) == {A}
+    monkeypatch.setattr(probe, "_fetch", lambda url, **kw: {"filings": {"recent": {}, "files": []}})
+    monkeypatch.setattr(probe, "_recent_rows", lambda sub: [
+        {"form": "485BPOS", "filingDate": "2026-07-27", "accessionNumber": "x", "isXBRL": 1}])
+    monkeypatch.setattr(probe, "_instance_facts", lambda cik, row: (facts, "instance"))
+    funds = [probe.Fund("AAA", S1, A, 1, 10.0, False, "a"), probe.Fund("BBB", S2, C, 1, 10.0, False, "b")]
+    results, _ = probe.probe_registrant(1, funds, 10)
+    by = {r.ticker: r for r in results}
+    assert by["AAA"].band == "covered" and by["AAA"].match == "class-no-series" and by["AAA"].total == 0.0049
+    assert by["BBB"].band != "covered"
