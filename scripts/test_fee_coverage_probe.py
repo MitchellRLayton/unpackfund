@@ -177,3 +177,80 @@ def test_a_class_tagged_without_its_series_is_still_found(monkeypatch):
     by = {r.ticker: r for r in results}
     assert by["AAA"].band == "covered" and by["AAA"].match == "class-no-series" and by["AAA"].total == 0.0049
     assert by["BBB"].band != "covered"
+
+
+def _walk(monkeypatch, filings):
+    """Drive probe_registrant over ``filings``: a list of (accession, facts-or-exception)."""
+    rows = [{"form": "485BPOS", "filingDate": f"2026-0{9 - i}-01", "accessionNumber": acc, "isXBRL": 1}
+            for i, (acc, _) in enumerate(filings)]
+    by_acc = dict(filings)
+
+    def facts(cik, row):
+        got = by_acc[row["accessionNumber"]]
+        if isinstance(got, Exception):
+            raise got
+        return got, "instance"
+
+    monkeypatch.setattr(probe, "_fetch", lambda url, **kw: {"filings": {"recent": {}, "files": []}})
+    monkeypatch.setattr(probe, "_recent_rows", lambda sub: rows)
+    monkeypatch.setattr(probe, "_instance_facts", facts)
+
+
+def test_a_newer_filing_that_cannot_be_read_flags_the_older_fee(monkeypatch):
+    _walk(monkeypatch, [("new", probe.sec.SecError("HTTP 404")), ("old", probe.parse_instance(INSTANCE))])
+    (result,), stats = probe.probe_registrant(1, [probe.Fund("AAA", S1, A, 1, 1.0, False, "a")], 10)
+    assert result.band == "covered" and result.accession == "old"
+    assert result.newer_filing_unread == "new"
+    assert stats["filing_errors"] == 1
+
+
+def test_a_listed_instance_that_404s_falls_back_to_the_inline_primary(monkeypatch):
+    def fetch(url, as_json=False, **kw):
+        if url.endswith("index.json"):
+            return {"directory": {"item": [{"name": "d1_htm.xml"}, {"name": "d1.htm"}]}}
+        if url.endswith("_htm.xml"):
+            raise probe.sec.SecError("HTTP 404")
+        return INLINE
+
+    monkeypatch.setattr(probe, "_fetch", fetch)
+    monkeypatch.setattr(probe, "_index_items", lambda index: index["directory"]["item"])
+    monkeypatch.setattr(probe, "_instance_name", lambda items: "d1_htm.xml")
+    monkeypatch.setattr(probe, "_primary_name", lambda items, row: "d1.htm")
+    facts, basis = probe._instance_facts(1, {"accessionNumber": "0000000001-26-000001", "isInlineXBRL": 1})
+    assert basis == "inline-fallback"
+    assert probe.fees_for(facts, S1, A)[1].resolved("total") == ("ok", 0.009)
+
+
+UNREAD_CLASS = f"""<?xml version="1.0"?>
+<xbrl xmlns="http://www.xbrl.org/2003/instance" xmlns:oef="http://xbrl.sec.gov/oef/2025"
+      xmlns:xbrldi="http://xbrl.org/2006/xbrldi">
+  {_context("g1", S1, None).replace("</segment>",
+     '<xbrldi:explicitMember dimension="oef:ClassAxis">x:S000040832Member</xbrldi:explicitMember></segment>')}
+  {_context("g2", S2, C)}
+  <oef:ExpensesOverAssets contextRef="g1" unitRef="pure" decimals="4">0.0173</oef:ExpensesOverAssets>
+  <oef:ExpensesOverAssets contextRef="g2" unitRef="pure" decimals="4">n/a</oef:ExpensesOverAssets>
+</xbrl>
+""".encode()
+
+
+def test_a_class_axis_we_cannot_read_never_answers_for_a_known_class():
+    facts = probe.parse_instance(UNREAD_CLASS)
+    assert (S1, "?x:S000040832Member") in facts and (S1, None) not in facts
+    assert probe.fees_for(facts, S1, A) == ("none", None)
+    assert probe.fees_for(facts, S1, None) == ("none", None)
+
+
+def test_an_unparseable_value_is_unreadable_not_nil():
+    facts = probe.parse_instance(UNREAD_CLASS)
+    assert probe.fees_for(facts, S2, C)[1].resolved("total") == ("unreadable", None)
+
+
+def test_phase1_refusal_keeps_negative_waivers_and_recoupments():
+    def r(total, net=None, waiver=None):
+        return probe.Result(ticker="T", series_id="S", class_id=None, cik=1, net_assets=1.0, etf=False,
+                            name="t", band="covered", total=total, net=net, waiver=waiver)
+
+    assert probe.phase1_refusal(r(0.0053, 0.0028, -0.0025)) is None      # FCTDX
+    assert probe.phase1_refusal(r(0.0123, 0.0125, 0.0002)) is None       # EPDIX recoupment
+    assert probe.phase1_refusal(r(0.0001, 0.0118)) == "net-above-total"  # FAMVX
+    assert probe.phase1_refusal(r(0.89, 0.85, -0.0004)) == "total-out-of-range"  # FCTE

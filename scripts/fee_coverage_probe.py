@@ -81,6 +81,16 @@ _CIK_IN_URL = re.compile(r"/edgar/data/(\d+)/")
 #: Two values closer than this are the same fee (the facts carry 4 decimals).
 EPS = 5e-5
 
+#: A fact whose text is not a number. Kept apart from nil: "not stated" and "could not
+#: read" are different findings (review R7).
+UNREADABLE = "unreadable"
+
+#: Phase 1's validator bounds (plan, amended after review R2): total and net in [0, 0.10);
+#: the waiver may carry either sign, and its size is bounded by the same ceiling.
+FEE_CEILING = 0.10
+#: Net may exceed total by at most this, unless a stated positive waiver reconciles it.
+NET_OVER_TOTAL = 1e-4
+
 
 # --- parsing one instance ----------------------------------------------------
 
@@ -91,15 +101,17 @@ class ClassFees:
 
     values: dict[str, set] = field(default_factory=lambda: defaultdict(set))
 
-    def add(self, name: str, value: float | None) -> None:
+    def add(self, name: str, value: float | str | None) -> None:
         self.values[name].add(value)
 
     def resolved(self, name: str) -> tuple[str, float | None]:
-        """``(state, value)``: ``absent`` · ``nil`` · ``ok`` · ``ambiguous``."""
+        """``(state, value)``: ``absent`` · ``nil`` · ``unreadable`` · ``ok`` · ``ambiguous``."""
         seen = self.values.get(name)
         if not seen:
             return "absent", None
-        numbers = sorted(v for v in seen if v is not None)
+        numbers = sorted(v for v in seen if isinstance(v, float))
+        if UNREADABLE in seen:
+            return ("ambiguous" if numbers else "unreadable"), None
         if not numbers:
             return "nil", None
         if numbers[-1] - numbers[0] > EPS:
@@ -113,6 +125,21 @@ def _member(dims: Iterable[tuple[str, str]], axis: str, pattern: re.Pattern) -> 
             found = pattern.search(member)
             if found:
                 return found.group(0)
+    return None
+
+
+def _class_key(dims: Iterable[tuple[str, str]]) -> str | None:
+    """The ``C…`` id, ``None`` when the context has no ``ClassAxis`` at all, and
+    ``?<member>`` when it has one we cannot read as a class id.
+
+    The last case must not collapse into ``None``: a series-level key answers for any
+    class of the series through the ``series`` match (review R3, GARIX tags its class as
+    ``S000040832Member``).
+    """
+    for dimension, member in dims:
+        if dimension.endswith("ClassAxis"):
+            found = _CLASS.search(member)
+            return found.group(0) if found else f"?{member}"
     return None
 
 
@@ -146,6 +173,8 @@ def parse_instance(xml_bytes: bytes) -> dict[tuple[str | None, str | None], Clas
             if name is None:
                 continue
             value = _inline_value(element)
+            if value is None and element.get(XSI_NIL) != "true":
+                value = UNREADABLE
         else:
             name = ELEMENTS.get(local)
             if name is None or not namespace.startswith(OEF_PREFIX):
@@ -156,12 +185,9 @@ def parse_instance(xml_bytes: bytes) -> dict[tuple[str | None, str | None], Clas
                 try:
                     value = float((element.text or "").strip())
                 except ValueError:
-                    value = None
+                    value = UNREADABLE
         dims = contexts.get((element.get("contextRef") or "").strip(), ())
-        key = (
-            _member(dims, "LegalEntityAxis", _SERIES),
-            _member(dims, "ClassAxis", _CLASS),
-        )
+        key = (_member(dims, "LegalEntityAxis", _SERIES), _class_key(dims))
         found[key].add(name, value)
     return dict(found)
 
@@ -198,7 +224,7 @@ def fees_for(
         return "class-no-series", facts[(None, class_id)]
     if (series_id, None) in facts:
         return "series", facts[(series_id, None)]
-    in_series = [key for key in facts if key[0] == series_id and key[1] is not None]
+    in_series = [key for key in facts if key[0] == series_id and key[1] and not key[1].startswith("?")]
     if len(in_series) == 1 and class_id is None:
         return "series-single-class", facts[in_series[0]]
     return "none", None
@@ -210,7 +236,10 @@ def series_in(facts: Mapping[tuple[str | None, str | None], ClassFees]) -> set[s
 
 def classes_without_series(facts: Mapping[tuple[str | None, str | None], ClassFees]) -> set[str]:
     """Classes tagged with a total but no ``dei:LegalEntityAxis`` member."""
-    return {key[1] for key, fees in facts.items() if key[0] is None and key[1] and fees.values.get("total")}
+    return {
+        key[1] for key, fees in facts.items()
+        if key[0] is None and key[1] and not key[1].startswith("?") and fees.values.get("total")
+    }
 
 
 # --- the walk ---------------------------------------------------------------
@@ -249,6 +278,9 @@ class Result:
     accession: str | None = None
     later_497: bool = False
     basis: str | None = None
+    #: Accession of a newer fee filing this registrant filed that could not be read. The
+    #: fee shown came from an older filing, so it may be out of date (review R1).
+    newer_filing_unread: str | None = None
 
 
 def _fund_docs(funds_dir: Path, tickers: Iterable[str]) -> dict[str, dict]:
@@ -311,12 +343,18 @@ def _instance_facts(cik: int, row: Mapping[str, Any]) -> tuple[dict | None, str]
     index = _fetch(directory + "index.json", as_json=True)
     items = _index_items(index) if isinstance(index, dict) else []
     name = _instance_name(items)
+    primary = _primary_name(items, dict(row)) if row.get("isInlineXBRL") else None
     if name is not None:
-        return parse_instance(_fetch(directory + name)), "instance"
-    if row.get("isInlineXBRL"):
-        primary = _primary_name(items, dict(row))
-        if primary is not None:
-            return parse_instance(_fetch(directory + primary)), "inline"
+        try:
+            return parse_instance(_fetch(directory + name)), "instance"
+        except (sec.SecError, *TRANSIENT):
+            # index.json can list an instance that is not served (an iShares 485BPOS
+            # returned 404 for its *_htm.xml): the inline primary carries the same facts.
+            if primary is None:
+                raise
+            return parse_instance(_fetch(directory + primary)), "inline-fallback"
+    if primary is not None:
+        return parse_instance(_fetch(directory + primary)), "inline"
     return None, "none"
 
 
@@ -368,6 +406,9 @@ def probe_registrant(
     walked = 0
     position = 0
     pages_read = 0
+    # The newest fee filing we could not read. The walk is newest-first, so every fee
+    # matched after it comes from an older filing and is flagged, never passed as current.
+    unread: str | None = None
     while pending and walked < max_filings:
         if position >= len(xbrl_rows):
             if pages_read >= min(max_pages, len(older)):
@@ -385,9 +426,11 @@ def probe_registrant(
         except (sec.SecError, ET.ParseError, *TRANSIENT) as error:
             stats["filing_errors"] += 1
             stats[f"error:{type(error).__name__}"] += 1
+            unread = unread or str(row.get("accessionNumber"))
             continue
         if facts is None:
             stats["xbrl_flag_but_no_document"] += 1
+            unread = unread or str(row.get("accessionNumber"))
             continue
         stats[f"read_{basis}"] += 1
         tagged = series_in(facts)
@@ -411,6 +454,7 @@ def probe_registrant(
             result = _result(fund, "found", row)
             result.match = match
             result.basis = basis
+            result.newer_filing_unread = unread
             for name in ELEMENTS.values():
                 state, value = fees.resolved(name)
                 setattr(result, f"{name}_state", state)
@@ -470,8 +514,34 @@ def _rate(part: Iterable[Result], whole: list[Result]) -> dict[str, Any]:
     }
 
 
+def is_recoupment(r: Result) -> bool:
+    """Net above total because a positive waiver (a recoupment) is stated and reconciles."""
+    return (
+        None not in (r.total, r.net, r.waiver)
+        and r.waiver > EPS
+        and abs(r.total + r.waiver - r.net) <= NET_OVER_TOTAL
+    )
+
+
+def phase1_refusal(r: Result) -> str | None:
+    """Why phase 1's validator would publish no fee for a covered class, or ``None``."""
+    for name in ("total", "net"):
+        value = getattr(r, name)
+        if value is not None and not 0 <= value < FEE_CEILING:
+            return f"{name}-out-of-range"
+    if r.waiver is not None and abs(r.waiver) >= FEE_CEILING:
+        return "waiver-out-of-range"
+    if r.net is not None and r.total is not None and r.net > r.total + NET_OVER_TOTAL and not is_recoupment(r):
+        return "net-above-total"
+    return None
+
+
 def summarise(results: list[Result]) -> dict[str, Any]:
     covered = [r for r in results if r.band == "covered"]
+    refusals = Counter(reason for r in covered if (reason := phase1_refusal(r)))
+    shippable = [r for r in covered if phase1_refusal(r) is None]
+    above = [r for r in covered if r.net is not None and r.total is not None and r.net > r.total + NET_OVER_TOTAL]
+    unread = [r for r in covered if r.newer_filing_unread]
     net_ok = [r for r in covered if r.net_state == "ok"]
     differs = [r for r in net_ok if abs((r.net or 0) - (r.total or 0)) > EPS]
     waiver_ok = [r for r in covered if r.waiver_state == "ok"]
@@ -487,6 +557,12 @@ def summarise(results: list[Result]) -> dict[str, Any]:
         "basis": dict(Counter(r.basis for r in covered).most_common()),
         "filed_year": dict(sorted(Counter((r.filed or "")[:4] for r in covered).items())),
         "total_stated": _rate(covered, results),
+        "shippable": _rate(shippable, results),
+        "phase1_refusals": dict(refusals.most_common()),
+        "net_above_total": {"threshold": NET_OVER_TOTAL, "funds": len(above),
+                            "recoupments": sum(is_recoupment(r) for r in above)},
+        "newer_filing_unread": {**_rate(unread, results),
+                                "accessions": dict(Counter(r.newer_filing_unread for r in unread).most_common(10))},
         "net_tagged": _rate(net_ok, results),
         "net_tagged_of_covered": _rate(net_ok, covered),
         "net_differs_from_total": _rate(differs, results),
@@ -526,6 +602,11 @@ def markdown(summary: Mapping[str, Any], meta: Mapping[str, Any]) -> str:
         f"{meta['filings_walked']:,} filings walked (cap {meta['max_filings']}/registrant, filed since {meta['since']})",
         "",
         f"- **Total (gross) stated:** {rate('total_stated')}",
+        f"- **Shippable under phase 1's validator:** {rate('shippable')} · refused {summary['phase1_refusals']}",
+        f"- **Net above total (by more than {summary['net_above_total']['threshold']}):** "
+        f"{summary['net_above_total']['funds']}, of which stated recoupments {summary['net_above_total']['recoupments']}",
+        f"- **Fee read from an older filing because a newer one was unreadable:** {rate('newer_filing_unread')} · "
+        f"{summary['newer_filing_unread']['accessions']}",
         f"- **Net tagged:** {rate('net_tagged')}",
         f"- **Net tagged, of covered funds:** {rate('net_tagged_of_covered')}",
         f"- **Net differs from total:** {rate('net_differs_from_total')}",
