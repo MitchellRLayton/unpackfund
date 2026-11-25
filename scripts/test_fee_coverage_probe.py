@@ -1,0 +1,256 @@
+"""The fee probe's instance parser, on a hand-written instance (no network).
+
+    .venv/pipeline/bin/python -m pytest -q scripts/test_fee_coverage_probe.py
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import fee_coverage_probe as probe  # noqa: E402
+
+S1, S2 = "S000000001", "S000000002"
+A, B, C = "C000000011", "C000000012", "C000000021"
+
+
+def _context(cid: str, series: str | None, cls: str | None, doc: str | None = None) -> str:
+    members = []
+    if series:
+        members.append(f'<xbrldi:explicitMember dimension="dei:LegalEntityAxis">x:{series}Member</xbrldi:explicitMember>')
+    if cls:
+        members.append(f'<xbrldi:explicitMember dimension="oef:ClassAxis">x:{cls}Member</xbrldi:explicitMember>')
+    if doc:
+        members.append(f'<xbrldi:explicitMember dimension="dei:DocumentInformationDocumentAxis">x:{doc}</xbrldi:explicitMember>')
+    return (
+        f'<context id="{cid}"><entity><identifier scheme="http://www.sec.gov/CIK">1</identifier>'
+        f'<segment>{"".join(members)}</segment></entity>'
+        f"<period><startDate>2026-01-01</startDate><endDate>2026-01-01</endDate></period></context>"
+    )
+
+
+INSTANCE = f"""<?xml version="1.0"?>
+<xbrl xmlns="http://www.xbrl.org/2003/instance" xmlns:oef="http://xbrl.sec.gov/oef/2025"
+      xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:other="http://example.com/2026">
+  {_context("a1", S1, A, "d1")}
+  {_context("a2", S1, A, "d2")}
+  {_context("b1", S1, B, "d1")}
+  {_context("b2", S1, B, "d2")}
+  {_context("c1", S2, C)}
+  <oef:ExpensesOverAssets contextRef="a1" unitRef="pure" decimals="4">0.0090</oef:ExpensesOverAssets>
+  <oef:ExpensesOverAssets contextRef="a2" unitRef="pure" decimals="4">0.0090</oef:ExpensesOverAssets>
+  <oef:FeeWaiverOrReimbursementOverAssets contextRef="a1" unitRef="pure" decimals="4">-0.0015</oef:FeeWaiverOrReimbursementOverAssets>
+  <oef:NetExpensesOverAssets contextRef="a1" unitRef="pure" decimals="4">0.0075</oef:NetExpensesOverAssets>
+  <oef:ExpensesOverAssets contextRef="b1" unitRef="pure" decimals="4">0.0050</oef:ExpensesOverAssets>
+  <oef:ExpensesOverAssets contextRef="b2" unitRef="pure" decimals="4">0.0060</oef:ExpensesOverAssets>
+  <oef:ExpensesOverAssets contextRef="c1" unitRef="pure" decimals="4">0.0003</oef:ExpensesOverAssets>
+  <oef:NetExpensesOverAssets contextRef="c1" xsi:nil="true"/>
+  <other:ExpensesOverAssets contextRef="c1" unitRef="pure" decimals="4">0.9999</other:ExpensesOverAssets>
+</xbrl>
+""".encode()
+
+
+def test_waived_class_keeps_net_and_waiver_as_stated():
+    facts = probe.parse_instance(INSTANCE)
+    match, fees = probe.fees_for(facts, S1, A)
+    assert match == "class"
+    assert fees.resolved("total") == ("ok", 0.009)
+    assert fees.resolved("net") == ("ok", 0.0075)
+    assert fees.resolved("waiver") == ("ok", -0.0015)
+
+
+def test_documents_that_disagree_are_ambiguous_not_picked():
+    facts = probe.parse_instance(INSTANCE)
+    _, fees = probe.fees_for(facts, S1, B)
+    assert fees.resolved("total") == ("ambiguous", None)
+    assert fees.resolved("net") == ("absent", None)
+
+
+def test_nil_is_not_zero_and_other_namespaces_are_ignored():
+    facts = probe.parse_instance(INSTANCE)
+    _, fees = probe.fees_for(facts, S2, C)
+    assert fees.resolved("total") == ("ok", 0.0003)
+    assert fees.resolved("net") == ("nil", None)
+
+
+def test_unknown_class_matches_only_a_single_class_series():
+    facts = probe.parse_instance(INSTANCE)
+    assert probe.fees_for(facts, S2, None)[0] == "series-single-class"
+    assert probe.fees_for(facts, S1, None) == ("none", None)
+    assert probe.fees_for(facts, S1, "C000000099") == ("none", None)
+
+
+INLINE = f"""<html xmlns="http://www.w3.org/1999/xhtml" xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<body><ix:header><ix:resources>
+  {_context("a1", S1, A).replace("<context", "<xbrli:context").replace("</context>", "</xbrli:context>")}
+</ix:resources></ix:header>
+<p><ix:nonFraction name="oef:ExpensesOverAssets" contextRef="a1" unitRef="pure" scale="-2" decimals="4">0.90</ix:nonFraction>%</p>
+<p><ix:nonFraction name="oef:FeeWaiverOrReimbursementOverAssets" contextRef="a1" unitRef="pure" scale="-2" sign="-">0.15</ix:nonFraction>%</p>
+<p><ix:nonFraction name="oef:NetExpensesOverAssets" contextRef="a1" unitRef="pure" scale="-2">0.75</ix:nonFraction>%</p>
+<p><ix:nonFraction name="us-gaap:ExpensesOverAssets" contextRef="a1" unitRef="pure" scale="-2">9.99</ix:nonFraction></p>
+</body></html>
+""".encode()
+
+
+def test_inline_xbrl_applies_scale_and_sign():
+    _, fees = probe.fees_for(probe.parse_instance(INLINE), S1, A)
+    assert fees.resolved("total") == ("ok", 0.009)
+    assert fees.resolved("waiver") == ("ok", -0.0015)
+    assert fees.resolved("net") == ("ok", 0.0075)
+
+
+def test_series_in_names_every_series_with_a_total():
+    assert probe.series_in(probe.parse_instance(INSTANCE)) == {S1, S2}
+
+
+def test_summary_rates_by_count_and_by_assets():
+    def result(ticker, assets, band, **kw):
+        return probe.Result(ticker=ticker, series_id="S", class_id=None, cik=1, net_assets=assets,
+                            etf=True, name=ticker, band=band, **kw)
+
+    results = [
+        result("BIG", 900.0, "no-xbrl-filing"),
+        result("W", 60.0, "covered", total=0.009, net=0.0075, waiver=-0.0015,
+               total_state="ok", net_state="ok", waiver_state="ok"),
+        result("P", 40.0, "covered", total=0.0003, total_state="ok", net_state="nil"),
+    ]
+    summary = probe.summarise(results)
+    assert summary["total_stated"] == {"funds": 2, "of_funds": 3, "pct_funds": 66.7, "pct_assets": 10.0}
+    assert summary["net_tagged"]["pct_assets"] == 6.0
+    assert summary["net_differs_from_total"]["funds"] == 1
+    assert summary["waiver_sign"] == {"negative": 1}
+    assert summary["largest_uncovered"][0]["ticker"] == "BIG"
+
+
+def test_fee_rows_keep_fee_forms_inside_the_window_newest_first():
+    rows = [
+        {"form": "485BPOS", "filingDate": "2024-01-02", "accessionNumber": "a"},
+        {"form": "497", "filingDate": "2026-03-01", "accessionNumber": "b"},
+        {"form": "N-CSR", "filingDate": "2026-04-01", "accessionNumber": "c"},
+        {"form": "485BPOS", "filingDate": "2026-05-01", "accessionNumber": "d"},
+    ]
+    picked = probe._fee_rows(rows, since="2025-05-25")
+    assert [r["accessionNumber"] for r in picked] == ["d", "b"]
+
+
+def test_a_truncated_body_is_retried_then_returned(monkeypatch):
+    import http.client
+
+    calls = []
+
+    def flaky(url, **kwargs):
+        calls.append(url)
+        if len(calls) == 1:
+            raise http.client.IncompleteRead(b"x" * 9348, 1)
+        return b"ok"
+
+    monkeypatch.setattr(probe.sec, "fetch", flaky)
+    monkeypatch.setattr(probe.time, "sleep", lambda s: None)
+    assert probe._fetch("https://www.sec.gov/x") == b"ok"
+    assert len(calls) == 2
+
+
+CLASS_ONLY = f"""<?xml version="1.0"?>
+<xbrl xmlns="http://www.xbrl.org/2003/instance" xmlns:oef="http://xbrl.sec.gov/oef/2025"
+      xmlns:xbrldi="http://xbrl.org/2006/xbrldi">
+  {_context("k1", None, A)}
+  <oef:ExpensesOverAssets contextRef="k1" unitRef="pure" decimals="4">0.0049</oef:ExpensesOverAssets>
+</xbrl>
+""".encode()
+
+
+def test_a_class_tagged_without_its_series_is_still_found(monkeypatch):
+    facts = probe.parse_instance(CLASS_ONLY)
+    assert probe.series_in(facts) == {None}
+    assert probe.classes_without_series(facts) == {A}
+    monkeypatch.setattr(probe, "_fetch", lambda url, **kw: {"filings": {"recent": {}, "files": []}})
+    monkeypatch.setattr(probe, "_recent_rows", lambda sub: [
+        {"form": "485BPOS", "filingDate": "2026-07-27", "accessionNumber": "x", "isXBRL": 1}])
+    monkeypatch.setattr(probe, "_instance_facts", lambda cik, row: (facts, "instance"))
+    funds = [probe.Fund("AAA", S1, A, 1, 10.0, False, "a"), probe.Fund("BBB", S2, C, 1, 10.0, False, "b")]
+    results, _ = probe.probe_registrant(1, funds, 10)
+    by = {r.ticker: r for r in results}
+    assert by["AAA"].band == "covered" and by["AAA"].match == "class-no-series" and by["AAA"].total == 0.0049
+    assert by["BBB"].band != "covered"
+
+
+def _walk(monkeypatch, filings):
+    """Drive probe_registrant over ``filings``: a list of (accession, facts-or-exception)."""
+    rows = [{"form": "485BPOS", "filingDate": f"2026-0{9 - i}-01", "accessionNumber": acc, "isXBRL": 1}
+            for i, (acc, _) in enumerate(filings)]
+    by_acc = dict(filings)
+
+    def facts(cik, row):
+        got = by_acc[row["accessionNumber"]]
+        if isinstance(got, Exception):
+            raise got
+        return got, "instance"
+
+    monkeypatch.setattr(probe, "_fetch", lambda url, **kw: {"filings": {"recent": {}, "files": []}})
+    monkeypatch.setattr(probe, "_recent_rows", lambda sub: rows)
+    monkeypatch.setattr(probe, "_instance_facts", facts)
+
+
+def test_a_newer_filing_that_cannot_be_read_flags_the_older_fee(monkeypatch):
+    _walk(monkeypatch, [("new", probe.sec.SecError("HTTP 404")), ("old", probe.parse_instance(INSTANCE))])
+    (result,), stats = probe.probe_registrant(1, [probe.Fund("AAA", S1, A, 1, 1.0, False, "a")], 10)
+    assert result.band == "covered" and result.accession == "old"
+    assert result.newer_filing_unread == "new"
+    assert stats["filing_errors"] == 1
+
+
+def test_a_listed_instance_that_404s_falls_back_to_the_inline_primary(monkeypatch):
+    def fetch(url, as_json=False, **kw):
+        if url.endswith("index.json"):
+            return {"directory": {"item": [{"name": "d1_htm.xml"}, {"name": "d1.htm"}]}}
+        if url.endswith("_htm.xml"):
+            raise probe.sec.SecError("HTTP 404")
+        return INLINE
+
+    monkeypatch.setattr(probe, "_fetch", fetch)
+    monkeypatch.setattr(probe, "_index_items", lambda index: index["directory"]["item"])
+    monkeypatch.setattr(probe, "_instance_name", lambda items: "d1_htm.xml")
+    monkeypatch.setattr(probe, "_primary_name", lambda items, row: "d1.htm")
+    facts, basis = probe._instance_facts(1, {"accessionNumber": "0000000001-26-000001", "isInlineXBRL": 1})
+    assert basis == "inline-fallback"
+    assert probe.fees_for(facts, S1, A)[1].resolved("total") == ("ok", 0.009)
+
+
+UNREAD_CLASS = f"""<?xml version="1.0"?>
+<xbrl xmlns="http://www.xbrl.org/2003/instance" xmlns:oef="http://xbrl.sec.gov/oef/2025"
+      xmlns:xbrldi="http://xbrl.org/2006/xbrldi">
+  {_context("g1", S1, None).replace("</segment>",
+     '<xbrldi:explicitMember dimension="oef:ClassAxis">x:S000040832Member</xbrldi:explicitMember></segment>')}
+  {_context("g2", S2, C)}
+  <oef:ExpensesOverAssets contextRef="g1" unitRef="pure" decimals="4">0.0173</oef:ExpensesOverAssets>
+  <oef:ExpensesOverAssets contextRef="g2" unitRef="pure" decimals="4">n/a</oef:ExpensesOverAssets>
+</xbrl>
+""".encode()
+
+
+def test_a_class_axis_we_cannot_read_never_answers_for_a_known_class():
+    facts = probe.parse_instance(UNREAD_CLASS)
+    assert (S1, "?x:S000040832Member") in facts and (S1, None) not in facts
+    assert probe.fees_for(facts, S1, A) == ("none", None)
+    assert probe.fees_for(facts, S1, None) == ("none", None)
+
+
+def test_an_unparseable_value_is_unreadable_not_nil():
+    facts = probe.parse_instance(UNREAD_CLASS)
+    assert probe.fees_for(facts, S2, C)[1].resolved("total") == ("unreadable", None)
+
+
+def test_phase1_refusal_keeps_negative_waivers_and_recoupments():
+    def r(total, net=None, waiver=None):
+        return probe.Result(ticker="T", series_id="S", class_id=None, cik=1, net_assets=1.0, etf=False,
+                            name="t", band="covered", total=total, net=net, waiver=waiver)
+
+    assert probe.phase1_refusal(r(0.0053, 0.0028, -0.0025)) is None      # FCTDX
+    assert probe.phase1_refusal(r(0.0123, 0.0125, 0.0002)) is None       # EPDIX recoupment
+    assert probe.phase1_refusal(r(0.0001, 0.0118)) == "net-above-total"  # FAMVX
+    assert probe.phase1_refusal(r(0.89, 0.85, -0.0004)) == "total-out-of-range"  # FCTE
