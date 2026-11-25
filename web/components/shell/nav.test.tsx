@@ -1,4 +1,4 @@
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import contract from "./nav-contract.json";
@@ -21,6 +21,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => pathname }));
 vi.mock("./SearchPalette", () => ({ SearchPalette: () => null }));
 
 const { Sidebar } = await import("./Sidebar");
+const { AppShell } = await import("./AppShell");
 
 interface NavItemShape {
   label: string;
@@ -118,5 +119,32 @@ describe("the sidebar nav", () => {
     const aside = container.querySelector("aside.app-sidebar");
     expect(aside?.getAttribute("popover")).toBe("auto");
     expect(aside?.getAttribute("id")).toBe("app-nav");
+  });
+
+  it("folds to the rail and back on the visitor's click, and remembers it", () => {
+    window.localStorage.clear();
+    const first = render(<AppShell>page</AppShell>);
+    const shell = first.container.querySelector(".app-shell") as HTMLElement;
+    const fold = first.getByRole("button", { name: "Collapse sidebar" });
+    expect(shell.dataset.nav).toBeUndefined();
+    expect(fold.getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.click(fold);
+    expect(shell.dataset.nav).toBe("collapsed");
+    const expand = first.getByRole("button", { name: "Expand sidebar" });
+    expect(expand.getAttribute("aria-expanded")).toBe("false");
+    // A folded rail still names every link, because the text is hidden from everyone.
+    for (const link of first.container.querySelectorAll(".app-nav__link")) {
+      expect(link.getAttribute("aria-label")).toBeTruthy();
+    }
+    first.unmount();
+
+    // A new page in the same browser opens folded.
+    const second = render(<AppShell>page</AppShell>);
+    const again = second.container.querySelector(".app-shell") as HTMLElement;
+    expect(again.dataset.nav).toBe("collapsed");
+    fireEvent.click(second.getByRole("button", { name: "Expand sidebar" }));
+    expect(again.dataset.nav).toBeUndefined();
+    expect(window.localStorage.getItem("unpackfund:nav")).toBe("expanded");
   });
 });

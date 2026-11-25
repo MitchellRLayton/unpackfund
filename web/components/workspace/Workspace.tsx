@@ -48,6 +48,7 @@ import { HoldingsChips, HoldingsCompact, HoldingsPane } from "./HoldingsPane";
 import { LensTabs } from "./LensTabs";
 import { PrintSummary } from "./PrintSummary";
 import { ResultsPlaceholder } from "./ResultsPlaceholder";
+import { scrollBelowTopBar } from "./scroll";
 import styles from "./Workspace.module.css";
 
 export function Workspace() {
@@ -98,7 +99,9 @@ export function Workspace() {
   /**
    * "Show results": put the form away and bring the answer into view. The phone's drawer
    * closes too, and focus moves to the results so a keyboard or screen-reader visitor
-   * lands where the page changed rather than on a button that has just left.
+   * lands where the page changed rather than on a button that has just left. The lens tabs
+   * land just under the top bar at full size; they dock into it only once the visitor
+   * scrolls past them.
    */
   const showResults = useCallback(
     (pasted?: { entries: PortfolioEntry[]; note: string }) => {
@@ -109,7 +112,15 @@ export function Workspace() {
       setPasteNote(pasted?.note ?? null);
       setPaneCollapsed(true);
       setPaneOpen(false);
-      window.requestAnimationFrame(() => resultsRef.current?.focus());
+      // Focus without the browser's own scroll, which would put the results at y = 0 —
+      // behind the sticky top bar, so the lens tabs docked before the visitor scrolled.
+      // The explicit scroll lands the tabs just under the bar, at full size.
+      window.requestAnimationFrame(() => {
+        const results = resultsRef.current;
+        if (!results) return;
+        results.focus({ preventScroll: true });
+        scrollBelowTopBar(results);
+      });
     },
     [model.portfolio.mode, signature],
   );

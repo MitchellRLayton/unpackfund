@@ -57,7 +57,56 @@
 }
 
 .source {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3em;
   white-space: nowrap;
+}
+
+/* The fund's hue, keyed by its slot (`fundSlots` in CompaniesLens.tsx). A segment with no
+   slot is a direct holding and keeps `.rowbar__fill`'s neutral graphite. The dot repeats
+   the hue beside the fund's name, so the bar reads like a chart with a legend; it is
+   `aria-hidden`, because the name is the fact. */
+.sourceDot {
+  flex: none;
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 999px;
+  background: var(--graphite);
+  transform: translateY(-0.05em);
+}
+
+.segment[data-fund-slot="1"],
+.sourceDot[data-fund-slot="1"] {
+  background: var(--fund-1);
+}
+.segment[data-fund-slot="2"],
+.sourceDot[data-fund-slot="2"] {
+  background: var(--fund-2);
+}
+.segment[data-fund-slot="3"],
+.sourceDot[data-fund-slot="3"] {
+  background: var(--fund-3);
+}
+.segment[data-fund-slot="4"],
+.sourceDot[data-fund-slot="4"] {
+  background: var(--fund-4);
+}
+.segment[data-fund-slot="5"],
+.sourceDot[data-fund-slot="5"] {
+  background: var(--fund-5);
+}
+.segment[data-fund-slot="6"],
+.sourceDot[data-fund-slot="6"] {
+  background: var(--fund-6);
+}
+.segment[data-fund-slot="7"],
+.sourceDot[data-fund-slot="7"] {
+  background: var(--fund-7);
+}
+.segment[data-fund-slot="8"],
+.sourceDot[data-fund-slot="8"] {
+  background: var(--fund-8);
 }
 
 .sourceName {

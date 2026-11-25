@@ -91,22 +91,24 @@ export function formatSignedShare(delta: number): string {
 }
 
 /**
- * A difference between two weights, in percentage points: `+5.37 pp`, `-0.42 pp`, `0.00 pp`.
+ * A difference between two weights, printed with a percent sign: `+5.37%`, `-0.42%`, `0.00%`.
  *
- * The bracket form `formatSignedShare` returns reads as a *level* in a column of
- * percentages — the operator's decision (OD-05) is that a difference says so in its unit.
- * The rule for zero is theirs too: anything smaller than half of the last printed place
- * (0.005 pp) prints `0.00 pp` with no sign, rather than the `>-0.01%` / `<0.01%` pair,
- * which claimed a direction the number does not have and made a reader stop and decode it.
+ * The value is percentage points — your weight minus the benchmark's — and the column's
+ * tooltip and method note say so in words. The unit glyph is `%` on the operator's
+ * instruction (2026-11-24, replacing OD-05's `pp`): every other number in the table is a
+ * percent, and `pp` read as jargon. The sign is always printed, so `-2.92%` cannot be
+ * read as a level. Anything smaller than half of the last printed place (0.005 points)
+ * prints `0.00%` with no sign, rather than the `>-0.01%` / `<0.01%` pair, which claimed a
+ * direction the number does not have.
  *
  * The input is a fraction, like every weight in this app; the multiplication happens here,
  * once, so no caller has to remember it.
  */
-export function formatSignedPp(delta: number): string {
+export function formatSignedDelta(delta: number): string {
   const points = delta * 100;
-  if (Math.abs(points) < 0.005) return "0.00 pp";
+  if (Math.abs(points) < 0.005) return "0.00%";
   const magnitude = Math.abs(points).toFixed(2);
-  return `${points > 0 ? "+" : "-"}${magnitude} pp`;
+  return `${points > 0 ? "+" : "-"}${magnitude}%`;
 }
 
 /** Whether a difference is small enough to print as a flat zero. */

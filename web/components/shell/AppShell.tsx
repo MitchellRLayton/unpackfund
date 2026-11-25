@@ -22,6 +22,7 @@
 import { usePathname } from "next/navigation";
 
 import { currentItem } from "@/lib/nav";
+import { useNavCollapsed } from "@/lib/nav-collapse";
 
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
@@ -29,10 +30,15 @@ import { TopBar } from "./TopBar";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const page = currentItem(pathname)?.id ?? "none";
+  const [navCollapsed, toggleNav] = useNavCollapsed();
 
   return (
-    <div className="app-shell" data-page={page}>
-      <Sidebar />
+    <div
+      className="app-shell"
+      data-page={page}
+      data-nav={navCollapsed ? "collapsed" : undefined}
+    >
+      <Sidebar collapsed={navCollapsed} onToggle={toggleNav} />
       <div className="app-body">
         <TopBar />
         <div className="app-main">{children}</div>

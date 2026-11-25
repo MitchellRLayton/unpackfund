@@ -316,6 +316,12 @@ const UI_PAIRS: Array<[fg: string, bg: string, why: string]> = [
   ["band-3", "paper", "the moderate band as text"],
   ["band-4", "paper", "the diversified band as text"],
   ["band-5", "paper", "the broadly-diversified band as text"],
+  // The "From your funds" bar: each fund's segment is a graphic a reader has to find,
+  // on a row that is either plain or hovered.
+  ...[1, 2, 3, 4, 5, 6, 7, 8].flatMap((slot): Array<[string, string, string]> => [
+    [`fund-${slot}`, "paper", `fund slot ${slot}'s segment on a plain row`],
+    [`fund-${slot}`, "surface", `fund slot ${slot}'s segment on a hovered row`],
+  ]),
   // The reachable scrollbar's thumb. A scrollbar is a graphic that carries a
   // distinction — how much of the table is off screen — so it answers to the same 3:1
   // floor as an edge, not to taste.
@@ -449,6 +455,49 @@ describe("automatic light/dark", () => {
             if (ratio < 3) {
               failures.push(
                 `${why}: ${kind} turns ${ink} into ${simulated}, ${ratio.toFixed(2)}:1 on ${simulatedBackground}`,
+              );
+            }
+          }
+        }
+      }
+      expect(failures).toEqual([]);
+    });
+  }
+
+  for (const [theme, name] of [
+    [LIGHT, "light"],
+    [DARK, "dark"],
+  ] as const) {
+    it(`keeps every pair of fund-bar slots apart in ${name}`, () => {
+      // Unlike an ordered ramp, any two of a visitor's funds can be painted side by side
+      // in one bar — the segments are ordered by weight, not by slot — so every pair is
+      // held, not only neighbours. Eight hues that each clear 3:1 on a near-white page
+      // cannot all stay 25 apart after simulation, so the floors are lower than the
+      // geography edges': the fund's name is printed beside the bar with a dot of the
+      // same hue, and the segments are split by a 1px gap, so the hue is reinforcement.
+      // What the gate refuses is two slots that read as one colour.
+      const SLOTS = [1, 2, 3, 4, 5, 6, 7, 8].map((slot) => `fund-${slot}`);
+      const MIN_NORMAL_SEPARATION = 20;
+      const MIN_SIMULATED_SEPARATION = 10;
+      const failures: string[] = [];
+      for (let i = 0; i < SLOTS.length; i += 1) {
+        for (let j = i + 1; j < SLOTS.length; j += 1) {
+          const leftName = SLOTS[i] as string;
+          const rightName = SLOTS[j] as string;
+          const left = theme[leftName];
+          const right = theme[rightName];
+          if (!left || !right) throw new Error(`missing ${leftName} or ${rightName}`);
+          const normal = deltaE(left, right);
+          if (normal < MIN_NORMAL_SEPARATION) {
+            failures.push(
+              `${leftName}/${rightName}: uncorrected dE ${normal.toFixed(1)}`,
+            );
+          }
+          for (const [kind, matrix] of Object.entries(CVD_MATRICES)) {
+            const separation = deltaE(simulate(left, matrix), simulate(right, matrix));
+            if (separation < MIN_SIMULATED_SEPARATION) {
+              failures.push(
+                `${leftName}/${rightName}: ${kind} dE ${separation.toFixed(1)}`,
               );
             }
           }
