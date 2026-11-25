@@ -28,6 +28,7 @@ from .companies import (
     MATCH_DISTINCTIVE,
     MATCH_WEAK,
     RUNG_FIGI,
+    RUNG_NAME,
     RUNG_TICKER,
     RUNG_UNMAPPED,
     CompanyIndex,
@@ -396,7 +397,7 @@ def _stronger_identity(
             # Same bridge as the ordinary issuer rung: an entity that is also an SEC
             # registrant belongs in the ``c_`` namespace, or the ledger would list one
             # company twice and understate overlap.
-            sec_id = index.resolve_gleif_name(resolution.name)
+            sec_id = _bridge_to_sec(index, resolution)
             if sec_id is not None:
                 company_id = sec_id
                 issuers.note_bridge(rung)
@@ -408,7 +409,13 @@ def _stronger_identity(
     return None
 
 
-def _foreign_symbol_collision(holding: Holding, rung: str, strength: str | None) -> bool:
+def _foreign_symbol_collision(
+    holding: Holding,
+    rung: str,
+    strength: str | None,
+    index: CompanyIndex,
+    company_id: str | None,
+) -> bool:
     """Whether a ticker match is a local symbol that only *looks* like a US listing.
 
     N-PORT writes a bare symbol with no exchange, and the company index is EDGAR's US
@@ -426,10 +433,33 @@ def _foreign_symbol_collision(holding: Holding, rung: str, strength: str | None)
     entity, and the ladder's answer is not taught to the identity table. A US row, an
     exact name, or a row whose identifiers agree or say nothing keeps its answer.
     """
-    if rung != RUNG_TICKER or strength != MATCH_DISTINCTIVE:
-        return False
     country = (holding.inv_country or "").strip().upper()
-    return bool(country) and country != "US"
+    if not country or country == "US":
+        return False
+    if rung == RUNG_TICKER and strength == MATCH_DISTINCTIVE:
+        return True
+    # ``NN Group N.V.`` (NL) is ``NN Inc`` once ``group`` is dropped from both names.
+    return rung in (RUNG_TICKER, RUNG_NAME) and index.match_dropped_words(
+        company_id, holding.name
+    )
+
+
+def _bridge_to_sec(index: CompanyIndex, resolution: "gleif.Resolution") -> str | None:
+    """The SEC company a GLEIF entity bridges to, refusing a foreign look-alike.
+
+    ``NN GROUP N.V.`` (NL) and ``NN INC`` share a normalized name only because ``group``
+    is dropped; a non-US entity whose match leans on a dropped word stays in the issuer
+    namespace.
+    """
+    sec_id = index.resolve_gleif_name(resolution.name)
+    if sec_id is None:
+        return None
+    jurisdiction = (resolution.jurisdiction or "").split("-")[0].upper()
+    if jurisdiction and jurisdiction != "US" and index.match_dropped_words(
+        sec_id, resolution.name
+    ):
+        return None
+    return sec_id
 
 
 def _isin_key(value: str | None) -> str | None:
@@ -480,7 +510,9 @@ def build_vector(
         # shared generic word, no name at all — cannot hold the row against the
         # identifiers it carries (see the Danieli→DANA case in ``companies.names_agree``).
         strength = index.corroboration(company_id, rung, holding.name)
-        weak = strength == MATCH_WEAK or _foreign_symbol_collision(holding, rung, strength)
+        weak = strength == MATCH_WEAK or _foreign_symbol_collision(
+            holding, rung, strength, index, company_id
+        )
         ladder_answer = (company_id, rung)
         issuer_label: str | None = None
         issuer_row = False
@@ -523,7 +555,7 @@ def build_vector(
                     # Holdings, IBM). The test is the ladder's own exact, single-
                     # candidate name rule applied to GLEIF's *registered* name, not
                     # a fuzzy match: the evidence for the id is still the LEI.
-                    sec_id = index.resolve_gleif_name(resolution.name)
+                    sec_id = _bridge_to_sec(index, resolution)
                     if sec_id is not None:
                         company_id = sec_id
                         issuers.note_bridge(rung)
