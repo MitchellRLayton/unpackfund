@@ -486,6 +486,25 @@ Four small changes from one request, each with the check that holds it:
   under the bar; the tabs dock only when the visitor scrolls past them. Measured at 1440×900 on a 12-fund
   portfolio: strip top 0 px (docked) before, 65 px under a 57 px bar after.
 
+## The results summary is three cards (operator's choice, 2026-11-24)
+
+The block above `Your companies` was a stack of sentences — the ten-largest line, the effective-holdings
+sentence, the risk line, three bars, the overlap cause, the method figures, the curve, then the filter — and
+the operator called it an eyesore nobody would read. Three layouts were prototyped side by side on the real
+page (`prototype/results-summary`, never merged: stat cards, one sentence plus a chart, question rows); the
+operator chose the **stat cards**.
+
+- **Three numbers first:** `Behaves like` (effective holdings, with what you own and VT's figure under it),
+  `10 largest` (the share and the largest company) and `Single-company risk` (the band's colour word, then its
+  label and the verdict — the colour is never alone). The first two labels are still glossary terms.
+- **The reasoning is one click away, and nothing was deleted:** the sentence, the You / VT / no-overlap bars,
+  the overlap cause, the four method figures and the curve sit inside `Why these numbers?`, closed by default
+  — the same "answer first, method one click below" rule as `/x` and the table caption.
+- **A withheld figure is a word:** below 60% coverage the `10 largest` card reads `Withheld` with the fund's
+  reason, from the same `topTenSummary` the answer strip's highlight uses — one definition.
+- **The date note and the filter moved down onto the table** they qualify: the Companies lens prints its
+  notes under the `Your companies` heading; the other lenses keep them under the tab strip.
+
 ## Build rules for agents (adopted 2026-11-24)
 
 Cherry-picked from the `gemini-frontend-design` skill in

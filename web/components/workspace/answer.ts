@@ -451,40 +451,66 @@ function readySentences(
  * the card carried that no tab shows — so the Companies lens prints it at the top of its
  * panel. One function, so the panel and the printed answer cannot disagree.
  */
-export function topTenFact(ledger: Ledger): AnswerHighlight | null {
+/**
+ * The ten-largest fact as data: withheld (a fund covers under 60% of its own weight), or
+ * the share and the single largest company. One definition, read by the answer strip's
+ * highlight (`topTenFact`) and by the Companies lens's summary card.
+ */
+export type TopTenSummary =
+  | { kind: "withheld"; tickers: string[] }
+  | { kind: "shown"; label: "10 largest" | "Largest"; share: number; largest: LedgerRow };
+
+export function topTenSummary(ledger: Ledger): TopTenSummary | null {
   const suppressed = ledger.funds.filter(
     (fund) => coverageBand(fund.coverage_pct) === "none",
   );
-  const largest = largestRow(ledger.rows);
   if (suppressed.length > 0) {
+    return { kind: "withheld", tickers: suppressed.map((fund) => fund.ticker) };
+  }
+  const largest = largestRow(ledger.rows);
+  if (largest !== null && ledger.metrics.top10 !== null) {
+    return {
+      kind: "shown",
+      label: ledger.rows.length >= 10 ? "10 largest" : "Largest",
+      share: ledger.metrics.top10,
+      largest,
+    };
+  }
+  return null;
+}
+
+/** "DFUS covers under 60% of its own weight" — the reason a withheld figure is absent. */
+export function withheldReason(tickers: readonly string[]): string {
+  return tickers.length === 1
+    ? " covers under 60% of its own weight"
+    : " cover under 60% of their own weight";
+}
+
+export function topTenFact(ledger: Ledger): AnswerHighlight | null {
+  const summary = topTenSummary(ledger);
+  if (summary === null) return null;
+  if (summary.kind === "withheld") {
     return {
       label: "10 largest",
       term: "top-10",
       parts: [
         text("Withheld — "),
-        strong(suppressed.map((fund) => fund.ticker).join(", ")),
-        text(
-          suppressed.length === 1
-            ? " covers under 60% of its own weight"
-            : " cover under 60% of their own weight",
-        ),
+        strong(summary.tickers.join(", ")),
+        text(withheldReason(summary.tickers)),
       ],
     };
   }
-  if (largest !== null && ledger.metrics.top10 !== null) {
-    return {
-      label: ledger.rows.length >= 10 ? "10 largest" : "Largest",
-      term: "top-10",
-      parts: [
-        strong(formatPct1(ledger.metrics.top10)),
-        text(" of the mix · largest "),
-        strong(largest.name),
-        text(" "),
-        strong(formatShare(largest.weight)),
-      ],
-    };
-  }
-  return null;
+  return {
+    label: summary.label,
+    term: "top-10",
+    parts: [
+      strong(formatPct1(summary.share)),
+      text(" of the mix · largest "),
+      strong(summary.largest.name),
+      text(" "),
+      strong(formatShare(summary.largest.weight)),
+    ],
+  };
 }
 
 function readyHighlights(

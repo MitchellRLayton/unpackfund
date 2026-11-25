@@ -470,7 +470,8 @@ export function LensTabs({
 
       {/* Directly under the metric strip, on every lens. Renders nothing when no
        * condition fires. */}
-      <NotesStrip model={model} />
+      {/* The Companies lens prints the notes on its own table, under the summary. */}
+      {model.lens === "companies" ? null : <NotesStrip model={model} />}
 
       {/* P-E-08: the sentence is no longer a paragraph under the strip. It is the tabs'
        * description, so a screen reader still hears why they are inert, and each tab
