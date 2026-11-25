@@ -366,7 +366,7 @@ describe("the four lenses render a worked portfolio", () => {
     // The caption is still a real `<caption>` for a screen reader, hidden visually
     // only (H9), and each column's meaning is a keyboard-reachable tip.
     expect(html).toContain('class="visually-hidden"');
-    expect(html).toContain("Every pair of your funds, most overlap first.");
+    expect(html).toContain("Every pair of your funds, sorted by overlap.");
     expect(html).toContain('aria-label="About Overlap"');
     expect(html).not.toMatch(/NaN|undefined/);
   });

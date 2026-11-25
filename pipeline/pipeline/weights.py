@@ -25,8 +25,10 @@ from dataclasses import dataclass, field
 from . import classify, figi, gleif, identifiers
 from .classify import CATEGORY_ORDER, Classification
 from .companies import (
+    MATCH_DISTINCTIVE,
     MATCH_WEAK,
     RUNG_FIGI,
+    RUNG_TICKER,
     RUNG_UNMAPPED,
     CompanyIndex,
     IdentityEvidence,
@@ -406,6 +408,30 @@ def _stronger_identity(
     return None
 
 
+def _foreign_symbol_collision(holding: Holding, rung: str, strength: str | None) -> bool:
+    """Whether a ticker match is a local symbol that only *looks* like a US listing.
+
+    N-PORT writes a bare symbol with no exchange, and the company index is EDGAR's US
+    list. A foreign issuer's home-market code collides with a US symbol often enough
+    that one shared name word is not proof: on release 2026-11-24.2 ``Next PLC``
+    (``NXT``, GB) sat under Nextpower Inc, ``SM Investments`` (PH) under SM Energy,
+    ``Bharat Electronics`` (``BHE``, IN) under Benchmark Electronics, ``Billerud AB``
+    (``BILL``, SE) under Bill Holdings and ``Oesterreichische Post`` (``POST``, AT)
+    under Post Holdings — and the Overlap lens printed a US fund and an international
+    fund as sharing a company neither holds twice.
+
+    So a ticker match that is only *distinctive* (a shared word or a prefix, not the
+    same identity words) on a row whose filing places the issuer outside the US is
+    treated like a weak one: the row's own LEI/ISIN decide when they name a different
+    entity, and the ladder's answer is not taught to the identity table. A US row, an
+    exact name, or a row whose identifiers agree or say nothing keeps its answer.
+    """
+    if rung != RUNG_TICKER or strength != MATCH_DISTINCTIVE:
+        return False
+    country = (holding.inv_country or "").strip().upper()
+    return bool(country) and country != "US"
+
+
 def _isin_key(value: str | None) -> str | None:
     """An ISIN as the identity tables key it: stripped, upper-case, or ``None``."""
     text = (value or "").strip().upper()
@@ -453,7 +479,8 @@ def build_vector(
         # be confidently wrong, and a *weak* corroboration — initials, a short stem, a
         # shared generic word, no name at all — cannot hold the row against the
         # identifiers it carries (see the Danieli→DANA case in ``companies.names_agree``).
-        weak = index.corroboration(company_id, rung, holding.name) == MATCH_WEAK
+        strength = index.corroboration(company_id, rung, holding.name)
+        weak = strength == MATCH_WEAK or _foreign_symbol_collision(holding, rung, strength)
         ladder_answer = (company_id, rung)
         issuer_label: str | None = None
         issuer_row = False
