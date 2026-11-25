@@ -81,9 +81,10 @@ describe("the redesigned block", () => {
       item.getAttribute("aria-label"),
     );
     expect(bars).toEqual(["You: 2 effective companies", "VT: 2 effective companies"]);
-    // The risk band prints its colour word and its label beside the verdict, never the
-    // colour alone.
-    expect(screen.getByText(/Red · Very concentrated/)).toBeTruthy();
+    // The risk card prints its colour word and its label, never the colour alone.
+    const riskCard = screen.getByText("Single-company risk").closest("div");
+    expect(riskCard?.textContent).toContain("Red");
+    expect(riskCard?.textContent).toContain("Very concentrated");
     expect(screen.getAllByTitle(/Single-company risk measures/).length).toBeGreaterThan(
       0,
     );
@@ -139,5 +140,34 @@ describe("the redesigned block", () => {
       item.getAttribute("aria-label"),
     );
     expect(bars).toEqual(["You: 2 effective companies"]);
+  });
+
+  it("opens on three cards, with the reasoning closed one click below them", () => {
+    const { container } = renderBlock({
+      topTen: {
+        kind: "shown",
+        label: "Largest",
+        share: 1,
+        largest: row("Alpha", 0.5),
+      },
+    });
+    // Operator's choice, 2026-11-24 (prototype variant A): numbers first.
+    const labels = Array.from(container.querySelectorAll("[class*='cardLabel']")).map(
+      (label) => label.textContent,
+    );
+    expect(labels).toEqual(["Behaves like", "Largest", "Single-company risk"]);
+    expect(screen.getByText("100.0%")).toBeTruthy();
+    // The reasoning is still on the page — nothing deleted — but closed by default.
+    const why = screen.getByText("Why these numbers?").closest("details");
+    expect(why?.open).toBe(false);
+    expect(why?.querySelector("ul[aria-label]")).not.toBeNull();
+    expect(why?.textContent).toContain("How this is calculated");
+    expect(why?.textContent).toContain("See the curve");
+  });
+
+  it("says a withheld ten-largest figure in words, never as a number", () => {
+    renderBlock({ topTen: { kind: "withheld", tickers: ["AAA"] } });
+    expect(screen.getByText("Withheld")).toBeTruthy();
+    expect(screen.getByText(/AAA covers under 60% of its own weight/)).toBeTruthy();
   });
 });

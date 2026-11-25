@@ -7,14 +7,6 @@
   max-width: 34ch;
 }
 
-.riskLine {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  margin: 0;
-  max-width: 72ch;
-}
-
 .riskDot {
   flex: none;
   width: 0.7rem;
@@ -41,17 +33,6 @@
 
 .riskDot[data-band="broadly-diversified"] {
   background: var(--band-5);
-}
-
-.riskTitle {
-  text-decoration: underline dotted;
-  text-underline-offset: 0.2em;
-  cursor: help;
-}
-
-.riskText {
-  font-size: var(--text-16);
-  color: var(--graphite);
 }
 
 .bars {
@@ -103,14 +84,6 @@
   font-variant-numeric: tabular-nums lining-nums;
 }
 
-.bullets {
-  margin: 0;
-  padding-left: 1.1rem;
-  display: grid;
-  gap: var(--space-1);
-  max-width: 72ch;
-}
-
 .inlineLink {
   padding: 0;
   border: 0;
@@ -146,4 +119,78 @@
 
 .method p {
   max-width: 62ch;
+}
+
+/* ---- The three cards (operator's choice, 2026-11-24: prototype variant A) ---------- */
+
+.summary {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.cards {
+  display: grid;
+  /* Three across in the results column at 1280 px (about 33 rem wide); one per row on a
+   * phone, where 9.5 rem would not fit twice. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+  gap: var(--space-3);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.cardLabel {
+  font-size: var(--text-12);
+  color: var(--graphite);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* A glossary term inside a label keeps its link affordance but takes the label's type,
+ * so the three labels read as one set. */
+.cardLabel > * {
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+}
+
+.cardValue {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: var(--text-28);
+  font-weight: 600;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.cardSub {
+  font-size: var(--text-12);
+  color: var(--graphite);
+}
+
+/* The reasoning, one click from the numbers. */
+.why > summary {
+  cursor: pointer;
+  color: var(--graphite);
+  font-size: var(--text-14);
+}
+
+.whyBody {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+}
+
+.cause {
+  margin: 0;
+  max-width: 72ch;
 }

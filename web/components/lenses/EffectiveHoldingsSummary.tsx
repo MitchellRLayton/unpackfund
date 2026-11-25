@@ -34,6 +34,8 @@ import {
 import { formatCount, formatPct1, formatShare } from "@/lib/format";
 import type { BenchmarkComparison, LedgerRow } from "@/lib/types";
 
+import { type TopTenSummary, withheldReason } from "@/components/workspace/answer";
+
 import type { CurveProps } from "./ConcentrationCurve";
 import styles from "./EffectiveHoldingsSummary.module.css";
 import { LensSection } from "./lens-chrome";
@@ -45,7 +47,10 @@ export function EffectiveHoldingsSummary({
   fundCount,
   directCount,
   onSeeOverlap,
+  topTen = null,
 }: {
+  /** The ten-largest fact (`topTenSummary`); its card is absent when there is none. */
+  topTen?: TopTenSummary | null;
   effective: EffectiveHoldings;
   rows: readonly LedgerRow[];
   benchmark: BenchmarkComparison | null;
@@ -141,118 +146,183 @@ export function EffectiveHoldingsSummary({
   }
   const max = Math.max(...bars.map((bar) => bar.value)) * 1.1;
 
+  // The ten-largest card: the share, or — when a fund is withheld below 60% coverage — the
+  // word and the reason, never a figure computed over the part that resolved.
+  const topTenCard =
+    topTen === null ? null : topTen.kind === "withheld" ? (
+      <div className={styles.card}>
+        <span className={styles.cardLabel}>
+          <Term name="top-10">10 largest</Term>
+        </span>
+        <span className={styles.cardValue}>Withheld</span>
+        <span className={styles.cardSub}>
+          {topTen.tickers.join(", ")}
+          {withheldReason(topTen.tickers)}
+        </span>
+      </div>
+    ) : (
+      <div className={styles.card}>
+        <span className={styles.cardLabel}>
+          <Term name="top-10">{topTen.label}</Term>
+        </span>
+        <span className={styles.cardValue}>{formatPct1(topTen.share)}</span>
+        <span className={styles.cardSub}>
+          of the mix · largest {topTen.largest.name} {formatShare(topTen.largest.weight)}
+        </span>
+      </div>
+    );
+
+  /*
+   * The operator's choice of 2026-11-24 (prototype/results-summary, variant A): three
+   * numbers first, as cards, and the reasoning one click away. Nothing is deleted — the
+   * sentence, the bars, the overlap cause, the four method figures and the curve are all
+   * inside "Why these numbers?" — so the first screen is the answer and the method is
+   * one click from it, the same rule `/x` follows (DESIGN.md).
+   */
   return (
-    <LensSection title={<Term name="effective-holdings">Effective holdings</Term>}>
-      <p className={styles.headline}>{view.headline}</p>
-      {view.band ? (
-        <p className={styles.riskLine}>
-          <span
-            className={styles.riskDot}
-            data-band={view.band.key}
-            aria-hidden="true"
-            title={RISK_TOOLTIP}
-          />
-          <span className={styles.riskText}>
-            <span className={styles.riskTitle} title={RISK_TOOLTIP}>
+    <section className={styles.summary} aria-label="Effective holdings">
+      <div className={styles.cards}>
+        <div className={styles.card}>
+          <span className={styles.cardLabel}>
+            <Term name="effective-holdings">Behaves like</Term>
+          </span>
+          <span className={styles.cardValue}>{effectiveWords(view.effective)}</span>
+          <span className={styles.cardSub}>
+            {view.singleStock
+              ? view.headline
+              : `equally weighted companies · you own ${formatCount(rows.length)}${
+                  view.benchmark
+                    ? ` · ${view.benchmark.ticker} ${effectiveWords(view.benchmark.effective)}`
+                    : ""
+                }`}
+          </span>
+        </div>
+        {topTenCard}
+        {view.band ? (
+          <div className={styles.card}>
+            <span className={styles.cardLabel} title={RISK_TOOLTIP}>
               Single-company risk
             </span>
-            {" · "}
-            <strong>
-              {view.band.colour} · {view.band.label}
-            </strong>
-            {view.verdict ? <> — {view.verdict}</> : null}
-          </span>
-        </p>
-      ) : null}
+            <span className={styles.cardValue}>
+              <span
+                className={styles.riskDot}
+                data-band={view.band.key}
+                aria-hidden="true"
+              />
+              {view.band.colour}
+            </span>
+            <span className={styles.cardSub}>
+              {view.band.label}
+              {view.verdict ? <> — {view.verdict}</> : null}
+            </span>
+          </div>
+        ) : null}
+      </div>
 
-      {!view.singleStock ? (
-        <ul className={styles.bars} aria-label="Effective number of companies, compared">
-          {bars.map((bar) => (
-            <li
-              key={bar.key}
-              className={styles.barRow}
-              aria-label={`${bar.label}: ${effectiveWords(bar.value)} effective companies`}
+      <details className={styles.why}>
+        <summary>Why these numbers?</summary>
+        <div className={styles.whyBody}>
+          {/* A single stock's sentence is already the first card's line. */}
+          {!view.singleStock ? <p className={styles.headline}>{view.headline}</p> : null}
+
+          {!view.singleStock ? (
+            <ul
+              className={styles.bars}
+              aria-label="Effective number of companies, compared"
             >
-              <span className={styles.barLabel}>{bar.label}</span>
-              <span className={styles.track} aria-hidden="true">
-                <span
-                  className={`${styles.fill} ${bar.tone === "you" ? styles.you : styles.neutral}`}
-                  style={{ width: `${(bar.value / max) * 100}%` }}
-                />
-              </span>
-              <span className={`${styles.barValue} mono`}>
-                {effectiveWords(bar.value)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      {!view.singleStock ? (
-        <ul className={styles.bullets}>
-          {view.singleFund ? null : view.noShared ? (
-            <li>
-              Your funds don&apos;t share any companies, so overlap isn&apos;t reducing
-              your diversification.
-            </li>
-          ) : view.worstOverlap && view.noOverlapEffective !== null ? (
-            <li>
-              Overlap is the main cause: {view.worstOverlap.name} is in{" "}
-              {formatCount(view.worstOverlap.heldBy)} of your{" "}
-              {formatCount(view.fundCount)} funds.{" "}
-              <button type="button" className={styles.inlineLink} onClick={onSeeOverlap}>
-                See Overlap →
-              </button>
-            </li>
+              {bars.map((bar) => (
+                <li
+                  key={bar.key}
+                  className={styles.barRow}
+                  aria-label={`${bar.label}: ${effectiveWords(bar.value)} effective companies`}
+                >
+                  <span className={styles.barLabel}>{bar.label}</span>
+                  <span className={styles.track} aria-hidden="true">
+                    <span
+                      className={`${styles.fill} ${bar.tone === "you" ? styles.you : styles.neutral}`}
+                      style={{ width: `${(bar.value / max) * 100}%` }}
+                    />
+                  </span>
+                  <span className={`${styles.barValue} mono`}>
+                    {effectiveWords(bar.value)}
+                  </span>
+                </li>
+              ))}
+            </ul>
           ) : null}
-        </ul>
-      ) : null}
 
-      {/*
-        P-C-05, on the owner's decision OD-03 option B: the seven-paragraph arithmetic
-        disclosure becomes a link to the method, and the four per-portfolio figures it
-        carried stay on screen. The research the risk bands lean on is at that anchor
-        (MA-01), not repeated here. Each figure prints only when it exists — a missing
-        count is absent, never a zero.
-      */}
-      {!view.singleStock ? (
-        <div className={styles.method}>
-          <a className={styles.inlineLink} href="/methodology/#effective-holdings">
-            How this is calculated
-          </a>
-          {view.noOverlapEffective !== null &&
-          view.noOverlapLenient !== null &&
-          view.overlapCostPct !== null &&
-          view.top10HhiSharePct !== null ? (
-            <p className="small muted">
-              Without overlap: Core {effectiveWords(view.noOverlapEffective)}, Broad{" "}
-              {effectiveWords(view.noOverlapLenient)} · overlap costs{" "}
-              {view.overlapCostPct}% of Core · top 10 drive{" "}
-              {formatPct1(view.top10HhiSharePct / 100)} of Core
+          {!view.singleStock && !view.singleFund ? (
+            <p className={styles.cause}>
+              {view.noShared ? (
+                <>
+                  Your funds don&apos;t share any companies, so overlap isn&apos;t
+                  reducing your diversification.
+                </>
+              ) : view.worstOverlap && view.noOverlapEffective !== null ? (
+                <>
+                  Overlap is the main cause: {view.worstOverlap.name} is in{" "}
+                  {formatCount(view.worstOverlap.heldBy)} of your{" "}
+                  {formatCount(view.fundCount)} funds.{" "}
+                  <button
+                    type="button"
+                    className={styles.inlineLink}
+                    onClick={onSeeOverlap}
+                  >
+                    See Overlap →
+                  </button>
+                </>
+              ) : null}
             </p>
           ) : null}
-        </div>
-      ) : null}
 
-      <details
-        className={styles.curve}
-        onToggle={(event) => setCurveOpen(event.currentTarget.open)}
-      >
-        <summary>See the curve</summary>
-        {curveOpen ? (
-          Curve ? (
-            <Curve
-              you={curveYou}
-              benchmark={curveBenchmark}
-              band={view.band ?? bandFor(view.effective)}
-              benchmarkBand={view.benchmark ? bandFor(view.benchmark.effective) : null}
-              effective={view.effective}
-            />
-          ) : (
-            <p className="small muted">Loading the chart…</p>
-          )
-        ) : null}
+          {/*
+            P-C-05, on the owner's decision OD-03 option B: the seven-paragraph arithmetic
+            disclosure is a link to the method, and the four per-portfolio figures it
+            carried stay here. Each figure prints only when it exists — a missing count is
+            absent, never a zero.
+          */}
+          {!view.singleStock ? (
+            <div className={styles.method}>
+              <a className={styles.inlineLink} href="/methodology/#effective-holdings">
+                How this is calculated
+              </a>
+              {view.noOverlapEffective !== null &&
+              view.noOverlapLenient !== null &&
+              view.overlapCostPct !== null &&
+              view.top10HhiSharePct !== null ? (
+                <p className="small muted">
+                  Without overlap: Core {effectiveWords(view.noOverlapEffective)}, Broad{" "}
+                  {effectiveWords(view.noOverlapLenient)} · overlap costs{" "}
+                  {view.overlapCostPct}% of Core · top 10 drive{" "}
+                  {formatPct1(view.top10HhiSharePct / 100)} of Core
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <details
+            className={styles.curve}
+            onToggle={(event) => setCurveOpen(event.currentTarget.open)}
+          >
+            <summary>See the curve</summary>
+            {curveOpen ? (
+              Curve ? (
+                <Curve
+                  you={curveYou}
+                  benchmark={curveBenchmark}
+                  band={view.band ?? bandFor(view.effective)}
+                  benchmarkBand={
+                    view.benchmark ? bandFor(view.benchmark.effective) : null
+                  }
+                  effective={view.effective}
+                />
+              ) : (
+                <p className="small muted">Loading the chart…</p>
+              )
+            ) : null}
+          </details>
+        </div>
       </details>
-    </LensSection>
+    </section>
   );
 }

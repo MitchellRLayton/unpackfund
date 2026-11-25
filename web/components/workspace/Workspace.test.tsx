@@ -795,6 +795,21 @@ describe("Workspace — the holdings pane and the lenses", () => {
     }
   });
 
+  it("puts the filter with the table it filters, under the summary cards", () => {
+    renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+    const panel = screen.getByRole("tabpanel");
+    const heading = within(panel).getByRole("heading", { name: /Your companies/ });
+    const filter = within(panel).getByPlaceholderText("Filter by name or ticker");
+    const cards = within(panel).getByText("Why these numbers?");
+    // Document order: cards, then the table's heading, then its filter.
+    expect(
+      cards.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      heading.compareDocumentPosition(filter) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("prints the difference with its sign and its colour, and no colour at zero", () => {
     renderWorkspace({ entries: ENTRIES, ledger: BENCHMARKED });
 

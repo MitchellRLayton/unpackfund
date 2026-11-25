@@ -79,10 +79,11 @@ import {
 import type { LedgerRow, LedgerSource } from "@/lib/types";
 import type { LensProps } from "@/components/workspace/types";
 
-import { ConcentrationLine } from "./ConcentrationLine";
 import styles from "./CompaniesLens.module.css";
 import { CellNote, LensExport, LensProblem, LensSection, LensState } from "./lens-chrome";
 import { EffectiveHoldingsSummary } from "./EffectiveHoldingsSummary";
+import { topTenSummary } from "@/components/workspace/answer";
+import { NotesStrip } from "@/components/workspace/NotesStrip";
 import { companiesCsv, lensCsvName } from "./lens-csv";
 import { lensGateState } from "./lens-gate";
 import { nextSort, sortBy, TIER_WORD, type SortState } from "./lens-math";
@@ -577,10 +578,13 @@ export function CompaniesLens({ model }: LensProps) {
 
   if (ledger.rows.length === 0) {
     return (
-      <LensState
-        title="No companies in this portfolio"
-        body="No filing in this release placed any of the weight you entered. Check the tickers in the holdings pane — a fund the release cannot answer for is a fund whose holdings cannot be seen."
-      />
+      <div className="stack">
+        <NotesStrip model={model} />
+        <LensState
+          title="No companies in this portfolio"
+          body="No filing in this release placed any of the weight you entered. Check the tickers in the holdings pane — a fund the release cannot answer for is a fund whose holdings cannot be seen."
+        />
+      </div>
     );
   }
 
@@ -625,15 +629,10 @@ export function CompaniesLens({ model }: LensProps) {
   return (
     <div className="stack">
       <LensProblem model={model} />
-      {/* The one fact the old "What you own" card carried that no metric tab shows:
-       * the ten largest share and the largest name. It belongs at the top of the lens
-       * it describes, not in a card above the tabs. */}
-      <ConcentrationLine ledger={ledger} />
       {/*
-        First in the lens, above the filter, because it is the portfolio's answer rather
-        than a note about the table: a reader who opens this tab is asking "what do I own",
-        and a summary that sits below the filter box — where it started — needs a scroll
-        to find and reads as table chrome.
+        First in the lens, above the table, because it is the portfolio's answer rather than
+        a note about the table: three cards (effective holdings, the ten largest, single-
+        company risk) with the reasoning one click below them (operator, 2026-11-24).
       */}
       <EffectiveHoldingsSummary
         effective={ledger.effective}
@@ -642,6 +641,7 @@ export function CompaniesLens({ model }: LensProps) {
         fundCount={Object.keys(model.split.fundWeights).length}
         directCount={model.split.direct.length}
         onSeeOverlap={() => model.setLens("overlap")}
+        topTen={topTenSummary(ledger)}
       />
 
       {suppressed.length > 0 ? (
@@ -654,25 +654,6 @@ export function CompaniesLens({ model }: LensProps) {
           can only rise as coverage improves.
         </p>
       ) : null}
-
-      <div className="field">
-        <label className="field__label visually-hidden" htmlFor="companies-filter">
-          Filter companies
-        </label>
-        <input
-          id="companies-filter"
-          className="field__input"
-          type="search"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            resetPage();
-          }}
-          placeholder="Filter by name or ticker"
-          autoComplete="off"
-          spellCheck={false}
-        />
-      </div>
 
       <LensSection
         title="Your companies"
@@ -693,6 +674,27 @@ export function CompaniesLens({ model }: LensProps) {
               )} companies`}{" "}
           · {formatShare(totalWeight)} of your portfolio traced to a company
         </p>
+        {/* The table's own notes (the filing dates) and its filter sit with the table they
+         * qualify, not above the summary (operator, 2026-11-24). */}
+        <NotesStrip model={model} />
+        <div className="field">
+          <label className="field__label visually-hidden" htmlFor="companies-filter">
+            Filter companies
+          </label>
+          <input
+            id="companies-filter"
+            className="field__input"
+            type="search"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              resetPage();
+            }}
+            placeholder="Filter by name or ticker"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
         {/*
           Which fund the two comparison columns are against. A display preference in the
           query string, exactly one at a time, defaulting to VT; the same picker shape the
