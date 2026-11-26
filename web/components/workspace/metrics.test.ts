@@ -132,6 +132,10 @@ function modelOf(overrides: Partial<WorkspaceModel> = {}): WorkspaceModel {
     hasEntries: true,
     ledger: ledgerOf(99),
     funds: [VTI, VXUS],
+    fundByTicker: new Map([
+      ["VTI", VTI],
+      ["VXUS", VXUS],
+    ]),
     contested: {},
     portfolio: {
       entries: [
@@ -210,6 +214,67 @@ describe("the metric strip", () => {
     expect(funds?.sub).toBe("behaves like 1.9");
     // The largest fund's ticker is gone: it told a reader nothing they could act on.
     expect(funds?.sub).not.toContain("VTI");
+  });
+
+  describe("the portfolio's average fee on Funds (D4)", () => {
+    const feeRow = (total: number) => ({
+      class_id: null,
+      total,
+      net: null,
+      waiver: null,
+      basis: "no-waiver-stated",
+      prospectus_date: "2026-04-29",
+      filed_at: "2026-04-30",
+      form: "485BPOS",
+      source_url: "https://www.sec.gov/Archives/edgar/data/1/x.htm",
+    });
+    const withFee = (document: FundDocument, total?: number) =>
+      total === undefined
+        ? document
+        : ({
+            ...document,
+            fees: { classes: { [document.ticker]: feeRow(total) } },
+          } as FundDocument);
+    const modelWith = (vti?: number, vxus?: number, stock = false) => {
+      const docs = new Map([
+        ["VTI", withFee(VTI, vti)],
+        ["VXUS", withFee(VXUS, vxus)],
+      ]);
+      return modelOf({
+        fundByTicker: docs,
+        split: {
+          fundWeights: { VTI: 0.6, VXUS: 0.3 },
+          direct: stock ? [{ kind: "security", key: "AMZN", weight: 0.1 }] : [],
+          cash: 0,
+          invested: 1,
+          unallocated: 0,
+        },
+      } as Partial<WorkspaceModel>);
+    };
+
+    it("puts the average beside 'behaves like', over the funds whose fee is known", () => {
+      // VTI 0.60 at 0.03%, VXUS 0.30 at 0.08%: (0.6·0.03 + 0.3·0.08) / 0.9 = 0.0466…% → 0.05%.
+      const funds = buildMetrics(modelWith(0.0003, 0.0008), "MSCI")[2];
+      expect(funds?.sub).toBe("behaves like 1.8 · 0.05% avg fee");
+      expect(funds?.sentence).toContain("average fee 0.05%");
+    });
+
+    it("leaves a direct stock out of both the average and the share it covers", () => {
+      const funds = buildMetrics(modelWith(0.0003, 0.0008, true), "MSCI")[2];
+      expect(funds?.sub).toBe("behaves like 1.8 · 0.05% avg fee · +1 stock");
+    });
+
+    it("is absent when a fund's fee is not stated and the rest fall under 60%", () => {
+      // VXUS (0.30 of 0.90 fund weight = 33.3%) is the only one with a fee.
+      const funds = buildMetrics(modelWith(undefined, 0.0008), "MSCI")[2];
+      expect(funds?.sub).toBe("behaves like 1.8");
+      expect(funds?.sentence).not.toContain("fee");
+    });
+
+    it("is absent, and silent, when the release carries no fees", () => {
+      const funds = buildMetrics(modelWith(), "MSCI")[2];
+      expect(funds?.sub).toBe("behaves like 1.8");
+    });
   });
 
   it("names the stocks and cash the fund count leaves out", () => {

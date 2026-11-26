@@ -49,9 +49,10 @@ export interface PortfolioState {
   /**
    * Append one entry at 0, leaving every amount already there alone, and say what
    * happened: `kept` (the row was added at 0) or `noop` (that holding is already in the
-   * portfolio).
+   * portfolio). `cls` is the share class the visitor typed for a fund, kept beside the
+   * published ticker so the fund's fee is the class's.
    */
-  add: (kind: EntryKind, key: string) => AddOutcome;
+  add: (kind: EntryKind, key: string, cls?: string) => AddOutcome;
   /**
    * Drop one entry. A list that is exactly the even split (from the Equal weight button
    * or the example) is re-spread over what remains, so removing one row of five equal
@@ -109,7 +110,7 @@ export function usePortfolio(): PortfolioState {
   const mode = snapshot.portfolio.mode;
 
   const add = useCallback(
-    (kind: EntryKind, key: string): AddOutcome => {
+    (kind: EntryKind, key: string, cls?: string): AddOutcome => {
       if (entries.some((entry) => isSame(entry, kind, key))) return "noop";
       // A new row always arrives at zero. The app used to spread the whole evenly across
       // a list it had itself spread (the first row at 100%, the second halving it), which
@@ -117,7 +118,11 @@ export function usePortfolio(): PortfolioState {
       // the amounts on screen are only ever ones the visitor typed or asked for with the
       // Equal weight button. Cash and stocks start at zero for the same reason: guessing
       // a dollar amount is guessing money.
-      write({ mode, entries: [...entries, { kind, key, amount: 0 }] });
+      const entry: PortfolioEntry =
+        kind === "fund" && cls !== undefined && cls !== key
+          ? { kind, key, amount: 0, cls }
+          : { kind, key, amount: 0 };
+      write({ mode, entries: [...entries, entry] });
       return "kept";
     },
     [entries, mode],

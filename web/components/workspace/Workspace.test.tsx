@@ -15,6 +15,7 @@ import { benchmarkFor } from "@/lib/benchmark";
 import { CASH_KEY } from "@/lib/holdings";
 import { splitPortfolio } from "@/lib/portfolio-weights";
 import type {
+  FeeRow,
   FundDocument,
   Ledger,
   PortfolioEntry,
@@ -607,10 +608,63 @@ describe("Workspace — the holdings pane and the lenses", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
 
-    await waitFor(() => expect(model.portfolio.add).toHaveBeenCalledWith("fund", "BND"));
+    await waitFor(() =>
+      expect(model.portfolio.add).toHaveBeenCalledWith("fund", "BND", undefined),
+    );
     // One write per add: the row arrives at 0 and no second call re-weights it.
     expect(model.portfolio.setAmount).not.toHaveBeenCalled();
     expect(model.portfolio.replace).not.toHaveBeenCalled();
+  });
+
+  it("shows the class the visitor entered, with that class's fee, in the builder row", () => {
+    const entries: PortfolioEntry[] = [
+      { kind: "fund", key: "VTI", amount: 6_000, cls: "VTSAX" },
+      { kind: "fund", key: "VXUS", amount: 4_000 },
+    ];
+    const model = makeModel({ entries });
+    const row = (total: number, extra: Partial<FeeRow> = {}): FeeRow => ({
+      class_id: null,
+      total,
+      net: null,
+      waiver: null,
+      basis: "no-waiver-stated",
+      prospectus_date: "2026-04-29",
+      filed_at: "2026-04-30",
+      form: "485BPOS",
+      source_url: "https://www.sec.gov/x",
+      ...extra,
+    });
+    const vti = model.fundByTicker.get("VTI") as FundDocument;
+    const vxus = model.fundByTicker.get("VXUS") as FundDocument;
+    // VTI's own class is 0.03%, the class the visitor typed is 0.04%: the row must say 0.04%.
+    model.fundByTicker.set("VTI", {
+      ...vti,
+      fees: { classes: { VTI: row(0.0003), VTSAX: row(0.0004) } },
+    });
+    // VXUS states nothing for its own class, but states one for a sibling: still "not stated".
+    model.fundByTicker.set("VXUS", {
+      ...vxus,
+      fees: { classes: { VXUSX: row(0.0011) } },
+    });
+    state.model = model;
+    const { container } = render(<Workspace />);
+    openPane();
+
+    expect(screen.getByText("Entered as VTSAX")).toBeTruthy();
+    const notes = [...container.querySelectorAll("[data-fee-note]")].map(
+      (node) => node.textContent,
+    );
+    expect(notes).toEqual([
+      "VTSAX expense ratio 0.04%, no fee waiver stated",
+      "VXUS expense ratio not stated",
+    ]);
+  });
+
+  it("says nothing about fees when the funds carry none", () => {
+    const { container } = renderWorkspace({ entries: ENTRIES, ledger: LEDGER });
+    openPane();
+    expect(container.querySelector("[data-fee-note]")).toBeNull();
+    expect(container.textContent).not.toMatch(/expense ratio|avg fee/i);
   });
 
   it("fills the unallocated rest with cash in a single write", () => {

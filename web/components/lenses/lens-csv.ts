@@ -17,8 +17,9 @@
 
 import { DEFAULT_BENCHMARK, benchmarkDelta } from "@/lib/benchmark";
 import type { EffectiveHoldings } from "@/lib/effective-holdings";
+import type { FeeFigure } from "@/lib/fees";
 import type { CoverageBand } from "@/lib/format";
-import { coverageBand } from "@/lib/format";
+import { coverageBand, formatFeePct } from "@/lib/format";
 
 import { bucketWord, TIER_WORD } from "./lens-math";
 import type { FundMixRow, MarketSplit, PairState, UntracedTotals } from "./lens-math";
@@ -39,6 +40,11 @@ export function csvLine(values: Array<string | number | null | undefined>): stri
 /** A fraction as the page prints a weight: `0.0123` → `1.23`. */
 function share(fraction: number): string {
   return (fraction * 100).toFixed(2);
+}
+
+/** A stated fee as the page prints it, without the `%`: `0.0004` → `0.04`, a number to a sheet. */
+function feePct(fraction: number): string {
+  return formatFeePct(fraction).replace("%", "");
 }
 
 /** A percentage that is already a percentage, at the page's coverage precision. */
@@ -263,6 +269,13 @@ export function fundsCsv(
   rows: readonly FundMixRow[],
   releaseAsOf: string,
   pair?: ReadonlyMap<string, EffectiveHoldings>,
+  /**
+   * Each fund's expense ratio, when the release carries them. The three columns repeat what
+   * the Funds table prints: the class the visitor entered, the figure the prospectus says
+   * investors pay, and the words that say what it is. A table the file does not match is a
+   * second, different table.
+   */
+  fee?: (ticker: string) => { classTicker: string; figure: FeeFigure | null },
 ): string {
   const withPair = pair !== undefined;
   const counts = (pairFor: EffectiveHoldings | undefined, key: "core" | "broad") => {
@@ -282,6 +295,7 @@ export function fundsCsv(
       "filed_at",
       "age_days",
       "top10_share_pct",
+      ...(fee ? ["fee_class", "expense_ratio_pct", "expense_ratio_basis"] : []),
       ...(withPair ? ["core", "broad"] : []),
       "release_as_of",
     ]),
@@ -289,6 +303,7 @@ export function fundsCsv(
 
   for (const row of rows) {
     const pairFor = pair?.get(row.ticker);
+    const stated = fee?.(row.ticker);
     lines.push(
       csvLine([
         row.ticker,
@@ -301,6 +316,13 @@ export function fundsCsv(
         row.filedAt,
         row.lagDays,
         row.top10Share === null ? "" : share(row.top10Share),
+        ...(stated
+          ? [
+              stated.classTicker,
+              stated.figure ? feePct(stated.figure.value) : "",
+              stated.figure ? stated.figure.note : "not stated",
+            ]
+          : []),
         ...(withPair ? [counts(pairFor, "core"), counts(pairFor, "broad")] : []),
         releaseAsOf,
       ]),

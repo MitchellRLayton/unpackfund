@@ -394,6 +394,12 @@ export interface FundDocument {
   identified_pct?: number | null;
   /** The same two shares per asset class, the counterpart of `coverage_by_cat`. */
   identified_by_cat?: Record<AssetCategory, number | null>;
+  /**
+   * The expense ratio each share class's prospectus states (T-0052, ADR-0030). Absent in a
+   * release that did not read prospectuses, and also on a fund none of whose classes states
+   * one: a reader must not turn absence into zero. Keyed by the class's ticker.
+   */
+  fees?: FundFees;
   holdings: Holding[];
   metrics: FundMetrics;
   warnings: WarningCode[];
@@ -412,6 +418,27 @@ export interface FundDocument {
    * beside it.
    */
   lookthrough?: FundLookthrough;
+}
+
+/** What a prospectus says about a waiver, which decides what the headline figure means. */
+export type FeeBasis =
+  "stated-net" | "no-waiver-stated" | "waiver-without-net" | "waiver-unresolved";
+
+/** One share class's stated fee, as the pipeline published it. Values are fractions. */
+export interface FeeRow {
+  class_id: string | null;
+  total: number | null;
+  net: number | null;
+  waiver: number | null;
+  basis: FeeBasis;
+  prospectus_date: string | null;
+  filed_at: string;
+  form: string;
+  source_url: string;
+}
+
+export interface FundFees {
+  classes: Record<string, FeeRow>;
 }
 
 /** One sleeve of a fund-of-funds, as filed and as resolved. */
@@ -487,6 +514,14 @@ export interface PortfolioEntry {
   /** Fund ticker, security symbol, or `CASH`. */
   key: string;
   amount: number;
+  /**
+   * The share class the visitor typed, for a fund entered by a class ticker (`VFIAX`
+   * for the fund published as `VOO`). Funds only, and absent when the visitor typed the
+   * published ticker itself or the link predates classes. `key` stays the published
+   * ticker, because every lookup of the fund's document and holdings is by it; the class
+   * is what the fund's fee is read for (`lib/fees.ts`). Never equal to `key`.
+   */
+  cls?: string;
 }
 
 /** The complete portfolio state, which is what the URL fragment encodes. */

@@ -121,6 +121,92 @@ describe("adding funds", () => {
   });
 });
 
+describe("a fund entered by its share class (T-0052 phase 3)", () => {
+  const storedEntries = () => {
+    const decoded = decodePortfolio(window.location.hash);
+    if (!decoded.ok) throw new Error(`the fragment did not decode: ${decoded.reason}`);
+    return decoded.portfolio.entries;
+  };
+
+  it("keeps the class beside the published ticker, and the URL carries it", () => {
+    const view = renderHook(() => usePortfolio());
+    act(() => {
+      view.result.current.add("fund", "VOO", "VFIAX");
+    });
+    act(() => {
+      view.result.current.add("fund", "VTI");
+    });
+
+    expect(view.result.current.entries).toEqual([
+      { kind: "fund", key: "VOO", amount: 0, cls: "VFIAX" },
+      { kind: "fund", key: "VTI", amount: 0 },
+    ]);
+    expect(storedEntries()).toEqual(view.result.current.entries);
+    expect(window.location.hash.startsWith("#v4.")).toBe(true);
+  });
+
+  it("keeps the class through an amount edit, a reorder and an equal split", () => {
+    const view = renderHook(() => usePortfolio());
+    act(() => {
+      view.result.current.add("fund", "VOO", "VFIAX");
+    });
+    act(() => {
+      view.result.current.add("fund", "VTI");
+    });
+    act(() => {
+      view.result.current.setAmount("fund", "VOO", 6_000);
+    });
+    act(() => {
+      view.result.current.move("fund", "VOO", 1);
+    });
+    act(() => {
+      view.result.current.equalise();
+    });
+
+    expect(storedEntries()).toEqual([
+      { kind: "fund", key: "VTI", amount: 5_000 },
+      { kind: "fund", key: "VOO", amount: 5_000, cls: "VFIAX" },
+    ]);
+  });
+
+  it("writes a class-less portfolio as v3, as before", () => {
+    const view = renderHook(() => usePortfolio());
+    act(() => {
+      view.result.current.add("fund", "VOO");
+    });
+    expect(window.location.hash.startsWith("#v3.")).toBe(true);
+  });
+
+  it("is one row per fund: typing another class of a fund already there is a no-op", () => {
+    const view = renderHook(() => usePortfolio());
+    act(() => {
+      view.result.current.add("fund", "VOO", "VFIAX");
+    });
+    let outcome: AddOutcome = "kept";
+    act(() => {
+      outcome = view.result.current.add("fund", "VOO", "VFINX");
+    });
+    expect(outcome).toBe("noop");
+    expect(view.result.current.entries).toEqual([
+      { kind: "fund", key: "VOO", amount: 0, cls: "VFIAX" },
+    ]);
+  });
+
+  it("drops a class that is the fund's own ticker, and a class on anything but a fund", () => {
+    const view = renderHook(() => usePortfolio());
+    act(() => {
+      view.result.current.add("fund", "VOO", "VOO");
+    });
+    act(() => {
+      view.result.current.add("security", "AAPL", "AAPL.X");
+    });
+    expect(view.result.current.entries).toEqual([
+      { kind: "fund", key: "VOO", amount: 0 },
+      { kind: "security", key: "AAPL", amount: 0 },
+    ]);
+  });
+});
+
 describe("removing a row", () => {
   it("re-spreads an even split: four rows at 2,500bp, back to 10,000", () => {
     const view = renderHook(() => usePortfolio());

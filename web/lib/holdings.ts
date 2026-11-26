@@ -93,6 +93,12 @@ export type EntryDecision =
       key: string;
       /** What the row is called: the ticker, or `CASH`. */
       label: string;
+      /**
+       * The share class the visitor typed, when it is an alias of the published fund in
+       * `key` (`VFIAX` for `VOO`). The row keeps `key` for every lookup and this for the
+       * fund's fee; absent when the published ticker itself was typed.
+       */
+      cls?: string;
       /** The confirmation body, when there is something worth saying beyond "Added X". */
       body?: string;
       /** The name the reader should see, when the release resolved one (`AMZN — AMAZON COM INC`). */
@@ -211,6 +217,8 @@ export async function resolveEntry(
       kind: "fund",
       key: published,
       label: published,
+      // The class is kept: the holdings are the series', but a fee is the class's.
+      cls: ticker,
       body: `${ticker} is a share class of ${published}, so the holdings are the same.`,
     };
   }

@@ -185,8 +185,16 @@ describe("resolveEntry", () => {
       ok: true,
       kind: "fund",
       key: "VOO",
+      // The class the visitor typed travels with the fund: its fee is the class's.
+      cls: "VFIAX",
       body: "VFIAX is a share class of VOO, so the holdings are the same.",
     });
+  });
+
+  it("carries no class when the published ticker itself is typed", async () => {
+    const decision = await resolveEntry("VOO", ctx);
+    expect(decision).toMatchObject({ ok: true, kind: "fund", key: "VOO" });
+    expect(decision).not.toHaveProperty("cls");
   });
 
   it("tells a stock apart from a missing fund when the list is funds-only", async () => {
