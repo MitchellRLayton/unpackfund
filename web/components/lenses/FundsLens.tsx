@@ -33,9 +33,19 @@ import {
 } from "@/lib/effective-holdings";
 import { saveCsv } from "@/lib/export";
 import {
+  classesByFund,
+  classOf,
+  documentsCarryFees,
+  feeFigure,
+  portfolioFee,
+} from "@/lib/fees";
+import {
   formatCount,
   formatEffective,
+  formatFeeAverage,
+  formatFeePct,
   formatFreshnessShort,
+  formatKnownShare,
   formatShare,
 } from "@/lib/format";
 import { COVERAGE_POPOVER } from "@/lib/coverage";
@@ -114,6 +124,14 @@ const COLUMNS: Array<{
   },
 ];
 
+/**
+ * The fee column is not one of `COLUMNS`: it has no sort key, no sort button and no
+ * `aria-sort`. An expense ratio is a stated fact about each fund, and a table the visitor
+ * can order by it is a ranking of funds by cost (the operator's D2, 2026-11-24).
+ */
+const FEE_TIP =
+  "The expense ratio the fund's prospectus states for the class you entered, net of waivers where it says so. It describes the fund, not your money.";
+
 /** The two counts share one grouped header, which is why its tip is not a column's. */
 const EFFECTIVE_HOLDINGS_TIP =
   "Counted inside each fund on its own, not as a share of your money.";
@@ -125,6 +143,20 @@ const EFFECTIVE_HOLDINGS_TIP =
  */
 const PORTFOLIO_ROW_TIP =
   "Counted on your merged companies, not averaged from the rows above.";
+
+/**
+ * What the "All funds" fee cell says about itself: the average is a weighted mean over the
+ * funds whose fee the prospectus states, never over all of them, and the share it covers is
+ * always printed. Under 60% of fund weight the average is withheld and says why.
+ */
+function feeSummaryNote(summary: ReturnType<typeof portfolioFee>): string {
+  if (summary === null) return "no fund weight";
+  const known = formatKnownShare(summary.knownPct);
+  if (summary.suppressed) {
+    return `weighted average withheld: fees known for ${known} of fund weight`;
+  }
+  return `weighted average, fees known for ${known} of fund weight`;
+}
 
 /** The caption says which sort is on in the column's own words, not "descending". */
 function directionWords(key: FundSortKey, direction: "ascending" | "descending"): string {
@@ -204,6 +236,13 @@ export function FundsLens({ model }: LensProps) {
     };
   }, [ledger, docs, fundWeights, sort]);
 
+  // Expense ratios, when the fund documents in hand carry them at all. A release that did
+  // not read prospectuses has no Fee column: "not stated" there would be a claim about a fund
+  // this release never looked up.
+  const showFees = documentsCarryFees(docs.values());
+  const classes = classesByFund(model.portfolio.entries);
+  const feeSummary = showFees ? portfolioFee(fundWeights, classes, docs) : null;
+
   if (gate.kind === "blocked") {
     return <LensState title={gate.title} body={gate.body} />;
   }
@@ -238,7 +277,20 @@ export function FundsLens({ model }: LensProps) {
 
   const exportFunds = () => {
     saveCsv(
-      fundsCsv(sorted, releaseAsOf, pair),
+      fundsCsv(
+        sorted,
+        releaseAsOf,
+        pair,
+        showFees
+          ? (ticker) => {
+              const entry = model.portfolio.entries.find(
+                (candidate) => candidate.kind === "fund" && candidate.key === ticker,
+              );
+              const classTicker = classOf(entry ?? { key: ticker });
+              return { classTicker, figure: feeFigure(docs.get(ticker), classTicker) };
+            }
+          : undefined,
+      ),
       lensCsvName("funds", new Date(), releaseAsOf),
     );
   };
@@ -256,6 +308,37 @@ export function FundsLens({ model }: LensProps) {
   const portfolioCell = (key: "core" | "broad"): string => {
     const value = portfolio[key];
     return value === null ? "—" : formatEffective(value);
+  };
+
+  /**
+   * One fund's fee: the figure the prospectus says investors pay, then what it is. The
+   * class shown is the one the visitor entered; a class the document has no row for reads
+   * "not stated", never a sibling class's figure.
+   */
+  const feeCell = (row: FundMixRow) => {
+    const entry = model.portfolio.entries.find(
+      (candidate) => candidate.kind === "fund" && candidate.key === row.ticker,
+    );
+    const classTicker = classOf(entry ?? { key: row.ticker });
+    const figure = feeFigure(docs.get(row.ticker), classTicker);
+    if (!figure) {
+      return (
+        <td className="num">
+          —<CellNote>{classTicker} · not stated</CellNote>
+        </td>
+      );
+    }
+    return (
+      <td className="num">
+        {formatFeePct(figure.value)}
+        <CellNote>
+          {classTicker} · {figure.note}
+          {figure.before === null
+            ? ""
+            : `; ${formatFeePct(figure.before)} ${figure.beforeLabel}`}
+        </CellNote>
+      </td>
+    );
   };
 
   return (
@@ -311,6 +394,14 @@ export function FundsLens({ model }: LensProps) {
                     </th>
                   );
                 })}
+                {showFees ? (
+                  <th scope="col" rowSpan={2} className="num">
+                    Expense ratio
+                    <InfoTip label="Expense ratio" inline>
+                      {FEE_TIP}
+                    </InfoTip>
+                  </th>
+                ) : null}
                 {/* The only grouped pair in the table: two counts that are read
                     together and mean nothing apart, each with its own word. */}
                 <th scope="colgroup" colSpan={2} className="num">
@@ -353,6 +444,7 @@ export function FundsLens({ model }: LensProps) {
                   <td className="num">
                     {row.top10Share === null ? "—" : formatShare(row.top10Share)}
                   </td>
+                  {showFees ? feeCell(row) : null}
                   <td className="num">{pairCell(row.ticker, "core")}</td>
                   <td className="num">{pairCell(row.ticker, "broad")}</td>
                 </tr>
@@ -375,6 +467,14 @@ export function FundsLens({ model }: LensProps) {
                       : "of your top ten"}
                   </CellNote>
                 </td>
+                {showFees ? (
+                  <td className="num">
+                    {feeSummary?.average == null
+                      ? "—"
+                      : formatFeeAverage(feeSummary.average)}
+                    <CellNote>{feeSummaryNote(feeSummary)}</CellNote>
+                  </td>
+                ) : null}
                 <td className="num" />
                 <td className="num" />
               </tr>
@@ -388,6 +488,7 @@ export function FundsLens({ model }: LensProps) {
                 <td className="num" />
                 <td />
                 <td className="num" />
+                {showFees ? <td className="num" /> : null}
                 <td className="num">{portfolioCell("core")}</td>
                 <td className="num">{portfolioCell("broad")}</td>
               </tr>

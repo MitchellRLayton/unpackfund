@@ -386,3 +386,98 @@ describe("a comparison with only a second side", () => {
     expect(decodeComparison(empty)).toEqual({ ok: false, reason: "empty" });
   });
 });
+
+describe("v4: the share class the visitor typed (T-0052 phase 3)", () => {
+  const typed: PortfolioEntry[] = [
+    { kind: "fund", key: "VOO", amount: 4000, cls: "VFIAX" },
+    { kind: "fund", key: "VTI", amount: 3000 },
+    { kind: "security", key: "AAPL", amount: 1000 },
+    { kind: "fund", key: "BND", amount: 2000, cls: "VBTLX" },
+  ];
+
+  it("round-trips a class on some entries and none on others, in order", () => {
+    const hash = encodePortfolio(portfolio(typed));
+    expect(hash.startsWith("v4.")).toBe(true);
+    const decoded = decodePortfolio(`#${hash}`);
+    expect(decoded.ok && decoded.portfolio.entries).toEqual(typed);
+    expect(decoded.ok && decoded.complete).toBe(true);
+  });
+
+  it("writes v3, byte for byte, when no entry has a class", () => {
+    // The golden link of the v3 tests: a class-less portfolio is not touched by phase 3.
+    const hash = encodePortfolio(portfolio(fiveFunds));
+    expect(hash.startsWith("v3.")).toBe(true);
+    expect(JSON.parse(atob(hash.slice(3).replace(/-/g, "+").replace(/_/g, "/")))).toEqual(
+      ["bp", fiveFunds.map((entry) => ["f", entry.key, entry.amount])],
+    );
+  });
+
+  it("still opens an old link that stored the published ticker, with no class", () => {
+    const old = encodePortfolio(portfolio([{ kind: "fund", key: "VOO", amount: 10000 }]));
+    const decoded = decodePortfolio(`#${old}`);
+    expect(decoded.ok && decoded.portfolio.entries).toEqual([
+      { kind: "fund", key: "VOO", amount: 10000 },
+    ]);
+  });
+
+  it("is refused by the v3 reader's rule: a fourth element under v3 is malformed", () => {
+    const payload = encodeBase64Url(
+      JSON.stringify(["bp", [["f", "VOO", 10000, "VFIAX"]]]),
+    );
+    expect(decodePortfolio(`#v3.${payload}`)).toEqual({
+      ok: false,
+      reason: "invalid-entry",
+    });
+    expect(decodePortfolio(`#v4.${payload}`).ok).toBe(true);
+  });
+
+  it.each([
+    ["a stock", ["s", "AAPL", 1000, "AAPL.X"]],
+    ["cash", ["c", "CASH", 1000, "XYZ"]],
+    ["the fund's own key", ["f", "VOO", 1000, "VOO"]],
+    ["a non-string", ["f", "VOO", 1000, 7]],
+    ["a symbol the format cannot carry", ["f", "VOO", 1000, "vfiax!"]],
+    ["a five-element entry", ["f", "VOO", 1000, "VFIAX", "x"]],
+  ])("refuses a class on %s", (_name, entry) => {
+    const payload = encodeBase64Url(JSON.stringify(["bp", [entry]]));
+    expect(decodePortfolio(`#v4.${payload}`)).toEqual({
+      ok: false,
+      reason: "invalid-entry",
+    });
+  });
+
+  it("still refuses the same fund twice, whatever class each was typed as", () => {
+    const payload = encodeBase64Url(
+      JSON.stringify([
+        "bp",
+        [
+          ["f", "VOO", 5000, "VFIAX"],
+          ["f", "VOO", 5000, "VFINX"],
+        ],
+      ]),
+    );
+    expect(decodePortfolio(`#v4.${payload}`)).toEqual({
+      ok: false,
+      reason: "invalid-entry",
+    });
+  });
+
+  it("projects onto the funds-only comparison view by the published ticker", () => {
+    const decoded = decodeComparison(`#${encodePortfolio(portfolio(typed))}`);
+    expect(decoded.ok && decoded.a.map((fund) => fund.ticker)).toEqual([
+      "VOO",
+      "VTI",
+      "BND",
+    ]);
+  });
+
+  it("keeps a twelve-fund class portfolio far inside the length cap", () => {
+    const many: PortfolioEntry[] = Array.from({ length: 12 }, (_, index) => ({
+      kind: "fund" as const,
+      key: `FUND${index}`,
+      amount: 833,
+      cls: `CLASS${index}X`,
+    }));
+    expect(encodePortfolio(portfolio(many)).length).toBeLessThan(MAX_FRAGMENT_CHARS / 4);
+  });
+});

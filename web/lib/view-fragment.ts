@@ -11,7 +11,7 @@
  *
  * Grammar — `~` is the separator because base64url never contains it:
  *
- *   #v3.<payload>                     portfolio, Companies lens
+ *   #v3.<payload>                     portfolio, Companies lens (v4 when a fund carries a class)
  *   #v3.<payload>~markets             portfolio, Markets lens
  *   #c_<company_id>                   a company page, no portfolio
  *   #c_<company_id>~v3.<payload>      a company page, with "you hold X%"
@@ -60,7 +60,7 @@ function parts(hash: string): string[] {
  */
 export function portfolioPart(hash: string): string | null {
   for (const part of parts(hash)) {
-    if (/^v[123]\./.test(part)) return part;
+    if (/^v[1234]\./.test(part)) return part;
   }
   return null;
 }
@@ -91,7 +91,7 @@ export function parseView(hash: string): ViewState {
       state.lens = part;
       continue;
     }
-    if (/^v[123]\./.test(part)) {
+    if (/^v[1234]\./.test(part)) {
       const decoded = decodePortfolio(part);
       if (decoded.ok) {
         state.portfolio = decoded.portfolio;

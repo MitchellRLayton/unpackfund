@@ -146,6 +146,39 @@ export function formatCoveragePct(coveragePct: number): string {
   return `${oneDp.format(coveragePct)}%`;
 }
 
+/**
+ * A stated expense ratio, as the prospectus gives it: `0.0004` → `0.04%`, `0.000945` →
+ * `0.0945%`.
+ *
+ * Two decimals, and more only where the filing has more — rounding SPY's 0.0945% to
+ * 0.09% would be a different number. The fund page prints the same way
+ * (`pipeline/fund_pages.py::fee_pct`); a test pins the pair on the same inputs.
+ */
+export function formatFeePct(fraction: number): string {
+  const [whole = "0", decimals = ""] = (fraction * 100)
+    .toFixed(4)
+    .replace(/0+$/, "")
+    .split(".");
+  return `${whole}.${decimals.padEnd(2, "0")}%`;
+}
+
+/**
+ * A weighted average of stated fees: `0.0026` → `0.26%`, at the two decimals an average of
+ * four-decimal figures can justify. A real, non-zero average never prints as zero.
+ */
+export function formatFeeAverage(fraction: number): string {
+  return formatShare(fraction);
+}
+
+/**
+ * The share of fund weight a fee is known for, never rounded up across the 60% line that
+ * decides whether the average is shown: `59.96` prints `59.9%`, because `60.0%` would
+ * say the average was allowed. Tolerance for float noise only (`0.6 * 100`).
+ */
+export function formatKnownShare(pct: number): string {
+  return `${oneDp.format(Math.floor(pct * 10 + 1e-6) / 10)}%`;
+}
+
 /** `0.02074643` → `0.0207`; `77.2` → `77.2`. */
 export function formatRatio(value: number, digits = 4): string {
   return new Intl.NumberFormat(LOCALE, {

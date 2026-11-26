@@ -214,10 +214,11 @@ export function PortfolioBuilder() {
     key: string,
     body?: string,
     label?: string,
+    cls?: string,
   ): AddOutcome {
     setCleared(null);
     setConverted(null);
-    const outcome = portfolio.add(kind, key);
+    const outcome = portfolio.add(kind, key, cls);
     if (outcome === "kept") {
       // `label` is what the reader should see the row called — a symbol resolved to its
       // company name keeps that promise here too, because this is the one path where the
@@ -373,7 +374,13 @@ export function PortfolioBuilder() {
     }
     // A fund this release publishes, or a share class of one (which `resolveEntry` has
     // already turned into the published ticker and the note that says so).
-    const outcome = addEntry("fund", decision.key, decision.body);
+    const outcome = addEntry(
+      "fund",
+      decision.key,
+      decision.body,
+      undefined,
+      decision.cls,
+    );
     setInput("");
     if (outcome !== "kept" && outcome !== "noop") {
       setMessage(

@@ -86,8 +86,14 @@ export const EFFECTIVE_DATE = "November 4, 2026";
  * section now says the prospectus (485BPOS, 497) is read for that one number, and the
  * "does not show expense ratios" statements are gone (operator decision D1, 2026-11-24).
  * Nothing about the existing numbers changed; a new fact was added.
+ *
+ * 1.7.0 (2026-11-25): the Fees section gained the portfolio's side — each fund shows the fee
+ * of the share class the visitor entered, and the Funds tab a weighted average of those stated
+ * fees over the fund weight that has one (stocks and cash left out, an unknown fund never
+ * counted as zero, a waiver-without-net class left out, withheld below 60% of fund weight).
+ * Nothing about the existing numbers changed; a new fact was added.
  */
-export const METHODOLOGY_VERSION = "1.6.0";
+export const METHODOLOGY_VERSION = "1.7.0";
 
 /**
  * Version of the copy above, for the change history in the footer of each page.
@@ -133,5 +139,8 @@ export const METHODOLOGY_VERSION = "1.6.0";
  * expense ratio each prospectus states, with its date, and still no returns, prices, ratings
  * or rankings (operator decision D1, 2026-11-24); its source attribution names the 485BPOS
  * and 497 prospectuses. `METHODOLOGY_VERSION` moves to 1.6.0 with the new Fees section.
+ *
+ * 1.10.0 (2026-11-25): the methodology's Fees section describes the portfolio average fee
+ * (operator decision D4, 2026-11-24). `METHODOLOGY_VERSION` moves to 1.7.0.
  */
-export const LEGAL_COPY_VERSION = "1.9.0";
+export const LEGAL_COPY_VERSION = "1.10.0";

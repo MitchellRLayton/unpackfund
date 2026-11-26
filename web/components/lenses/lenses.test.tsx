@@ -641,3 +641,136 @@ describe("funds: the Effective holdings pair", () => {
     );
   });
 });
+
+describe("funds: the expense ratio each prospectus states (T-0052 phase 3)", () => {
+  const feeRow = (total: number, extra: Record<string, unknown> = {}) => ({
+    class_id: null,
+    total,
+    net: null,
+    waiver: null,
+    basis: "no-waiver-stated",
+    prospectus_date: "2026-04-29",
+    filed_at: "2026-04-30",
+    form: "485BPOS",
+    source_url: "https://www.sec.gov/Archives/edgar/data/1/x.htm",
+    ...extra,
+  });
+  const [aaa, bbb] = FUNDS as [FundDocument, FundDocument];
+  const withFees = (document: FundDocument, classes: Record<string, unknown>) =>
+    ({ ...document, fees: { classes } }) as unknown as FundDocument;
+
+  // AAA is entered as its class AAAX (0.53% gross, 0.28% net); BBB as itself (0.10%).
+  const AAAX = feeRow(0.0053, { net: 0.0028, waiver: -0.0025, basis: "stated-net" });
+  const feeModel = (
+    docs: FundDocument[],
+    entries = [{ kind: "fund", key: AAA, amount: 4000, cls: "AAAX" }],
+  ) =>
+    ({
+      ...model({ ledger: LEDGER, funds: docs }),
+      portfolio: { ...MODEL.portfolio, entries },
+    }) as unknown as WorkspaceModel;
+  const both = [
+    withFees(aaa, { AAA: feeRow(0.0003), AAAX }),
+    withFees(bbb, { BBB: feeRow(0.001) }),
+  ];
+
+  it("adds no column, and says nothing about fees, when the funds carry none", () => {
+    const html = renderToStaticMarkup(<FundsLens model={MODEL} />);
+    expect(html).not.toContain("Expense ratio");
+    expect(html).not.toContain("avg fee");
+    expect(html).not.toMatch(/not stated/);
+  });
+
+  it("prints the class the visitor entered, not the published ticker's fee", () => {
+    const html = renderToStaticMarkup(<FundsLens model={feeModel(both)} />);
+    expect(html).toContain("Expense ratio");
+    const fromRow = html.slice(html.indexOf(">AAA<"));
+    const aaaRow = fromRow.slice(0, fromRow.indexOf("</tr>"));
+    // AAAX's 0.28% net with 0.53% before waivers — and not AAA's own 0.03%.
+    expect(aaaRow).toContain("0.28%");
+    expect(aaaRow).toContain("AAAX · net of fee waivers; 0.53% before waivers");
+    expect(aaaRow).not.toContain("0.03%");
+    const fromB = html.slice(html.indexOf(">BBB<"));
+    expect(fromB.slice(0, fromB.indexOf("</tr>"))).toContain(
+      "BBB · no fee waiver stated",
+    );
+  });
+
+  it("says 'not stated' for a class the document has no row for, never a sibling's figure", () => {
+    const html = renderToStaticMarkup(
+      <FundsLens model={feeModel([withFees(aaa, { AAA: feeRow(0.0003) }), bbb])} />,
+    );
+    const fromRow = html.slice(html.indexOf(">AAA<"));
+    const aaaRow = fromRow.slice(0, fromRow.indexOf("</tr>"));
+    expect(aaaRow).toContain("AAAX · not stated");
+    expect(aaaRow).not.toContain("0.03%");
+  });
+
+  it("has no sort control on the fee column, and no new sortable column", () => {
+    const html = renderToStaticMarkup(<FundsLens model={feeModel(both)} />);
+    // Six sortable columns before phase 3, six after: the fee is a fact, not an ordering.
+    expect(html.match(/class="table__sort"/g)).toHaveLength(6);
+    const header = html.slice(
+      html.indexOf("Expense ratio") - 120,
+      html.indexOf("Expense ratio") + 40,
+    );
+    expect(header).not.toContain("table__sort");
+    expect(header).not.toContain("aria-sort");
+    // Nothing in the fee header sorts: its one control is the info tip, not a sort button.
+    const start = html.lastIndexOf("<th", html.indexOf("Expense ratio"));
+    const th = html.slice(start, html.indexOf("</th>", start));
+    expect(th.match(/<button/g)).toHaveLength(1);
+    expect(th).toMatch(/aria-label="About Expense ratio"/);
+  });
+
+  it("closes with the weighted average over the funds whose fee is known, and says how much", () => {
+    // AAA 0.4 at 0.28% (AAAX net), BBB 0.3 at 0.10%: (0.4·0.28 + 0.3·0.10) / 0.7 = 0.2029…% → 0.20%.
+    // Fees are known for all 0.7 of the fund weight.
+    const html = renderToStaticMarkup(<FundsLens model={feeModel(both)} />);
+    const foot = html.slice(html.indexOf("<tfoot>"));
+    expect(foot).toContain("0.20%");
+    expect(foot).toContain("weighted average, fees known for 100.0% of fund weight");
+    expect(html).not.toMatch(/cheapest|lowest|best fee|NaN|undefined/);
+  });
+
+  it("withholds the average, and says why, when fees are known for under 60% of fund weight", () => {
+    // Only AAA states a fee: 0.4 of 0.7 = 57.1%.
+    const html = renderToStaticMarkup(
+      <FundsLens model={feeModel([both[0] as FundDocument, bbb])} />,
+    );
+    const foot = html.slice(html.indexOf("<tfoot>"));
+    expect(foot).toContain(
+      "weighted average withheld: fees known for 57.1% of fund weight",
+    );
+    expect(foot).not.toContain("0.28%");
+  });
+
+  it("writes the same three facts to the CSV, and nothing when the release has no fees", async () => {
+    const { fundsCsv } = await import("./lens-csv");
+    const { feeFigure } = await import("@/lib/fees");
+    const rows = [
+      {
+        ticker: AAA,
+        name: "AAA Fund",
+        weight: 0.4,
+        positions: 1,
+        coveragePct: 99,
+        asOf: "2026-06-30",
+        filedAt: "2026-08-28",
+        lagDays: 59,
+        top10Share: null,
+        unmatchedWeight: 0,
+        unmatchedPositions: 0,
+      },
+    ] as unknown as Parameters<typeof fundsCsv>[0];
+    const stated = fundsCsv(rows, "2026-11-02.7", undefined, () => ({
+      classTicker: "AAAX",
+      figure: feeFigure(both[0], "AAAX"),
+    }));
+    expect(stated.split("\n")[0]).toContain(
+      "fee_class,expense_ratio_pct,expense_ratio_basis",
+    );
+    expect(stated.split("\n")[1]).toContain("AAAX,0.28,net of fee waivers");
+    expect(fundsCsv(rows, "2026-11-02.7").split("\n")[0]).not.toContain("expense_ratio");
+  });
+});

@@ -22,11 +22,14 @@
  */
 
 import { bandFor } from "@/lib/effective-holdings-view";
+import { classesByFund, documentsCarryFees, portfolioFee } from "@/lib/fees";
 import {
   coverageBand,
   formatCount,
   formatDateLong,
   formatEffective,
+  formatFeeAverage,
+  formatKnownShare,
   formatPct1,
   formatPct1Of,
 } from "@/lib/format";
@@ -203,7 +206,24 @@ export function buildMetrics(model: WorkspaceModel, provider: Provider): LensMet
   if (cash > 0) extras.push(`cash ${formatPct1(cash)}`);
   const behaves =
     effectiveFunds === null ? null : `behaves like ${formatEffective(effectiveFunds)}`;
-  const fundsSub = [behaves, ...extras].filter(Boolean).join(" · ") || null;
+  // D4: the weighted average of the stated fees, and only when it describes at least 60% of
+  // the fund weight (`portfolioFee` withholds it below that). Said only when the fund
+  // documents carry fees at all: a release that did not read prospectuses has no average,
+  // and "no average" is not the same statement as "not stated".
+  const fee = documentsCarryFees(model.fundByTicker.values())
+    ? portfolioFee(
+        model.split.fundWeights,
+        classesByFund(model.portfolio.entries),
+        model.fundByTicker,
+      )
+    : null;
+  const feeAverage = fee?.average == null ? null : formatFeeAverage(fee.average);
+  // The average never travels without what it covers (D4): the share of fund weight whose fee
+  // is known, so 61% does not read the same as 100%.
+  const feeKnown = fee === null ? null : formatKnownShare(fee.knownPct);
+  const feePhrase =
+    feeAverage === null ? null : `${feeAverage} avg fee · ${feeKnown} known`;
+  const fundsSub = [behaves, feePhrase, ...extras].filter(Boolean).join(" · ") || null;
   // One phrase for the non-fund holdings, so the sentence reads "plus 1 stock and 10.0%
   // cash" rather than "... stock, and 10.0% cash".
   const stockPhrase =
@@ -221,6 +241,9 @@ export function buildMetrics(model: WorkspaceModel, provider: Provider): LensMet
     "Funds",
     fundCount,
     behaves === null ? null : `${behaves} effective funds`,
+    feeAverage === null
+      ? null
+      : `average fee ${feeAverage}, known for ${feeKnown} of fund weight`,
     holdingsPhrase,
   ]
     .filter((part): part is string => Boolean(part))

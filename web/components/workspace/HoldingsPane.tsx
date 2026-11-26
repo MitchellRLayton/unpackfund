@@ -34,6 +34,7 @@ import {
   tallyOf,
   type EntryDecision,
 } from "@/lib/holdings";
+import { classOf, documentsCarryFees, feeFigure, feeSentence } from "@/lib/fees";
 import { isComplete } from "@/lib/fragment";
 import { write } from "@/lib/fragment-store";
 import {
@@ -191,6 +192,25 @@ function AmountField({
  * label that names the quantity, so it cannot be read as company coverage. A release
  * without `identified_pct` renders exactly the one chip it rendered before.
  */
+/**
+ * The expense ratio of the class this row holds, from the prospectus: `VFIAX expense ratio
+ * 0.04%, no fee waiver stated`. The class is the one the visitor typed, so a mutual-fund
+ * portfolio is not shown the ETF class's fee. Shown only when the fund documents in hand
+ * carry fees at all — a release that did not read prospectuses says nothing rather than
+ * "not stated" — and a class with no row says so rather than borrow another class's figure.
+ */
+function FundFeeNote({ entry, model }: { entry: PortfolioEntry; model: WorkspaceModel }) {
+  const document = model.fundByTicker.get(entry.key);
+  if (!document || !documentsCarryFees(model.fundByTicker.values())) return null;
+  const classTicker = classOf(entry);
+  const figure = feeFigure(document, classTicker);
+  return (
+    <span className="small muted" data-fee-note>
+      {classTicker} expense ratio {figure ? feeSentence(figure) : "not stated"}
+    </span>
+  );
+}
+
 function RowChips({ entry, model }: { entry: PortfolioEntry; model: WorkspaceModel }) {
   if (entry.kind === "security") {
     return <span className="chip chip--mono">held directly</span>;
@@ -323,6 +343,12 @@ function HoldingRows({
                   {model.fundByTicker.get(entry.key)?.name ?? "Reading filing…"}
                 </span>
               ) : null}
+              {/* On its own line: the name above is cut with an ellipsis, and the class the
+                  visitor typed is the fact the fee below is read for. */}
+              {entry.kind === "fund" && entry.cls ? (
+                <span className="small muted">Entered as {entry.cls}</span>
+              ) : null}
+              {entry.kind === "fund" ? <FundFeeNote entry={entry} model={model} /> : null}
               <div className={styles.rowSub}>
                 <RowChips entry={entry} model={model} />
                 <button
@@ -493,7 +519,7 @@ export function HoldingsPane({
       }
       setInput("");
       setActive(-1);
-      if (portfolio.add(decision.kind, decision.key) === "noop") {
+      if (portfolio.add(decision.kind, decision.key, decision.cls) === "noop") {
         setMessage({
           tone: "info",
           title: `${decision.label} is already in your portfolio`,
@@ -554,7 +580,12 @@ export function HoldingsPane({
         continue;
       }
       taken.add(decision.key);
-      additions.push({ kind: decision.kind, key: decision.key, amount: line.amount });
+      additions.push({
+        kind: decision.kind,
+        key: decision.key,
+        amount: line.amount,
+        ...(decision.cls === undefined ? {} : { cls: decision.cls }),
+      });
     }
     setPasting(false);
     const next = [...entries, ...additions];

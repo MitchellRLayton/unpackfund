@@ -12,6 +12,14 @@
  * - **v1** `[[ticker, weight_bp], …]` — funds only, percentages only.
  * - **v2** `{"a": […], "b": […]}` — two portfolios for `/compare`. A v1 decoder must
  *   not half-read it and show one side of a comparison as the whole answer.
+ * - **v4** v3 with an optional fourth element on a fund entry, the share class the visitor
+ *   typed: `[ "f", "VOO", 4000, "VFIAX" ]`. The key stays the series' published ticker
+ *   (every document and holdings lookup is by it) and the class is what the fund's
+ *   expense ratio is read for, so a portfolio of mutual-fund classes is not shown the
+ *   ETF class's fee (T-0052 phase 3). **Written only when some entry carries a class**:
+ *   a portfolio with none is still v3, byte for byte, so every existing link and every
+ *   class-less link stays readable by an older bundle. A v3 payload with a fourth
+ *   element is refused, never half-read.
  * - **v3** `[mode, [[kind, key, amount], …]]` — the portfolio gained direct
  *   holdings, cash, and a dollars-vs-percent toggle (ADR-0014; operator decision
  *   2026-11-01). The **mode is part of the link**: a `$` portfolio stores cents and
@@ -40,6 +48,8 @@ import {
 } from "./types";
 
 export const FRAGMENT_VERSION = "v3";
+/** v3 plus the share class a fund was typed as. Written only when an entry has one. */
+export const CLASS_VERSION = "v4";
 /** Funds only, percentages only. Read, never written. */
 export const LEGACY_VERSION = "v1";
 /** Two portfolios, funds only. Read, and still written by `/compare`. */
@@ -107,22 +117,38 @@ export function isComplete(mode: EntryMode, entries: PortfolioEntry[]): boolean 
 export function encodePortfolio(portfolio: Portfolio): string {
   // No sorting: the entries are written in the order the visitor sees them, which
   // is also the order they will see when the link is opened again.
+  const withClass = portfolio.entries.some((entry) => entry.cls !== undefined);
   const payload = [
     portfolio.mode,
-    portfolio.entries.map((entry) => [KIND_CODE[entry.kind], entry.key, entry.amount]),
+    portfolio.entries.map((entry) =>
+      entry.cls === undefined
+        ? [KIND_CODE[entry.kind], entry.key, entry.amount]
+        : [KIND_CODE[entry.kind], entry.key, entry.amount, entry.cls],
+    ),
   ];
-  return `${FRAGMENT_VERSION}.${toBase64Url(JSON.stringify(payload))}`;
+  return `${withClass ? CLASS_VERSION : FRAGMENT_VERSION}.${toBase64Url(JSON.stringify(payload))}`;
 }
 
-/** One `[kind, key, amount]` triple, validated against the mode it claims. */
-function isEntry(value: unknown, mode: EntryMode): value is [string, string, number] {
-  if (!Array.isArray(value) || value.length !== 3) return false;
-  const [code, key, amount] = value;
+/** One entry array, validated against the mode it claims and the version's shape. */
+function isEntry(
+  value: unknown,
+  mode: EntryMode,
+  allowClass: boolean,
+): value is [string, string, number] | [string, string, number, string] {
+  if (!Array.isArray(value)) return false;
+  if (value.length !== 3 && !(allowClass && value.length === 4)) return false;
+  const [code, key, amount, cls] = value;
   if (typeof code !== "string" || !(code in CODE_KIND)) return false;
   if (typeof key !== "string") return false;
   if (typeof amount !== "number" || !Number.isInteger(amount) || amount < 0) return false;
   const ceiling = mode === "bp" ? MAX_BP : MAX_CENTS;
   if (amount > ceiling) return false;
+  if (value.length === 4) {
+    // A class belongs to a fund the visitor typed by its class ticker: never a stock or
+    // cash, never the fund's own key (that is no class at all), always a ticker.
+    if (CODE_KIND[code] !== "fund") return false;
+    if (typeof cls !== "string" || !TICKER_RE.test(cls) || cls === key) return false;
+  }
   // `CASH` is a reserved key: cash is a kind, never a symbol. An entry that claimed
   // the reserved word under another kind would be counted twice — once as cash and
   // once as a company-less holding — so the format refuses it outright.
@@ -131,14 +157,23 @@ function isEntry(value: unknown, mode: EntryMode): value is [string, string, num
   return TICKER_RE.test(key);
 }
 
-function parsePortfolioEntries(raw: unknown, mode: EntryMode): PortfolioEntry[] | null {
+function parsePortfolioEntries(
+  raw: unknown,
+  mode: EntryMode,
+  allowClass = false,
+): PortfolioEntry[] | null {
   if (!Array.isArray(raw)) return null;
   const seen = new Set<string>();
   const entries: PortfolioEntry[] = [];
   let cash = 0;
   for (const value of raw) {
-    if (!isEntry(value, mode)) return null;
-    const [code, key, amount] = value;
+    if (!isEntry(value, mode, allowClass)) return null;
+    const [code, key, amount, cls] = value as [
+      string,
+      string,
+      number,
+      string | undefined,
+    ];
     // `code` was validated against CODE_KIND by `isEntry`, so the lookup holds;
     // the annotation makes that explicit rather than leaving an `undefined` in the
     // type of every downstream entry.
@@ -150,7 +185,7 @@ function parsePortfolioEntries(raw: unknown, mode: EntryMode): PortfolioEntry[] 
       cash += 1;
       if (cash > 1) return null;
     }
-    entries.push({ kind, key, amount });
+    entries.push(cls === undefined ? { kind, key, amount } : { kind, key, amount, cls });
   }
   // A percentage total above 100% is read, not refused. Ten rows are edited one at a
   // time, so the visitor is past the whole for as long as it takes to lower the next
@@ -244,7 +279,7 @@ export function decodeComparison(hash: string): CompareDecodeResult {
   const head = split(hash);
   if (typeof head === "string") return { ok: false, reason: head };
 
-  if (head.version === FRAGMENT_VERSION) {
+  if (head.version === FRAGMENT_VERSION || head.version === CLASS_VERSION) {
     const payload = decodePayload(head.payload);
     if (payload === undefined) return { ok: false, reason: "malformed" };
     if (!Array.isArray(payload) || payload.length !== 2) {
@@ -252,7 +287,11 @@ export function decodeComparison(hash: string): CompareDecodeResult {
     }
     const [mode, rawEntries] = payload as [unknown, unknown];
     if (mode !== "bp" && mode !== "usd") return { ok: false, reason: "malformed" };
-    const entries = parsePortfolioEntries(rawEntries, mode);
+    const entries = parsePortfolioEntries(
+      rawEntries,
+      mode,
+      head.version === CLASS_VERSION,
+    );
     if (!entries) return { ok: false, reason: "invalid-entry" };
     if (entries.length === 0) return { ok: false, reason: "empty" };
     const portfolio: Portfolio = { mode, entries };
