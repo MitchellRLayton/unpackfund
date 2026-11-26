@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from pipeline import fund_pages, paths
+from pipeline import artifact, fund_pages, paths
 
 # Domiciles for the fixture's companies. US twice (a company and a cash row), one
 # developed, one emerging, one in neither list — so one page exercises every state
@@ -813,12 +813,19 @@ def test_the_nav_comes_from_the_shared_model():
 
 
 def test_the_page_offers_no_figure_a_fund_page_must_not_publish():
-    """No returns, prices, expense ratios, yields, rankings or recommendations."""
-    page = render(fund(), countries=COUNTRIES)
-    body = page.lower()
-    for word in ("expense ratio", "total return", "yield", "nav per share", "star rating",
-                 "ranked", "we recommend", "should buy", "top pick", "price target"):
-        assert word not in body, word
+    """No returns, prices, yields, ratings, rankings or recommendations.
+
+    Expense ratios are allowed since ADR-0030 (the operator's D1, 2026-11-24): the page shows the
+    ratio each prospectus states, with its date, and still none of the rest.
+    """
+    for page in (
+        render(fund(), countries=COUNTRIES),
+        render(fund(fees=FEES_BLOCK), countries=COUNTRIES, fees_read=True),
+    ):
+        body = page.lower()
+        for word in ("total return", "yield", "nav per share", "star rating",
+                     "ranked", "we recommend", "should buy", "top pick", "price target"):
+            assert word not in body, word
 
 
 def test_same_issuer_links_are_relative_and_never_self_referential():
@@ -916,6 +923,156 @@ def test_the_stylesheet_is_the_apps_stylesheet_verbatim():
 def test_the_stylesheet_fails_rather_than_ships_a_missing_app_file(tmp_path: Path):
     with pytest.raises(SystemExit):
         fund_pages.stylesheet(tmp_path / "nope.css")
+
+
+# --- Fees: the expense ratio each prospectus states ----------------------------
+
+_FILING = "https://www.sec.gov/Archives/edgar/data/1/000119312526000001/x_htm.xml"
+
+
+def _fee(total, net=None, waiver=None, basis="no-waiver-stated", **extra) -> dict:
+    row = {
+        "class_id": None, "total": total, "net": net, "waiver": waiver, "basis": basis,
+        "prospectus_date": "2026-04-29", "filed_at": "2026-04-30", "form": "485BPOS",
+        "source_url": _FILING,
+    }
+    row.update(extra)
+    return row
+
+
+FEES_BLOCK = {
+    "classes": {
+        "AVUV": _fee(0.0025),
+        "AVUVX": _fee(0.0053, net=0.0028, waiver=-0.0025, basis="stated-net"),
+    }
+}
+
+
+def fees_section(page: str) -> str:
+    start = page.index('<section aria-labelledby="fees-heading"')
+    return page[start : page.index("</section>", start)]
+
+
+@pytest.mark.parametrize(
+    "value, shown",
+    [(0.0004, "0.04%"), (0.0014, "0.14%"), (0.0085, "0.85%"), (0.000945, "0.0945%"),
+     (0.0123, "1.23%"), (0.0, "0.00%"), (0.01, "1.00%"), (0.0528, "5.28%")],
+)
+def test_a_fee_prints_two_decimals_and_more_only_where_the_filing_gives_them(value, shown):
+    assert fund_pages.fee_pct(value) == shown
+
+
+def test_a_page_of_a_release_without_fees_has_no_fees_section():
+    page = render(fund(fees=FEES_BLOCK), countries=COUNTRIES)
+    assert "fees-heading" not in page and ">Fees<" not in page
+    assert "prospectus filings" not in page and "Source: SEC EDGAR (Form N-PORT)" in page
+
+
+def test_a_stated_net_is_the_headline_and_the_gross_sits_in_before_waivers():
+    section = fees_section(render(fund(fees=FEES_BLOCK), countries=COUNTRIES, fees_read=True))
+    own, other = section.split("<tbody>")[1].split("</tr>")[0:2]
+    assert ">AVUV</th>" in own and "0.25%" in own and "no fee waiver stated" in own
+    assert ">AVUVX</th>" in other
+    # FCTDX-shaped: 0.53% gross, 0.28% net — the net leads, the gross is "before waivers".
+    assert "<strong>0.28%</strong>" in other and "net of fee waivers" in other
+    assert '<td class="num">0.53%</td>' in other
+    assert '<td class="num">—</td>' in own
+    assert "Apr 29, 2026" in other
+    assert f'<a href="{_FILING}" rel="nofollow noopener">485BPOS on SEC EDGAR</a>' in other
+    assert "Source: SEC EDGAR (Form N-PORT and prospectus filings)" in render(
+        fund(fees=FEES_BLOCK), fees_read=True
+    )
+
+
+def test_a_waiver_without_a_net_is_labelled_before_waivers_never_net():
+    for basis, words in (
+        ("waiver-without-net", "the filing states a waiver but no net figure"),
+        ("waiver-unresolved", "the filing&#x27;s waiver could not be read"),
+    ):
+        block = {"classes": {"AVUV": _fee(0.0090, waiver=-0.0020, basis=basis)}}
+        row = fees_section(render(fund(fees=block), fees_read=True))
+        assert "<strong>0.90%</strong>" in row and words in row
+        assert "net of fee waivers" not in row and "no fee waiver stated" not in row
+
+
+def test_a_recoupment_prints_the_net_above_the_gross_as_stated():
+    block = {"classes": {"AVUV": _fee(0.0123, net=0.0125, waiver=0.0002, basis="stated-net")}}
+    row = fees_section(render(fund(fees=block), fees_read=True))
+    assert "<strong>1.25%</strong>" in row and '<td class="num">1.23%</td>' in row
+    assert "includes a recoupment of earlier waivers" in row and "net of fee waivers" not in row
+
+
+def test_the_pages_own_class_leads_and_a_missing_own_class_is_said():
+    block = {"classes": {"ZZZ": _fee(0.0009), "AAA": _fee(0.0011), "AVUV": _fee(0.0025)}}
+    section = fees_section(render(fund(fees=block), fees_read=True))
+    assert [m for m in re.findall(r'<th scope="row" class="mono">(\w+)</th>', section)] == ["AVUV", "AAA", "ZZZ"]
+    assert "could be read for AVUV itself" not in section
+    other = {"classes": {"AVUVX": _fee(0.0053, net=0.0028, waiver=-0.0025, basis="stated-net")}}
+    assert "No expense ratio could be read for AVUV itself" in fees_section(
+        render(fund(fees=other), fees_read=True)
+    )
+
+
+def test_a_prospectus_with_no_date_shows_the_filing_date_instead():
+    block = {"classes": {"AVUV": _fee(0.0025, prospectus_date=None, filed_at="2026-01-26")}}
+    assert "filed Jan 26, 2026" in fees_section(render(fund(fees=block), fees_read=True))
+
+
+def test_a_fund_with_no_stated_fee_in_a_fee_reading_release_says_so_and_estimates_nothing():
+    section = fees_section(render(fund(), fees_read=True))
+    assert "found no expense ratio it can read" in section and "We do not estimate one" in section
+    assert "<table" not in section and "%" not in section
+
+
+def test_a_fee_row_escapes_its_class_and_its_url():
+    block = {"classes": {"AVUV": _fee(0.0025, source_url='https://www.sec.gov/a"b<c', form="485<BPOS")}}
+    section = fees_section(render(fund(fees=block), fees_read=True))
+    assert "b<c" not in section and "485<BPOS" not in section
+    assert "b&lt;c" in section and "a&quot;b" in section and "485&lt;BPOS" in section
+
+
+def _release(root: Path, documents: dict[str, dict]) -> Path:
+    release = root / "release"
+    (release / "funds").mkdir(parents=True)
+    catalogue = {"as_of": "2026-11-16.1", "etf_classifier": "name_rule_v1",
+                 "funds": {ticker: [d["name"], d["issuer"], 1, d["coverage_pct"]] for ticker, d in documents.items()}}
+    (release / "catalogue.json").write_text(json.dumps(catalogue))
+    for ticker, document in documents.items():
+        (release / "funds" / f"{ticker}.json").write_bytes(artifact.canonical_bytes(document))
+    return release
+
+
+def test_a_release_that_carries_fees_gives_every_page_a_fees_section(tmp_path: Path):
+    release = _release(tmp_path, {"AVUV": fund(fees=FEES_BLOCK), "AVLV": fund(ticker="AVLV")})
+    out = tmp_path / "out"
+    stats = fund_pages.build(release, out)
+    assert stats["fees_read"] is True
+    assert "AVUVX" in fees_section((out / "f" / "AVUV" / "index.html").read_text())
+    # The fund with no stated fee says so, in a release that did read them.
+    assert "found no expense ratio" in fees_section((out / "f" / "AVLV" / "index.html").read_text())
+
+
+def test_an_older_release_builds_pages_with_no_fees_section(tmp_path: Path):
+    release = _release(tmp_path, {"AVUV": fund(), "AVLV": fund(ticker="AVLV")})
+    out = tmp_path / "out"
+    stats = fund_pages.build(release, out)
+    assert stats["fees_read"] is False
+    assert "fees-heading" not in (out / "f" / "AVUV" / "index.html").read_text()
+
+
+def test_a_partial_rebuild_decides_as_the_whole_release_does(tmp_path: Path):
+    """Rebuilding only the fund with no fee must not read "the release has none"."""
+    release = _release(tmp_path, {"AVUV": fund(fees=FEES_BLOCK), "AVLV": fund(ticker="AVLV")})
+    out = tmp_path / "out"
+    assert fund_pages.build(release, out, only={"AVLV"})["fees_read"] is True
+    assert "found no expense ratio" in (out / "f" / "AVLV" / "index.html").read_text()
+
+
+def test_a_company_named_fees_does_not_make_a_release_read_fees(tmp_path: Path):
+    document = fund()
+    document["holdings"][0]["name"] = '"fees": {"classes": {}}'
+    release = _release(tmp_path, {"AVUV": document})
+    assert fund_pages.release_reads_fees(release, ["AVUV"]) is False
 
 
 # --- The build: one page per fund, deterministic, additive ---------------------

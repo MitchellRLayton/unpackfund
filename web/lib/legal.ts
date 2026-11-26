@@ -79,8 +79,15 @@ export const EFFECTIVE_DATE = "November 4, 2026";
  * multi-class sum with the Berkshire caveat, the 80% gate below which no bar is drawn,
  * and the labelled fund-level inference from a stated size mandate. Nothing about the
  * existing numbers changed; a new fact was added.
+ *
+ * 1.6.0 (2026-11-25): the page gained the Fees section — the expense ratio each prospectus
+ * states, per share class, with its date and filing: net where the prospectus states one,
+ * otherwise the total labelled as such, never computed and never corrected. The sources
+ * section now says the prospectus (485BPOS, 497) is read for that one number, and the
+ * "does not show expense ratios" statements are gone (operator decision D1, 2026-11-24).
+ * Nothing about the existing numbers changed; a new fact was added.
  */
-export const METHODOLOGY_VERSION = "1.5.0";
+export const METHODOLOGY_VERSION = "1.6.0";
 
 /**
  * Version of the copy above, for the change history in the footer of each page.
@@ -121,5 +128,10 @@ export const METHODOLOGY_VERSION = "1.5.0";
  * VOO, IDEV and IEMG, one at a time — and the methodology's benchmark section and the
  * glossary say so. A company's weight is still its share of the benchmark fund's own
  * NAV, so the method itself did not change and `METHODOLOGY_VERSION` stays at 1.5.0.
+ *
+ * 1.9.0 (2026-11-25): the methodology's no-returns statements now say the site shows the
+ * expense ratio each prospectus states, with its date, and still no returns, prices, ratings
+ * or rankings (operator decision D1, 2026-11-24); its source attribution names the 485BPOS
+ * and 497 prospectuses. `METHODOLOGY_VERSION` moves to 1.6.0 with the new Fees section.
  */
-export const LEGAL_COPY_VERSION = "1.8.0";
+export const LEGAL_COPY_VERSION = "1.9.0";
