@@ -54,6 +54,7 @@ const SECTIONS: readonly ReadingSection[] = [
   { id: "size-bands", title: "Why percentiles, and not dollar lines", depth: 3 },
   { id: "size-lanes", title: "Where the ranking comes from", depth: 3 },
   { id: "size-inferred", title: "One label, and what it is not", depth: 3 },
+  { id: "fees", title: "Fees: the expense ratio a prospectus states" },
   { id: "limits", title: "What is not known" },
   { id: "benchmark", title: "The benchmark: VT by default, five to choose from" },
   { id: "corrections", title: "Corrections" },
@@ -98,12 +99,13 @@ export default function MethodologyPage() {
       </p>
 
       <p>
-        Three sources that exist are deliberately not read: a fund&rsquo;s annual
-        shareholder report (N-CSR), its summary prospectus (497K or 485BPOS), and the XBRL
-        company facts published under data.sec.gov. The three numbers a reader might
-        expect from those — a return, an expense ratio, a performance ranking — are absent
-        for that reason, and the one that is here, the holdings, is recomputed from the
-        positions rather than quoted from a summary.
+        Two sources that exist are deliberately not read: a fund&rsquo;s annual
+        shareholder report (N-CSR) and the XBRL company facts published under
+        data.sec.gov. The numbers a reader might expect from those — a return, a
+        performance ranking — are absent for that reason, and the holdings are recomputed
+        from the positions rather than quoted from a summary. A fund&rsquo;s prospectus
+        (485BPOS, or a 497 supplement) is read for one number only: the expense ratio it
+        states, described under <a href="#fees">Fees</a>.
       </p>
 
       <h2 id="holdings">What a holding is</h2>
@@ -874,10 +876,44 @@ export default function MethodologyPage() {
         or total-market fund — produces no inference at all.
       </p>
       <p>
-        Nothing here ranks funds by size, scores a company against its peers, or parses a
-        prospectus. A band is a fact about a company at a date, printed in words and in
-        numbers, and the same band can appear on the page of a fund that is doing well and
-        one that is not.
+        Nothing here ranks funds by size, scores a company against its peers, or reads a
+        prospectus to size anything. A band is a fact about a company at a date, printed
+        in words and in numbers, and the same band can appear on the page of a fund that
+        is doing well and one that is not.
+      </p>
+
+      <h2 id="fees">Fees: the expense ratio a prospectus states</h2>
+      <p>
+        Once a release has read them, a fund page shows the expense ratio each share
+        class&rsquo;s prospectus states, with the date of that prospectus and a link to
+        the filing it was read from. The figure is the one the prospectus says investors
+        pay: the net expense ratio where the prospectus states one, otherwise the total,
+        labelled <em>no fee waiver stated</em>. The total is shown beside the net, as{" "}
+        <em>before waivers</em>, only when the two differ. A fund&rsquo;s classes charge
+        different fees (Vanguard&rsquo;s Admiral and Investor shares of one index fund
+        state different ratios), so each class has its own row, and a class&rsquo;s fee is
+        never shown as the fund&rsquo;s.
+      </p>
+      <p>
+        The fee is read from the expense-ratio tags the fund files in its 485BPOS or 497
+        prospectus, the newest such filing on or before the release date and no more than
+        about eighteen months older. Nothing is computed: a net figure is never the total
+        minus a waiver, a figure that is outside zero to ten percent or that contradicts
+        the waiver filed beside it is withheld rather than corrected, and where two
+        documents in one filing disagree about a class, none of them is shown. A
+        prospectus that states a waiver but no net figure, or whose waiver cannot be read,
+        is shown with the total and says so. Where a fund&rsquo;s filings carry no such
+        tags, the figure is typed in by hand from the fee table of that prospectus, which
+        the row links in the same way; today that is one fund, the SPDR S&amp;P 500 ETF
+        Trust, a unit investment trust that files no tagged prospectus.
+      </p>
+      <p>
+        A fee can change between prospectuses, and a cut announced in a later supplement
+        is not reflected until the next prospectus, so the date beside each ratio is part
+        of the number. Where no expense ratio can be read for a fund, the page says that;
+        it does not estimate one, and it does not take one from an issuer&rsquo;s website.
+        An expense ratio is a cost of owning a fund. It is not a return, and nothing here
+        ranks funds by it.
       </p>
 
       <h2 id="limits">What is not known</h2>
@@ -899,10 +935,11 @@ export default function MethodologyPage() {
         </li>
       </ul>
       <p>
-        Nothing on this site predicts anything. It does not show returns, prices, expense
-        ratios or performance rankings, it does not rank funds, and it does not tell
-        anyone what to buy. It shows what funds hold, how concentrated that is, and how
-        much of it could be read. It is not investment advice.
+        Nothing on this site predicts anything. It shows the expense ratio each prospectus
+        states, with its date; it does not show returns, prices, ratings or performance
+        rankings, it does not rank funds, and it does not tell anyone what to buy. It
+        shows what funds hold, how concentrated that is, and how much of it could be read.
+        It is not investment advice.
       </p>
 
       <h2 id="benchmark">The benchmark: VT by default, five to choose from</h2>
@@ -947,10 +984,11 @@ export default function MethodologyPage() {
 
       <h2 id="attribution">Source attribution</h2>
       <p>
-        Source: SEC EDGAR — Form N-PORT filings, submission records, and the company and
-        fund ticker files — and the GLEIF golden copy (CC0) for legal-entity identity and
-        jurisdiction. No SEC seal or logo is used, and neither the SEC nor GLEIF has
-        reviewed, approved, or endorsed this site. {LEGAL_ENTITY} operates UnpackFund.
+        Source: SEC EDGAR — Form N-PORT filings, the expense ratio stated in 485BPOS and
+        497 prospectuses, submission records, and the company and fund ticker files — and
+        the GLEIF golden copy (CC0) for legal-entity identity and jurisdiction. No SEC
+        seal or logo is used, and neither the SEC nor GLEIF has reviewed, approved, or
+        endorsed this site. {LEGAL_ENTITY} operates UnpackFund.
       </p>
     </ReadingLayout>
   );

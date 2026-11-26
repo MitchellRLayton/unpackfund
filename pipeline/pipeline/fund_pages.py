@@ -41,7 +41,11 @@ company the release does not place is drawn as unplaced rather than guessed.
 renormalise as-filed weights to 100%, does not print a number without its `as_of`
 and source, and does not hide a fund because its coverage is low — a low-coverage
 fund gets a page that says so, in the same place a high-coverage fund says 99.4%.
-It never prints a return, a price, an expense ratio, a rating, or a ranking.
+It never prints a return, a price, a rating, or a ranking. It prints the expense ratio each
+prospectus states, per share class, with the filing's date and a link to it (T-0052, ADR-0030):
+the figure the prospectus says investors pay, never one computed from another, and only for a
+release that carries fees — an older release has no Fees section rather than one that says
+"not stated".
 
 **Why rebuild only the funds that changed.** Regenerating all 8,983 pages costs
 a few seconds, so the saving is not the generator's time — it is the upload. A
@@ -79,6 +83,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import classification_generated, pending
+from . import fees as fees_mod
 from . import sizes
 from .artifact import sha256_hex
 from .paths import REPO_ROOT
@@ -1120,6 +1125,148 @@ def _size_gap_sentence(unplaced_bp: int, foreign_bp: int, unidentified_bp: int, 
 NAV_FILE = REPO_ROOT / "web" / "nav.json"
 
 
+# --- fees: the expense ratio each prospectus states (T-0052 phase 2, ADR-0030) -----------
+
+#: What the page says under a ratio, by the row's ``basis``. The headline is the figure the
+#: prospectus states investors pay (net when tagged, else the total); the label says which one
+#: it is, so a gross figure is never presented as net. Nothing here computes a fee.
+FEE_BASIS_NOTE = {
+    fees_mod.BASIS_STATED_NET: "net of fee waivers",
+    fees_mod.BASIS_NO_WAIVER: "no fee waiver stated",
+    fees_mod.BASIS_WAIVER_NO_NET: "before waivers; the filing states a waiver but no net figure",
+    fees_mod.BASIS_WAIVER_UNRESOLVED: "before any waiver; the filing's waiver could not be read",
+}
+#: A stated net that equals the total: the number is the net, but there is no reduction to name.
+FEE_NET_EQUALS_TOTAL_NOTE = "net expense ratio, as stated"
+FEE_RECOUPMENT_NOTE = "includes a recoupment of earlier waivers, as the filing states"
+
+
+def fee_pct(value: float) -> str:
+    """A fee fraction as a percentage: two decimals, more only where the filing gives them.
+
+    ``0.0004`` → ``0.04%``; SPY's ``0.000945`` → ``0.0945%`` (rounding it to 0.09% would be a
+    different number). Formatted here, at the display edge, and nowhere before it.
+    """
+    whole, _, fraction = f"{value * 100:.4f}".rstrip("0").partition(".")
+    return f"{whole}.{fraction.ljust(2, '0')}%"
+
+
+_FEES_KEY = re.compile(rb'"fees":\s*\{\s*"classes"')
+
+
+def release_reads_fees(release_dir: Path, tickers: list[str]) -> bool:
+    """Whether this release carries expense ratios at all.
+
+    A fund document with no ``fees`` means "no fee stated" in a release that read the
+    prospectuses and "not read" in one that predates them, and a page may only say the first
+    of those. The release is the unit, so the answer is whether any document carries the field;
+    it stops at the first one that does, and an older release is the only case that reads all.
+    """
+    # The field as a JSON key whatever the document's whitespace; a quote inside a string is
+    # escaped, so a company named `fees` cannot match.
+    marker = _FEES_KEY
+    for ticker in tickers:
+        path = release_dir / FUNDS_FILE.format(ticker=ticker)
+        if path.exists() and marker.search(path.read_bytes()):
+            return True
+    return False
+
+
+def _fee_row(symbol: str, row: dict) -> str | None:
+    """One class's row, or ``None`` when the row states no number (the build refuses those, so
+    this is a guard against a hand-built document, not a path a release takes)."""
+    headline = fees_mod.headline(row)
+    if headline is None:
+        return None
+    basis = row.get("basis")
+    note = FEE_BASIS_NOTE.get(basis, "")
+    total, net, waiver = row.get("total"), row.get("net"), row.get("waiver")
+    differs = total is not None and net is not None and abs(total - net) > fees_mod.EPS
+    if basis == fees_mod.BASIS_STATED_NET:
+        if fees_mod.is_recoupment(total, net, waiver):
+            # A positive waiver that reconciles net above total is a recoupment of earlier
+            # waivers (EPDIX: 1.23% total, 1.25% net); "net of fee waivers" would say the opposite.
+            note = FEE_RECOUPMENT_NOTE
+        elif not differs:
+            note = FEE_NET_EQUALS_TOTAL_NOTE
+    # "Before waivers" only where the filing states a net that differs from the total; for the
+    # two bases with no net the headline already *is* the total and its label says so.
+    before = fee_pct(total) if basis == fees_mod.BASIS_STATED_NET and differs else "—"
+    prospectus = row.get("prospectus_date")
+    when = long_date(prospectus) if prospectus else f"filed {long_date(str(row.get('filed_at') or ''))}"
+    url = str(row.get("source_url") or "")
+    form = _esc(str(row.get("form") or "filing"))
+    # Only a SEC link is a link: the validator guarantees it, and the page does not rely on that.
+    source = (
+        f'<a href="{_esc(url)}" rel="nofollow noopener">{form} on SEC EDGAR</a>'
+        if url.startswith("https://www.sec.gov/")
+        else form
+    )
+    return (
+        f'<tr><th scope="row" class="mono">{_esc(symbol)}</th>'
+        f'<td class="num"><strong>{fee_pct(headline)}</strong>'
+        f'<span class="fee-note muted tiny">{_esc(note)}</span></td>'
+        f'<td class="num">{before}</td>'
+        f"<td>{_esc(when)}</td>"
+        f"<td>{source}</td></tr>"
+    )
+
+
+def _fees_section(fund: dict) -> str:
+    """The Fees section, one row per share class the prospectus states, or its honest absence.
+
+    Called only for a release that reads fees (``release_reads_fees``): a page of an older
+    release has no such section rather than one that says "not stated".
+    """
+    shown = {
+        symbol: row
+        for symbol, row in ((fund.get("fees") or {}).get("classes") or {}).items()
+        if isinstance(row, dict) and fees_mod.headline(row) is not None
+    }
+    classes = shown
+    ticker = fund["ticker"]
+    intro = (
+        "The expense ratio each prospectus states, per share class, with the date of the "
+        "filing it comes from. It is not a return, a price, a rating or a ranking."
+    )
+    if not classes:
+        body = (
+            '<p class="muted small doc-note">No expense ratio is stated for this fund in this '
+            "release: none of its share classes has one we could read from a prospectus. We do not "
+            "estimate one.</p>"
+        )
+    else:
+        # The page's own ticker first, then the other classes in ticker order.
+        order = sorted(classes, key=lambda symbol: (symbol != ticker, symbol))
+        rows = "\n          ".join(_fee_row(symbol, classes[symbol]) for symbol in order)
+        own = ""
+        if ticker not in classes:
+            own = (
+                f'<p class="muted small doc-note">No expense ratio could be read for {_esc(ticker)} '
+                "itself; these are the fund's other share classes.</p>\n      "
+            )
+        body = f"""{own}<div class="table-wrap">
+        <table class="table">
+          <caption class="small muted">Expense ratios stated in the prospectus of {_esc(fund["name"])},
+          one row per share class, as a percentage of fund assets per year. The filing and its
+          date are beside each ratio.</caption>
+          <thead>
+            <tr><th scope="col">Class</th><th scope="col" class="num">Expense ratio</th>
+            <th scope="col" class="num">Before waivers</th><th scope="col">Prospectus</th>
+            <th scope="col">Source</th></tr>
+          </thead>
+          <tbody>
+          {rows}
+          </tbody>
+        </table>
+      </div>"""
+    return f"""<section aria-labelledby="fees-heading" class="stack stack--tight" id="fees">
+      <h2 id="fees-heading" class="title--sm">Fees</h2>
+      <p class="muted small doc-note">{intro}</p>
+      {body}
+    </section>"""
+
+
 def nav_model() -> dict:
     """The nav model. Fails loudly: a page with no navigation is not a page."""
     if not NAV_FILE.exists():
@@ -1260,8 +1407,12 @@ def render_page(
     contested: dict[str, str] | None = None,
     size_table: dict | None = None,
     release_id: str | None = None,
+    fees_read: bool = False,
 ) -> str:
     """One fund document → one standalone HTML page.
+
+    `fees_read` is whether the release carries expense ratios at all (`release_reads_fees`).
+    Off, the page has no Fees section and is byte-for-byte what it was before phase 2.
 
     `release_id` is the release directory's name, printed in the sidebar's footer.
     It is baked here rather than fetched because a fund page is regenerated with
@@ -1642,6 +1793,8 @@ def render_page(
         if source_url
         else "Form N-PORT on SEC EDGAR"
     )
+    fees_html = ("\n    " + _fees_section(fund) + "\n") if fees_read else ""
+    footer_source = "Form N-PORT and prospectus filings" if fees_read else "Form N-PORT"
     robots = "" if indexable else '<meta name="robots" content="noindex, follow">\n'
 
     page_title = f"{ticker} holdings — what {name} owns"
@@ -1731,7 +1884,7 @@ def render_page(
     </section>
 
     {_size_section(fund, size_table)}
-
+{fees_html}
     <section aria-labelledby="coverage-heading" class="stack stack--tight">
       <h2 id="coverage-heading" class="title--sm">How much of the fund we can see</h2>
       {coverage_html}
@@ -1775,7 +1928,7 @@ def render_page(
 
   </div>
 </main>
-{site_footer("Form N-PORT")}
+{site_footer(footer_source)}
 </div>
 </div>
 </div>
@@ -2125,6 +2278,9 @@ def build(
     (out_dir / CSS_NAME).write_text(stylesheet(), encoding="utf-8")
 
     catalogue_tickers = [ticker for ticker in catalogue if SAFE_TICKER.match(ticker)]
+    # Over the whole catalogue, not the requested subset: a partial rebuild of one fund must
+    # decide as a full one would, or a fund with no fee would read as "release has none".
+    fees_read = release_reads_fees(release_dir, catalogue_tickers)
     tickers = catalogue_tickers
     requested: int | None = None
     unmatched: list[str] = []
@@ -2166,6 +2322,7 @@ def build(
             countries=countries,
             contested=contested,
             release_id=release_id,
+            fees_read=fees_read,
         )
         target = out_dir / "f" / ticker / "index.html"
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -2210,6 +2367,8 @@ def build(
         "median_bytes": bytes_total // written if written else 0,
         "bands": bands,
         "catalogue": len(catalogue),
+        # Whether the release carries expense ratios, and so whether pages have a Fees section.
+        "fees_read": fees_read,
         # How many company → domicile decisions the release published. Zero means the
         # market section will say it cannot place the companies, not that none exist.
         "countries": len(countries),
@@ -2272,6 +2431,28 @@ CSS_RULES = """
  * than the width of the viewport. */
 .doc-note {
   max-width: var(--measure);
+}
+
+/* The fee table. A qualifier under a ratio ("includes a recoupment of earlier waivers…") is
+ * prose and must not set the column's width: unwrapped it made a 352 px column and pushed the
+ * number itself off a 375 px screen. A row's own name is a `<th scope="row">`, which the shared
+ * rule gives a header's heavy underline; it takes the body rows' hairline instead. Tokens only. */
+.fee-note {
+  display: block;
+  min-width: 9rem;
+  max-width: 12rem;
+  margin-left: auto;
+  white-space: normal;
+  text-align: right;
+}
+
+.table tbody th[scope="row"] {
+  border-bottom: 1px solid var(--rule);
+  vertical-align: baseline;
+}
+
+.table tbody tr:last-child th[scope="row"] {
+  border-bottom: 0;
 }
 
 /* Sibling funds: a list of names, not a paragraph. */
