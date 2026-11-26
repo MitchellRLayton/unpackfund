@@ -29,6 +29,7 @@ import {
   formatDateLong,
   formatEffective,
   formatFeeAverage,
+  formatKnownShare,
   formatPct1,
   formatPct1Of,
 } from "@/lib/format";
@@ -217,7 +218,11 @@ export function buildMetrics(model: WorkspaceModel, provider: Provider): LensMet
       )
     : null;
   const feeAverage = fee?.average == null ? null : formatFeeAverage(fee.average);
-  const feePhrase = feeAverage === null ? null : `${feeAverage} avg fee`;
+  // The average never travels without what it covers (D4): the share of fund weight whose fee
+  // is known, so 61% does not read the same as 100%.
+  const feeKnown = fee === null ? null : formatKnownShare(fee.knownPct);
+  const feePhrase =
+    feeAverage === null ? null : `${feeAverage} avg fee · ${feeKnown} known`;
   const fundsSub = [behaves, feePhrase, ...extras].filter(Boolean).join(" · ") || null;
   // One phrase for the non-fund holdings, so the sentence reads "plus 1 stock and 10.0%
   // cash" rather than "... stock, and 10.0% cash".
@@ -236,7 +241,9 @@ export function buildMetrics(model: WorkspaceModel, provider: Provider): LensMet
     "Funds",
     fundCount,
     behaves === null ? null : `${behaves} effective funds`,
-    feeAverage === null ? null : `average fee ${feeAverage}`,
+    feeAverage === null
+      ? null
+      : `average fee ${feeAverage}, known for ${feeKnown} of fund weight`,
     holdingsPhrase,
   ]
     .filter((part): part is string => Boolean(part))

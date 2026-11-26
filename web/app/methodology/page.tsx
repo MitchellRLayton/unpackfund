@@ -919,14 +919,15 @@ export default function MethodologyPage() {
         In a portfolio, each fund shows the fee of the share class you entered: typing
         VFIAX shows VFIAX&rsquo;s fee, not the fee of VOO, the ticker the fund is
         published under. The Funds tab adds one more figure, the weighted average of those
-        fees: each fund&rsquo;s stated figure times its share of your portfolio, divided
-        by the share of your fund weight that has a stated figure. Directly held stocks
-        and cash are left out of it, a fund whose class states no fee is counted as
+        fees: each fund&rsquo;s stated figure times its share of your portfolio, added up
+        and divided by the combined portfolio share of those same funds. Directly held
+        stocks and cash are left out of it, a fund whose class states no fee is counted as
         unknown and never as zero, and a class whose prospectus states a waiver but no net
-        figure is left out too, so a net and a gross figure are never averaged together.
-        The share of your fund weight the average describes is printed beside it, and the
-        average is withheld when that share is under 60%, the line the site uses for
-        coverage. The average describes what you hold; nothing here ranks funds by it.
+        figure, or whose waiver cannot be read, is left out too, so a net and a gross
+        figure are never averaged together. The share of your fund weight the average
+        describes is printed beside it, and the average is withheld when that share is
+        under 60%, the line the site uses for coverage. The average describes what you
+        hold; nothing here ranks funds by it.
       </p>
 
       <h2 id="limits">What is not known</h2>

@@ -44,6 +44,8 @@ export interface FeeFigure {
   value: number;
   /** The total before waivers, only where the filing states a net that differs. */
   before: number | null;
+  /** What `before` is: "before waivers", or "before the recoupment" when net is above total. */
+  beforeLabel: string;
   basis: FeeBasis;
   /** The words that say what `value` is. */
   note: string;
@@ -104,6 +106,8 @@ export function feeFigure(
     classTicker,
     value,
     before: differs ? row.total : null,
+    // A recoupment lifts net above the total, so the total is not "before waivers".
+    beforeLabel: isRecoupment(row) ? "before the recoupment" : "before waivers",
     basis: row.basis,
     note: noteFor(row, differs),
     countable: row.basis === "stated-net" || row.basis === "no-waiver-stated",
@@ -193,6 +197,8 @@ export function classesByFund(
  */
 export function feeSentence(figure: FeeFigure): string {
   const before =
-    figure.before === null ? "" : `; ${formatFeePct(figure.before)} before waivers`;
+    figure.before === null
+      ? ""
+      : `; ${formatFeePct(figure.before)} ${figure.beforeLabel}`;
   return `${formatFeePct(figure.value)}, ${figure.note}${before}`;
 }

@@ -5,7 +5,9 @@ import {
   classesByFund,
   documentsCarryFees,
   feeFigure,
+  feeSentence,
   FEE_NOTES,
+  type FeeFigure,
   portfolioFee,
 } from "./fees";
 import { formatFeeAverage, formatFeePct, formatKnownShare } from "./format";
@@ -41,7 +43,12 @@ describe("the stated fee of one class", () => {
       }),
       "FCTDX",
     );
-    expect(figure).toMatchObject({ value: 0.0028, before: 0.0053, countable: true });
+    expect(figure).toMatchObject({
+      value: 0.0028,
+      before: 0.0053,
+      beforeLabel: "before waivers",
+      countable: true,
+    });
     expect(figure?.note).toBe(FEE_NOTES.netOfWaivers);
   });
 
@@ -71,6 +78,9 @@ describe("the stated fee of one class", () => {
     );
     expect(figure).toMatchObject({ value: 0.0125, before: 0.0123 });
     expect(figure?.note).toBe(FEE_NOTES.recoupment);
+    // The 1.23% is the total before the recoupment, not a figure "before waivers".
+    expect(figure?.beforeLabel).toBe("before the recoupment");
+    expect(feeSentence(figure as FeeFigure)).toContain("1.23% before the recoupment");
   });
 
   it.each<[FeeBasis, string]>([
@@ -188,6 +198,17 @@ describe("the portfolio's average fee (D4)", () => {
     expect(result?.average === null).toBe(suppressed);
     // The share is always reported, so the reader can see what the average would cover.
     expect(result?.knownPct).toBeCloseTo(known * 100, 6);
+  });
+
+  it("shows the average at exactly 60% even where the float says 59.99999999999999", () => {
+    // 213 bp known, 142 bp unknown: 213 / 355 is 0.6 exactly in arithmetic, and the raw float
+    // times 100 is just under 60. The gate is half-open, so exactly 60 shows.
+    const documents = docs(fund("A", { A: row(0.002) }), fund("B"));
+    const result = portfolioFee({ A: 0.0213, B: 0.0142 }, {}, documents);
+    expect((0.0213 / (0.0213 + 0.0142)) * 100).toBeLessThan(60);
+    expect(result?.knownPct).toBe(60);
+    expect(result?.suppressed).toBe(false);
+    expect(result?.average).toBe(0.002);
   });
 
   it("never prints a known share that rounds up across the line", () => {

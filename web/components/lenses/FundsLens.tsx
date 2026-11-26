@@ -335,7 +335,7 @@ export function FundsLens({ model }: LensProps) {
           {classTicker} · {figure.note}
           {figure.before === null
             ? ""
-            : `; ${formatFeePct(figure.before)} before waivers`}
+            : `; ${formatFeePct(figure.before)} ${figure.beforeLabel}`}
         </CellNote>
       </td>
     );

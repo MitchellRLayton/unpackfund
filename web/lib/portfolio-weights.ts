@@ -245,13 +245,17 @@ export function effectiveFundCount(fundWeights: Record<string, number>): number 
  *
  * The workspace shows results only for the portfolio the visitor submitted, so it has to
  * recognise that portfolio again. Order is left out on purpose — dragging a row changes
- * what the form looks like, not what is inside the funds — and everything else is in:
+ * what the form looks like, not what is inside the funds — and everything else is in,
+ * the share class a fund was entered as included (it decides which fee is shown):
  * change one amount, add a row or switch to dollars and the signature moves, so the
  * results step back until "Show results" is pressed again.
  */
 export function portfolioSignature(mode: EntryMode, entries: PortfolioEntry[]): string {
   const rows = entries
-    .map((entry) => `${entry.kind}:${entry.key}:${entry.amount}`)
+    .map(
+      (entry) =>
+        `${entry.kind}:${entry.key}:${entry.amount}${entry.cls === undefined ? "" : `:${entry.cls}`}`,
+    )
     .sort();
   return `${mode}|${rows.join(",")}`;
 }

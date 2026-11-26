@@ -191,6 +191,14 @@ describe("resolveEntry", () => {
     });
   });
 
+  it("says so when another class of a fund already in the list is typed", async () => {
+    lookup.resolveAlias.mockResolvedValue("VOO");
+    await expect(resolveEntry("VFINX", ctx, ["VOO"])).resolves.toMatchObject({
+      ok: false,
+      title: "VFINX is a share class of VOO, which is already in your portfolio",
+    });
+  });
+
   it("carries no class when the published ticker itself is typed", async () => {
     const decision = await resolveEntry("VOO", ctx);
     expect(decision).toMatchObject({ ok: true, kind: "fund", key: "VOO" });

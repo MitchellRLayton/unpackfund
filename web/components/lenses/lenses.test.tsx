@@ -716,6 +716,11 @@ describe("funds: the expense ratio each prospectus states (T-0052 phase 3)", () 
     );
     expect(header).not.toContain("table__sort");
     expect(header).not.toContain("aria-sort");
+    // Nothing in the fee header sorts: its one control is the info tip, not a sort button.
+    const start = html.lastIndexOf("<th", html.indexOf("Expense ratio"));
+    const th = html.slice(start, html.indexOf("</th>", start));
+    expect(th.match(/<button/g)).toHaveLength(1);
+    expect(th).toMatch(/aria-label="About Expense ratio"/);
   });
 
   it("closes with the weighted average over the funds whose fee is known, and says how much", () => {

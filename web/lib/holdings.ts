@@ -211,7 +211,16 @@ export async function resolveEntry(
   //    tickers, and the release publishes one document per portfolio.
   const published = await resolveAlias(release, ticker, ctx.fetchImpl).catch(() => null);
   if (published && ctx.catalog.includes(published)) {
-    if (present.includes(published)) return duplicate(published, where);
+    if (present.includes(published)) {
+      // The row is the fund, not the class: the visitor typed another class of a fund that is
+      // already here, and the row keeps the class it was entered as (and so its fee).
+      return {
+        ok: false,
+        tone: "info",
+        title: `${ticker} is a share class of ${published}, which is already in ${where}`,
+        body: "One row per fund: the row keeps the class it was entered as. Set its amount instead of adding it twice.",
+      };
+    }
     return {
       ok: true,
       kind: "fund",

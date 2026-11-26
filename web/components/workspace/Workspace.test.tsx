@@ -63,6 +63,17 @@ vi.mock("@/lib/export", async (importOriginal) => {
   };
 });
 
+// One share class resolves to a fund the release publishes, as `aliases.json` would: the
+// paste test below needs the typed class to survive the lookup, which is the real code.
+vi.mock("@/lib/data", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/data")>();
+  return {
+    ...actual,
+    resolveAlias: async (_release: unknown, ticker: string) =>
+      ticker === "VTSAX" ? "VTI" : null,
+  };
+});
+
 vi.mock("@/lib/use-release", () => ({
   // The release publishes the example's seven tickers as well as the three fixture funds,
   // because the worked example on the empty state fetches exactly those seven.
@@ -1301,6 +1312,16 @@ describe("Workspace — a clean paste that totals 100% submits itself", () => {
     expect(
       screen.getByText(/Added 3 holdings\. Check the amounts against your own split/),
     ).toBeTruthy();
+  });
+
+  it("keeps the share class a line was pasted as, beside the fund it belongs to", async () => {
+    const view = await pasteList("VTSAX 60\nVXUS 40");
+    await waitFor(() =>
+      expect(view.model.portfolio.replace).toHaveBeenCalledWith([
+        { kind: "fund", key: "VTI", amount: 6_000, cls: "VTSAX" },
+        { kind: "fund", key: "VXUS", amount: 4_000 },
+      ]),
+    );
   });
 
   it("stays open when a line is dropped, even if what was added totals 100%", async () => {

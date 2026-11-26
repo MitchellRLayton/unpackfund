@@ -255,13 +255,24 @@ describe("the metric strip", () => {
     it("puts the average beside 'behaves like', over the funds whose fee is known", () => {
       // VTI 0.60 at 0.03%, VXUS 0.30 at 0.08%: (0.6·0.03 + 0.3·0.08) / 0.9 = 0.0466…% → 0.05%.
       const funds = buildMetrics(modelWith(0.0003, 0.0008), "MSCI")[2];
-      expect(funds?.sub).toBe("behaves like 1.8 · 0.05% avg fee");
-      expect(funds?.sentence).toContain("average fee 0.05%");
+      expect(funds?.sub).toBe("behaves like 1.8 · 0.05% avg fee · 100.0% known");
+      expect(funds?.sentence).toContain(
+        "average fee 0.05%, known for 100.0% of fund weight",
+      );
     });
 
     it("leaves a direct stock out of both the average and the share it covers", () => {
       const funds = buildMetrics(modelWith(0.0003, 0.0008, true), "MSCI")[2];
-      expect(funds?.sub).toBe("behaves like 1.8 · 0.05% avg fee · +1 stock");
+      expect(funds?.sub).toBe(
+        "behaves like 1.8 · 0.05% avg fee · 100.0% known · +1 stock",
+      );
+    });
+
+    it("prints the share of fund weight it covers beside the average, so 70% does not read as 100%", () => {
+      // VTI (0.60 of 0.90 fund weight = 66.7%) states a fee; VXUS does not.
+      const funds = buildMetrics(modelWith(0.0003, undefined), "MSCI")[2];
+      expect(funds?.sub).toBe("behaves like 1.8 · 0.03% avg fee · 66.6% known");
+      expect(funds?.sentence).toContain("known for 66.6% of fund weight");
     });
 
     it("is absent when a fund's fee is not stated and the rest fall under 60%", () => {

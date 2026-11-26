@@ -339,6 +339,17 @@ describe("the effective number of funds", () => {
 });
 
 describe("portfolioSignature", () => {
+  it("moves when only the share class a fund was entered as changes", () => {
+    const voo: PortfolioEntry = { kind: "fund", key: "VOO", amount: 5_000 };
+    const vfiax: PortfolioEntry = { ...voo, cls: "VFIAX" };
+    const vfinx: PortfolioEntry = { ...voo, cls: "VFINX" };
+    expect(portfolioSignature("bp", [voo])).not.toBe(portfolioSignature("bp", [vfiax]));
+    expect(portfolioSignature("bp", [vfiax])).not.toBe(portfolioSignature("bp", [vfinx]));
+    expect(portfolioSignature("bp", [vfiax])).toBe(
+      portfolioSignature("bp", [{ ...vfiax }]),
+    );
+  });
+
   const a = entry("fund", "AAA", 6_000);
   const b = entry("fund", "BBB", 4_000);
 
