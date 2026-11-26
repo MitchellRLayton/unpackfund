@@ -884,14 +884,14 @@ export default function MethodologyPage() {
 
       <h2 id="fees">Fees: the expense ratio a prospectus states</h2>
       <p>
-        A fund page shows the expense ratio each share class&rsquo;s prospectus states,
-        with the date of that prospectus and a link to the filing it was read from. The
-        figure is the one the prospectus says investors pay: the net expense ratio where
-        the prospectus states one, otherwise the total, labelled{" "}
-        <em>no fee waiver stated</em>. The total is shown beside the net, as{" "}
+        Once a release has read them, a fund page shows the expense ratio each share
+        class&rsquo;s prospectus states, with the date of that prospectus and a link to
+        the filing it was read from. The figure is the one the prospectus says investors
+        pay: the net expense ratio where the prospectus states one, otherwise the total,
+        labelled <em>no fee waiver stated</em>. The total is shown beside the net, as{" "}
         <em>before waivers</em>, only when the two differ. A fund&rsquo;s classes charge
         different fees (Vanguard&rsquo;s Admiral and Investor shares of one index fund
-        state 0.04% and 0.14%), so each class has its own row, and a class&rsquo;s fee is
+        state different ratios), so each class has its own row, and a class&rsquo;s fee is
         never shown as the fund&rsquo;s.
       </p>
       <p>
@@ -902,7 +902,10 @@ export default function MethodologyPage() {
         the waiver filed beside it is withheld rather than corrected, and where two
         documents in one filing disagree about a class, none of them is shown. A
         prospectus that states a waiver but no net figure, or whose waiver cannot be read,
-        is shown with the total and says so.
+        is shown with the total and says so. Where a fund&rsquo;s filings carry no such
+        tags, the figure is typed in by hand from the fee table of that prospectus, which
+        the row links in the same way; today that is one fund, the SPDR S&amp;P 500 ETF
+        Trust, a unit investment trust that files no tagged prospectus.
       </p>
       <p>
         A fee can change between prospectuses, and a cut announced in a later supplement

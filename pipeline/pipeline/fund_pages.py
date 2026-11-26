@@ -1136,8 +1136,8 @@ FEE_BASIS_NOTE = {
     fees_mod.BASIS_WAIVER_NO_NET: "before waivers; the filing states a waiver but no net figure",
     fees_mod.BASIS_WAIVER_UNRESOLVED: "before any waiver; the filing's waiver could not be read",
 }
-
-
+#: A stated net that equals the total: the number is the net, but there is no reduction to name.
+FEE_NET_EQUALS_TOTAL_NOTE = "net expense ratio, as stated"
 FEE_RECOUPMENT_NOTE = "includes a recoupment of earlier waivers, as the filing states"
 
 
@@ -1172,33 +1172,40 @@ def release_reads_fees(release_dir: Path, tickers: list[str]) -> bool:
     return False
 
 
-def _fee_row(symbol: str, row: dict) -> str:
+def _fee_row(symbol: str, row: dict) -> str | None:
+    """One class's row, or ``None`` when the row states no number (the build refuses those, so
+    this is a guard against a hand-built document, not a path a release takes)."""
     headline = fees_mod.headline(row)
+    if headline is None:
+        return None
     basis = row.get("basis")
     note = FEE_BASIS_NOTE.get(basis, "")
-    # A positive waiver that lifts net above the total is a recoupment of earlier waivers
-    # (EPDIX: 1.23% total, 1.25% net); "net of fee waivers" would say the opposite.
-    if (
-        basis == fees_mod.BASIS_STATED_NET
-        and (row.get("waiver") or 0.0) > fees_mod.EPS
-        and (row.get("net") or 0.0) > (row.get("total") or 0.0) + fees_mod.EPS
-    ):
-        note = FEE_RECOUPMENT_NOTE
+    total, net, waiver = row.get("total"), row.get("net"), row.get("waiver")
+    differs = total is not None and net is not None and abs(total - net) > fees_mod.EPS
+    if basis == fees_mod.BASIS_STATED_NET:
+        if fees_mod.is_recoupment(total, net, waiver):
+            # A positive waiver that reconciles net above total is a recoupment of earlier
+            # waivers (EPDIX: 1.23% total, 1.25% net); "net of fee waivers" would say the opposite.
+            note = FEE_RECOUPMENT_NOTE
+        elif not differs:
+            note = FEE_NET_EQUALS_TOTAL_NOTE
     # "Before waivers" only where the filing states a net that differs from the total; for the
     # two bases with no net the headline already *is* the total and its label says so.
-    before = "—"
-    if basis == fees_mod.BASIS_STATED_NET and row.get("total") is not None:
-        if abs(row["total"] - (row.get("net") or 0.0)) > fees_mod.EPS:
-            before = fee_pct(row["total"])
+    before = fee_pct(total) if basis == fees_mod.BASIS_STATED_NET and differs else "—"
     prospectus = row.get("prospectus_date")
     when = long_date(prospectus) if prospectus else f"filed {long_date(str(row.get('filed_at') or ''))}"
-    url = _esc(str(row.get("source_url") or ""))
+    url = str(row.get("source_url") or "")
     form = _esc(str(row.get("form") or "filing"))
-    source = f'<a href="{url}" rel="nofollow noopener">{form} on SEC EDGAR</a>' if url else form
+    # Only a SEC link is a link: the validator guarantees it, and the page does not rely on that.
+    source = (
+        f'<a href="{_esc(url)}" rel="nofollow noopener">{form} on SEC EDGAR</a>'
+        if url.startswith("https://www.sec.gov/")
+        else form
+    )
     return (
         f'<tr><th scope="row" class="mono">{_esc(symbol)}</th>'
-        f'<td class="num"><strong>{fee_pct(headline)}</strong><br>'
-        f'<span class="muted tiny">{_esc(note)}</span></td>'
+        f'<td class="num"><strong>{fee_pct(headline)}</strong>'
+        f'<span class="fee-note muted tiny">{_esc(note)}</span></td>'
         f'<td class="num">{before}</td>'
         f"<td>{_esc(when)}</td>"
         f"<td>{source}</td></tr>"
@@ -1211,7 +1218,12 @@ def _fees_section(fund: dict) -> str:
     Called only for a release that reads fees (``release_reads_fees``): a page of an older
     release has no such section rather than one that says "not stated".
     """
-    classes = (fund.get("fees") or {}).get("classes") or {}
+    shown = {
+        symbol: row
+        for symbol, row in ((fund.get("fees") or {}).get("classes") or {}).items()
+        if isinstance(row, dict) and fees_mod.headline(row) is not None
+    }
+    classes = shown
     ticker = fund["ticker"]
     intro = (
         "The expense ratio each prospectus states, per share class, with the date of the "
@@ -1219,9 +1231,9 @@ def _fees_section(fund: dict) -> str:
     )
     if not classes:
         body = (
-            '<p class="muted small doc-note">This release read the fund\'s prospectus filings and '
-            "found no expense ratio it can read for any of its share classes. We do not estimate "
-            "one.</p>"
+            '<p class="muted small doc-note">No expense ratio is stated for this fund in this '
+            "release: none of its share classes has one we could read from a prospectus. We do not "
+            "estimate one.</p>"
         )
     else:
         # The page's own ticker first, then the other classes in ticker order.
@@ -2419,6 +2431,28 @@ CSS_RULES = """
  * than the width of the viewport. */
 .doc-note {
   max-width: var(--measure);
+}
+
+/* The fee table. A qualifier under a ratio ("includes a recoupment of earlier waivers…") is
+ * prose and must not set the column's width: unwrapped it made a 352 px column and pushed the
+ * number itself off a 375 px screen. A row's own name is a `<th scope="row">`, which the shared
+ * rule gives a header's heavy underline; it takes the body rows' hairline instead. Tokens only. */
+.fee-note {
+  display: block;
+  min-width: 9rem;
+  max-width: 12rem;
+  margin-left: auto;
+  white-space: normal;
+  text-align: right;
+}
+
+.table tbody th[scope="row"] {
+  border-bottom: 1px solid var(--rule);
+  vertical-align: baseline;
+}
+
+.table tbody tr:last-child th[scope="row"] {
+  border-bottom: 0;
 }
 
 /* Sibling funds: a list of names, not a paragraph. */

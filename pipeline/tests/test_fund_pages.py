@@ -1020,15 +1020,63 @@ def test_a_prospectus_with_no_date_shows_the_filing_date_instead():
 
 def test_a_fund_with_no_stated_fee_in_a_fee_reading_release_says_so_and_estimates_nothing():
     section = fees_section(render(fund(), fees_read=True))
-    assert "found no expense ratio it can read" in section and "We do not estimate one" in section
+    assert "No expense ratio is stated for this fund in this release" in section
+    assert "We do not estimate one" in section and "read the fund" not in section
     assert "<table" not in section and "%" not in section
 
 
-def test_a_fee_row_escapes_its_class_and_its_url():
-    block = {"classes": {"AVUV": _fee(0.0025, source_url='https://www.sec.gov/a"b<c', form="485<BPOS")}}
+def test_every_value_that_reaches_a_fee_row_is_escaped():
+    """Each of these was untested: dropping the escape on any one left the suite green."""
+    block = {
+        "classes": {
+            "X<b>1": _fee(0.0025, source_url='https://www.sec.gov/a"b<c', form="485<BPOS",
+                          prospectus_date="<i>Apr</i>"),
+        }
+    }
+    page = render(fund(name="Fees <u>Fund</u>", fees=block), fees_read=True)
+    section = fees_section(page)
+    for raw in ("X<b>1", "b<c", "485<BPOS", "<i>Apr</i>", "<u>Fund</u>"):
+        assert raw not in section, raw
+    for escaped in ("X&lt;b&gt;1", "b&lt;c", "a&quot;b", "485&lt;BPOS", "&lt;i&gt;Apr&lt;/i&gt;",
+                    "&lt;u&gt;Fund&lt;/u&gt;"):
+        assert escaped in section, escaped
+    # The own-class note names the page's ticker, which is escaped too.
+    odd = render(fund(ticker="A<B", fees=block), fees_read=True)
+    assert "A<B itself" not in fees_section(odd) and "A&lt;B itself" in fees_section(odd)
+
+
+def test_only_a_sec_https_url_becomes_a_link():
+    for url in ("http://www.sec.gov/x", "https://example.com/x", "javascript:alert(1)", None):
+        block = {"classes": {"AVUV": _fee(0.0025, source_url=url)}}
+        section = fees_section(render(fund(fees=block), fees_read=True))
+        assert "<a href" not in section and "485BPOS" in section, url
+
+
+def test_a_net_that_equals_the_total_is_not_called_net_of_a_waiver():
+    block = {"classes": {"AVUV": _fee(0.0103, net=0.0103, waiver=-0.0004, basis="stated-net")}}
+    row = fees_section(render(fund(fees=block), fees_read=True))
+    assert "<strong>1.03%</strong>" in row and "net expense ratio, as stated" in row
+    assert "net of fee waivers" not in row and '<td class="num">—</td>' in row
+
+
+def test_a_row_with_no_number_is_left_out_not_a_crash():
+    """The build refuses such a row and the validator rejects it; a hand-built document must not
+    take the whole page generation down."""
+    block = {"classes": {"AVUV": _fee(None), "AVUVX": _fee(0.0053, net=0.0028, waiver=-0.0025, basis="stated-net")}}
     section = fees_section(render(fund(fees=block), fees_read=True))
-    assert "b<c" not in section and "485<BPOS" not in section
-    assert "b&lt;c" in section and "a&quot;b" in section and "485&lt;BPOS" in section
+    assert ">AVUVX</th>" in section and ">AVUV</th>" not in section
+    only_bad = fees_section(render(fund(fees={"classes": {"AVUV": _fee(None)}}), fees_read=True))
+    assert "<table" not in only_bad and "No expense ratio is stated for this fund" in only_bad
+
+
+def test_a_qualifier_cannot_widen_the_fee_column():
+    """At 375 px a 352 px column pushed the number off-screen: the note wraps in its own box."""
+    page = render(fund(fees=FEES_BLOCK), fees_read=True)
+    assert '<span class="fee-note muted tiny">' in fees_section(page)
+    css = fund_pages.CSS_RULES
+    rule = css[css.index(".fee-note {") : css.index("}", css.index(".fee-note {"))]
+    assert "min-width: 9rem" in rule and "max-width: 12rem" in rule and "white-space: normal" in rule and "display: block" in rule
+    assert '.table tbody th[scope="row"]' in css
 
 
 def _release(root: Path, documents: dict[str, dict]) -> Path:
@@ -1049,7 +1097,7 @@ def test_a_release_that_carries_fees_gives_every_page_a_fees_section(tmp_path: P
     assert stats["fees_read"] is True
     assert "AVUVX" in fees_section((out / "f" / "AVUV" / "index.html").read_text())
     # The fund with no stated fee says so, in a release that did read them.
-    assert "found no expense ratio" in fees_section((out / "f" / "AVLV" / "index.html").read_text())
+    assert "No expense ratio is stated for this fund" in fees_section((out / "f" / "AVLV" / "index.html").read_text())
 
 
 def test_an_older_release_builds_pages_with_no_fees_section(tmp_path: Path):
@@ -1065,7 +1113,7 @@ def test_a_partial_rebuild_decides_as_the_whole_release_does(tmp_path: Path):
     release = _release(tmp_path, {"AVUV": fund(fees=FEES_BLOCK), "AVLV": fund(ticker="AVLV")})
     out = tmp_path / "out"
     assert fund_pages.build(release, out, only={"AVLV"})["fees_read"] is True
-    assert "found no expense ratio" in (out / "f" / "AVLV" / "index.html").read_text()
+    assert "No expense ratio is stated for this fund" in (out / "f" / "AVLV" / "index.html").read_text()
 
 
 def test_a_company_named_fees_does_not_make_a_release_read_fees(tmp_path: Path):
